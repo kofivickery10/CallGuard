@@ -2,7 +2,7 @@
 
 ## Brand Identity
 
-**Tagline:** Every sales conversation. Scored, live, by AI that learns your firm's bar.
+**Tagline:** Every sales conversation. Scored, live, by AI that learns from your compliance team.
 
 **Personality:** The Expert Analyst - calm, precise, trustworthy.
 
