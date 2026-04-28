@@ -46,7 +46,7 @@ export const config = {
 
   resend: {
     apiKey: process.env.RESEND_API_KEY || '',
-    fromEmail: optional('RESEND_FROM_EMAIL', 'alerts@callguard.app'),
+    fromEmail: optional('RESEND_FROM_EMAIL', 'alerts@callguardai.co.uk'),
   },
 
   appUrl: optional('APP_URL', 'http://localhost:5173'),
