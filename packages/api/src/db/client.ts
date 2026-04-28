@@ -1,9 +1,19 @@
-import { Pool } from 'pg';
+import { Pool, type PoolConfig } from 'pg';
 import { config } from '../config.js';
 
-export const pool = new Pool({
+const poolConfig: PoolConfig = {
   connectionString: config.database.url,
-});
+};
+
+// Managed Postgres providers (AWS Lightsail, RDS, Heroku, etc.) require SSL
+// but use internal CAs that aren't in the system trust store. When the URL
+// asks for SSL, allow it without strict cert verification - the connection
+// is still encrypted, we just don't pin the CA.
+if (/sslmode=(require|prefer|verify-)/i.test(config.database.url)) {
+  poolConfig.ssl = { rejectUnauthorized: false };
+}
+
+export const pool = new Pool(poolConfig);
 
 pool.on('error', (err) => {
   console.error('Unexpected database pool error:', err);
