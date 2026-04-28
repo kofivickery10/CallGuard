@@ -1,0 +1,29 @@
+label,description,score_type,weight
+"Agent introduced themselves, company, and purpose clearly","1. Opening & Compliance: Did the agent introduce themselves, the company, and purpose clearly?",binary,1
+"Call recording disclosure provided","1. Opening & Compliance: Did the agent provide the call recording disclosure before proceeding?",binary,1
+"DPA completed correctly","1. Opening & Compliance: Did the agent complete DPA correctly (name, address, postcode, bill payer)?",binary,1.5
+"Permission obtained after verification","1. Opening & Compliance: Did the agent obtain permission to proceed after verification?",binary,1
+"Full needs analysis completed","2. Needs & KOA Discovery: Did the agent complete a full needs analysis (provider, contract, usage, devices, budget)?",binary,1.5
+"KOA inputs entered accurately","2. Needs & KOA Discovery: Did the agent enter all KOA inputs accurately without manipulation?",binary,2
+"Telecare requirements confirmed","3. Vulnerability & Duty of Care: Did the agent confirm Telecare requirements?",binary,1
+"Vulnerability signs identified","3. Vulnerability & Duty of Care: Did the agent identify any signs of vulnerability appropriately?",binary,1.5
+"Communication adapted where needed","3. Vulnerability & Duty of Care: Did the agent adapt communication (pace, clarity, check understanding) where needed?",binary,1
+"Escalation steps followed if needed","3. Vulnerability & Duty of Care: Did the agent follow escalation steps if customer struggled?",binary,1
+"Required product information provided","4. KOA Comparison: Did the agent provide all required product information (Speed, Averages, Price, Connection type, Contract Length, Price Rises etc)?",binary,1.5
+"Customer details confirmed correctly","5. Recap & Confirmation: Did the agent confirm customer details correctly?",binary,1
+"Payment details handled securely","5. Recap & Confirmation: Did the agent handle payment details securely (no repeating banking info)?",binary,2
+"T&Cs summarised correctly","5. Recap & Confirmation: Did the agent correctly summarise T&Cs without altering meaning?",binary,2
+"Cooling-off and cancellation rights explained","5. Recap & Confirmation: Did the agent explain cooling-off and cancellation rights?",binary,1.5
+"Mandatory statements covered","5. Recap & Confirmation: Did the agent cover all mandatory statements throughout the journey?",binary,1.5
+"One touch switch explained","5. Recap & Confirmation: Did the agent clearly explain one touch switch?",binary,1
+"Professional rapport maintained","6. Behaviour & Integrity: Did the agent maintain rapport and a professional call flow while remaining polite, friendly, and respectful?",binary,1
+"No misleading or pressure tactics","6. Behaviour & Integrity: Did the agent avoid misleading statements, pressure-selling, urgency tactics, or any form of mis-selling?",binary,2.5
+"Clear consent obtained for contract","7. Closing: Did the agent ensure the customer gave clear consent to enter into a contract?",binary,2
+"Order processing handoff confirmed","7. Closing: Did the agent confirm the order would be passed to the order processing team?",binary,1
+"Energy transfer process explained","8. Energy Hotkey: Did the agent correctly explain the energy transfer process and obtain permission to transfer?",binary,1
+"Customer numbers passed to energy hotkey","8. Energy Hotkey: Did the agent pass the customer's numbers to the energy hotkey?",binary,1
+"Correct mobile product information given","9. Mobile: Did the agent give correct product information?",binary,1
+"Exit fees advised when keeping number","9. Mobile: Did the agent advise the customer of any exit fees when keeping the same number?",binary,1
+"Customer identified as homeowner","10. Utility Warehouse: Did the agent correctly identify the customer as a homeowner?",binary,1
+"Bundling benefits explained","10. Utility Warehouse: Did the agent correctly explain the benefits of bundling (contract buy out 3+ services)?",binary,1
+"Cashback card explained correctly","10. Utility Warehouse: Did the agent correctly explain the cashback card when offering it?",binary,1

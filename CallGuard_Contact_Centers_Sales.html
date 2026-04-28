@@ -1,0 +1,1015 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>CallGuard for Contact Centers — Sales Pack</title>
+<style>
+  @page {
+    size: A4;
+    margin: 0;
+  }
+
+  :root {
+    --primary: #4a9e6e;
+    --primary-hover: #3d8a5e;
+    --primary-light: #e8f0e8;
+    --pass: #2d6e4a;
+    --pass-bg: #e8f5e8;
+    --fail: #c0392b;
+    --fail-bg: #fde8e8;
+    --review: #b8860b;
+    --review-bg: #fef3e0;
+    --processing: #2d5a9e;
+    --processing-bg: #e8f0fa;
+    --page-bg: #f8faf8;
+    --card-bg: #ffffff;
+    --border: #e2e8e2;
+    --border-light: #eef2ee;
+    --text-primary: #1a2e1a;
+    --text-secondary: #5a6e5a;
+    --text-muted: #8a9e8a;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  html, body {
+    background: var(--page-bg);
+    color: var(--text-primary);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    font-size: 11pt;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .page {
+    width: 210mm;
+    min-height: 297mm;
+    padding: 18mm 18mm 22mm;
+    page-break-after: always;
+    position: relative;
+    background: var(--page-bg);
+  }
+
+  .no-break,
+  .cta-box,
+  .roi,
+  .steps,
+  .stat-row,
+  .price-grid,
+  .problem-grid,
+  .quote {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  .step, .stat, .price, .problem-card, .feature, .uc {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .page:last-child {
+    page-break-after: auto;
+  }
+
+  /* Cover */
+  .cover {
+    background: linear-gradient(135deg, #1a2e1a 0%, #2d4a30 50%, #4a9e6e 100%);
+    color: white;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 24mm 18mm;
+  }
+  .cover .logo-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .cover .logo {
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    background: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .cover .logo svg {
+    width: 22px;
+    height: 22px;
+    fill: var(--primary);
+  }
+  .cover h1 {
+    font-size: 38pt;
+    font-weight: 800;
+    letter-spacing: -0.8pt;
+    line-height: 1.05;
+    margin-top: auto;
+  }
+  .cover .tag {
+    font-size: 14pt;
+    opacity: 0.85;
+    margin-top: 8mm;
+    max-width: 130mm;
+    line-height: 1.4;
+  }
+  .cover .audience-pill {
+    display: inline-block;
+    margin-top: 14mm;
+    padding: 6px 14px;
+    background: rgba(255, 255, 255, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 999px;
+    font-size: 10pt;
+    font-weight: 600;
+    letter-spacing: 0.4pt;
+    text-transform: uppercase;
+  }
+  .cover .footer {
+    margin-top: 24mm;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    font-size: 9.5pt;
+    opacity: 0.75;
+  }
+  .cover .footer .meta {
+    text-align: right;
+  }
+
+  /* Page header */
+  .page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 8mm;
+    margin-bottom: 9mm;
+  }
+  .page-header .brand {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 700;
+    color: var(--text-primary);
+    font-size: 11pt;
+  }
+  .page-header .brand-dot {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--primary);
+    display: inline-block;
+  }
+  .page-header .pagenum {
+    font-size: 9pt;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.6pt;
+  }
+
+  h2 {
+    font-size: 22pt;
+    font-weight: 800;
+    letter-spacing: -0.4pt;
+    color: var(--text-primary);
+    line-height: 1.15;
+    margin-bottom: 4mm;
+  }
+  h2 .accent {
+    color: var(--primary);
+  }
+  h3 {
+    font-size: 13pt;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 3mm;
+  }
+  .lead {
+    color: var(--text-secondary);
+    font-size: 11.5pt;
+    margin-bottom: 7mm;
+    max-width: 165mm;
+  }
+  p {
+    margin-bottom: 4mm;
+  }
+
+  .stat-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4mm;
+    margin: 6mm 0;
+  }
+  .stat {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 6mm 5mm;
+  }
+  .stat .num {
+    font-size: 26pt;
+    font-weight: 800;
+    color: var(--primary);
+    line-height: 1;
+    letter-spacing: -0.6pt;
+  }
+  .stat .label {
+    font-size: 9pt;
+    text-transform: uppercase;
+    letter-spacing: 0.5pt;
+    color: var(--text-muted);
+    font-weight: 600;
+    margin-top: 4mm;
+  }
+  .stat .sub {
+    font-size: 9.5pt;
+    color: var(--text-secondary);
+    margin-top: 2mm;
+  }
+
+  .problem-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 5mm;
+    margin: 6mm 0;
+  }
+  .problem-card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 6mm;
+  }
+  .problem-card.fail {
+    border-left: 3px solid var(--fail);
+  }
+  .problem-card.win {
+    border-left: 3px solid var(--primary);
+  }
+  .problem-card h4 {
+    font-size: 10pt;
+    text-transform: uppercase;
+    letter-spacing: 0.5pt;
+    color: var(--text-muted);
+    margin-bottom: 4mm;
+    font-weight: 700;
+  }
+  .problem-card.fail h4 {
+    color: var(--fail);
+  }
+  .problem-card.win h4 {
+    color: var(--primary);
+  }
+  .problem-card ul {
+    list-style: none;
+    padding: 0;
+  }
+  .problem-card li {
+    font-size: 10.5pt;
+    color: var(--text-primary);
+    padding: 2mm 0;
+    padding-left: 7mm;
+    position: relative;
+  }
+  .problem-card li::before {
+    position: absolute;
+    left: 0;
+    top: 2mm;
+    font-weight: 700;
+    font-size: 10pt;
+  }
+  .problem-card.fail li::before {
+    content: '✕';
+    color: var(--fail);
+  }
+  .problem-card.win li::before {
+    content: '✓';
+    color: var(--primary);
+  }
+
+  /* How it works */
+  .steps {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4mm;
+    margin: 6mm 0;
+  }
+  .step {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 6mm;
+    position: relative;
+  }
+  .step .num {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--primary);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 12pt;
+    margin-bottom: 4mm;
+  }
+  .step h4 {
+    font-size: 12pt;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 3mm;
+  }
+  .step p {
+    font-size: 10pt;
+    color: var(--text-secondary);
+    line-height: 1.5;
+  }
+
+  /* Feature grid */
+  .feature-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4mm;
+    margin: 5mm 0;
+  }
+  .feature {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 5mm 5mm 5mm 14mm;
+    position: relative;
+  }
+  .feature .icon {
+    position: absolute;
+    left: 5mm;
+    top: 5mm;
+    width: 22px;
+    height: 22px;
+    background: var(--primary-light);
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--primary);
+    font-weight: 800;
+    font-size: 11pt;
+  }
+  .feature h4 {
+    font-size: 11pt;
+    font-weight: 700;
+    margin-bottom: 2mm;
+    color: var(--text-primary);
+  }
+  .feature p {
+    font-size: 9.5pt;
+    color: var(--text-secondary);
+    line-height: 1.5;
+    margin: 0;
+  }
+
+  /* Use cases */
+  .uc-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4mm;
+    margin: 5mm 0;
+  }
+  .uc {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 5mm;
+  }
+  .uc h4 {
+    font-size: 11.5pt;
+    font-weight: 700;
+    color: var(--primary);
+    margin-bottom: 2mm;
+  }
+  .uc .role {
+    font-size: 9pt;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    letter-spacing: 0.5pt;
+    margin-bottom: 3mm;
+    font-weight: 600;
+  }
+  .uc p {
+    font-size: 10pt;
+    color: var(--text-secondary);
+    margin: 0;
+  }
+
+  /* Pricing */
+  .price-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4mm;
+    margin: 6mm 0;
+  }
+  .price {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 6mm;
+    position: relative;
+  }
+  .price.featured {
+    border: 2px solid var(--primary);
+    background: var(--primary-light);
+  }
+  .price .badge {
+    position: absolute;
+    top: -10px;
+    right: 8mm;
+    background: var(--primary);
+    color: white;
+    font-size: 8pt;
+    font-weight: 700;
+    padding: 3px 10px;
+    border-radius: 999px;
+    text-transform: uppercase;
+    letter-spacing: 0.5pt;
+  }
+  .price h3 {
+    font-size: 14pt;
+    font-weight: 800;
+    color: var(--text-primary);
+    margin-bottom: 1mm;
+  }
+  .price .pricing {
+    font-size: 18pt;
+    font-weight: 800;
+    color: var(--primary);
+    margin: 2mm 0 4mm;
+  }
+  .price .pricing .small {
+    font-size: 10pt;
+    color: var(--text-muted);
+    font-weight: 500;
+  }
+  .price ul {
+    list-style: none;
+    padding: 0;
+    margin-top: 4mm;
+  }
+  .price li {
+    font-size: 9.5pt;
+    color: var(--text-primary);
+    padding: 1.5mm 0 1.5mm 6mm;
+    position: relative;
+    line-height: 1.4;
+  }
+  .price li::before {
+    content: '✓';
+    position: absolute;
+    left: 0;
+    color: var(--primary);
+    font-weight: 800;
+  }
+
+  /* ROI panel */
+  .roi {
+    background: linear-gradient(135deg, #1a2e1a 0%, #2d4a30 100%);
+    color: white;
+    border-radius: 12px;
+    padding: 8mm;
+    margin: 6mm 0;
+  }
+  .roi h3 {
+    color: white;
+    font-size: 14pt;
+    margin-bottom: 4mm;
+  }
+  .roi-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 5mm;
+  }
+  .roi-stat .num {
+    font-size: 22pt;
+    font-weight: 800;
+    color: #a8d8b8;
+    line-height: 1;
+  }
+  .roi-stat .label {
+    font-size: 9pt;
+    opacity: 0.85;
+    margin-top: 2mm;
+  }
+
+  /* CTA box */
+  .cta-box {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 8mm;
+    margin: 6mm 0 0;
+  }
+  .cta-box h3 {
+    font-size: 16pt;
+    font-weight: 800;
+    margin-bottom: 4mm;
+  }
+  .cta-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 5mm;
+    margin-top: 5mm;
+  }
+  .cta-item h4 {
+    font-size: 10pt;
+    text-transform: uppercase;
+    letter-spacing: 0.5pt;
+    color: var(--text-muted);
+    margin-bottom: 2mm;
+    font-weight: 700;
+  }
+  .cta-item p {
+    font-size: 11pt;
+    color: var(--text-primary);
+    font-weight: 600;
+    margin: 0;
+  }
+  .cta-item a {
+    color: var(--primary);
+    text-decoration: none;
+  }
+
+  .quote {
+    background: var(--primary-light);
+    border-left: 3px solid var(--primary);
+    padding: 5mm 6mm;
+    margin: 5mm 0;
+    border-radius: 0 8px 8px 0;
+    font-size: 11pt;
+    color: var(--text-primary);
+    font-style: italic;
+  }
+  .quote .attrib {
+    display: block;
+    margin-top: 3mm;
+    font-size: 9.5pt;
+    color: var(--text-muted);
+    font-style: normal;
+    font-weight: 600;
+  }
+
+  .integrations {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3mm;
+    margin: 4mm 0;
+  }
+  .chip {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 3px 11px;
+    font-size: 9pt;
+    color: var(--text-secondary);
+    font-weight: 600;
+  }
+
+  .section-tag {
+    display: inline-block;
+    background: var(--primary-light);
+    color: var(--primary);
+    font-size: 9pt;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5pt;
+    padding: 3px 10px;
+    border-radius: 999px;
+    margin-bottom: 4mm;
+  }
+
+  .footer-line {
+    position: absolute;
+    bottom: 8mm;
+    left: 18mm;
+    right: 18mm;
+    display: flex;
+    justify-content: space-between;
+    font-size: 8.5pt;
+    color: var(--text-muted);
+    border-top: 1px solid var(--border);
+    padding-top: 3mm;
+  }
+</style>
+</head>
+<body>
+
+<!-- ============== Cover ============== -->
+<section class="page cover">
+  <div>
+    <div class="logo-row">
+      <div class="logo">
+        <svg viewBox="0 0 24 24"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg>
+      </div>
+      <span style="font-size: 16pt; font-weight: 800; letter-spacing: -0.3pt;">CallGuard</span>
+    </div>
+    <span class="audience-pill">For Contact Centers, BPOs &amp; Field Sales</span>
+  </div>
+  <div>
+    <h1>Every conversation.<br/>Every channel.<br/>Scored in real time.</h1>
+    <p class="tag">Stop sampling 1% of calls and hoping the rest are fine. CallGuard transcribes, scores and coaches every sales conversation — phone, dialer or doorstep — live as it happens, and after the fact. AI that learns your firm's bar.</p>
+  </div>
+  <div class="footer">
+    <div>callguard.app</div>
+    <div class="meta">
+      Sales Pack 2026<br/>
+      Contact Centers &amp; BPO Edition
+    </div>
+  </div>
+</section>
+
+<!-- ============== Page 2: The Problem ============== -->
+<section class="page">
+  <div class="page-header">
+    <div class="brand"><span class="brand-dot"></span> CallGuard</div>
+    <div class="pagenum">02 — The Problem</div>
+  </div>
+
+  <span class="section-tag">The Problem</span>
+  <h2>You're flying blind on <span class="accent">99% of your calls</span></h2>
+  <p class="lead">Most contact centers QA between 1% and 3% of calls manually. The other 97% are invisible — and the ones you do listen to take a supervisor 15 to 30 minutes each. There's a smarter way.</p>
+
+  <div class="stat-row">
+    <div class="stat">
+      <div class="num">1–3%</div>
+      <div class="label">Calls QA'd today</div>
+      <div class="sub">Industry average for traditional human-only QA programmes</div>
+    </div>
+    <div class="stat">
+      <div class="num">25 min</div>
+      <div class="label">Per call review</div>
+      <div class="sub">Average supervisor time per scored call (listen + score + notes)</div>
+    </div>
+    <div class="stat">
+      <div class="num">£60k+</div>
+      <div class="label">Annual cost per QA</div>
+      <div class="sub">Loaded cost of one full-time QA analyst in the UK</div>
+    </div>
+  </div>
+
+  <div class="problem-grid">
+    <div class="problem-card fail">
+      <h4>The status quo</h4>
+      <ul>
+        <li>Tiny random sample — bad calls slip through</li>
+        <li>Inconsistent scoring between supervisors</li>
+        <li>Coaching arrives weeks after the call</li>
+        <li>Compliance breaches found in audits, not in real time</li>
+        <li>QA team capacity caps how much you can grow</li>
+      </ul>
+    </div>
+    <div class="problem-card win">
+      <h4>With CallGuard</h4>
+      <ul>
+        <li>100% of calls transcribed and scored automatically</li>
+        <li>Same scorecard, every call, no scorer drift</li>
+        <li>Coaching draft ready before the agent's next shift</li>
+        <li>Real-time alerts the moment a critical call fails</li>
+        <li>Capacity scales without hiring more QA staff</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="footer-line">
+    <div>CallGuard for Contact Centers, BPOs &amp; Field Sales</div>
+    <div>callguard.app</div>
+  </div>
+</section>
+
+<!-- ============== Page 3: How It Works ============== -->
+<section class="page">
+  <div class="page-header">
+    <div class="brand"><span class="brand-dot"></span> CallGuard</div>
+    <div class="pagenum">03 — How it works</div>
+  </div>
+
+  <span class="section-tag">How it works</span>
+  <h2>Calls in. <span class="accent">Insights out.</span> Live or after the fact.</h2>
+  <p class="lead">CallGuard sits alongside your existing dialer, telephony stack or field-sales app. Stream audio live as the call is happening, push recordings after the fact, or embed our SDK directly in your rep's mobile app. Either way: transcript, score, breaches, coaching — all surfaced inside our dashboard or fed back into your tooling via webhook and API.</p>
+
+  <div class="steps">
+    <div class="step">
+      <div class="num">1</div>
+      <h4>Ingest — live or batch</h4>
+      <p>Drag-and-drop, REST API, SFTP/S3 sync for recordings; <strong>live WebSocket streaming</strong> from your Twilio, AWS Connect, Vonage or custom dialer; or our <strong>mobile SDK</strong> embedded in your field sales app. WAV, MP3, OGG, WebM, M4A, μ-law, Opus all supported. Encrypted at rest with AES-256-GCM.</p>
+    </div>
+    <div class="step">
+      <div class="num">2</div>
+      <h4>Score — as it happens</h4>
+      <p>Deepgram transcribes live with speaker separation. Claude scores against your scorecard, factoring in your firm's knowledge base, prior corrections and exemplar calls. Mid-call breach detection runs every 30 seconds on the rolling transcript.</p>
+    </div>
+    <div class="step">
+      <div class="num">3</div>
+      <h4>Act — before the call ends</h4>
+      <p>Critical breaches fire instantly to email, Slack, or your supervisor's phone — and stream back via signed webhooks to your dialer or CRM. Pass/fail per criterion, weighted overall score, evidence quotes and agent coaching draft are ready the moment the call ends.</p>
+    </div>
+  </div>
+
+  <h3 style="margin-top: 8mm;">Scorecards built for any vertical</h3>
+  <p style="font-size: 10.5pt; color: var(--text-secondary); margin-bottom: 4mm;">
+    Build your scorecard from scratch in our editor or upload your existing CSV. Every item is configurable: pass/fail, 1–5 scale, 1–10 scale, weighted critically, severity-tagged.
+  </p>
+
+  <div class="feature-grid">
+    <div class="feature">
+      <div class="icon">📞</div>
+      <h4>Sales &amp; service scorecards</h4>
+      <p>Greeting, identity check, empathy markers, value pitch, objection handling, no-pressure language, consent capture, summary close.</p>
+    </div>
+    <div class="feature">
+      <div class="icon">🛡️</div>
+      <h4>Compliance scorecards</h4>
+      <p>TPS / DNC, recording disclosure, mini-Miranda, GDPR / CCPA references, vulnerable customer screening, multi-tenant per-client scorecards for BPOs.</p>
+    </div>
+  </div>
+
+  <div class="footer-line">
+    <div>CallGuard for Contact Centers, BPOs &amp; Field Sales</div>
+    <div>callguard.app</div>
+  </div>
+</section>
+
+<!-- ============== Page 4: Features ============== -->
+<section class="page">
+  <div class="page-header">
+    <div class="brand"><span class="brand-dot"></span> CallGuard</div>
+    <div class="pagenum">04 — Platform features</div>
+  </div>
+
+  <span class="section-tag">Platform features</span>
+  <h2>Everything your QA, ops and compliance leads <span class="accent">actually need.</span></h2>
+  <p class="lead">Built for production contact centers from day one. Not a notebook demo — a working multi-tenant SaaS your team logs into Monday morning.</p>
+
+  <div class="feature-grid">
+    <div class="feature">
+      <div class="icon">🎙️</div>
+      <h4>High-accuracy transcription</h4>
+      <p>Deepgram Nova-3 with keyterm boost for product names and accents. AI-cleanup pass to fix dialer artefacts and confused speakers.</p>
+    </div>
+    <div class="feature">
+      <div class="icon">⚡</div>
+      <h4>Real-time alerts</h4>
+      <p>Trigger rules on low scores, critical breaches, or specific phrases. Send to email, Slack channels, or in-app notification bell.</p>
+    </div>
+    <div class="feature">
+      <div class="icon">📊</div>
+      <h4>Live dashboards</h4>
+      <p>Pass rate, score trend, breach heatmap, top failing scorecard items, agent leaderboard, time-of-day performance.</p>
+    </div>
+    <div class="feature">
+      <div class="icon">🧑‍🏫</div>
+      <h4>AI agent coaching</h4>
+      <p>Per-call coaching draft with strengths, improvements, and next actions. Builds on prior coaching to that same agent.</p>
+    </div>
+    <div class="feature">
+      <div class="icon">🚨</div>
+      <h4>Breach register</h4>
+      <p>Every critical fail logged with severity, status workflow, agent assignment, and audit trail for compliance reviews.</p>
+    </div>
+    <div class="feature">
+      <div class="icon">👤</div>
+      <h4>Agent risk profiles</h4>
+      <p>Heatmap each agent by breach pattern. Spot the ones who need coaching this week vs the stars worth promoting.</p>
+    </div>
+    <div class="feature">
+      <div class="icon">🧠</div>
+      <h4>Per-tenant AI learning</h4>
+      <p>Supervisors correct AI scores; corrections become few-shot examples that calibrate scoring to your firm's interpretation.</p>
+    </div>
+    <div class="feature">
+      <div class="icon">⭐</div>
+      <h4>Exemplar library</h4>
+      <p>Mark gold-standard calls. The AI uses them as a reference bar when scoring future calls — your good looks like your good.</p>
+    </div>
+    <div class="feature">
+      <div class="icon">📁</div>
+      <h4>Knowledge base injection</h4>
+      <p>Upload your QA manuals, product cheatsheets, and policy PDFs. Scoring engine reads them and applies firm-specific context.</p>
+    </div>
+    <div class="feature">
+      <div class="icon">🔗</div>
+      <h4>Customer share links</h4>
+      <p>Send signed read-only links of a scored call to clients (BPO use case) — no login needed, full PII redaction options.</p>
+    </div>
+    <div class="feature">
+      <div class="icon">🔒</div>
+      <h4>Encryption at rest</h4>
+      <p>AES-256-GCM on all uploaded audio and transcripts. JWT auth, signed URLs, role-based access control.</p>
+    </div>
+    <div class="feature">
+      <div class="icon">📡</div>
+      <h4>API + SFTP ingestion</h4>
+      <p>REST API with API keys, or polled SFTP sources for legacy dialers. Webhooks back to your CRM when calls are scored.</p>
+    </div>
+  </div>
+
+  <h3 style="margin-top: 6mm;">Plays nicely with the stack you already have</h3>
+  <div class="integrations">
+    <div class="chip">Genesys</div>
+    <div class="chip">Five9</div>
+    <div class="chip">Twilio Flex</div>
+    <div class="chip">AWS Connect</div>
+    <div class="chip">Avaya</div>
+    <div class="chip">8x8</div>
+    <div class="chip">RingCentral</div>
+    <div class="chip">Talkdesk</div>
+    <div class="chip">NICE CXone</div>
+    <div class="chip">Salesforce Service Cloud</div>
+    <div class="chip">HubSpot</div>
+    <div class="chip">Zendesk</div>
+    <div class="chip">Slack</div>
+    <div class="chip">Microsoft Teams</div>
+    <div class="chip">Custom dialers via SFTP</div>
+  </div>
+
+  <div class="footer-line">
+    <div>CallGuard for Contact Centers, BPOs &amp; Field Sales</div>
+    <div>callguard.app</div>
+  </div>
+</section>
+
+<!-- ============== Page 5: Live & Embedded ============== -->
+<section class="page">
+  <div class="page-header">
+    <div class="brand"><span class="brand-dot"></span> CallGuard</div>
+    <div class="pagenum">05 — Live &amp; Embedded</div>
+  </div>
+
+  <span class="section-tag">Live &amp; Embedded</span>
+  <h2>Score the call <span class="accent">while it's still happening.</span></h2>
+  <p class="lead">Most QA tools wait until a call ends. CallGuard streams audio live from your dialer or rep's pocket, transcribes in real time, and flags critical compliance breaches mid-call — before the rep finishes the pitch. Live transcript builds as it's spoken; every 30 seconds the AI reviews what's been said and emits high-confidence breach alerts via signed webhook to your CRM, dialer or supervisor's screen.</p>
+
+  <h3>Three integration paths, one engine</h3>
+
+  <div class="feature-grid">
+    <div class="feature">
+      <div class="icon">📡</div>
+      <h4>Dialer streaming</h4>
+      <p>First-class adapters for Twilio Media Streams and AWS Connect Voice Streams. Vonage, Plivo, Telnyx and any WebRTC dialer supported via our generic protocol. Older Genesys / Avaya stacks via SIPREC.</p>
+    </div>
+    <div class="feature">
+      <div class="icon">📱</div>
+      <h4>Mobile SDK</h4>
+      <p>iOS Swift Package and Android Kotlin library. Five-method public API: configure, start session, end, on-breach, on-transcript. Handles mic permission, consent capture, Opus encoding, offline buffering and battery throttling.</p>
+    </div>
+    <div class="feature">
+      <div class="icon">🌐</div>
+      <h4>Browser / web SDK</h4>
+      <p>Drop into any web app — agent desktops, virtual call panels, customer-facing forms. Same WebSocket protocol as mobile. Useful for partners who want CallGuard inside their existing browser-based agent UI.</p>
+    </div>
+    <div class="feature">
+      <div class="icon">🔔</div>
+      <h4>Mid-call breach webhooks</h4>
+      <p>HMAC-SHA256 signed POST to your endpoint within 30 seconds of detection. Retry with exponential backoff. Full audit log of every delivery attempt visible in your dashboard.</p>
+    </div>
+    <div class="feature">
+      <div class="icon">🎯</div>
+      <h4>Confidence-gated alerts</h4>
+      <p>Live scoring only emits a breach when the AI is &gt;75% confident the criterion has already been broken — not "might be" or "could happen." Designed to avoid alert fatigue from day one.</p>
+    </div>
+    <div class="feature">
+      <div class="icon">🛡️</div>
+      <h4>Consent capture, baked in</h4>
+      <p>SDK plays a recording-disclosure prompt at session start and captures the customer's verbal "yes" before the stream proceeds. GDPR Article 6 and UK Consumer Contracts Regs covered without writing your own logic.</p>
+    </div>
+  </div>
+
+  <div class="roi" style="margin-top: 6mm;">
+    <h3>What's coming next: live in-call coaching</h3>
+    <p style="font-size: 10pt; opacity: 0.92; margin: 0;">
+      Beyond breach detection: a real-time AI coach that whispers context-aware nudges to the rep mid-call ("ask about capacity for loss now," "soften the close") via earpiece, on-screen prompt or haptic pulse. Personalised to each rep using your firm's prior coaching memory.
+    </p>
+  </div>
+
+  <div class="footer-line">
+    <div>CallGuard for Contact Centers, BPOs &amp; Field Sales</div>
+    <div>callguard.app</div>
+  </div>
+</section>
+
+<!-- ============== Page 6: Where CallGuard plugs in ============== -->
+<section class="page">
+  <div class="page-header">
+    <div class="brand"><span class="brand-dot"></span> CallGuard</div>
+    <div class="pagenum">06 — Where CallGuard plugs in</div>
+  </div>
+
+  <span class="section-tag">Use cases</span>
+  <h2>Built for any regulated <span class="accent">sales conversation.</span></h2>
+  <p class="lead">From 50-seat boutique BPOs to 5,000-seat global outsourcers — and from inbound customer support to doorstep field sales. The pain is the same: too many conversations, not enough QA capacity, regulators tightening, and clients demanding more visibility.</p>
+
+  <div class="uc-grid">
+    <div class="uc">
+      <div class="role">Customer support contact center</div>
+      <h4>CSAT root-cause, not just CSAT scores</h4>
+      <p>Score every inbound call against an empathy plus first-call-resolution scorecard. Surface the small share of agents driving the bulk of low-CSAT outcomes — coach them in week one, not month three.</p>
+    </div>
+    <div class="uc">
+      <div class="role">Outbound sales / lead gen</div>
+      <h4>Catch urgency-language breaches before regulators do</h4>
+      <p>Live streaming from the dialer means no-pressure-language and consent-capture failures alert the floor manager mid-call, not after the customer has hung up and complained. TPS and TCPA scoring on 100% of attempts.</p>
+    </div>
+    <div class="uc">
+      <div class="role">Field sales / D2D</div>
+      <h4>Doorstep visits, scored from a phone in a pocket</h4>
+      <p>Mobile SDK embedded in the rep's app records the visit, captures consent, and streams to CallGuard live. GPS metadata for anti-fraud, mid-visit breach alerts, and full-quality scoring + coaching the moment the rep walks back to their car.</p>
+    </div>
+    <div class="uc">
+      <div class="role">Multi-tenant BPO</div>
+      <h4>One platform, many client scorecards, zero spreadsheets</h4>
+      <p>Each client gets its own scorecard, knowledge base and reporting. Customer share links let each client log into a scoped portal to see their own QA — replaces a multi-person reporting team and gives clients the visibility they're paying for.</p>
+    </div>
+    <div class="uc">
+      <div class="role">Debt collections</div>
+      <h4>Mini-Miranda compliance scored on every single call</h4>
+      <p>FDCPA, CONC and Ofcom collections rules are non-negotiable. CallGuard scores mini-Miranda, no-call-windows, profanity, and threats on 100% of attempts — and fires live alerts on critical breaches before the call ends.</p>
+    </div>
+    <div class="uc">
+      <div class="role">Healthcare patient services</div>
+      <h4>HIPAA-aware empathy scoring at hospital-network scale</h4>
+      <p>Patient appointment and billing call centers using CallGuard to score empathy markers, policy explanation clarity and PHI handling. PII redaction on transcripts, encryption at rest, signed URLs only, BAA available.</p>
+    </div>
+  </div>
+
+  <div class="footer-line">
+    <div>CallGuard for Contact Centers, BPOs &amp; Field Sales</div>
+    <div>callguard.app</div>
+  </div>
+</section>
+
+<!-- ============== Page 7: Get started ============== -->
+<section class="page">
+  <div class="page-header">
+    <div class="brand"><span class="brand-dot"></span> CallGuard</div>
+    <div class="pagenum">07 — Get started</div>
+  </div>
+
+  <span class="section-tag">Next steps</span>
+  <h2>Sign up at 9am. <span class="accent">100 calls scored before lunch.</span></h2>
+  <p class="lead">No 90-day pilot. No solution architects. No integration project. Each call is transcribed and scored in under a minute. Drag in 100 calls, walk to the kitchen, come back to a fully populated dashboard with breaches, coaching and trends.</p>
+
+  <div class="steps">
+    <div class="step">
+      <div class="num">1</div>
+      <h4>Sign up &amp; load your scorecard</h4>
+      <p>Create an account, upload your existing scorecard CSV, drop in any QA manuals or product cheatsheets to the knowledge base. About 5 minutes.</p>
+    </div>
+    <div class="step">
+      <div class="num">2</div>
+      <h4>Bring in your calls — any way you like</h4>
+      <p>Upload recordings from your desktop, push via API, connect SFTP / S3, point your Twilio or AWS Connect dialer at our WebSocket, or embed our mobile SDK in your field app. Score 10 calls or 10,000 in parallel.</p>
+    </div>
+    <div class="step">
+      <div class="num">3</div>
+      <h4>Read your dashboard</h4>
+      <p>Pass rate, breach register, agent leaderboard, coaching drafts — all populated. Correct any AI scores you disagree with. The AI calibrates to your bar from the next call onwards.</p>
+    </div>
+  </div>
+
+  <div class="cta-box no-break">
+    <h3>See your floor scored — today.</h3>
+    <p style="font-size: 11pt; color: var(--text-secondary); margin: 0;">No sales call required to start. Sign up, drag your calls in or wire up your dialer, see the results before close of play. If you want a guided walkthrough we'll give you 30 minutes with a real engineer — not a BDR.</p>
+
+    <div class="cta-grid">
+      <div class="cta-item">
+        <h4>Sign up &amp; start scoring</h4>
+        <p><a href="https://callguard.app">callguard.app</a></p>
+      </div>
+      <div class="cta-item">
+        <h4>Email us</h4>
+        <p><a href="mailto:hello@callguard.app">hello@callguard.app</a></p>
+      </div>
+      <div class="cta-item">
+        <h4>30-min engineer-led walkthrough</h4>
+        <p><a href="https://callguard.app/demo">callguard.app/demo</a></p>
+      </div>
+      <div class="cta-item">
+        <h4>For procurement &amp; security</h4>
+        <p><a href="mailto:procurement@callguard.app">procurement@callguard.app</a></p>
+      </div>
+    </div>
+
+    <p style="font-size: 9pt; color: var(--text-muted); margin: 6mm 0 0; text-align: center; padding-top: 5mm; border-top: 1px solid var(--border-light);">
+      CallGuard Ltd · UK-based · Hosted in EU/UK regions · GDPR-compliant by default · DPA &amp; BAA available on request
+    </p>
+  </div>
+
+  <div class="footer-line">
+    <div>CallGuard for Contact Centers, BPOs &amp; Field Sales</div>
+    <div>callguard.app · 2026</div>
+  </div>
+</section>
+
+</body>
+</html>

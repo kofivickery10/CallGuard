@@ -1,0 +1,542 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>CallGuard — Personal Brief</title>
+<style>
+  @page { size: A4; margin: 0; }
+  :root {
+    --primary: #4a9e6e;
+    --primary-light: #e8f0e8;
+    --pass: #2d6e4a;
+    --pass-bg: #e8f5e8;
+    --fail: #c0392b;
+    --fail-bg: #fde8e8;
+    --review: #b8860b;
+    --review-bg: #fef3e0;
+    --page-bg: #f8faf8;
+    --card-bg: #ffffff;
+    --border: #e2e8e2;
+    --border-light: #eef2ee;
+    --text-primary: #1a2e1a;
+    --text-secondary: #5a6e5a;
+    --text-muted: #8a9e8a;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  html, body {
+    background: var(--page-bg);
+    color: var(--text-primary);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    font-size: 11pt;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  .page {
+    width: 210mm;
+    min-height: 297mm;
+    padding: 18mm 18mm 22mm;
+    page-break-after: always;
+    position: relative;
+    background: var(--page-bg);
+  }
+  .page:last-child { page-break-after: auto; }
+  .no-break, .cta-box, .roi, .steps, .stat-row, .problem-grid {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  .step, .stat, .feature, .uc, .problem-card { break-inside: avoid; page-break-inside: avoid; }
+
+  /* Cover / personal letter */
+  .cover {
+    background: linear-gradient(135deg, #1a2e1a 0%, #2d4a30 50%, #4a9e6e 100%);
+    color: white;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 22mm 18mm;
+  }
+  .cover .logo-row { display: flex; align-items: center; gap: 12px; }
+  .cover .logo {
+    width: 42px; height: 42px; border-radius: 50%; background: white;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .cover .logo svg { width: 22px; height: 22px; fill: var(--primary); }
+  .cover .audience-pill {
+    display: inline-block;
+    margin-top: 12mm;
+    padding: 6px 14px;
+    background: rgba(255,255,255,0.15);
+    border: 1px solid rgba(255,255,255,0.3);
+    border-radius: 999px;
+    font-size: 10pt; font-weight: 600;
+    letter-spacing: 0.4pt; text-transform: uppercase;
+  }
+  .cover h1 {
+    font-size: 32pt; font-weight: 800; letter-spacing: -0.6pt;
+    line-height: 1.1; margin-top: auto;
+  }
+  .cover .letter {
+    margin-top: 8mm;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.18);
+    border-radius: 12px;
+    padding: 7mm 8mm;
+    font-size: 11pt;
+    line-height: 1.6;
+    max-width: 150mm;
+  }
+  .cover .letter p { margin-bottom: 4mm; }
+  .cover .letter p:last-child { margin-bottom: 0; }
+  .cover .letter .sig {
+    margin-top: 5mm;
+    font-size: 10pt;
+    opacity: 0.85;
+  }
+  .cover .footer {
+    margin-top: 14mm;
+    display: flex; justify-content: space-between; align-items: flex-end;
+    font-size: 9.5pt; opacity: 0.75;
+  }
+
+  /* Internal pages */
+  .page-header {
+    display: flex; justify-content: space-between; align-items: center;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 7mm;
+    margin-bottom: 8mm;
+  }
+  .page-header .brand { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 11pt; }
+  .page-header .brand-dot { width: 16px; height: 16px; border-radius: 50%; background: var(--primary); display: inline-block; }
+  .page-header .pagenum {
+    font-size: 9pt; color: var(--text-muted);
+    text-transform: uppercase; letter-spacing: 0.6pt;
+  }
+
+  h2 {
+    font-size: 22pt; font-weight: 800; letter-spacing: -0.4pt;
+    line-height: 1.15; margin-bottom: 4mm;
+  }
+  h2 .accent { color: var(--primary); }
+  h3 { font-size: 13pt; font-weight: 700; margin-bottom: 3mm; }
+  .lead {
+    color: var(--text-secondary);
+    font-size: 11.5pt;
+    margin-bottom: 6mm;
+    max-width: 165mm;
+  }
+  p { margin-bottom: 4mm; }
+
+  .section-tag {
+    display: inline-block;
+    background: var(--primary-light); color: var(--primary);
+    font-size: 9pt; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.5pt;
+    padding: 3px 10px; border-radius: 999px;
+    margin-bottom: 4mm;
+  }
+
+  .stat-row {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 4mm;
+    margin: 5mm 0;
+  }
+  .stat {
+    background: var(--card-bg); border: 1px solid var(--border);
+    border-radius: 10px; padding: 5mm;
+  }
+  .stat .num {
+    font-size: 24pt; font-weight: 800; color: var(--primary);
+    line-height: 1; letter-spacing: -0.5pt;
+  }
+  .stat .label {
+    font-size: 9pt; text-transform: uppercase;
+    letter-spacing: 0.5pt; color: var(--text-muted);
+    font-weight: 600; margin-top: 4mm;
+  }
+  .stat .sub { font-size: 9.5pt; color: var(--text-secondary); margin-top: 2mm; }
+
+  .problem-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 5mm; margin: 5mm 0;
+  }
+  .problem-card {
+    background: var(--card-bg); border: 1px solid var(--border);
+    border-radius: 10px; padding: 5mm 6mm;
+  }
+  .problem-card.fail { border-left: 3px solid var(--fail); }
+  .problem-card.win { border-left: 3px solid var(--primary); }
+  .problem-card h4 {
+    font-size: 10pt; text-transform: uppercase;
+    letter-spacing: 0.5pt; margin-bottom: 4mm; font-weight: 700;
+  }
+  .problem-card.fail h4 { color: var(--fail); }
+  .problem-card.win h4 { color: var(--primary); }
+  .problem-card ul { list-style: none; padding: 0; }
+  .problem-card li {
+    font-size: 10.5pt; padding: 2mm 0; padding-left: 7mm; position: relative;
+  }
+  .problem-card li::before {
+    position: absolute; left: 0; top: 2mm;
+    font-weight: 700; font-size: 10pt;
+  }
+  .problem-card.fail li::before { content: '✕'; color: var(--fail); }
+  .problem-card.win li::before { content: '✓'; color: var(--primary); }
+
+  .steps {
+    display: grid; grid-template-columns: repeat(3, 1fr);
+    gap: 4mm; margin: 5mm 0;
+  }
+  .step {
+    background: var(--card-bg); border: 1px solid var(--border);
+    border-radius: 10px; padding: 5mm; position: relative;
+  }
+  .step .num {
+    width: 26px; height: 26px; border-radius: 50%;
+    background: var(--primary); color: white;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 800; font-size: 11pt; margin-bottom: 4mm;
+  }
+  .step h4 { font-size: 12pt; font-weight: 700; margin-bottom: 3mm; }
+  .step p { font-size: 10pt; color: var(--text-secondary); line-height: 1.5; margin: 0; }
+
+  .feature-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 4mm; margin: 4mm 0;
+  }
+  .feature {
+    background: var(--card-bg); border: 1px solid var(--border);
+    border-radius: 10px; padding: 5mm 5mm 5mm 13mm; position: relative;
+  }
+  .feature .icon {
+    position: absolute; left: 5mm; top: 5mm;
+    width: 22px; height: 22px;
+    background: var(--primary-light); border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--primary); font-weight: 800; font-size: 11pt;
+  }
+  .feature h4 { font-size: 11pt; font-weight: 700; margin-bottom: 2mm; }
+  .feature p { font-size: 9.5pt; color: var(--text-secondary); line-height: 1.5; margin: 0; }
+
+  .uc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4mm; margin: 4mm 0; }
+  .uc {
+    background: var(--card-bg); border: 1px solid var(--border);
+    border-radius: 10px; padding: 5mm;
+  }
+  .uc h4 { font-size: 11.5pt; font-weight: 700; color: var(--primary); margin-bottom: 2mm; }
+  .uc .role {
+    font-size: 9pt; text-transform: uppercase;
+    color: var(--text-muted); letter-spacing: 0.5pt;
+    margin-bottom: 3mm; font-weight: 600;
+  }
+  .uc p { font-size: 10pt; color: var(--text-secondary); margin: 0; }
+
+  .roi {
+    background: linear-gradient(135deg, #1a2e1a 0%, #2d4a30 100%);
+    color: white; border-radius: 12px; padding: 7mm; margin: 5mm 0;
+  }
+  .roi h3 { color: white; font-size: 13pt; margin-bottom: 3mm; }
+  .roi p { color: rgba(255,255,255,0.92); font-size: 10pt; margin: 0; }
+
+  .cta-box {
+    background: var(--card-bg); border: 1px solid var(--border);
+    border-radius: 12px; padding: 7mm;
+  }
+  .cta-box h3 { font-size: 15pt; font-weight: 800; margin-bottom: 3mm; }
+  .cta-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 5mm; margin-top: 5mm;
+  }
+  .cta-item h4 {
+    font-size: 9pt; text-transform: uppercase;
+    letter-spacing: 0.5pt; color: var(--text-muted);
+    margin-bottom: 2mm; font-weight: 700;
+  }
+  .cta-item p { font-size: 11pt; font-weight: 600; margin: 0; }
+  .cta-item a { color: var(--primary); text-decoration: none; }
+
+  .footer-line {
+    position: absolute; bottom: 8mm; left: 18mm; right: 18mm;
+    display: flex; justify-content: space-between;
+    font-size: 8.5pt; color: var(--text-muted);
+    border-top: 1px solid var(--border); padding-top: 3mm;
+  }
+</style>
+</head>
+<body>
+
+<!-- ============== Page 1: Cover + personal letter ============== -->
+<section class="page cover">
+  <div>
+    <div class="logo-row">
+      <div class="logo">
+        <svg viewBox="0 0 24 24"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg>
+      </div>
+      <span style="font-size: 16pt; font-weight: 800; letter-spacing: -0.3pt;">CallGuard</span>
+    </div>
+    <span class="audience-pill">Personal Brief for [Name]</span>
+  </div>
+
+  <div>
+    <h1>Every advice call.<br/>Scored against your firm's bar.<br/>By AI that learns from your compliance team.</h1>
+
+    <div class="letter">
+      <p>[Name],</p>
+      <p>[Friend] mentioned you've been wrestling with the same compliance bottleneck most advice firms have right now: file checks at a single-digit sample, Consumer Duty raising the evidence bar, and a checking team that can't realistically scale to cover what the FCA actually expects.</p>
+      <p>This is the project [Friend's first name] and I have been building. CallGuard was designed inside the UK financial planning sector from day one — the original scorecards covered ATR, capacity for loss, vulnerable client screening, COBS 9.2 suitability, charges disclosure and Consumer Duty outcomes. We've moved a long way in the last few weeks. I wanted to send this through directly rather than via a generic deck.</p>
+      <p>Five pages. Worth a 15-minute call if anything resonates.</p>
+      <p class="sig">— Kofi</p>
+    </div>
+  </div>
+
+  <div class="footer">
+    <div>callguard.app</div>
+    <div style="text-align: right;">
+      Personal brief<br/>
+      Financial Planning Edition
+    </div>
+  </div>
+</section>
+
+<!-- ============== Page 2: The problem (FP-specific) ============== -->
+<section class="page">
+  <div class="page-header">
+    <div class="brand"><span class="brand-dot"></span> CallGuard</div>
+    <div class="pagenum">02 — The compliance bottleneck</div>
+  </div>
+
+  <span class="section-tag">The problem</span>
+  <h2>You're checking 5% of advice files. <span class="accent">Consumer Duty expects more.</span></h2>
+  <p class="lead">Most advice firms run a manual file-check at a 5-10% sample. Each file takes a senior compliance reviewer 60-90 minutes. Variation between reviewers is meaningful. And the FCA, post-Consumer Duty, has made it clear that "fair value" and "good outcomes" need systematic evidence — not a sampled spot-check three months after the recommendation went out.</p>
+
+  <div class="stat-row">
+    <div class="stat">
+      <div class="num">5–10%</div>
+      <div class="label">Files reviewed today</div>
+      <div class="sub">Industry average sample rate for manual file checking inside an advice business</div>
+    </div>
+    <div class="stat">
+      <div class="num">90 min</div>
+      <div class="label">Per file review</div>
+      <div class="sub">Senior reviewer time per advice file (recordings, fact-find, suitability letter, evidence)</div>
+    </div>
+    <div class="stat">
+      <div class="num">s166</div>
+      <div class="label">The risk you can't see</div>
+      <div class="sub">Skilled-person reviews land on firms whose monitoring is anecdotal, not systematic</div>
+    </div>
+  </div>
+
+  <div class="problem-grid">
+    <div class="problem-card fail">
+      <h4>Status quo</h4>
+      <ul>
+        <li>Single-digit sample, recommendations are mostly invisible</li>
+        <li>Subjective scoring varies between checkers</li>
+        <li>Reviews land weeks after the recommendation went out</li>
+        <li>Vulnerable client signals slip past unflagged</li>
+        <li>Consumer Duty outcomes are anecdotal, not evidenced</li>
+        <li>DB transfer specialist sign-off can't be re-checked at scale</li>
+      </ul>
+    </div>
+    <div class="problem-card win">
+      <h4>With CallGuard</h4>
+      <ul>
+        <li>100% of advice calls transcribed and scored automatically</li>
+        <li>One AI scorer calibrated to your firm's interpretation</li>
+        <li>Critical breaches surface within seconds of the call</li>
+        <li>Vulnerability indicators flagged on every call</li>
+        <li>Consumer Duty outcomes evidenced systematically</li>
+        <li>Pension transfer scoring with specialist-pathway gates</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="footer-line">
+    <div>CallGuard for Financial Planning</div>
+    <div>callguard.app</div>
+  </div>
+</section>
+
+<!-- ============== Page 3: How it works ============== -->
+<section class="page">
+  <div class="page-header">
+    <div class="brand"><span class="brand-dot"></span> CallGuard</div>
+    <div class="pagenum">03 — How it works</div>
+  </div>
+
+  <span class="section-tag">How it works</span>
+  <h2>Calls in. <span class="accent">Suitability evidence out.</span></h2>
+  <p class="lead">CallGuard sits alongside your existing recording infrastructure. Whether your advisers record on a desk dialer, on Teams, or via a dedicated compliance recorder, audio flows in, gets scored against your firm's scorecard, and surfaces in a dashboard your compliance director actually wants to open.</p>
+
+  <div class="steps">
+    <div class="step">
+      <div class="num">1</div>
+      <h4>Ingest — live or batch</h4>
+      <p>Drag-and-drop, REST API, SFTP/S3 sync for archived recordings, or live WebSocket streaming from a Twilio, AWS Connect or compliance recorder. Encrypted at rest with AES-256-GCM.</p>
+    </div>
+    <div class="step">
+      <div class="num">2</div>
+      <h4>Score against your scorecard</h4>
+      <p>Deepgram transcribes with speaker separation. Claude scores against your firm's scorecard, factoring in your KB (firm policies, product cheatsheets, FCA references), prior compliance corrections, and exemplar calls.</p>
+    </div>
+    <div class="step">
+      <div class="num">3</div>
+      <h4>Surface what matters</h4>
+      <p>Pass/fail per criterion, weighted overall score, exact quote evidence, an adviser-specific coaching brief, and a breach register. Critical fails alert your compliance lead instantly.</p>
+    </div>
+  </div>
+
+  <h3>Scoring built around the FCA framework</h3>
+  <div class="feature-grid">
+    <div class="feature">
+      <div class="icon">📋</div>
+      <h4>Suitability (COBS 9.2)</h4>
+      <p>ATR explored properly (not just a closed question), capacity for loss assessed, time horizon confirmed, existing arrangements reviewed, recommendation linked back to stated objectives.</p>
+    </div>
+    <div class="feature">
+      <div class="icon">🛡️</div>
+      <h4>Vulnerable customers (FG21/1)</h4>
+      <p>Indicators screened for: bereavement, cognitive impairment, financial distress, time pressure. Vulnerability flag triggers the firm's protocol; absence of screening is itself a flag.</p>
+    </div>
+    <div class="feature">
+      <div class="icon">💷</div>
+      <h4>Charges &amp; Consumer Duty</h4>
+      <p>Combined monetary illustration (not just %), product charges, ongoing service fees, fair value test, plain-English explanation, customer asked to confirm understanding.</p>
+    </div>
+    <div class="feature">
+      <div class="icon">🚨</div>
+      <h4>Critical fails (regulator-relevant)</h4>
+      <p>Urgency / pressure language ("offer closes today"), unauthorised pension transfer steers without specialist sign-off, missing recording disclosure, undisclosed conflicts of interest.</p>
+    </div>
+  </div>
+
+  <div class="footer-line">
+    <div>CallGuard for Financial Planning</div>
+    <div>callguard.app</div>
+  </div>
+</section>
+
+<!-- ============== Page 4: New platform layer ============== -->
+<section class="page">
+  <div class="page-header">
+    <div class="brand"><span class="brand-dot"></span> CallGuard</div>
+    <div class="pagenum">04 — Platform &amp; AI layer</div>
+  </div>
+
+  <span class="section-tag">Recent build</span>
+  <h2>Score the call <span class="accent">while the adviser is still on it.</span></h2>
+  <p class="lead">The shift in the last month is platform-level. CallGuard isn't a "drag-and-drop your recordings" tool any more. The AI reads the call as it's happening, calibrates itself to your compliance team's interpretation, and writes the brief your compliance director would otherwise spend a Sunday afternoon producing.</p>
+
+  <div class="feature-grid">
+    <div class="feature">
+      <div class="icon">📡</div>
+      <h4>Live streaming + mid-call breach detection</h4>
+      <p>Audio streams live from your dialer or compliance recorder. Every 30 seconds the AI scans the rolling transcript and flags critical breaches via signed webhook to your supervisor. The compliance lead can step in <em>during</em> the call, not three weeks after.</p>
+    </div>
+    <div class="feature">
+      <div class="icon">🎯</div>
+      <h4>Confidence-gated alerts</h4>
+      <p>The live scorer only emits a breach when the AI is &gt;75% confident the criterion has clearly already failed. Designed to avoid alert fatigue and the "boy who cried wolf" problem from day one.</p>
+    </div>
+    <div class="feature">
+      <div class="icon">🧠</div>
+      <h4>Per-firm AI learning</h4>
+      <p>Your compliance officer corrects the AI on borderline calls. Each correction becomes a few-shot example feeding the next batch of scoring. After ~50-100 corrections the AI is calibrated to your firm's interpretation of "suitable" and "fair value," not a generic baseline.</p>
+    </div>
+    <div class="feature">
+      <div class="icon">⭐</div>
+      <h4>Firm exemplar library</h4>
+      <p>Mark gold-standard advice calls. The AI uses them as the reference bar when scoring future calls — your firm's "good" defines the AI's "good," not someone else's.</p>
+    </div>
+    <div class="feature">
+      <div class="icon">📊</div>
+      <h4>AI Insights — written for your CO</h4>
+      <p>A weekly strategic brief: what changed this week, the patterns worth attention, and 3-4 specific actions ("escalate Adviser X this week, run a team-wide refresher on capacity for loss, update the charges script to include £ illustration"). Written by Claude, not boilerplate.</p>
+    </div>
+    <div class="feature">
+      <div class="icon">🤝</div>
+      <h4>Adviser coaching memory</h4>
+      <p>Coaching builds on what was said to that adviser last week. If they've improved on the flagged area, the AI acknowledges it. If they haven't, it escalates the language. Personalised, not template.</p>
+    </div>
+  </div>
+
+  <div class="roi">
+    <h3>What's coming next: live in-call coaching</h3>
+    <p>Beyond breach detection: a real-time AI coach that whispers context-aware nudges to the adviser mid-call ("ask about capacity for loss now," "soften the close") via earpiece or on-screen prompt. Personalised to each adviser using the prior coaching memory above. No legacy QA vendor delivers this on modern LLMs.</p>
+  </div>
+
+  <div class="footer-line">
+    <div>CallGuard for Financial Planning</div>
+    <div>callguard.app</div>
+  </div>
+</section>
+
+<!-- ============== Page 5: Where it fits + next steps ============== -->
+<section class="page">
+  <div class="page-header">
+    <div class="brand"><span class="brand-dot"></span> CallGuard</div>
+    <div class="pagenum">05 — Where it fits + next steps</div>
+  </div>
+
+  <span class="section-tag">Inside an advice firm</span>
+  <h2>Five places it lands <span class="accent">immediately.</span></h2>
+
+  <div class="uc-grid">
+    <div class="uc">
+      <div class="role">Compliance team</div>
+      <h4>File checking at 100%, triaged for human review</h4>
+      <p>AI scores every call; team focuses senior-reviewer hours on the calls flagged amber/red, not a random 5% sample. Reviewer load drops; coverage approaches 100%.</p>
+    </div>
+    <div class="uc">
+      <div class="role">Pension transfer oversight</div>
+      <h4>DB transfer specialist sign-off, evidenced systematically</h4>
+      <p>Every transfer-relevant call scored against the DB pathway: triage warning indicators, capacity for loss, sophisticated investor caveats, specialist signoff trail.</p>
+    </div>
+    <div class="uc">
+      <div class="role">Vulnerable customer protocol</div>
+      <h4>FG21/1 indicators flagged on every call, not by chance</h4>
+      <p>Bereavement, cognitive, financial distress and time pressure markers detected systematically. Triggers the firm's vulnerability protocol within minutes, not weeks.</p>
+    </div>
+    <div class="uc">
+      <div class="role">Consumer Duty evidence</div>
+      <h4>Outcomes data the FCA actually wants</h4>
+      <p>Aggregate scoring data answers "are advisers giving fair-value advice consistently?" with hard numbers, not a sample-of-30 written narrative buried in last quarter's MI pack.</p>
+    </div>
+    <div class="uc">
+      <div class="role">Adviser development</div>
+      <h4>Per-adviser coaching that compounds</h4>
+      <p>Each adviser's coaching brief is built on top of last week's. The struggling 5% get tracked weekly; the strong performers get exemplar-tagged and feed the AI's reference bar.</p>
+    </div>
+    <div class="uc">
+      <div class="role">Senior managers (SM&amp;CR)</div>
+      <h4>Reasonable steps you can actually demonstrate</h4>
+      <p>Systematic monitoring evidence on file. If a regulator asks how you supervise outcomes, you point at the dashboard, not the spreadsheet. Reduces s166 / past business review exposure.</p>
+    </div>
+  </div>
+
+  <div class="cta-box no-break" style="margin-top: 6mm;">
+    <h3>What I'd want from you, [Name].</h3>
+    <p style="font-size: 11pt; color: var(--text-secondary); margin: 0;">
+      Honest reaction first. If it lands, I'd love to run a small design-partner pilot inside [Firm] — bring 50-100 of your real (anonymised) advice calls, get them scored against your existing scorecard, and let your compliance team correct anything the AI gets wrong. Two weeks, no commitment. The corrections you make calibrate the AI to your firm's bar, so even the pilot data has standalone value to you.
+    </p>
+
+    <div class="cta-grid">
+      <div class="cta-item">
+        <h4>Direct</h4>
+        <p><a href="mailto:kofi@properleads.co.uk">kofi@properleads.co.uk</a></p>
+      </div>
+      <div class="cta-item">
+        <h4>15-min walkthrough</h4>
+        <p>Reply to the message [Friend] sent — pick a slot.</p>
+      </div>
+    </div>
+  </div>
+
+  <p style="font-size: 9pt; color: var(--text-muted); margin-top: 5mm; text-align: center;">
+    UK-based · Hosted in EU/UK regions · GDPR-compliant by default · DPA available · AES-256-GCM encryption at rest · JWT auth · role-based access
+  </p>
+
+  <div class="footer-line">
+    <div>CallGuard for Financial Planning</div>
+    <div>Personal brief · 2026</div>
+  </div>
+</section>
+
+</body>
+</html>
