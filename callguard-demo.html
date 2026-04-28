@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CallGuard - AI Call Quality Assurance</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Inter', -apple-system, sans-serif; background: #f8faf8; color: #1a2e1a; }
+
+  /* Sidebar */
+  .sidebar { position: fixed; left: 0; top: 0; width: 220px; height: 100vh; background: #ffffff; border-right: 1px solid #e2e8e2; padding: 20px 0; display: flex; flex-direction: column; }
+  .logo { padding: 0 20px 20px; display: flex; align-items: center; gap: 10px; }
+  .logo-icon { width: 32px; height: 32px; background: #4a9e6e; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+  .logo-icon svg { width: 18px; height: 18px; fill: white; }
+  .logo-text { font-size: 17px; font-weight: 700; color: #1a2e1a; letter-spacing: -0.3px; }
+
+  .nav { padding: 8px 12px; flex: 1; }
+  .nav-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px; color: #8a9e8a; padding: 12px 12px 6px; font-weight: 600; }
+  .nav-item { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 8px; cursor: pointer; color: #5a6e5a; font-size: 14px; font-weight: 500; margin-bottom: 2px; transition: all 0.15s; }
+  .nav-item:hover { background: #f0f5f0; color: #1a2e1a; }
+  .nav-item.active { background: #e8f0e8; color: #2d6e4a; font-weight: 600; }
+  .nav-item svg { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 1.8; flex-shrink: 0; }
+
+  .sidebar-footer { padding: 16px 20px; border-top: 1px solid #e2e8e2; }
+  .sidebar-footer .user { font-size: 13px; font-weight: 600; color: #1a2e1a; }
+  .sidebar-footer .email { font-size: 12px; color: #8a9e8a; margin-top: 2px; }
+  .sidebar-footer .signout { font-size: 12px; color: #8a9e8a; margin-top: 8px; cursor: pointer; display: flex; align-items: center; gap: 4px; }
+  .sidebar-footer .signout:hover { color: #5a6e5a; }
+
+  /* Main */
+  .main { margin-left: 220px; min-height: 100vh; }
+
+  /* Content */
+  .content { padding: 32px 36px; max-width: 1200px; }
+
+  /* Page header */
+  .page-title { font-size: 22px; font-weight: 700; color: #1a2e1a; letter-spacing: -0.3px; }
+  .page-sub { font-size: 14px; color: #6a7e6a; margin-top: 4px; }
+  .page-header { margin-bottom: 28px; }
+
+  /* Screen management */
+  .screen { display: none; }
+  .screen.active { display: block; }
+
+  /* Stat cards */
+  .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 28px; }
+  .stat-card { background: #ffffff; border: 1px solid #e2e8e2; border-radius: 10px; padding: 20px; }
+  .stat-card .label { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: #8a9e8a; display: flex; justify-content: space-between; align-items: center; }
+  .stat-card .label svg { width: 18px; height: 18px; stroke: #aabdaa; fill: none; stroke-width: 1.8; }
+  .stat-card .value { font-size: 30px; font-weight: 700; color: #1a2e1a; margin-top: 10px; }
+  .stat-card .change { font-size: 12px; color: #4a9e6e; margin-top: 4px; }
+  .stat-card .change.down { color: #c0392b; }
+
+  /* Table */
+  .panel { background: #ffffff; border: 1px solid #e2e8e2; border-radius: 10px; overflow: hidden; margin-bottom: 20px; }
+  .panel-header { padding: 16px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e2e8e2; }
+  .panel-header h3 { font-size: 15px; font-weight: 600; color: #1a2e1a; }
+  .panel-header a { font-size: 13px; color: #4a9e6e; text-decoration: none; font-weight: 500; cursor: pointer; }
+  .panel-header a:hover { text-decoration: underline; }
+
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; padding: 10px 20px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #8a9e8a; font-weight: 600; background: #fafcfa; border-bottom: 1px solid #e2e8e2; }
+  td { padding: 13px 20px; font-size: 13px; color: #3a4e3a; border-bottom: 1px solid #f0f5f0; }
+  tr { cursor: pointer; transition: background 0.1s; }
+  tbody tr:hover td { background: #fafcfa; }
+  tr:last-child td { border-bottom: none; }
+
+  .badge { padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; display: inline-block; }
+  .badge-pass { background: #e8f5e8; color: #2d6e4a; }
+  .badge-fail { background: #fde8e8; color: #c0392b; }
+  .badge-review { background: #fef3e0; color: #b8860b; }
+  .badge-processing { background: #e8f0fa; color: #2d5a9e; }
+
+  .score-bar { width: 50px; height: 5px; background: #e2e8e2; border-radius: 3px; display: inline-block; vertical-align: middle; margin-right: 8px; }
+  .score-fill { height: 100%; border-radius: 3px; }
+  .score-fill.high { background: #4a9e6e; }
+  .score-fill.mid { background: #d4a017; }
+  .score-fill.low { background: #c0392b; }
+
+  /* Charts */
+  .charts-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+  .chart-bars { display: flex; align-items: flex-end; gap: 14px; height: 140px; padding: 16px 20px 0; }
+  .chart-bar-group { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .chart-bar { width: 100%; border-radius: 4px 4px 0 0; transition: height 0.5s ease; min-height: 3px; }
+  .chart-bar.primary { background: #4a9e6e; }
+  .chart-bar.secondary { background: #7ec49e; }
+  .chart-label { font-size: 11px; color: #8a9e8a; padding-bottom: 12px; }
+
+  /* Upload */
+  .upload-zone { border: 2px dashed #c8d8c8; border-radius: 12px; padding: 60px 40px; text-align: center; cursor: pointer; transition: all 0.2s; background: #ffffff; }
+  .upload-zone:hover { border-color: #4a9e6e; background: #fafcfa; }
+  .upload-icon { width: 48px; height: 48px; margin: 0 auto 16px; background: #e8f0e8; border-radius: 12px; display: flex; align-items: center; justify-content: center; }
+  .upload-icon svg { width: 24px; height: 24px; stroke: #4a9e6e; fill: none; stroke-width: 1.8; }
+  .upload-title { font-size: 16px; font-weight: 600; color: #1a2e1a; margin-bottom: 6px; }
+  .upload-sub { font-size: 13px; color: #8a9e8a; }
+
+  .btn { padding: 9px 18px; border-radius: 8px; border: none; cursor: pointer; font-size: 13px; font-weight: 600; font-family: 'Inter', sans-serif; transition: all 0.15s; }
+  .btn-primary { background: #4a9e6e; color: white; }
+  .btn-primary:hover { background: #3d8a5e; }
+  .btn-outline { background: transparent; border: 1px solid #d0dcd0; color: #3a4e3a; }
+  .btn-outline:hover { background: #f0f5f0; }
+
+  /* Processing */
+  .processing { display: none; text-align: center; padding: 40px; background: #ffffff; border: 1px solid #e2e8e2; border-radius: 12px; }
+  .processing.active { display: block; }
+  .processing-steps { max-width: 420px; margin: 24px auto 0; text-align: left; }
+  .step { display: flex; align-items: center; gap: 12px; padding: 10px 0; font-size: 14px; color: #aabdaa; }
+  .step.done { color: #4a9e6e; }
+  .step.active { color: #1a2e1a; }
+  .step-dot { width: 22px; height: 22px; border-radius: 50%; border: 2px solid currentColor; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 11px; }
+  .step.done .step-dot { background: #4a9e6e; border-color: #4a9e6e; color: white; }
+  .step.active .step-dot { border-color: #4a9e6e; animation: pulse 1.5s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+  .spinner { width: 40px; height: 40px; border: 3px solid #e2e8e2; border-top-color: #4a9e6e; border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Call detail */
+  .call-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; }
+  .call-meta { font-size: 13px; color: #6a7e6a; margin-top: 4px; }
+  .call-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+  .scorecard-header { padding: 16px 20px; border-bottom: 1px solid #e2e8e2; display: flex; justify-content: space-between; align-items: center; font-size: 15px; font-weight: 600; }
+  .overall-score { font-size: 22px; font-weight: 700; }
+  .overall-score.high { color: #4a9e6e; }
+  .overall-score.low { color: #c0392b; }
+  .scorecard-item { display: flex; justify-content: space-between; align-items: center; padding: 11px 20px; border-bottom: 1px solid #f0f5f0; font-size: 13px; }
+  .scorecard-item:last-child { border: none; }
+  .scorecard-item .label { color: #5a6e5a; }
+
+  .transcript-box { max-height: 500px; }
+  .transcript-content { padding: 16px 20px; overflow-y: auto; max-height: 430px; }
+  .transcript-line { padding: 6px 0; font-size: 13px; line-height: 1.6; color: #3a4e3a; }
+  .transcript-line .speaker { font-weight: 600; margin-right: 6px; }
+  .transcript-line .speaker.agent { color: #2d6e4a; }
+  .transcript-line .speaker.customer { color: #5a5a8a; }
+  .transcript-line .timestamp { color: #aabdaa; font-size: 11px; margin-right: 6px; font-weight: 500; }
+
+  .flag-inline { background: #fef2f2; border-left: 3px solid #c0392b; padding: 8px 12px; margin: 6px 0; border-radius: 0 6px 6px 0; }
+  .flag-inline-text { color: #9e3a3a; font-size: 12px; font-weight: 500; }
+
+  .flags-panel { grid-column: 1 / -1; }
+  .flag-item { display: flex; gap: 12px; padding: 14px 20px; border-bottom: 1px solid #f0f5f0; align-items: flex-start; }
+  .flag-item:last-child { border: none; }
+  .flag-severity { padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; flex-shrink: 0; }
+  .flag-severity.high { background: #fde8e8; color: #c0392b; }
+  .flag-severity.medium { background: #fef3e0; color: #b8860b; }
+  .flag-detail .title { font-size: 13px; font-weight: 600; color: #1a2e1a; }
+  .flag-detail .desc { font-size: 12px; color: #6a7e6a; margin-top: 3px; line-height: 1.5; }
+  .flag-detail .time { font-size: 11px; color: #aabdaa; margin-top: 4px; }
+
+  /* Scorecards */
+  .scorecard-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .scorecard-template { background: #ffffff; border: 1px solid #e2e8e2; border-radius: 10px; padding: 20px; cursor: pointer; transition: all 0.15s; }
+  .scorecard-template:hover { border-color: #4a9e6e; box-shadow: 0 2px 8px rgba(74,158,110,0.08); }
+  .scorecard-template h4 { font-size: 14px; font-weight: 600; color: #1a2e1a; margin-bottom: 6px; }
+  .scorecard-template p { font-size: 12px; color: #6a7e6a; line-height: 1.5; }
+  .scorecard-template .meta { margin-top: 12px; font-size: 12px; color: #4a9e6e; font-weight: 600; }
+  .scorecard-template.add { border-style: dashed; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #8a9e8a; }
+  .scorecard-template.add:hover { color: #4a9e6e; border-color: #4a9e6e; }
+  .scorecard-template.add .plus { font-size: 28px; font-weight: 300; line-height: 1; }
+</style>
+</head>
+<body>
+
+<div class="sidebar">
+  <div class="logo">
+    <div class="logo-icon">
+      <svg viewBox="0 0 24 24" fill="white" stroke="none"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2zm-2 1H8v-6c0-2.48 1.51-4.5 4-4.5s4 2.02 4 4.5v6z"/></svg>
+    </div>
+    <div class="logo-text">CallGuard</div>
+  </div>
+
+  <div class="nav-label">Menu</div>
+  <nav class="nav">
+    <div class="nav-item active" onclick="showScreen('dashboard', this)">
+      <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+      Dashboard
+    </div>
+    <div class="nav-item" onclick="showScreen('calls', this)">
+      <svg viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6A19.79 19.79 0 012.12 4.18 2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
+      Calls
+    </div>
+    <div class="nav-item" onclick="showScreen('upload', this)">
+      <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      Upload
+    </div>
+    <div class="nav-item" onclick="showScreen('scorecards', this)">
+      <svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+      Scorecards
+    </div>
+  </nav>
+
+  <div class="sidebar-footer">
+    <div class="user">Kofi Vickery</div>
+    <div class="email">kofi@properleads.co.uk</div>
+    <div class="signout">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+      Sign out
+    </div>
+  </div>
+</div>
+
+<div class="main">
+  <div class="content">
+
+    <!-- DASHBOARD -->
+    <div class="screen active" id="screen-dashboard">
+      <div class="page-header">
+        <div class="page-title">Dashboard</div>
+        <div class="page-sub">Overview of your call quality performance</div>
+      </div>
+
+      <div class="stats-row">
+        <div class="stat-card">
+          <div class="label">Total Calls <svg viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6A19.79 19.79 0 012.12 4.18 2 2 0 014.11 2h3"/></svg></div>
+          <div class="value">1,247</div>
+          <div class="change">+12% from last week</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Scored <svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/></svg></div>
+          <div class="value">1,247</div>
+          <div class="change">100% coverage</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Avg Score <svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div>
+          <div class="value">87%</div>
+          <div class="change">+3pts from last week</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Pass Rate <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M9 12l2 2 4-4"/></svg></div>
+          <div class="value">91%</div>
+          <div class="change">+5% from last week</div>
+        </div>
+      </div>
+
+      <div class="charts-row">
+        <div class="panel">
+          <div class="panel-header"><h3>Calls Per Day</h3></div>
+          <div class="chart-bars">
+            <div class="chart-bar-group"><div class="chart-bar primary" style="height:65%"></div><div class="chart-label">Mon</div></div>
+            <div class="chart-bar-group"><div class="chart-bar primary" style="height:80%"></div><div class="chart-label">Tue</div></div>
+            <div class="chart-bar-group"><div class="chart-bar primary" style="height:72%"></div><div class="chart-label">Wed</div></div>
+            <div class="chart-bar-group"><div class="chart-bar primary" style="height:92%"></div><div class="chart-label">Thu</div></div>
+            <div class="chart-bar-group"><div class="chart-bar primary" style="height:85%"></div><div class="chart-label">Fri</div></div>
+            <div class="chart-bar-group"><div class="chart-bar primary" style="height:38%"></div><div class="chart-label">Sat</div></div>
+            <div class="chart-bar-group"><div class="chart-bar primary" style="height:18%"></div><div class="chart-label">Sun</div></div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-header"><h3>Compliance by Team</h3></div>
+          <div class="chart-bars">
+            <div class="chart-bar-group"><div class="chart-bar secondary" style="height:92%"></div><div class="chart-label">Sales</div></div>
+            <div class="chart-bar-group"><div class="chart-bar secondary" style="height:88%"></div><div class="chart-label">Retention</div></div>
+            <div class="chart-bar-group"><div class="chart-bar secondary" style="height:78%"></div><div class="chart-label">Support</div></div>
+            <div class="chart-bar-group"><div class="chart-bar secondary" style="height:95%"></div><div class="chart-label">Billing</div></div>
+            <div class="chart-bar-group"><div class="chart-bar secondary" style="height:68%"></div><div class="chart-label">Complaints</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">
+          <h3>Recent Calls</h3>
+          <a onclick="showScreen('calls', document.querySelectorAll('.nav-item')[1])">View all</a>
+        </div>
+        <table>
+          <thead><tr><th>Call ID</th><th>Agent</th><th>Customer</th><th>Duration</th><th>Score</th><th>Status</th><th>Time</th></tr></thead>
+          <tbody>
+            <tr onclick="showScreen('call-detail')"><td style="color:#4a9e6e;font-weight:600">#CG-4821</td><td>Sarah Mitchell</td><td>James Cooper</td><td>8:42</td><td><div class="score-bar"><div class="score-fill high" style="width:92%"></div></div>92%</td><td><span class="badge badge-pass">Pass</span></td><td>2 mins ago</td></tr>
+            <tr onclick="showScreen('call-detail')"><td style="color:#4a9e6e;font-weight:600">#CG-4820</td><td>Tom Richards</td><td>Emma Wilson</td><td>12:15</td><td><div class="score-bar"><div class="score-fill low" style="width:64%"></div></div>64%</td><td><span class="badge badge-fail">Fail</span></td><td>18 mins ago</td></tr>
+            <tr onclick="showScreen('call-detail')"><td style="color:#4a9e6e;font-weight:600">#CG-4819</td><td>Amy Blackwell</td><td>Robert Chen</td><td>6:33</td><td><div class="score-bar"><div class="score-fill high" style="width:85%"></div></div>85%</td><td><span class="badge badge-pass">Pass</span></td><td>34 mins ago</td></tr>
+            <tr onclick="showScreen('call-detail')"><td style="color:#4a9e6e;font-weight:600">#CG-4818</td><td>David Park</td><td>Lisa Morgan</td><td>15:08</td><td><div class="score-bar"><div class="score-fill mid" style="width:73%"></div></div>73%</td><td><span class="badge badge-review">Review</span></td><td>1 hour ago</td></tr>
+            <tr onclick="showScreen('call-detail')"><td style="color:#4a9e6e;font-weight:600">#CG-4817</td><td>Sarah Mitchell</td><td>Mark Thompson</td><td>5:22</td><td><div class="score-bar"><div class="score-fill high" style="width:96%"></div></div>96%</td><td><span class="badge badge-pass">Pass</span></td><td>1 hour ago</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- UPLOAD -->
+    <div class="screen" id="screen-upload">
+      <div class="page-header">
+        <div class="page-title">Upload</div>
+        <div class="page-sub">Upload audio files to transcribe and analyse for compliance</div>
+      </div>
+
+      <div id="upload-area">
+        <div class="upload-zone" onclick="startProcessing()">
+          <div class="upload-icon">
+            <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          </div>
+          <div class="upload-title">Drop audio files here or click to upload</div>
+          <div class="upload-sub">Supports MP3, WAV, M4A, FLAC — up to 500MB per file</div>
+          <div style="margin-top:20px"><button class="btn btn-primary">Select Files</button></div>
+        </div>
+      </div>
+
+      <div class="processing" id="processing">
+        <div class="spinner"></div>
+        <div style="margin-top:20px;font-size:16px;font-weight:600;color:#1a2e1a">Processing Call</div>
+        <div style="color:#8a9e8a;margin-top:4px;font-size:13px">sales-call-04820.mp3</div>
+        <div class="processing-steps">
+          <div class="step" id="step-1"><div class="step-dot">1</div> Uploading audio file</div>
+          <div class="step" id="step-2"><div class="step-dot">2</div> Transcribing with AI</div>
+          <div class="step" id="step-3"><div class="step-dot">3</div> Identifying speakers</div>
+          <div class="step" id="step-4"><div class="step-dot">4</div> Running compliance scorecard</div>
+          <div class="step" id="step-5"><div class="step-dot">5</div> Generating report</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CALL DETAIL -->
+    <div class="screen" id="screen-call-detail">
+      <div class="call-header">
+        <div>
+          <div class="page-title">Call #CG-4820</div>
+          <div class="call-meta">Agent: Tom Richards &middot; Customer: Emma Wilson &middot; Duration: 12:15 &middot; 8 April 2026, 09:42</div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-outline">Play Audio</button>
+          <button class="btn btn-outline">Download Report</button>
+        </div>
+      </div>
+
+      <div class="call-grid">
+        <div class="panel">
+          <div class="scorecard-header">
+            <span>Compliance Scorecard</span>
+            <span class="overall-score low">64%</span>
+          </div>
+          <div class="scorecard-item"><span class="label">Opening and Identification</span><span class="badge badge-pass">Pass</span></div>
+          <div class="scorecard-item"><span class="label">Data Protection (GDPR)</span><span class="badge badge-pass">Pass</span></div>
+          <div class="scorecard-item"><span class="label">Vulnerability Check</span><span class="badge badge-fail">Fail</span></div>
+          <div class="scorecard-item"><span class="label">Product Explanation</span><span class="badge badge-review">Review</span></div>
+          <div class="scorecard-item"><span class="label">Pricing Transparency</span><span class="badge badge-fail">Fail</span></div>
+          <div class="scorecard-item"><span class="label">Terms and Conditions</span><span class="badge badge-pass">Pass</span></div>
+          <div class="scorecard-item"><span class="label">Cancellation Rights</span><span class="badge badge-fail">Fail</span></div>
+          <div class="scorecard-item"><span class="label">Call Closing and Summary</span><span class="badge badge-pass">Pass</span></div>
+        </div>
+
+        <div class="panel transcript-box">
+          <div class="scorecard-header">Transcript</div>
+          <div class="transcript-content">
+            <div class="transcript-line"><span class="timestamp">00:00</span><span class="speaker agent">Agent:</span> Good morning, you're through to Tom at Acme Energy. Can I take your name please?</div>
+            <div class="transcript-line"><span class="timestamp">00:05</span><span class="speaker customer">Customer:</span> Hi, yes it's Emma Wilson.</div>
+            <div class="transcript-line"><span class="timestamp">00:08</span><span class="speaker agent">Agent:</span> Thanks Emma. And can I confirm the postcode on your account?</div>
+            <div class="transcript-line"><span class="timestamp">00:12</span><span class="speaker customer">Customer:</span> Yes, it's BS8 4QG.</div>
+            <div class="transcript-line"><span class="timestamp">00:18</span><span class="speaker agent">Agent:</span> Perfect, I've got your account up. How can I help today?</div>
+            <div class="transcript-line"><span class="timestamp">00:22</span><span class="speaker customer">Customer:</span> I got a letter about my tariff changing and I'm a bit confused about it honestly. I'm 78 and my husband usually deals with these things but he's not well at the moment.</div>
+            <div class="flag-inline"><div class="flag-inline-text">Vulnerability indicator detected — customer mentioned age (78) and unwell spouse. No vulnerability check performed by agent.</div></div>
+            <div class="transcript-line"><span class="timestamp">00:38</span><span class="speaker agent">Agent:</span> Right, so basically your fixed tariff is ending and we need to move you onto a new deal. I can offer you our Premium Fix which locks in your rate for 24 months.</div>
+            <div class="flag-inline"><div class="flag-inline-text">Agent did not acknowledge vulnerability or offer additional support before proceeding with sales.</div></div>
+            <div class="transcript-line"><span class="timestamp">00:52</span><span class="speaker customer">Customer:</span> How much would that cost me?</div>
+            <div class="transcript-line"><span class="timestamp">00:55</span><span class="speaker agent">Agent:</span> It's a really competitive rate, one of our best deals actually. Shall I go ahead and get that set up for you?</div>
+            <div class="flag-inline"><div class="flag-inline-text">Pricing not clearly stated before asking for commitment.</div></div>
+            <div class="transcript-line"><span class="timestamp">01:02</span><span class="speaker customer">Customer:</span> Well... I suppose so, if you think it's good.</div>
+            <div class="transcript-line"><span class="timestamp">01:08</span><span class="speaker agent">Agent:</span> Great, I'll get that processed now. Is there anything else I can help with?</div>
+            <div class="flag-inline"><div class="flag-inline-text">No mention of cancellation rights or cooling-off period before closing the sale.</div></div>
+          </div>
+        </div>
+
+        <div class="panel flags-panel">
+          <div class="scorecard-header">Compliance Flags (4)</div>
+          <div class="flag-item">
+            <div class="flag-severity high">HIGH</div>
+            <div class="flag-detail">
+              <div class="title">Vulnerability Not Identified</div>
+              <div class="desc">Customer disclosed age (78) and unwell spouse. Agent failed to follow vulnerability procedure. FCA CONC 2.10 requires firms to identify and respond appropriately to vulnerable customers.</div>
+              <div class="time">Detected at 00:22</div>
+            </div>
+          </div>
+          <div class="flag-item">
+            <div class="flag-severity high">HIGH</div>
+            <div class="flag-detail">
+              <div class="title">Pricing Not Disclosed Before Sale</div>
+              <div class="desc">Agent described tariff as "competitive" but did not state the actual price before asking customer to commit. Breaches Ofgem Standards of Conduct, Principle 3.</div>
+              <div class="time">Detected at 00:55</div>
+            </div>
+          </div>
+          <div class="flag-item">
+            <div class="flag-severity high">HIGH</div>
+            <div class="flag-detail">
+              <div class="title">Cancellation Rights Not Communicated</div>
+              <div class="desc">14-day cooling-off period was not mentioned before or after the sale was agreed. Required under Consumer Contracts Regulations 2013.</div>
+              <div class="time">Detected at 01:08</div>
+            </div>
+          </div>
+          <div class="flag-item">
+            <div class="flag-severity medium">MEDIUM</div>
+            <div class="flag-detail">
+              <div class="title">Product Explanation Insufficient</div>
+              <div class="desc">Agent did not explain key terms of the 24-month fix including exit fees, payment method requirements, or what happens at end of the fixed period.</div>
+              <div class="time">Detected at 00:38</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CALLS -->
+    <div class="screen" id="screen-calls">
+      <div class="page-header">
+        <div class="page-title">Calls</div>
+        <div class="page-sub">All analysed calls — click any row for the full compliance report</div>
+      </div>
+      <div class="panel">
+        <table>
+          <thead><tr><th>Call ID</th><th>Agent</th><th>Customer</th><th>Duration</th><th>Score</th><th>Status</th><th>Flags</th><th>Date</th></tr></thead>
+          <tbody>
+            <tr onclick="showScreen('call-detail')"><td style="color:#4a9e6e;font-weight:600">#CG-4821</td><td>Sarah Mitchell</td><td>James Cooper</td><td>8:42</td><td>92%</td><td><span class="badge badge-pass">Pass</span></td><td>0</td><td>8 Apr, 09:54</td></tr>
+            <tr onclick="showScreen('call-detail')"><td style="color:#4a9e6e;font-weight:600">#CG-4820</td><td>Tom Richards</td><td>Emma Wilson</td><td>12:15</td><td>64%</td><td><span class="badge badge-fail">Fail</span></td><td>4</td><td>8 Apr, 09:42</td></tr>
+            <tr onclick="showScreen('call-detail')"><td style="color:#4a9e6e;font-weight:600">#CG-4819</td><td>Amy Blackwell</td><td>Robert Chen</td><td>6:33</td><td>85%</td><td><span class="badge badge-pass">Pass</span></td><td>1</td><td>8 Apr, 09:20</td></tr>
+            <tr onclick="showScreen('call-detail')"><td style="color:#4a9e6e;font-weight:600">#CG-4818</td><td>David Park</td><td>Lisa Morgan</td><td>15:08</td><td>73%</td><td><span class="badge badge-review">Review</span></td><td>2</td><td>8 Apr, 08:55</td></tr>
+            <tr onclick="showScreen('call-detail')"><td style="color:#4a9e6e;font-weight:600">#CG-4817</td><td>Sarah Mitchell</td><td>Mark Thompson</td><td>5:22</td><td>96%</td><td><span class="badge badge-pass">Pass</span></td><td>0</td><td>8 Apr, 08:31</td></tr>
+            <tr onclick="showScreen('call-detail')"><td style="color:#4a9e6e;font-weight:600">#CG-4816</td><td>Tom Richards</td><td>Hannah Price</td><td>9:47</td><td>81%</td><td><span class="badge badge-pass">Pass</span></td><td>1</td><td>7 Apr, 17:12</td></tr>
+            <tr onclick="showScreen('call-detail')"><td style="color:#4a9e6e;font-weight:600">#CG-4815</td><td>Rachel Kim</td><td>Chris Butler</td><td>11:03</td><td>58%</td><td><span class="badge badge-fail">Fail</span></td><td>5</td><td>7 Apr, 16:44</td></tr>
+            <tr onclick="showScreen('call-detail')"><td style="color:#4a9e6e;font-weight:600">#CG-4814</td><td>Amy Blackwell</td><td>Paul Stevens</td><td>7:18</td><td>90%</td><td><span class="badge badge-pass">Pass</span></td><td>0</td><td>7 Apr, 15:30</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- SCORECARDS -->
+    <div class="screen" id="screen-scorecards">
+      <div class="page-header">
+        <div class="page-title">Scorecards</div>
+        <div class="page-sub">Define the compliance criteria your calls are scored against</div>
+      </div>
+      <div class="scorecard-grid">
+        <div class="scorecard-template">
+          <h4>Energy Sales (Ofgem)</h4>
+          <p>Covers Ofgem Standards of Conduct, vulnerability checks, pricing transparency, and cooling-off rights</p>
+          <div class="meta">8 criteria &middot; Active</div>
+        </div>
+        <div class="scorecard-template">
+          <h4>Broadband Sales (Ofcom)</h4>
+          <p>Covers Ofcom General Conditions, contract summaries, right to exit, and speed estimates</p>
+          <div class="meta">10 criteria &middot; Active</div>
+        </div>
+        <div class="scorecard-template">
+          <h4>Insurance (FCA)</h4>
+          <p>FCA ICOBS requirements including demands and needs, disclosure, and fair value assessment</p>
+          <div class="meta">12 criteria &middot; Active</div>
+        </div>
+        <div class="scorecard-template">
+          <h4>Debt Collection</h4>
+          <p>FCA CONC compliance for collections including vulnerability, forbearance, and income review</p>
+          <div class="meta">9 criteria &middot; Draft</div>
+        </div>
+        <div class="scorecard-template">
+          <h4>General Customer Service</h4>
+          <p>Universal quality framework covering greeting, empathy, resolution, and GDPR compliance</p>
+          <div class="meta">6 criteria &middot; Active</div>
+        </div>
+        <div class="scorecard-template add">
+          <div class="plus">+</div>
+          <h4>Create New Scorecard</h4>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+function showScreen(id, navEl) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById('screen-' + id).classList.add('active');
+  if (navEl) {
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    navEl.classList.add('active');
+  }
+}
+
+function startProcessing() {
+  document.getElementById('upload-area').style.display = 'none';
+  var proc = document.getElementById('processing');
+  proc.classList.add('active');
+  var i = 0;
+  function nextStep() {
+    if (i > 0) { document.getElementById('step-' + i).classList.remove('active'); document.getElementById('step-' + i).classList.add('done'); }
+    i++;
+    if (i <= 5) {
+      document.getElementById('step-' + i).classList.add('active');
+      setTimeout(nextStep, i === 2 ? 2000 : 1200);
+    } else {
+      setTimeout(function() { showScreen('call-detail'); }, 800);
+    }
+  }
+  nextStep();
+}
+</script>
+
+</body>
+</html>

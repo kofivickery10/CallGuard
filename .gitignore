@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.env
+*.log
+.DS_Store
+coverage/
+tmp/
+uploads/
+
+# Claude Code local state (user-specific, do not commit)
+.claude/
+
+# TypeScript incremental build cache
+*.tsbuildinfo

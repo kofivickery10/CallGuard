@@ -1,0 +1,374 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>CallGuard Stream Test Client</title>
+<style>
+  :root {
+    --primary: #4a9e6e;
+    --primary-light: #e8f0e8;
+    --fail: #c0392b;
+    --fail-bg: #fde8e8;
+    --review: #b8860b;
+    --review-bg: #fef3e0;
+    --pass: #2d6e4a;
+    --pass-bg: #e8f5e8;
+    --border: #e2e8e2;
+    --text: #1a2e1a;
+    --muted: #5a6e5a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif;
+    background: #f8faf8;
+    color: var(--text);
+    margin: 0;
+    padding: 24px;
+    line-height: 1.5;
+  }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin-bottom: 24px; font-size: 14px; }
+  .grid { display: grid; grid-template-columns: 360px 1fr; gap: 20px; }
+  .panel {
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px;
+  }
+  label { font-size: 12px; font-weight: 600; color: var(--muted); display: block; margin: 8px 0 4px; text-transform: uppercase; letter-spacing: 0.4px; }
+  input, textarea, select {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 13px;
+    font-family: inherit;
+    background: white;
+  }
+  textarea { font-family: ui-monospace, monospace; min-height: 80px; }
+  button {
+    background: var(--primary);
+    color: white;
+    border: 0;
+    padding: 9px 14px;
+    border-radius: 6px;
+    font-weight: 600;
+    cursor: pointer;
+    font-size: 13px;
+    margin-right: 6px;
+    margin-top: 10px;
+  }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  button.secondary { background: white; color: var(--text); border: 1px solid var(--border); }
+  .status {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    margin-top: 12px;
+  }
+  .status.idle { background: #eef2ee; color: var(--muted); }
+  .status.live { background: var(--pass-bg); color: var(--pass); }
+  .status.error { background: var(--fail-bg); color: var(--fail); }
+  .transcript-pane {
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px;
+    height: 360px;
+    overflow-y: auto;
+    font-family: ui-monospace, monospace;
+    font-size: 13px;
+    line-height: 1.7;
+  }
+  .transcript-pane .partial { color: var(--muted); }
+  .transcript-pane .final { color: var(--text); }
+  .events {
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 0;
+    margin-top: 16px;
+    max-height: 280px;
+    overflow-y: auto;
+  }
+  .event {
+    padding: 10px 14px;
+    border-bottom: 1px solid #eef2ee;
+    font-size: 12px;
+  }
+  .event:last-child { border-bottom: 0; }
+  .event .ts { color: var(--muted); font-family: ui-monospace, monospace; font-size: 10px; }
+  .event.breach { background: var(--fail-bg); border-left: 3px solid var(--fail); }
+  .event.breach .label { color: var(--fail); font-weight: 700; text-transform: uppercase; font-size: 10px; }
+  .event.score { background: var(--pass-bg); border-left: 3px solid var(--pass); }
+  .event.system { color: var(--muted); }
+  .vu {
+    height: 6px;
+    background: #eef2ee;
+    border-radius: 4px;
+    overflow: hidden;
+    margin-top: 6px;
+  }
+  .vu-bar {
+    height: 100%;
+    background: var(--primary);
+    width: 0%;
+    transition: width 80ms linear;
+  }
+</style>
+</head>
+<body>
+
+<h1>CallGuard Stream Test Client</h1>
+<div class="sub">Browser-based end-to-end test for /v1/stream/sdk and /v1/stream/dialer/* — uses your mic via MediaRecorder.</div>
+
+<div class="grid">
+  <div class="panel">
+    <label>API Base URL</label>
+    <input id="apiBase" value="http://localhost:3001" />
+
+    <label>Mode</label>
+    <select id="mode">
+      <option value="sdk">SDK (mint-token then connect)</option>
+      <option value="dialer-generic">Dialer: generic</option>
+    </select>
+
+    <label>API Key (cg_live_…)</label>
+    <input id="apiKey" placeholder="cg_live_xxx" />
+
+    <label>Agent ID (optional)</label>
+    <input id="agentId" placeholder="UUID" />
+
+    <label>External ID (optional)</label>
+    <input id="externalId" placeholder="visit_12345" />
+
+    <label>Metadata (JSON)</label>
+    <textarea id="metadata">{}</textarea>
+
+    <button id="startBtn">Start session</button>
+    <button id="endBtn" class="secondary" disabled>End session</button>
+
+    <div id="statusPill" class="status idle">idle</div>
+    <div class="vu"><div id="vuBar" class="vu-bar"></div></div>
+  </div>
+
+  <div>
+    <div class="panel" style="padding: 14px 18px; margin-bottom: 16px;">
+      <strong style="font-size: 13px;">Live transcript</strong>
+    </div>
+    <div id="transcript" class="transcript-pane"></div>
+
+    <div class="events" id="events"></div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const transcriptEl = $('transcript');
+  const eventsEl = $('events');
+  const statusPill = $('statusPill');
+  const vuBar = $('vuBar');
+
+  let ws = null;
+  let mediaRecorder = null;
+  let audioCtx = null;
+  let analyser = null;
+  let vuRaf = null;
+
+  function setStatus(state, label) {
+    statusPill.className = `status ${state}`;
+    statusPill.textContent = label;
+  }
+
+  function logEvent(html, cls = 'system') {
+    const ts = new Date().toLocaleTimeString();
+    const div = document.createElement('div');
+    div.className = `event ${cls}`;
+    div.innerHTML = `<span class="ts">${ts}</span> ${html}`;
+    eventsEl.prepend(div);
+  }
+
+  function appendTranscript(text, isFinal) {
+    const span = document.createElement('span');
+    span.className = isFinal ? 'final' : 'partial';
+    span.textContent = (isFinal ? text + ' ' : `${text} `);
+    if (isFinal) {
+      transcriptEl.appendChild(span);
+    } else {
+      const last = transcriptEl.querySelector('.live-partial');
+      if (last) last.remove();
+      span.classList.add('live-partial');
+      transcriptEl.appendChild(span);
+    }
+    transcriptEl.scrollTop = transcriptEl.scrollHeight;
+  }
+
+  async function mintToken(apiBase, apiKey, body) {
+    const res = await fetch(`${apiBase}/v1/sessions/mint-token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(`mint-token failed: ${res.status} ${await res.text()}`);
+    return await res.json();
+  }
+
+  async function startSession() {
+    const apiBase = $('apiBase').value.trim();
+    const apiKey = $('apiKey').value.trim();
+    const mode = $('mode').value;
+    const agentId = $('agentId').value.trim() || undefined;
+    const externalId = $('externalId').value.trim() || undefined;
+    let metadata = {};
+    try { metadata = JSON.parse($('metadata').value || '{}'); } catch { logEvent('Invalid metadata JSON', 'breach'); return; }
+
+    if (!apiKey) { logEvent('API key required', 'breach'); return; }
+
+    transcriptEl.innerHTML = '';
+    eventsEl.innerHTML = '';
+    setStatus('live', 'connecting');
+    $('startBtn').disabled = true;
+
+    let wsUrl;
+    try {
+      if (mode === 'sdk') {
+        const tokenResp = await mintToken(apiBase, apiKey, { agent_id: agentId, external_id: externalId, metadata });
+        logEvent(`Session minted: ${tokenResp.session_id.slice(0, 8)}…`);
+        wsUrl = tokenResp.ws_url.replace(/^http/, 'ws');
+        // Adjust ws URL to apiBase host (mint-token may have returned localhost:3001 already)
+      } else {
+        const wsBase = apiBase.replace(/^http/, 'ws');
+        wsUrl = `${wsBase}/v1/stream/dialer/generic?api_key=${encodeURIComponent(apiKey)}`;
+      }
+    } catch (err) {
+      logEvent(`mint-token error: ${err.message}`, 'breach');
+      setStatus('error', 'failed');
+      $('startBtn').disabled = false;
+      return;
+    }
+
+    ws = new WebSocket(wsUrl);
+    ws.binaryType = 'arraybuffer';
+
+    ws.onopen = async () => {
+      logEvent('WebSocket open');
+      if (mode !== 'sdk') {
+        // Generic dialer requires we send a session.start frame ourselves
+        ws.send(JSON.stringify({
+          type: 'session.start',
+          external_id: externalId,
+          metadata: { agent_id: agentId, ...metadata },
+        }));
+      }
+      try {
+        await startMic();
+      } catch (err) {
+        logEvent(`Mic error: ${err.message}`, 'breach');
+        ws.close();
+      }
+    };
+
+    ws.onmessage = (ev) => {
+      let frame;
+      try { frame = JSON.parse(ev.data); } catch { return; }
+      if (frame.type === 'ack') {
+        setStatus('live', 'streaming');
+        logEvent(`Server acknowledged session ${frame.session_id.slice(0, 8)}…`);
+      } else if (frame.type === 'transcript.partial') {
+        appendTranscript(frame.text, frame.is_final);
+      } else if (frame.type === 'breach.detected') {
+        logEvent(
+          `<span class="label">Breach</span> <strong>${escapeHtml(frame.scorecard_item_label)}</strong> [${frame.severity}]<br/><em>${escapeHtml(frame.evidence)}</em>`,
+          'breach',
+        );
+      } else if (frame.type === 'score.final') {
+        logEvent(`<strong>Final score:</strong> call ${frame.call_id.slice(0, 8)}… (full scoring continues asynchronously)`, 'score');
+      } else if (frame.type === 'error') {
+        logEvent(`Server error: ${frame.message}`, 'breach');
+      }
+    };
+
+    ws.onclose = (ev) => {
+      logEvent(`WebSocket closed: ${ev.code} ${ev.reason || ''}`);
+      stopMic();
+      setStatus('idle', 'idle');
+      $('startBtn').disabled = false;
+      $('endBtn').disabled = true;
+    };
+
+    ws.onerror = () => {
+      logEvent('WebSocket error', 'breach');
+      setStatus('error', 'error');
+    };
+
+    $('endBtn').disabled = false;
+  }
+
+  async function startMic() {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: { sampleRate: 16000, channelCount: 1, echoCancellation: true, noiseSuppression: true } });
+
+    // VU meter
+    audioCtx = new AudioContext();
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 256;
+    audioCtx.createMediaStreamSource(stream).connect(analyser);
+    const buf = new Uint8Array(analyser.frequencyBinCount);
+    const tick = () => {
+      analyser.getByteFrequencyData(buf);
+      const avg = buf.reduce((a, b) => a + b, 0) / buf.length;
+      vuBar.style.width = `${Math.min(100, (avg / 128) * 100)}%`;
+      vuRaf = requestAnimationFrame(tick);
+    };
+    tick();
+
+    // MediaRecorder produces Opus-in-WebM chunks. The backend forwards the raw bytes
+    // straight to Deepgram which understands ogg/opus/webm with the encoding=opus flag.
+    const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+      ? 'audio/webm;codecs=opus'
+      : 'audio/webm';
+    mediaRecorder = new MediaRecorder(stream, { mimeType, audioBitsPerSecond: 32000 });
+
+    mediaRecorder.ondataavailable = (ev) => {
+      if (!ev.data || ev.data.size === 0) return;
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ev.data.arrayBuffer().then((ab) => ws.send(ab));
+      }
+    };
+    mediaRecorder.start(500); // chunk every 500ms
+  }
+
+  function stopMic() {
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+      try { mediaRecorder.stop(); } catch {}
+      mediaRecorder.stream.getTracks().forEach((t) => t.stop());
+    }
+    mediaRecorder = null;
+    if (audioCtx) {
+      audioCtx.close();
+      audioCtx = null;
+    }
+    if (vuRaf) cancelAnimationFrame(vuRaf);
+    vuBar.style.width = '0%';
+  }
+
+  async function endSession() {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    ws.send(JSON.stringify({ type: 'session.end', ts: new Date().toISOString() }));
+    setTimeout(() => stopMic(), 500);
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
+  $('startBtn').addEventListener('click', startSession);
+  $('endBtn').addEventListener('click', endSession);
+})();
+</script>
+</body>
+</html>
