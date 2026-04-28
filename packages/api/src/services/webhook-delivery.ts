@@ -71,9 +71,9 @@ export async function deliverWebhook(
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'User-Agent': 'CallGuard-Webhook/1.0',
-          'X-CallGuard-Event': payload.event,
-          ...(signature ? { 'X-CallGuard-Signature': `sha256=${signature}` } : {}),
+          'User-Agent': 'CallGuardAI-Webhook/1.0',
+          'X-CallGuardAI-Event': payload.event,
+          ...(signature ? { 'X-CallGuardAI-Signature': `sha256=${signature}` } : {}),
         },
         body,
       });

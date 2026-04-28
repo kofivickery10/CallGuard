@@ -14,6 +14,7 @@ const DOMAIN_KEYTERMS = [
   'KOA',
   'Utility Warehouse',
   'CallGuard',
+  'CallGuard AI',
 
   // Compliance / regulatory
   'DPA',

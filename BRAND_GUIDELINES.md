@@ -1,10 +1,14 @@
-# CallGuard Brand Guidelines
+# CallGuard AI Brand Guidelines
 
 ## Brand Identity
 
-**Tagline:** Every call tells a story. We help you read it.
+**Tagline:** Every sales conversation. Scored, live, by AI that learns your firm's bar.
 
 **Personality:** The Expert Analyst - calm, precise, trustworthy.
+
+**Wordmark:** "CallGuard AI" — the "AI" rendered in primary sage (#4a9e6e) on light backgrounds, white at 92% opacity on dark backgrounds.
+
+**Logo mark:** Three ascending audio bars plus an AI-pulse dot (top-right), rendered in white on a sage circle (primary use) or sage on a white circle (sales-pack covers).
 
 ## Color Palette
 
