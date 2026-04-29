@@ -45,8 +45,9 @@ callRouter.get('/', async (req, res, next) => {
     );
 
     const calls = await query(
-      `SELECT c.*, u.name as resolved_agent_name
+      `SELECT c.*, cs.overall_score, cs.pass, u.name as resolved_agent_name
        FROM calls c
+       LEFT JOIN call_scores cs ON cs.call_id = c.id
        LEFT JOIN users u ON u.id = c.agent_id
        ${whereClause}
        ORDER BY c.created_at DESC
@@ -86,8 +87,8 @@ callRouter.post('/upload', upload.single('audio'), async (req, res, next) => {
     }
 
     const rows = await query<Call>(
-      `INSERT INTO calls (id, organization_id, uploaded_by, file_name, file_key, file_size_bytes, mime_type, agent_id, agent_name, customer_phone, call_date, tags, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'uploaded') RETURNING *`,
+      `INSERT INTO calls (id, organization_id, uploaded_by, file_name, file_key, file_size_bytes, mime_type, agent_id, agent_name, customer_phone, call_date, tags, status, encrypted_at_rest)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'uploaded', true) RETURNING *`,
       [
         callId,
         req.user!.organizationId,
