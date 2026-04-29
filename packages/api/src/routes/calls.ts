@@ -4,7 +4,7 @@ import { authenticate } from '../middleware/auth.js';
 import { requireAdmin } from '../middleware/auth.js';
 import { upload } from '../middleware/upload.js';
 import { query, queryOne } from '../db/client.js';
-import { uploadFile } from '../services/storage.js';
+import { uploadFile, deleteFile } from '../services/storage.js';
 import { transcriptionQueue } from '../jobs/queue.js';
 import { AppError } from '../middleware/errors.js';
 import type { Call, CallScore, CallItemScore } from '@callguard/shared';
@@ -141,6 +141,31 @@ callRouter.get('/:id', async (req, res, next) => {
     const call = await queryOne(sql, params);
     if (!call) throw new AppError(404, 'Call not found');
     res.json(call);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Delete a call (admin only). DB cascades to call_scores, call_item_scores,
+// breaches, score_corrections; we also remove the audio file from storage.
+callRouter.delete('/:id', requireAdmin, async (req, res, next) => {
+  try {
+    const call = await queryOne<{ id: string; file_key: string | null }>(
+      'SELECT id, file_key FROM calls WHERE id = $1 AND organization_id = $2',
+      [req.params.id, req.user!.organizationId]
+    );
+    if (!call) throw new AppError(404, 'Call not found');
+
+    if (call.file_key) {
+      try {
+        await deleteFile(call.file_key);
+      } catch (err) {
+        console.warn(`[Calls] Failed to delete audio for ${call.id}:`, err);
+      }
+    }
+
+    await query('DELETE FROM calls WHERE id = $1', [call.id]);
+    res.json({ message: 'Call deleted', id: call.id });
   } catch (err) {
     next(err);
   }
