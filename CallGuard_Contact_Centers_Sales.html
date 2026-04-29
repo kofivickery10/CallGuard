@@ -614,11 +614,11 @@
       </div>
       <span style="font-size: 16pt; font-weight: 800; letter-spacing: -0.3pt;">CallGuard <span style="color: white; opacity: 0.92;">AI</span></span>
     </div>
-    <span class="audience-pill">For Contact Centers, BPOs &amp; Field Sales</span>
+    <span class="audience-pill">For Contact Centers &amp; BPOs</span>
   </div>
   <div>
-    <h1>Every conversation.<br/>Every channel.<br/>Scored in real time.</h1>
-    <p class="tag">Stop sampling 1% of calls and hoping the rest are fine. CallGuard AI transcribes, scores and coaches every sales conversation — phone, dialer or doorstep — live as it happens, and after the fact. AI that learns from your compliance team.</p>
+    <h1>Every conversation.<br/>Every agent.<br/>Scored in real time.</h1>
+    <p class="tag">Stop sampling 1% of calls and hoping the rest are fine. CallGuard AI transcribes, scores and coaches every conversation your floor takes — desk phone, soft-phone or recorded file — live as it happens, and after the fact. AI that calibrates to your compliance team's interpretation, not generic templates.</p>
   </div>
   <div class="footer">
     <div>callguardai.co.uk</div>
@@ -682,7 +682,7 @@
   </div>
 
   <div class="footer-line">
-    <div>CallGuard AI for Contact Centers, BPOs &amp; Field Sales</div>
+    <div>CallGuard AI for Contact Centers &amp; BPOs</div>
     <div>callguardai.co.uk</div>
   </div>
 </section>
@@ -696,13 +696,13 @@
 
   <span class="section-tag">How it works</span>
   <h2>Calls in. <span class="accent">Insights out.</span> Live or after the fact.</h2>
-  <p class="lead">CallGuard sits alongside your existing dialer, telephony stack or field-sales app. Stream audio live as the call is happening, push recordings after the fact, or embed our SDK directly in your rep's mobile app. Either way: transcript, score, breaches, coaching — all surfaced inside our dashboard or fed back into your tooling via webhook and API.</p>
+  <p class="lead">CallGuard sits alongside your existing dialer or telephony stack. Stream audio live as the call is happening or push recordings after the fact. Either way: transcript, score, breaches, coaching — all surfaced inside our dashboard or fed back into your tooling via webhook and API.</p>
 
   <div class="steps">
     <div class="step">
       <div class="num">1</div>
       <h4>Ingest — live or batch</h4>
-      <p>Drag-and-drop, REST API, SFTP/S3 sync for recordings; <strong>live WebSocket streaming</strong> from your Twilio, AWS Connect, Vonage or custom dialer; or our <strong>mobile SDK</strong> embedded in your field sales app. WAV, MP3, OGG, WebM, M4A, μ-law, Opus all supported. Encrypted at rest with AES-256-GCM.</p>
+      <p>Drag-and-drop, REST API, SFTP/S3 sync for recordings, or <strong>live WebSocket streaming</strong> from Twilio Media Streams, AWS Connect, Vonage, Plivo, Telnyx or any WebRTC-capable dialer (generic adapter). Older Genesys / Avaya stacks via SIPREC. WAV, MP3, OGG, WebM, M4A, μ-law, Opus all supported. Encrypted at rest with AES-256-GCM.</p>
     </div>
     <div class="step">
       <div class="num">2</div>
@@ -735,7 +735,7 @@
   </div>
 
   <div class="footer-line">
-    <div>CallGuard AI for Contact Centers, BPOs &amp; Field Sales</div>
+    <div>CallGuard AI for Contact Centers &amp; BPOs</div>
     <div>callguardai.co.uk</div>
   </div>
 </section>
@@ -834,7 +834,7 @@
   </div>
 
   <div class="footer-line">
-    <div>CallGuard AI for Contact Centers, BPOs &amp; Field Sales</div>
+    <div>CallGuard AI for Contact Centers &amp; BPOs</div>
     <div>callguardai.co.uk</div>
   </div>
 </section>
@@ -848,9 +848,9 @@
 
   <span class="section-tag">Live &amp; Embedded</span>
   <h2>Score the call <span class="accent">while it's still happening.</span></h2>
-  <p class="lead">Most QA tools wait until a call ends. CallGuard streams audio live from your dialer or rep's pocket, transcribes in real time, and flags critical compliance breaches mid-call — before the rep finishes the pitch. Live transcript builds as it's spoken; every 30 seconds the AI reviews what's been said and emits high-confidence breach alerts via signed webhook to your CRM, dialer or supervisor's screen.</p>
+  <p class="lead">Most QA tools wait until a call ends. CallGuard streams audio live from your dialer, transcribes in real time, and flags critical compliance breaches mid-call — before the rep finishes the pitch. Live transcript builds as it's spoken; every 30 seconds the AI reviews what's been said and emits high-confidence breach alerts via signed webhook to your CRM, dialer or supervisor's screen.</p>
 
-  <h3>Three integration paths, one engine</h3>
+  <h3>How the live engine is wired</h3>
 
   <div class="feature-grid">
     <div class="feature">
@@ -859,14 +859,9 @@
       <p>First-class adapters for Twilio Media Streams and AWS Connect Voice Streams. Vonage, Plivo, Telnyx and any WebRTC dialer supported via our generic protocol. Older Genesys / Avaya stacks via SIPREC.</p>
     </div>
     <div class="feature">
-      <div class="icon">📱</div>
-      <h4>Mobile SDK</h4>
-      <p>iOS Swift Package and Android Kotlin library. Five-method public API: configure, start session, end, on-breach, on-transcript. Handles mic permission, consent capture, Opus encoding, offline buffering and battery throttling.</p>
-    </div>
-    <div class="feature">
       <div class="icon">🌐</div>
-      <h4>Browser / web SDK</h4>
-      <p>Drop into any web app — agent desktops, virtual call panels, customer-facing forms. Same WebSocket protocol as mobile. Useful for partners who want CallGuard inside their existing browser-based agent UI.</p>
+      <h4>Browser audio streaming</h4>
+      <p>Any modern browser can stream audio over the same WebSocket protocol — useful for soft-phone agent desktops, embedded customer-facing forms, and reference clients dropped into your own web app without writing the streaming layer yourself.</p>
     </div>
     <div class="feature">
       <div class="icon">🔔</div>
@@ -880,20 +875,25 @@
     </div>
     <div class="feature">
       <div class="icon">🛡️</div>
-      <h4>Consent capture, baked in</h4>
-      <p>SDK plays a recording-disclosure prompt at session start and captures the customer's verbal "yes" before the stream proceeds. GDPR Article 6 and UK Consumer Contracts Regs covered without writing your own logic.</p>
+      <h4>Consent capture, audited</h4>
+      <p>The streaming protocol takes a verbal-yes <code>consent.captured</code> event before scoring proceeds. Consent timestamps and excerpts are stored with the call and surfaced in the dashboard, giving you a GDPR Article 6 evidence trail without writing your own logic.</p>
+    </div>
+    <div class="feature">
+      <div class="icon">🧠</div>
+      <h4>AI that learns your bar</h4>
+      <p>Every score correction your compliance officer makes is fed back into future prompts. After 50–100 corrections the AI calibrates to your firm's interpretation of "fair value," "vulnerable," and "good outcome" — not a generic baseline that drifts.</p>
     </div>
   </div>
 
   <div class="roi" style="margin-top: 6mm;">
-    <h3>What's coming next: live in-call coaching</h3>
+    <h3>What's coming next</h3>
     <p style="font-size: 10pt; opacity: 0.92; margin: 0;">
-      Beyond breach detection: a real-time AI coach that whispers context-aware nudges to the rep mid-call ("ask about capacity for loss now," "soften the close") via earpiece, on-screen prompt or haptic pulse. Personalised to each rep using your firm's prior coaching memory.
+      <strong>Live in-call coaching:</strong> a real-time AI coach that whispers context-aware nudges to the rep mid-call ("soften the close," "screen for vulnerability") via earpiece, on-screen prompt or haptic pulse. <strong>Native iOS / Android mobile capture</strong> for field-sales operations is on the roadmap, scoped against the first design partner.
     </p>
   </div>
 
   <div class="footer-line">
-    <div>CallGuard AI for Contact Centers, BPOs &amp; Field Sales</div>
+    <div>CallGuard AI for Contact Centers &amp; BPOs</div>
     <div>callguardai.co.uk</div>
   </div>
 </section>
@@ -907,7 +907,7 @@
 
   <span class="section-tag">Use cases</span>
   <h2>Built for any regulated <span class="accent">sales conversation.</span></h2>
-  <p class="lead">From 50-seat boutique BPOs to 5,000-seat global outsourcers — and from inbound customer support to doorstep field sales. The pain is the same: too many conversations, not enough QA capacity, regulators tightening, and clients demanding more visibility.</p>
+  <p class="lead">From 50-seat boutique BPOs to 5,000-seat global outsourcers, across inbound customer support, outbound sales, collections and healthcare. The pain is the same: too many conversations, not enough QA capacity, regulators tightening, and clients demanding more visibility.</p>
 
   <div class="uc-grid">
     <div class="uc">
@@ -921,9 +921,9 @@
       <p>Live streaming from the dialer means no-pressure-language and consent-capture failures alert the floor manager mid-call, not after the customer has hung up and complained. TPS and TCPA scoring on 100% of attempts.</p>
     </div>
     <div class="uc">
-      <div class="role">Field sales / D2D</div>
-      <h4>Doorstep visits, scored from a phone in a pocket</h4>
-      <p>Mobile SDK embedded in the rep's app records the visit, captures consent, and streams to CallGuard live. GPS metadata for anti-fraud, mid-visit breach alerts, and full-quality scoring + coaching the moment the rep walks back to their car.</p>
+      <div class="role">FCA-regulated advice</div>
+      <h4>Suitability and Consumer Duty evidence on every advice call</h4>
+      <p>Score every advice call against COBS 9.2 suitability, FG21/1 vulnerable client indicators, charges and Consumer Duty fair-value tests, and DB-transfer specialist-pathway gates. Compliance evidence the regulator actually expects, not a 5% sample.</p>
     </div>
     <div class="uc">
       <div class="role">Multi-tenant BPO</div>
@@ -943,7 +943,7 @@
   </div>
 
   <div class="footer-line">
-    <div>CallGuard AI for Contact Centers, BPOs &amp; Field Sales</div>
+    <div>CallGuard AI for Contact Centers &amp; BPOs</div>
     <div>callguardai.co.uk</div>
   </div>
 </section>
@@ -968,7 +968,7 @@
     <div class="step">
       <div class="num">2</div>
       <h4>Bring in your calls — any way you like</h4>
-      <p>Upload recordings from your desktop, push via API, connect SFTP / S3, point your Twilio or AWS Connect dialer at our WebSocket, or embed our mobile SDK in your field app. Score 10 calls or 10,000 in parallel.</p>
+      <p>Upload recordings from your desktop, push via API, connect SFTP / S3, or point your Twilio, AWS Connect, Vonage, Plivo or generic-WebRTC dialer at our WebSocket. Score 10 calls or 10,000 in parallel.</p>
     </div>
     <div class="step">
       <div class="num">3</div>
@@ -1006,7 +1006,7 @@
   </div>
 
   <div class="footer-line">
-    <div>CallGuard AI for Contact Centers, BPOs &amp; Field Sales</div>
+    <div>CallGuard AI for Contact Centers &amp; BPOs</div>
     <div>callguardai.co.uk · 2026</div>
   </div>
 </section>
