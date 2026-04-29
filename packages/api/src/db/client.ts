@@ -1,15 +1,24 @@
 import { Pool, type PoolConfig } from 'pg';
 import { config } from '../config.js';
 
+// Managed Postgres providers (AWS Lightsail, RDS, Heroku, etc.) require SSL
+// but use internal CAs that aren't in the system trust store. We strip
+// sslmode from the URL and apply our own SSL config explicitly, otherwise
+// pg v8.16+ treats sslmode=require as verify-full and rejects the cert.
+const rawUrl = config.database.url;
+const wantsSsl = /sslmode=(require|prefer|verify-|no-verify|true)/i.test(rawUrl)
+  || /^postgresql:\/\/.+@(?!localhost|127\.|::1)/.test(rawUrl);
+
+const cleanUrl = rawUrl
+  .replace(/[?&]sslmode=[^&]*/gi, '')
+  .replace(/\?&/, '?')
+  .replace(/[?&]$/, '');
+
 const poolConfig: PoolConfig = {
-  connectionString: config.database.url,
+  connectionString: cleanUrl,
 };
 
-// Managed Postgres providers (AWS Lightsail, RDS, Heroku, etc.) require SSL
-// but use internal CAs that aren't in the system trust store. When the URL
-// asks for SSL, allow it without strict cert verification - the connection
-// is still encrypted, we just don't pin the CA.
-if (/sslmode=(require|prefer|verify-)/i.test(config.database.url)) {
+if (wantsSsl) {
   poolConfig.ssl = { rejectUnauthorized: false };
 }
 
