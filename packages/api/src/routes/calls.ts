@@ -45,8 +45,9 @@ callRouter.get('/', async (req, res, next) => {
     );
 
     const calls = await query(
-      `SELECT c.*, u.name as resolved_agent_name
+      `SELECT c.*, cs.overall_score, cs.pass, u.name as resolved_agent_name
        FROM calls c
+       LEFT JOIN call_scores cs ON cs.call_id = c.id
        LEFT JOIN users u ON u.id = c.agent_id
        ${whereClause}
        ORDER BY c.created_at DESC
