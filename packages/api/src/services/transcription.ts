@@ -71,7 +71,11 @@ export async function transcribeCall(
   // Deepgram Nova-3 supports `keyterm` (up to 100 terms) to boost recognition
   const keyterms = [...DOMAIN_KEYTERMS, ...extraKeyterms].slice(0, 100);
 
-  const { result } = await deepgram.listen.prerecorded.transcribeFile(
+  if (!audioBuffer || audioBuffer.length === 0) {
+    throw new Error('Audio file is empty (0 bytes after read/decrypt)');
+  }
+
+  const { result, error } = await deepgram.listen.prerecorded.transcribeFile(
     audioBuffer,
     {
       model: 'nova-3',
@@ -88,8 +92,13 @@ export async function transcribeCall(
     }
   );
 
+  if (error) {
+    const detail = (error as { message?: string }).message || JSON.stringify(error);
+    throw new Error(`Deepgram error: ${detail} (audio bytes=${audioBuffer.length})`);
+  }
+
   if (!result) {
-    throw new Error('Deepgram returned no result');
+    throw new Error(`Deepgram returned no result and no error (audio bytes=${audioBuffer.length})`);
   }
 
   // The first speaker is typically the agent (they greet)
