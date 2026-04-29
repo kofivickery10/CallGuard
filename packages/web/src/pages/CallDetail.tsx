@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
@@ -21,6 +21,7 @@ type ScoreWithItems = CallScore & {
 
 export function CallDetail() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const isAdmin = user?.role === 'admin';
@@ -31,6 +32,7 @@ export function CallDetail() {
     pass: boolean;
     evidence: string | null;
   } | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const handleToggleExemplar = async () => {
     if (!call) return;
@@ -39,6 +41,20 @@ export function CallDetail() {
       reason: !call.is_exemplar ? 'Marked by admin' : undefined,
     });
     queryClient.invalidateQueries({ queryKey: ['call', call.id] });
+  };
+
+  const handleDelete = async () => {
+    if (!call) return;
+    if (!window.confirm(`Delete this call permanently?\n\n"${call.file_name}"\n\nThis removes the audio, transcript, scores, breaches, and any corrections. This cannot be undone.`)) return;
+    setDeleting(true);
+    try {
+      await api.delete(`/calls/${call.id}`);
+      queryClient.invalidateQueries({ queryKey: ['calls'] });
+      navigate('/calls');
+    } catch (err) {
+      setDeleting(false);
+      alert('Failed to delete call: ' + (err instanceof Error ? err.message : 'unknown error'));
+    }
   };
 
   const { data: call } = useQuery({
@@ -107,9 +123,21 @@ export function CallDetail() {
             )}
           </div>
         </div>
-        {primaryScore?.overall_score != null && (
-          <ScoreGauge score={primaryScore.overall_score} size="lg" />
-        )}
+        <div className="flex items-start gap-4">
+          {primaryScore?.overall_score != null && (
+            <ScoreGauge score={primaryScore.overall_score} size="lg" />
+          )}
+          {isAdmin && (
+            <button
+              onClick={handleDelete}
+              disabled={deleting}
+              className="text-[12px] text-text-muted hover:text-fail font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Permanently delete this call"
+            >
+              {deleting ? 'Deleting...' : 'Delete call'}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Processing state */}
