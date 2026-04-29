@@ -58,7 +58,7 @@ alertsWorker.on('failed', (job, err) => {
   console.error(`[Alerts] Delivery ${job?.id} failed:`, err.message);
 });
 
-console.log('CallGuard worker started - listening for transcription, scoring, ingestion, and alerts jobs');
+console.log('CallGuard AI worker started - listening for transcription, scoring, ingestion, and alerts jobs');
 
 // Register SFTP repeatable jobs on startup, and refresh every 5 minutes
 // to pick up any source changes made via the API

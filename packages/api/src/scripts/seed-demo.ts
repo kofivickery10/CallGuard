@@ -3,7 +3,7 @@
  *
  * Creates a fully populated demo environment:
  *   - Org: "Acme Financial Planning"
- *   - Admin: demo@callguard.app / password123
+ *   - Admin: demo@callguardai.co.uk / password123
  *   - 8 agents with varying risk profiles
  *   - 1 scorecard with 15 items
  *   - KB content (3 sections filled)
@@ -21,7 +21,7 @@ import { v4 as uuid } from 'uuid';
 import { pool, query, queryOne } from '../db/client.js';
 
 const DEMO_ORG = 'Acme Financial Planning';
-const DEMO_ADMIN_EMAIL = 'demo@callguard.app';
+const DEMO_ADMIN_EMAIL = 'demo@callguardai.co.uk';
 const DEMO_ADMIN_PASSWORD = 'password123';
 
 const AGENTS = [

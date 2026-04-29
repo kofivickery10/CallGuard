@@ -7,5 +7,5 @@ const server = http.createServer(app);
 attachStreamServer(server);
 
 server.listen(config.port, () => {
-  console.log(`CallGuard API running on port ${config.port}`);
+  console.log(`CallGuard AI API running on port ${config.port}`);
 });

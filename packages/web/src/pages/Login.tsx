@@ -40,12 +40,15 @@ export function Login() {
       <div className="w-full max-w-md px-4">
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-12 h-12 bg-primary rounded-full mb-4">
-            <svg viewBox="0 0 24 24" className="w-6 h-6" fill="white" stroke="none">
-              <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2zm-2 1H8v-6c0-2.48 1.51-4.5 4-4.5s4 2.02 4 4.5v6z"/>
+            <svg viewBox="0 0 24 24" className="w-6 h-6" fill="none" stroke="none">
+              <rect x="4.5"  y="14"   width="2.4" height="4"  rx="1.1" fill="white"/>
+              <rect x="9"    y="11"   width="2.4" height="7"  rx="1.1" fill="white"/>
+              <rect x="13.5" y="8"    width="2.4" height="10" rx="1.1" fill="white"/>
+              <circle cx="19" cy="6"  r="1.6" fill="white"/>
             </svg>
           </div>
-          <h1 className="text-[22px] font-bold text-text-primary tracking-tight">CallGuard</h1>
-          <p className="text-page-sub text-text-subtle mt-1">AI-Powered Call Quality Assurance</p>
+          <h1 className="text-[22px] font-bold text-text-primary tracking-tight">CallGuard <span className="text-primary">AI</span></h1>
+          <p className="text-page-sub text-text-subtle mt-1">AI compliance scoring for sales conversations</p>
         </div>
 
         <form onSubmit={handleSubmit} className="bg-white border border-border rounded-card p-8 space-y-5">

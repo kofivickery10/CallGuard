@@ -1,6 +1,6 @@
-# CallGuard
+# CallGuard AI
 
-AI-powered QA platform for call centers. Automatically transcribes and scores calls against predefined scorecards.
+AI compliance scoring for every sales conversation. Automatically transcribes and scores calls against your firm's scorecard, live as they happen and after the fact. Built for FCA-regulated advice firms, contact centres, BPOs and field-sales operations.
 
 ## Setup
 

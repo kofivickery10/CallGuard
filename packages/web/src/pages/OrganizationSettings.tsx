@@ -36,7 +36,7 @@ export function OrganizationSettings() {
       <div className="mb-7">
         <h2 className="text-page-title text-text-primary">Organisation Settings</h2>
         <p className="text-page-sub text-text-subtle mt-1">
-          Manage your CallGuard plan and organisation details
+          Manage your CallGuard AI plan and organisation details
         </p>
       </div>
 
