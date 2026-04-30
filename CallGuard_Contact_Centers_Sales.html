@@ -809,8 +809,8 @@
     </div>
     <div class="feature">
       <div class="icon">📡</div>
-      <h4>API + SFTP ingestion</h4>
-      <p>REST API with API keys, or polled SFTP sources for legacy dialers. Webhooks back to your CRM when calls are scored.</p>
+      <h4>REST API + SFTP ingestion</h4>
+      <p>Push calls in via REST with an <code>X-API-Key</code> header, or set up a polled SFTP source for legacy dialers. Pull results back per call (score, pass/fail, item breakdown, breaches, coaching) so you can render them inside your own CRM or agent desktop. Live streaming sessions also fire HMAC-signed webhooks on breach + scored.</p>
     </div>
   </div>
 
@@ -972,8 +972,29 @@
     </div>
     <div class="step">
       <div class="num">3</div>
-      <h4>Read your dashboard</h4>
-      <p>Pass rate, breach register, agent leaderboard, coaching drafts — all populated. Correct any AI scores you disagree with. The AI calibrates to your bar from the next call onwards.</p>
+      <h4>Read your dashboard — or embed scoring in your own system</h4>
+      <p>Pass rate, breach register, agent leaderboard, coaching drafts — all populated in our dashboard. Or fetch results back via API and render them inside your own CRM, agent desktop or client portal. Two endpoints, no SDK install, fully self-serve.</p>
+    </div>
+  </div>
+
+  <div class="roi" style="margin-top: 6mm; background: var(--page-bg); color: var(--text-primary); border: 1px solid var(--border); border-left: 4px solid var(--primary);">
+    <h3 style="color: var(--text-primary); margin-top: 0;">Embedding CallGuard in your own product? Two API calls.</h3>
+    <p style="font-size: 9.5pt; color: var(--text-secondary); margin: 2mm 0 3mm;">Mint an API key in <strong>Integrations</strong>, then push and pull. No SDK to install, no auth dance, no waiting on us.</p>
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4mm; font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 8.5pt;">
+      <div style="background: white; padding: 3mm; border: 1px solid var(--border-light); border-radius: 4px;">
+        <div style="font-weight: 700; color: var(--primary); margin-bottom: 1.5mm; font-family: var(--font-sans); font-size: 9pt;">1. Ingest a call</div>
+        POST /api/ingestion/calls<br/>
+        X-API-Key: cg_…<br/>
+        audio=@call.mp3<br/>
+        external_id=crm-12345<br/>
+        <span style="color: var(--text-muted);">→ { "id": "uuid", "status": "uploaded" }</span>
+      </div>
+      <div style="background: white; padding: 3mm; border: 1px solid var(--border-light); border-radius: 4px;">
+        <div style="font-weight: 700; color: var(--primary); margin-bottom: 1.5mm; font-family: var(--font-sans); font-size: 9pt;">2. Pull the result</div>
+        GET /api/ingestion/calls/:id/result<br/>
+        X-API-Key: cg_…<br/>
+        <span style="color: var(--text-muted);">→ { "status": "scored", "result": { overall_score, pass, items, breaches, coaching } }</span>
+      </div>
     </div>
   </div>
 
