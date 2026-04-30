@@ -84,6 +84,165 @@ ingestionRouter.post(
 );
 
 // ============================================================
+// API result-fetch endpoint (X-API-Key auth)
+//
+// Tenant integrators call this with the call id returned from
+// POST /api/ingestion/calls to pull the score, pass/fail, item
+// breakdown, breaches and coaching.
+//
+// While the call is still being processed, status is one of
+// 'uploaded' | 'transcribing' | 'transcribed' | 'scoring' and
+// `result` is null. Poll until status is 'scored' or 'failed'.
+// ============================================================
+
+ingestionRouter.get(
+  '/calls/:id/result',
+  authenticateApiKey,
+  async (req, res, next) => {
+    try {
+      const orgId = req.user!.organizationId;
+
+      const call = await queryOne<{
+        id: string;
+        external_id: string | null;
+        status: string;
+        agent_name: string | null;
+        call_date: string | null;
+        duration_seconds: number | null;
+        created_at: string;
+      }>(
+        `SELECT id, external_id, status, agent_name, call_date,
+                duration_seconds, created_at
+           FROM calls
+          WHERE id = $1 AND organization_id = $2`,
+        [req.params.id, orgId]
+      );
+      if (!call) throw new AppError(404, 'Call not found');
+
+      if (call.status !== 'scored') {
+        res.json({
+          id: call.id,
+          external_id: call.external_id,
+          status: call.status,
+          agent_name: call.agent_name,
+          call_date: call.call_date,
+          duration_seconds: call.duration_seconds,
+          created_at: call.created_at,
+          result: null,
+        });
+        return;
+      }
+
+      const score = await queryOne<{
+        id: string;
+        scorecard_id: string;
+        overall_score: string | null;
+        pass: boolean | null;
+        scored_at: string;
+        coaching: unknown;
+      }>(
+        `SELECT id, scorecard_id, overall_score, pass, scored_at, coaching
+           FROM call_scores WHERE call_id = $1
+           ORDER BY scored_at DESC LIMIT 1`,
+        [call.id]
+      );
+
+      if (!score) {
+        res.json({
+          id: call.id,
+          external_id: call.external_id,
+          status: call.status,
+          agent_name: call.agent_name,
+          call_date: call.call_date,
+          duration_seconds: call.duration_seconds,
+          created_at: call.created_at,
+          result: null,
+        });
+        return;
+      }
+
+      const items = await query<{
+        scorecard_item_id: string;
+        label: string;
+        description: string | null;
+        normalized_score: string | null;
+        evidence: string | null;
+        reasoning: string | null;
+      }>(
+        `SELECT cis.scorecard_item_id, si.label,
+                si.description, cis.normalized_score,
+                cis.evidence, cis.reasoning
+           FROM call_item_scores cis
+           JOIN scorecard_items si ON si.id = cis.scorecard_item_id
+          WHERE cis.call_score_id = $1
+          ORDER BY si.sort_order`,
+        [score.id]
+      );
+
+      const breaches = await query<{
+        scorecard_item_id: string;
+        label: string;
+        severity: string;
+        evidence: string | null;
+      }>(
+        `SELECT b.scorecard_item_id, si.label, b.severity, cis.evidence
+           FROM breaches b
+           JOIN scorecard_items si ON si.id = b.scorecard_item_id
+           LEFT JOIN call_item_scores cis ON cis.id = b.call_item_score_id
+          WHERE b.call_id = $1
+          ORDER BY
+            CASE b.severity
+              WHEN 'critical' THEN 0
+              WHEN 'high'     THEN 1
+              WHEN 'medium'   THEN 2
+              WHEN 'low'      THEN 3
+            END`,
+        [call.id]
+      );
+
+      res.json({
+        id: call.id,
+        external_id: call.external_id,
+        status: call.status,
+        agent_name: call.agent_name,
+        call_date: call.call_date,
+        duration_seconds: call.duration_seconds,
+        created_at: call.created_at,
+        result: {
+          scorecard_id: score.scorecard_id,
+          scored_at: score.scored_at,
+          overall_score:
+            score.overall_score == null ? null : Number(score.overall_score),
+          pass: score.pass,
+          items: items.map((it) => {
+            const normalized =
+              it.normalized_score == null ? null : Number(it.normalized_score);
+            return {
+              scorecard_item_id: it.scorecard_item_id,
+              label: it.label,
+              description: it.description,
+              normalized_score: normalized,
+              pass: normalized == null ? null : normalized >= 70,
+              evidence: it.evidence,
+              reasoning: it.reasoning,
+            };
+          }),
+          breaches: breaches.map((b) => ({
+            scorecard_item_id: b.scorecard_item_id,
+            label: b.label,
+            severity: b.severity,
+            evidence: b.evidence,
+          })),
+          coaching: score.coaching,
+        },
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// ============================================================
 // API key management (admin JWT auth)
 // ============================================================
 
