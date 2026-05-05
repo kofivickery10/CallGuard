@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta name="description" content="AI call quality assurance for Twilio Media Streams. Stream live audio over WebSocket, score every call against your scorecard, fire signed webhooks on critical breaches." />
+<meta name="description" content="AI call quality assurance for Genesys Cloud and on-prem PureConnect / Engage. Stream audio via the Genesys recording API or SIPREC, score calls with Claude, fire mid-call breach webhooks." />
 <meta name="theme-color" content="#4a9e6e" />
 <meta name="robots" content="index,follow,max-image-preview:large" />
 <meta name="author" content="CallGuard AI" />
-<title>Twilio Call QA Integration: Live AI Scoring on Media Streams | CallGuard AI</title>
-<link rel="canonical" href="https://callguardai.co.uk/integrations/twilio" />
+<title>Genesys Call QA Integration: AI Compliance Scoring for Cloud + Engage | CallGuard AI</title>
+<link rel="canonical" href="https://callguardai.co.uk/integrations/genesys" />
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 <link rel="preconnect" href="https://rsms.me/" />
 <link rel="stylesheet" href="https://rsms.me/inter/inter.css" />
@@ -17,14 +17,14 @@
 <meta property="og:type" content="article" />
 <meta property="og:site_name" content="CallGuard AI" />
 <meta property="og:locale" content="en_GB" />
-<meta property="og:url" content="https://callguardai.co.uk/integrations/twilio" />
-<meta property="og:title" content="Twilio Call QA Integration: Live AI Scoring on Media Streams | CallGuard AI" />
-<meta property="og:description" content="AI call QA for Twilio Media Streams. Live scoring, signed webhooks, mid-call breach detection." />
+<meta property="og:url" content="https://callguardai.co.uk/integrations/genesys" />
+<meta property="og:title" content="Genesys Call QA Integration: AI Compliance Scoring for Cloud + Engage | CallGuard AI" />
+<meta property="og:description" content="AI call QA for Genesys Cloud, PureConnect and Engage. Recording API + SIPREC integration." />
 <meta property="og:image" content="https://callguardai.co.uk/og-image.png" />
 
 <meta name="twitter:card" content="summary_large_image" />
-<meta name="twitter:title" content="Twilio Call QA Integration | CallGuard AI" />
-<meta name="twitter:description" content="AI call QA for Twilio Media Streams." />
+<meta name="twitter:title" content="Genesys Call QA Integration | CallGuard AI" />
+<meta name="twitter:description" content="AI call QA for Genesys Cloud, PureConnect and Engage." />
 <meta name="twitter:image" content="https://callguardai.co.uk/og-image.png" />
 
 <script type="application/ld+json">
@@ -36,15 +36,15 @@
       "itemListElement": [
         {"@type": "ListItem", "position": 1, "name": "Home", "item": "https://callguardai.co.uk/"},
         {"@type": "ListItem", "position": 2, "name": "Integrations"},
-        {"@type": "ListItem", "position": 3, "name": "Twilio"}
+        {"@type": "ListItem", "position": 3, "name": "Genesys"}
       ]
     },
     {
       "@type": "WebPage",
-      "@id": "https://callguardai.co.uk/integrations/twilio#webpage",
-      "name": "Twilio Call QA Integration",
-      "url": "https://callguardai.co.uk/integrations/twilio",
-      "description": "Live AI scoring on Twilio Media Streams.",
+      "@id": "https://callguardai.co.uk/integrations/genesys#webpage",
+      "name": "Genesys Call QA Integration",
+      "url": "https://callguardai.co.uk/integrations/genesys",
+      "description": "AI compliance scoring for Genesys Cloud, PureConnect and Engage.",
       "isPartOf": {"@id": "https://callguardai.co.uk/#website"},
       "about": {"@id": "https://callguardai.co.uk/#software"}
     }
@@ -87,7 +87,7 @@
     <a href="/#learning">AI learning</a>
     <a href="/#use-cases">Use cases</a>
     <a href="/blog/">Blog</a>
-      <a href="/#faq">FAQ</a>
+    <a href="/#faq">FAQ</a>
     <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request" class="btn btn-primary">Book a demo</a>
   </div>
 </header>
@@ -96,15 +96,15 @@
 
   <section class="hero">
     <div class="container">
-      <span class="eyebrow">Integration · Twilio Media Streams</span>
+      <span class="eyebrow">Integration · Genesys Cloud, PureConnect, Engage</span>
       <h1 class="hero-headline">
-        AI call QA for <span class="accent">Twilio Media Streams.</span>
+        AI call QA for <span class="accent">Genesys.</span>
       </h1>
       <p class="hero-sub">
-        First-class adapter for Twilio's Media Streams WebSocket. Live transcription with speaker separation, scoring against your own scorecard, mid-call breach detection within 30 seconds, and HMAC-signed webhooks back to your CRM or supervisor screen. No middleware, no Lambda bridge.
+        Whether you are running Genesys Cloud, the older PureConnect on-prem, or a hybrid Engage deployment, CallGuard AI integrates via the Genesys recording API, SIPREC, or audio export. Score every call against your scorecard, fire mid-call breach webhooks back into Genesys, embed results in your supervisor dashboards.
       </p>
       <div class="hero-ctas">
-        <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20Twilio%20demo" class="btn btn-primary btn-lg">Book a 15-min demo</a>
+        <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20Genesys%20demo" class="btn btn-primary btn-lg">Book a 15-min demo</a>
         <a href="#how" class="btn btn-ghost btn-lg">How the integration works ↓</a>
       </div>
     </div>
@@ -112,29 +112,28 @@
 
   <section class="section section-alt" id="how">
     <div class="container">
-      <span class="section-tag">How the integration works</span>
-      <h2 class="section-h2">
-        Point Twilio at our endpoint. <span class="accent">That's the integration.</span>
-      </h2>
+      <span class="section-tag">Three integration patterns</span>
+      <h2 class="section-h2">Whichever Genesys flavour you run, <span class="accent">we have a path in.</span></h2>
       <p class="lead">
-        Twilio Media Streams sends audio over a JSON-framed WebSocket as μ-law 8kHz mono. CallGuard's Twilio adapter parses the protocol natively, so you point your Twilio Voice TwiML at our streaming URL and we do the rest. No Lambda bridge, no middleware container, no audio re-encoding step.
+        The right integration pattern depends on which Genesys product you are on. We support three: a native Cloud API integration for Genesys Cloud customers, SIPREC for older on-prem PureConnect or Engage stacks, and post-call recording export for environments where streaming is not an option.
       </p>
 
-      <div class="steps">
-        <div class="step">
-          <div class="step-num">1</div>
-          <h4>Point your TwiML at us</h4>
-          <p>Add a <code>&lt;Start&gt;&lt;Stream&gt;</code> verb to your Voice TwiML pointing at our streaming endpoint, with your CallGuard API key in the custom parameters. Takes a few minutes.</p>
+      <div class="feature-grid feature-grid-2">
+        <div class="feature">
+          <h4>Pattern 1: Genesys Cloud + native API</h4>
+          <p>Genesys Cloud customers can authorise CallGuard AI as a third-party application via OAuth, then we subscribe to the Conversations API for call events and the Recording API for audio. Per-call audio is fetched as soon as the call ends and scored within a minute. Mid-call streaming requires a small Edge bridge (next pattern).</p>
         </div>
-        <div class="step">
-          <div class="step-num">2</div>
-          <h4>We score in real time</h4>
-          <p>The adapter consumes Twilio's media frames, runs live transcription with speaker separation, and feeds the rolling transcript into Claude every 30 seconds for breach detection at over 75% confidence.</p>
+        <div class="feature">
+          <h4>Pattern 2: SIPREC for live streaming</h4>
+          <p>Genesys can be configured to mirror a live call's audio to a SIPREC-compatible recorder. We expose a SIPREC endpoint that consumes the SIP-recorded stream as PCM and runs live transcription + breach detection against your scorecard. Works for PureConnect, Engage and Cloud-on-Edge deployments.</p>
         </div>
-        <div class="step">
-          <div class="step-num">3</div>
-          <h4>Webhooks fire back</h4>
-          <p>HMAC-SHA256 signed POST to your endpoint within 30 seconds of a breach being detected, plus a final scored event when the call ends. Retry with exponential backoff. Full audit log in the dashboard.</p>
+        <div class="feature">
+          <h4>Pattern 3: Post-call SFTP / S3 export</h4>
+          <p>For environments where streaming is not viable (security policy, network constraints), Genesys can be configured to export call recordings to SFTP or S3. CallGuard polls the source and pulls new recordings for scoring. No live alerts, but the same scoring depth.</p>
+        </div>
+        <div class="feature">
+          <h4>Pattern 4: Hybrid</h4>
+          <p>Many large Genesys customers run streaming on compliance-critical queues (collections, outbound regulated sales) and post-call export on customer service queues. Same scorecard, two ingestion paths, results pooled in the same dashboard.</p>
         </div>
       </div>
     </div>
@@ -143,14 +142,12 @@
   <section class="section">
     <div class="container">
       <span class="section-tag">What you get</span>
-      <h2 class="section-h2">
-        Twilio's calls in. <span class="accent">Compliance evidence out.</span>
-      </h2>
+      <h2 class="section-h2">Genesys conversations in. <span class="accent">Compliance evidence out.</span></h2>
 
       <div class="feature-grid feature-grid-2">
         <div class="feature">
-          <h4>Native Twilio frame parsing</h4>
-          <p>Our adapter parses Twilio's <code>connected</code>, <code>start</code>, <code>media</code> and <code>stop</code> events natively. <code>start.callSid</code> is captured as the external ID so calls match back to your CRM. Custom parameters are surfaced as session metadata.</p>
+          <h4>Conversation ID round-tripped</h4>
+          <p>Genesys conversation IDs flow through to CallGuard's external_id field, so calls can be matched back to the contact record. Custom attributes (queue, agent, campaign ID, customer ANI) are forwarded as session metadata and returned in webhooks.</p>
         </div>
         <div class="feature">
           <h4>Live transcription with diarisation</h4>
@@ -162,15 +159,15 @@
         </div>
         <div class="feature">
           <h4>HMAC-SHA256 signed webhooks</h4>
-          <p>Every webhook is signed so your endpoint can verify the payload came from CallGuard. Headers include <code>X-CallGuardAI-Event</code> and <code>X-CallGuardAI-Signature: sha256=...</code>. Retries on failure with exponential backoff.</p>
+          <p>Webhooks land at any endpoint Genesys can call: a Genesys API Action that creates an Interaction Comment on the conversation, your CRM, your Slack, or your supervisor dashboard. Every webhook is HMAC-signed.</p>
         </div>
         <div class="feature">
-          <h4>Final scored event</h4>
-          <p>When the call ends, a final webhook fires with the overall score, pass/fail per scorecard criterion, evidence quotes, breach list and coaching draft. Same payload as the REST result endpoint.</p>
+          <h4>Genesys WEM-friendly</h4>
+          <p>Per-call results can be exported back into Genesys Workforce Engagement Management for evaluations, calibration and reporting alongside Genesys' native Quality Management. Or replace WEM Quality Management entirely if AI scoring is your headline use case.</p>
         </div>
         <div class="feature">
-          <h4>Encryption at rest</h4>
-          <p>Recorded audio (if retained) is encrypted at rest with AES-256-GCM. Transport is TLS 1.2+. UK GDPR Article 28 DPA published; sub-processor list public.</p>
+          <h4>UK and EU data residency</h4>
+          <p>Default eu-west-2 (London region) on AWS. Other regions available. UK GDPR Article 28 DPA published; sub-processor list public.</p>
         </div>
       </div>
     </div>
@@ -178,38 +175,34 @@
 
   <section class="section section-alt" id="faq">
     <div class="container">
-      <span class="section-tag">Twilio integration FAQ</span>
+      <span class="section-tag">Genesys integration FAQ</span>
       <h2 class="section-h2">Common questions, <span class="accent">answered.</span></h2>
 
       <div class="faq-list">
         <details class="faq-item">
-          <summary>Do we need to deploy any middleware between Twilio and CallGuard?</summary>
-          <div class="faq-body"><p>No. The Twilio adapter is built into CallGuard. Your Twilio TwiML points directly at our streaming URL with your API key in custom parameters. No Lambda bridge, no middleware, no audio re-encoding.</p></div>
+          <summary>Do you support Genesys Cloud, PureConnect and Engage?</summary>
+          <div class="faq-body"><p>Yes. Genesys Cloud has the cleanest integration via OAuth + the Conversations / Recording API. PureConnect and Engage typically integrate via SIPREC for live streaming or SFTP / S3 export for batch. We have customers running each pattern in production.</p></div>
         </details>
         <details class="faq-item">
-          <summary>What audio format does the adapter handle?</summary>
-          <div class="faq-body"><p>Twilio Media Streams sends μ-law 8kHz mono. Our adapter handles this natively. No transcoding required on your side. If you also need to support Twilio Programmable Voice recordings (post-call upload), the same scorecard works via our REST ingest API.</p></div>
+          <summary>How long does the integration take?</summary>
+          <div class="faq-body"><p>For Genesys Cloud: typically 1 to 2 days from OAuth authorisation to first scored call, including scorecard upload and a sample-data sanity check. SIPREC integrations involve a network configuration change on your side and typically take 1 to 2 weeks. SFTP export is the fastest: same day.</p></div>
         </details>
         <details class="faq-item">
-          <summary>How do calls map back to records in our CRM?</summary>
-          <div class="faq-body"><p>Twilio's <code>start.callSid</code> is captured as the external ID on the CallGuard call record. You can also pass any number of custom parameters in the <code>&lt;Stream&gt;</code> TwiML verb (agent ID, lead ID, campaign ID) which are stored as session metadata and returned in webhooks.</p></div>
+          <summary>Will this conflict with Genesys' own AI / Quality Management features?</summary>
+          <div class="faq-body"><p>No. CallGuard AI runs alongside Genesys' native QM and AI features. Many customers use Genesys' AI for IVR / routing / forecasting and CallGuard for compliance scoring. The two complement rather than compete.</p></div>
         </details>
         <details class="faq-item">
-          <summary>Can we still use post-call recordings (Programmable Voice) instead of streaming?</summary>
-          <div class="faq-body"><p>Yes. Push the Twilio recording URL or the audio file into our REST ingest endpoint after the call ends. You get the same scoring output, just without the mid-call breach webhooks. Many customers run streaming for compliance-critical campaigns and post-call ingest for the rest.</p></div>
+          <summary>Can we automate Genesys actions based on a CallGuard breach?</summary>
+          <div class="faq-body"><p>Yes. Configure a Genesys API Action triggered by a CallGuard webhook. Common patterns: open a coaching task in Genesys WEM, add an Interaction Comment to the conversation, route the next call from this agent to a senior queue, or notify the supervisor via an in-platform notification.</p></div>
         </details>
         <details class="faq-item">
-          <summary>How do we handle consent capture?</summary>
-          <div class="faq-body"><p>The streaming protocol takes a <code>consent.captured</code> event before scoring proceeds, with the consent excerpt and timestamp captured in the call record. For Twilio specifically, you can inject the consent event from your TwiML &lt;Say&gt; or &lt;Play&gt; flow when the customer's "yes" is recorded.</p></div>
-        </details>
-        <details class="faq-item">
-          <summary>What happens if the WebSocket disconnects mid-call?</summary>
-          <div class="faq-body"><p>The session enters a graceful-disconnect state. Whatever has been transcribed and scored up to that point is preserved as the call record. When the WebSocket re-connects (Twilio retries automatically), the session resumes against the same external ID.</p></div>
+          <summary>What about Genesys' new Predictive Engagement / AI Studio features?</summary>
+          <div class="faq-body"><p>CallGuard AI does not compete with those. We focus on scoring conversations against a compliance scorecard with evidence quotes. If your interest is AI-driven IVR, conversational deflection or predictive routing, those stay in Genesys' product. If your interest is per-call scoring with regulator-grade audit trails, that is what CallGuard does.</p></div>
         </details>
       </div>
 
       <div style="margin-top: 36px; text-align: center;">
-        <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20Twilio%20demo" class="btn btn-primary btn-lg">Book a 15-min demo</a>
+        <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20Genesys%20demo" class="btn btn-primary btn-lg">Book a 15-min demo</a>
       </div>
     </div>
   </section>
@@ -238,9 +231,8 @@
         <a href="/#how-it-works">How it works</a>
         <a href="/#live">Live &amp; embedded</a>
         <a href="/#learning">AI learning</a>
-        <a href="/#use-cases">Use cases</a>
+        <a href="/#faq">FAQ</a>
         <a href="/blog/">Blog</a>
-      <a href="/#faq">FAQ</a>
       </div>
       <div class="footer-col">
         <h5>Use cases</h5>
