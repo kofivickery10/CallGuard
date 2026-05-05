@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="description" content="AI call quality assurance for AWS Connect Voice Streams. Live scoring, mid-call breach detection, signed webhooks back to Connect or your supervisor screen." />
+<meta name="theme-color" content="#4a9e6e" />
+<meta name="robots" content="index,follow,max-image-preview:large" />
+<meta name="author" content="CallGuard AI" />
+<title>AWS Connect Call QA Integration: Live AI Scoring on Voice Streams | CallGuard AI</title>
+<link rel="canonical" href="https://callguardai.co.uk/integrations/aws-connect" />
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+<link rel="preconnect" href="https://rsms.me/" />
+<link rel="stylesheet" href="https://rsms.me/inter/inter.css" />
+<link rel="stylesheet" href="/style.css?v=4" />
+
+<meta property="og:type" content="article" />
+<meta property="og:site_name" content="CallGuard AI" />
+<meta property="og:locale" content="en_GB" />
+<meta property="og:url" content="https://callguardai.co.uk/integrations/aws-connect" />
+<meta property="og:title" content="AWS Connect Call QA Integration: Live AI Scoring on Voice Streams | CallGuard AI" />
+<meta property="og:description" content="AI call QA for AWS Connect Voice Streams. Live scoring, signed webhooks, mid-call breach detection." />
+<meta property="og:image" content="https://callguardai.co.uk/og-image.png" />
+
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="AWS Connect Call QA Integration | CallGuard AI" />
+<meta name="twitter:description" content="AI call QA for AWS Connect Voice Streams." />
+<meta name="twitter:image" content="https://callguardai.co.uk/og-image.png" />
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        {"@type": "ListItem", "position": 1, "name": "Home", "item": "https://callguardai.co.uk/"},
+        {"@type": "ListItem", "position": 2, "name": "Integrations"},
+        {"@type": "ListItem", "position": 3, "name": "AWS Connect"}
+      ]
+    },
+    {
+      "@type": "WebPage",
+      "@id": "https://callguardai.co.uk/integrations/aws-connect#webpage",
+      "name": "AWS Connect Call QA Integration",
+      "url": "https://callguardai.co.uk/integrations/aws-connect",
+      "description": "Live AI scoring on AWS Connect Voice Streams.",
+      "isPartOf": {"@id": "https://callguardai.co.uk/#website"},
+      "about": {"@id": "https://callguardai.co.uk/#software"}
+    }
+  ]
+}
+</script>
+</head>
+<body>
+
+<header class="nav" role="banner">
+  <div class="container nav-inner">
+    <a class="brand" href="/" aria-label="CallGuard AI home">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="none">
+          <rect x="4.5"  y="14"   width="2.4" height="4"  rx="1.1" fill="white"/>
+          <rect x="9"    y="11"   width="2.4" height="7"  rx="1.1" fill="white"/>
+          <rect x="13.5" y="8"    width="2.4" height="10" rx="1.1" fill="white"/>
+          <circle cx="19" cy="6"  r="1.6" fill="white"/>
+        </svg>
+      </span>
+      <span class="brand-text">CallGuard <span class="brand-text-ai">AI</span></span>
+    </a>
+    <nav class="nav-links" aria-label="Primary">
+      <a href="/#how-it-works">How it works</a>
+      <a href="/#live">Live &amp; embedded</a>
+      <a href="/#learning">AI learning</a>
+      <a href="/#use-cases">Use cases</a>
+      <a href="/#faq">FAQ</a>
+    </nav>
+    <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request" class="btn btn-primary nav-cta">Book a demo</a>
+    <button class="nav-toggle" aria-label="Open menu" aria-controls="mobile-drawer" aria-expanded="false">
+      <svg class="icon-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="7"  x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>
+      <svg class="icon-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="6" y1="6"  x2="18" y2="18"/><line x1="6" y1="18" x2="18" y2="6"/></svg>
+    </button>
+  </div>
+  <div class="nav-drawer" id="mobile-drawer" aria-label="Mobile menu">
+    <a href="/#how-it-works">How it works</a>
+    <a href="/#live">Live &amp; embedded</a>
+    <a href="/#learning">AI learning</a>
+    <a href="/#use-cases">Use cases</a>
+    <a href="/#faq">FAQ</a>
+    <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request" class="btn btn-primary">Book a demo</a>
+  </div>
+</header>
+
+<main id="top">
+
+  <section class="hero">
+    <div class="container">
+      <span class="eyebrow">Integration · AWS Connect Voice Streams</span>
+      <h1 class="hero-headline">
+        AI call QA for <span class="accent">AWS Connect Voice Streams.</span>
+      </h1>
+      <p class="hero-sub">
+        Native adapter for AWS Connect's PCM 16-bit 8kHz voice streams. Live transcription, scoring against your own scorecard, mid-call breach detection within 30 seconds, and HMAC-signed webhooks back to your CRM, agent desktop or supervisor screen.
+      </p>
+      <div class="hero-ctas">
+        <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20AWS%20Connect%20demo" class="btn btn-primary btn-lg">Book a 15-min demo</a>
+        <a href="#how" class="btn btn-ghost btn-lg">How the integration works ↓</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section-alt" id="how">
+    <div class="container">
+      <span class="section-tag">How the integration works</span>
+      <h2 class="section-h2">
+        AWS Connect's voice stream <span class="accent">in. Compliance evidence out.</span>
+      </h2>
+      <p class="lead">
+        AWS Connect publishes voice streams to Kinesis Video. CallGuard runs a lightweight bridge that re-emits those frames over our generic WebSocket protocol as PCM 16-bit 8kHz mono, which our AWS Connect adapter consumes natively. Setup is a single Lambda you deploy from a template, plus a streaming endpoint on the CallGuard side.
+      </p>
+
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">1</div>
+          <h4>Deploy the bridge Lambda</h4>
+          <p>Single-purpose Lambda from a CloudFormation template. Reads from your Kinesis Video stream, re-emits to our WebSocket endpoint with your CallGuard API key. Runs in your own AWS account so audio never leaves until it hits CallGuard.</p>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <h4>We score in real time</h4>
+          <p>The adapter parses PCM 16-bit 8kHz frames, runs live transcription with speaker separation, and feeds the rolling transcript into Claude every 30 seconds for breach detection at over 75% confidence.</p>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <h4>Webhooks fire back</h4>
+          <p>HMAC-SHA256 signed POST to your endpoint within 30 seconds of a breach being detected, plus a final scored event when the call ends. Compatible with AWS EventBridge so you can fan-out to Connect tasks, agent UI overlays, or a Slack channel.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="container">
+      <span class="section-tag">What you get</span>
+      <h2 class="section-h2">
+        Built for the way <span class="accent">AWS Connect customers actually deploy.</span>
+      </h2>
+
+      <div class="feature-grid feature-grid-2">
+        <div class="feature">
+          <h4>Native PCM frame parsing</h4>
+          <p>The AWS Connect adapter handles raw PCM 16-bit 8kHz frames. No re-encoding step. The bridge Lambda is small, single-purpose and stays in your AWS account.</p>
+        </div>
+        <div class="feature">
+          <h4>EventBridge friendly</h4>
+          <p>Webhook payloads are JSON with consistent event names (<code>session.breach_detected</code>, <code>session.scored</code>) so they slot directly into EventBridge rules. From there, fan out to Connect Tasks, Lambda, Step Functions, or third-party endpoints.</p>
+        </div>
+        <div class="feature">
+          <h4>30-second breach cadence</h4>
+          <p>Mid-call breach detection runs every 30 seconds against the rolling transcript. Only emits a breach when the AI is over 75% confident a criterion has clearly already failed. No alert fatigue.</p>
+        </div>
+        <div class="feature">
+          <h4>Agent desktop overlays</h4>
+          <p>Subscribe to live breach webhooks from your agent desktop (Connect CCP or your custom UI). Show whisper-style nudges to the agent the moment the AI flags a breach.</p>
+        </div>
+        <div class="feature">
+          <h4>Per-tenant AI learning</h4>
+          <p>Your supervisors correct AI scores in the dashboard. Corrections feed back into future scoring so the AI calibrates to your interpretation of "fair value", "vulnerable", and "good outcome", not a generic baseline.</p>
+        </div>
+        <div class="feature">
+          <h4>Encryption and residency</h4>
+          <p>Audio (if retained) is encrypted at rest with AES-256-GCM. Hosted in eu-west-2 by default; ap-southeast-2 and us-east-1 available on request. UK GDPR Article 28 DPA published.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section-alt" id="faq">
+    <div class="container">
+      <span class="section-tag">AWS Connect integration FAQ</span>
+      <h2 class="section-h2">Common questions, <span class="accent">answered.</span></h2>
+
+      <div class="faq-list">
+        <details class="faq-item">
+          <summary>Why a Lambda bridge instead of a direct Kinesis Video integration?</summary>
+          <div class="faq-body"><p>Two reasons. First, the bridge keeps audio inside your AWS account until CallGuard explicitly receives it, which is the data-residency story most security teams want to hear. Second, the bridge is small, single-purpose and cheap to run, so you do not need to grant CallGuard cross-account IAM permissions to your Kinesis stream.</p></div>
+        </details>
+        <details class="faq-item">
+          <summary>How do calls map back to Connect's contact records?</summary>
+          <div class="faq-body"><p>The bridge passes Connect's <code>ContactId</code> as the external ID on the CallGuard call record. Whatever attributes you set on the contact (queue, agent ARN, customer ANI) are forwarded as session metadata and returned in webhooks.</p></div>
+        </details>
+        <details class="faq-item">
+          <summary>Can we use this with Connect post-call recordings instead of streaming?</summary>
+          <div class="faq-body"><p>Yes. Push the Connect S3 recording URL or audio file into our REST ingest endpoint after the call ends. You get the same scoring output without the mid-call breach webhooks. Many customers run streaming for compliance-critical queues and post-call ingest for the rest.</p></div>
+        </details>
+        <details class="faq-item">
+          <summary>Does the bridge Lambda count against our AWS service limits?</summary>
+          <div class="faq-body"><p>The bridge runs as concurrent executions, one per active streamed call. AWS default Lambda concurrency is plenty for most contact centres. For large floors we can switch the bridge to ECS Fargate for tighter capacity control.</p></div>
+        </details>
+        <details class="faq-item">
+          <summary>What happens if the streaming connection drops mid-call?</summary>
+          <div class="faq-body"><p>The session enters a graceful-disconnect state. Whatever has been transcribed and scored up to that point is preserved. When the bridge re-connects (Lambda retries automatically), the session resumes against the same external ID.</p></div>
+        </details>
+        <details class="faq-item">
+          <summary>Can we keep audio in our own S3 instead of CallGuard storage?</summary>
+          <div class="faq-body"><p>Yes. The default deployment retains audio in CallGuard for the audit trail, but you can configure the bridge to point at your own S3 bucket and pass only a presigned URL plus the transcript to CallGuard. You retain custody of the audio; CallGuard scores against the transcript.</p></div>
+        </details>
+      </div>
+
+      <div style="margin-top: 36px; text-align: center;">
+        <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20AWS%20Connect%20demo" class="btn btn-primary btn-lg">Book a 15-min demo</a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="footer">
+  <div class="container footer-inner">
+    <div class="footer-brand">
+      <a class="brand brand-footer" href="/" aria-label="CallGuard AI home">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="none">
+            <rect x="4.5"  y="14"   width="2.4" height="4"  rx="1.1" fill="white"/>
+            <rect x="9"    y="11"   width="2.4" height="7"  rx="1.1" fill="white"/>
+            <rect x="13.5" y="8"    width="2.4" height="10" rx="1.1" fill="white"/>
+            <circle cx="19" cy="6"  r="1.6" fill="white"/>
+          </svg>
+        </span>
+        <span class="brand-text">CallGuard <span class="brand-text-ai">AI</span></span>
+      </a>
+      <p class="footer-tag">AI compliance scoring for every regulated conversation.</p>
+    </div>
+    <div class="footer-links">
+      <div class="footer-col">
+        <h5>Product</h5>
+        <a href="/#how-it-works">How it works</a>
+        <a href="/#live">Live &amp; embedded</a>
+        <a href="/#learning">AI learning</a>
+        <a href="/#use-cases">Use cases</a>
+        <a href="/#faq">FAQ</a>
+      </div>
+      <div class="footer-col">
+        <h5>Use cases</h5>
+        <a href="/use-cases/financial-services">Financial services</a>
+        <a href="/use-cases/bpo">Contact centres &amp; BPOs</a>
+      </div>
+      <div class="footer-col">
+        <h5>Integrations</h5>
+        <a href="/integrations/twilio">Twilio</a>
+        <a href="/integrations/aws-connect">AWS Connect</a>
+      </div>
+      <div class="footer-col">
+        <h5>Legal</h5>
+        <a href="/privacy">Privacy policy</a>
+        <a href="/terms">Terms of service</a>
+        <a href="/dpa">DPA</a>
+        <a href="/sub-processors">Sub-processors</a>
+      </div>
+    </div>
+  </div>
+  <div class="container footer-bottom">
+    <span>© 2026 CallGuard AI.</span>
+    <span>UK-based · GDPR-compliant by default</span>
+  </div>
+</footer>
+
+<script>
+  (function () {
+    var toggle = document.querySelector('.nav-toggle');
+    var drawer = document.getElementById('mobile-drawer');
+    if (!toggle || !drawer) return;
+    function setOpen(open) {
+      toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+      toggle.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
+      drawer.classList.toggle('is-open', open);
+      document.body.classList.toggle('no-scroll', open);
+    }
+    toggle.addEventListener('click', function () { setOpen(toggle.getAttribute('aria-expanded') !== 'true'); });
+    drawer.addEventListener('click', function (e) { if (e.target.tagName === 'A') setOpen(false); });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && drawer.classList.contains('is-open')) setOpen(false); });
+    var mq = window.matchMedia('(min-width: 769px)');
+    mq.addEventListener('change', function (e) { if (e.matches) setOpen(false); });
+  })();
+</script>
+
+</body>
+</html>
