@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="description" content="The QA bottleneck explained from first principles, the maths of manual versus AI scoring, and what the architecture of 100% contact centre call coverage looks like in production." />
+<meta name="theme-color" content="#4a9e6e" />
+<meta name="robots" content="index,follow,max-image-preview:large" />
+<meta name="author" content="CallGuard AI" />
+<title>How to Score 100% of Contact Centre Calls Without Hiring More QA Staff | CallGuard AI</title>
+<link rel="canonical" href="https://callguardai.co.uk/blog/score-100-percent-contact-centre-calls" />
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+<link rel="preconnect" href="https://rsms.me/" />
+<link rel="stylesheet" href="https://rsms.me/inter/inter.css" />
+<link rel="stylesheet" href="/style.css?v=5" />
+
+<meta property="og:type" content="article" />
+<meta property="og:site_name" content="CallGuard AI" />
+<meta property="og:locale" content="en_GB" />
+<meta property="og:url" content="https://callguardai.co.uk/blog/score-100-percent-contact-centre-calls" />
+<meta property="og:title" content="How to Score 100% of Contact Centre Calls Without Hiring More QA Staff" />
+<meta property="og:description" content="The QA bottleneck explained from first principles, plus the architecture of 100% coverage in production." />
+<meta property="og:image" content="https://callguardai.co.uk/og-image.png" />
+<meta property="article:published_time" content="2026-05-05T09:00:00+01:00" />
+<meta property="article:author" content="CallGuard AI" />
+<meta property="article:section" content="Operations" />
+
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="How to Score 100% of Contact Centre Calls Without Hiring More QA Staff" />
+<meta name="twitter:description" content="The QA bottleneck explained from first principles, plus the architecture of 100% coverage." />
+<meta name="twitter:image" content="https://callguardai.co.uk/og-image.png" />
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        {"@type": "ListItem", "position": 1, "name": "Home", "item": "https://callguardai.co.uk/"},
+        {"@type": "ListItem", "position": 2, "name": "Blog", "item": "https://callguardai.co.uk/blog/"},
+        {"@type": "ListItem", "position": 3, "name": "Score 100% of contact centre calls"}
+      ]
+    },
+    {
+      "@type": "Article",
+      "@id": "https://callguardai.co.uk/blog/score-100-percent-contact-centre-calls#article",
+      "headline": "How to Score 100% of Contact Centre Calls Without Hiring More QA Staff",
+      "description": "The QA bottleneck explained from first principles, the maths of manual versus AI scoring, and what 100% coverage looks like in production.",
+      "url": "https://callguardai.co.uk/blog/score-100-percent-contact-centre-calls",
+      "datePublished": "2026-05-05T09:00:00+01:00",
+      "dateModified": "2026-05-05T09:00:00+01:00",
+      "inLanguage": "en-GB",
+      "image": "https://callguardai.co.uk/og-image.png",
+      "author": {"@type": "Organization", "name": "CallGuard AI", "url": "https://callguardai.co.uk/"},
+      "publisher": {"@id": "https://callguardai.co.uk/#organization"},
+      "isPartOf": {"@id": "https://callguardai.co.uk/blog/#blog"},
+      "mainEntityOfPage": "https://callguardai.co.uk/blog/score-100-percent-contact-centre-calls",
+      "articleSection": "Operations",
+      "wordCount": 1700
+    }
+  ]
+}
+</script>
+</head>
+<body>
+
+<header class="nav" role="banner">
+  <div class="container nav-inner">
+    <a class="brand" href="/" aria-label="CallGuard AI home">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="none">
+          <rect x="4.5"  y="14"   width="2.4" height="4"  rx="1.1" fill="white"/>
+          <rect x="9"    y="11"   width="2.4" height="7"  rx="1.1" fill="white"/>
+          <rect x="13.5" y="8"    width="2.4" height="10" rx="1.1" fill="white"/>
+          <circle cx="19" cy="6"  r="1.6" fill="white"/>
+        </svg>
+      </span>
+      <span class="brand-text">CallGuard <span class="brand-text-ai">AI</span></span>
+    </a>
+    <nav class="nav-links" aria-label="Primary">
+      <a href="/#how-it-works">How it works</a>
+      <a href="/#live">Live &amp; embedded</a>
+      <a href="/#learning">AI learning</a>
+      <a href="/#use-cases">Use cases</a>
+      <a href="/blog/">Blog</a>
+    </nav>
+    <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request" class="btn btn-primary nav-cta">Book a demo</a>
+    <button class="nav-toggle" aria-label="Open menu" aria-controls="mobile-drawer" aria-expanded="false">
+      <svg class="icon-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="7"  x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>
+      <svg class="icon-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="6" y1="6"  x2="18" y2="18"/><line x1="6" y1="18" x2="18" y2="6"/></svg>
+    </button>
+  </div>
+  <div class="nav-drawer" id="mobile-drawer" aria-label="Mobile menu">
+    <a href="/#how-it-works">How it works</a>
+    <a href="/#live">Live &amp; embedded</a>
+    <a href="/#learning">AI learning</a>
+    <a href="/#use-cases">Use cases</a>
+    <a href="/blog/">Blog</a>
+    <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request" class="btn btn-primary">Book a demo</a>
+  </div>
+</header>
+
+<article class="article">
+  <header class="article-hero">
+    <div class="container">
+      <div class="crumb"><a href="/">Home</a> · <a href="/blog/">Blog</a> · Operations</div>
+      <h1>How to score 100% of contact centre calls without hiring more QA staff.</h1>
+      <p class="article-meta"><span>Published 5 May 2026</span> <span class="post-card-dot">·</span> <span>11 minute read</span> <span class="post-card-dot">·</span> <span>Operations</span></p>
+    </div>
+  </header>
+
+  <div class="container article-body">
+    <p class="lead">If you run QA in a contact centre, you already know the maths. A senior reviewer takes 15 to 30 minutes to score one call against your scorecard. They review maybe 20 calls a week. Your floor takes 50,000 calls a week. The reviewed sample is 0.04%. Adding more QA reviewers shifts the rate to 0.08%, then 0.12%, but it never gets close to a number anyone in operations would call coverage. This piece is about the architecture that gets you to 100%.</p>
+
+    <h2>The QA bottleneck, from first principles</h2>
+
+    <p>The bottleneck is not lack of will. Most QA teams would love to review more calls. The bottleneck is unit cost. A reviewer scoring 4 calls per hour at a fully-loaded UK senior wage of, say, £45,000 plus 25% overheads, costs roughly £35 per scored call once you net out admin time. At a 50,000-call-per-week floor, full coverage by humans would cost £1.75m per week or £91m per year. Nobody approves that budget, so you sample.</p>
+
+    <p>Sampling looked acceptable when "auditable evidence" meant a binder of reviewed-call summaries on a shelf. It is much harder to defend now that regulators expect systematic monitoring (post-Consumer Duty in financial services, post-PECR for outbound) and clients expect programme-level visibility from BPOs in real time. The sampled-call binder is no longer the answer to the question being asked.</p>
+
+    <h2>Why hiring more QA reviewers does not scale</h2>
+
+    <p>The intuitive response to a QA bottleneck is "hire more reviewers". It does not work, for three reasons.</p>
+
+    <p><strong>Linear cost, sublinear value.</strong> Doubling reviewers doubles cost. It also doubles the variance between reviewers, since two senior reviewers reading the same call will score it differently. Inter-rater reliability is rarely measured because it usually exposes a depressing number. The more reviewers you hire, the more important calibration becomes, and the time you spend calibrating cuts into the time available to review.</p>
+
+    <p><strong>The next call is not the bottleneck call.</strong> Reviewers cannot pick the calls that matter most because they cannot see what is on a call before they listen to it. They sample randomly or by length, hoping to catch breaches. The breaches you actually need to find are on the calls outside the sample.</p>
+
+    <p><strong>Reviewers burn out.</strong> Listening to 30 calls a day for compliance failures is grim work. Senior reviewers leave for coaching roles, agent ops roles, or out of the industry. The team you build erodes faster than you can rebuild it.</p>
+
+    <h2>The maths of AI scoring</h2>
+
+    <p>AI call scoring removes the unit-cost barrier that made sampling necessary. Speech recognition costs about £0.005 to £0.01 per call-minute today. Large language model scoring against a structured scorecard costs another £0.02 to £0.05 per call-minute, depending on the model and the scorecard length. A 6-minute call costs roughly 30 to 60 pence to score in full, including the transcript. At 50,000 calls a week with average 5-minute duration, full coverage is £75,000 to £150,000 per year. Two orders of magnitude cheaper than the human equivalent.</p>
+
+    <p>The cost is not the headline though. The headline is what you can do with 100% coverage that you cannot do with 5%. <a href="/blog/what-is-ai-call-qa">We covered the foundations of how AI call QA works in a separate post</a>, but here are the operational consequences specific to contact centres.</p>
+
+    <h2>What 100% coverage actually unlocks</h2>
+
+    <p><strong>Breach detection in seconds, not weeks.</strong> A critical compliance failure (urgency-language, missing consent capture, mini-Miranda failure, fair-value misstep) is currently caught when a customer complains weeks later. With live mid-call scoring, a high-confidence breach fires a webhook to your supervisor screen within 30 seconds of the AI being sure it has happened. Coaching can be in the next call rather than the next month.</p>
+
+    <p><strong>Real coaching, on every agent, every week.</strong> Per-call coaching drafts feed into per-agent coaching memory. The coaching the agent receives next time builds on what was said last time. If they have improved on the flagged area, the AI acknowledges it. If they have not, the language escalates. Manual QA cannot do this because no human has the time to remember every coaching note for every agent.</p>
+
+    <p><strong>Agent risk profiles, accurate to the call.</strong> A heatmap of which agents are driving which breach types becomes possible because every call is scored. Today, agent performance reviews are anchored on three or four reviewed calls and a wall of subjective impressions. With AI scoring, agent risk is a number computed across hundreds of conversations, not a folk theory.</p>
+
+    <p><strong>Client reporting in real time.</strong> BPOs running multi-tenant programmes can give each client a scoped portal with their own scorecard, their own breach register, and their own pass rate trend. This replaces the multi-person reporting team that currently produces monthly PDFs.</p>
+
+    <p><strong>Capacity decoupled from QA headcount.</strong> If the QA bottleneck disappears, you can grow agent headcount without first hiring more reviewers. The unit economics of adding seats stops including a QA staffing tax.</p>
+
+    <h2>The architecture of 100% coverage</h2>
+
+    <p>What does the system actually look like? Five components, each of which exists in production today.</p>
+
+    <h3>1. Audio ingestion</h3>
+
+    <p>Calls have to get into the system. There are three patterns:</p>
+
+    <ul class="article-list">
+      <li><strong>Live streaming over WebSocket</strong> from your dialer. Twilio Media Streams and AWS Connect Voice Streams are the most common. <a href="/integrations/twilio">Our Twilio integration</a> and <a href="/integrations/aws-connect">AWS Connect integration</a> walk through the wiring. Vonage, Plivo, Telnyx and any WebRTC-capable dialer connect via a generic WebSocket protocol.</li>
+      <li><strong>Batch upload of recordings</strong> via REST API or SFTP. Useful for legacy stacks where streaming is not available, or for archived recordings being scored retrospectively.</li>
+      <li><strong>Drag-and-drop</strong> for one-off calls being reviewed in the dashboard.</li>
+    </ul>
+
+    <p>The streaming path adds the ability to do mid-call breach detection. The batch path is otherwise functionally identical, just without the live alerts.</p>
+
+    <h3>2. Speech recognition with diarisation</h3>
+
+    <p>Production-grade ASR converts audio to a transcript with speaker separation. Word-error rate matters less than diarisation accuracy and keyterm boosting (so product names and acronyms specific to your business get recognised correctly). The output is a structured transcript with agent and customer turns, plus timestamps.</p>
+
+    <h3>3. LLM scoring against your scorecard</h3>
+
+    <p>The transcript goes to a large language model with your scorecard. The model scores each criterion individually, returns a verdict, and returns the direct quote from the transcript that justifies the verdict. The evidence quote is the part that matters: a score with no evidence is unauditable.</p>
+
+    <h3>4. Per-tenant calibration</h3>
+
+    <p>Your compliance team corrects AI verdicts they disagree with, marks gold-standard calls as exemplars, and provides written guidance through a knowledge base. All three feed into the prompt the next time the AI scores. After 50 to 100 corrections, the AI scores like your senior reviewer rather than a generic baseline. This is what makes AI call QA stick rather than drift.</p>
+
+    <h3>5. Output integration</h3>
+
+    <p>Results need to land where the people who act on them are working. That means three integration paths:</p>
+
+    <ul class="article-list">
+      <li><strong>Dashboard</strong> for QA leads, ops directors and compliance officers who want to review individual calls.</li>
+      <li><strong>HMAC-signed webhooks</strong> for live breach alerts to your supervisor screen, CRM or Slack.</li>
+      <li><strong>REST API</strong> to pull scores back per call so you can render them inside your own client portal, agent desktop or case-management system.</li>
+    </ul>
+
+    <h2>What QA staff do once full coverage is the default</h2>
+
+    <p>The honest answer: they do better work. The 1% sample reviews disappear because the AI does them all. What remains is high-leverage human work that AI cannot do.</p>
+
+    <p><strong>Calibration of the AI.</strong> Senior reviewers correct edge cases the AI got wrong. Each correction makes the AI better at scoring like your firm. This is the highest-leverage QA work in the new world: every correction made by one reviewer becomes a few-shot example used on every future call. One person's judgement scales across the floor.</p>
+
+    <p><strong>Coaching delivery.</strong> The AI generates the coaching draft. A human delivers the coaching conversation. The shape of coaching shifts from "we listened to your call yesterday and noticed" to "we have noticed across your last 40 calls that". Coaching becomes data-driven rather than anecdote-driven, and that lands harder with agents.</p>
+
+    <p><strong>Compliance review of flagged calls.</strong> The AI flags critical breaches; humans review them, decide on severity, escalate where needed, and document the resolution. The breach register becomes the operational artefact, not the spreadsheet of reviewed calls.</p>
+
+    <p><strong>Programme-level analysis.</strong> Patterns across the floor: which scorecard items are getting harder to pass, which agents are improving, which campaigns have rising breach rates. AI-generated insights digests give compliance leads a strategic view that nobody had time to build manually.</p>
+
+    <h2>An ROI sketch you can adapt</h2>
+
+    <p>This is the rough working we use with prospects. Treat it as illustrative, not precise.</p>
+
+    <p>A 100-seat outbound contact centre takes roughly 80,000 calls per month at 4-5 minute average duration. Manual QA at 5% sample is 4,000 reviewed calls per month at £30-£35 per call, or £130k a month. Manual QA at 1% sample (more typical) is around £25-£30k a month, with the trade-off of being less defensible to clients and regulators. AI scoring on 100% coverage at 6-minute average duration costs £6-£10k per month for the same scoring depth, with the additional value of mid-call breach detection on outbound campaigns. The arithmetic only goes in one direction.</p>
+
+    <p>That said, ROI on a tool the regulator now expects is the wrong metric. The right metric is whether your firm can credibly answer "how do you systematically monitor outcomes" without flinching. Sampling does not.</p>
+
+    <h2>Where to start</h2>
+
+    <p>If your contact centre or BPO is at the point where adding more QA staff has diminishing returns, the right next step is to score a sample of your real calls and see what AI actually catches that your sample missed. We run 15-minute demos against five recordings you bring; you see your scorecard, your breaches, and your coaching drafts on the call. <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20BPO%20demo">Email hello@callguardai.co.uk</a> and we will book it in.</p>
+  </div>
+
+  <div class="container article-cta">
+    <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20BPO%20demo" class="btn btn-primary btn-lg">Book a 15-min demo</a>
+  </div>
+
+  <aside class="container article-related">
+    <h3>Read next</h3>
+    <ul>
+      <li><a href="/blog/fca-consumer-duty-call-recordings">FCA Consumer Duty: 7 things your call recordings need to evidence</a></li>
+      <li><a href="/blog/what-is-ai-call-qa">What is AI call QA and how does it actually work?</a></li>
+    </ul>
+  </aside>
+</article>
+
+<footer class="footer">
+  <div class="container footer-inner">
+    <div class="footer-brand">
+      <a class="brand brand-footer" href="/" aria-label="CallGuard AI home">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="none">
+            <rect x="4.5"  y="14"   width="2.4" height="4"  rx="1.1" fill="white"/>
+            <rect x="9"    y="11"   width="2.4" height="7"  rx="1.1" fill="white"/>
+            <rect x="13.5" y="8"    width="2.4" height="10" rx="1.1" fill="white"/>
+            <circle cx="19" cy="6"  r="1.6" fill="white"/>
+          </svg>
+        </span>
+        <span class="brand-text">CallGuard <span class="brand-text-ai">AI</span></span>
+      </a>
+      <p class="footer-tag">AI compliance scoring for every regulated conversation.</p>
+    </div>
+    <div class="footer-links">
+      <div class="footer-col">
+        <h5>Product</h5>
+        <a href="/#how-it-works">How it works</a>
+        <a href="/#live">Live &amp; embedded</a>
+        <a href="/#learning">AI learning</a>
+        <a href="/#faq">FAQ</a>
+        <a href="/blog/">Blog</a>
+      </div>
+      <div class="footer-col">
+        <h5>Use cases</h5>
+        <a href="/use-cases/financial-services">Financial services</a>
+        <a href="/use-cases/bpo">Contact centres &amp; BPOs</a>
+      </div>
+      <div class="footer-col">
+        <h5>Integrations</h5>
+        <a href="/integrations/twilio">Twilio</a>
+        <a href="/integrations/aws-connect">AWS Connect</a>
+      </div>
+      <div class="footer-col">
+        <h5>Legal</h5>
+        <a href="/privacy">Privacy policy</a>
+        <a href="/terms">Terms of service</a>
+        <a href="/dpa">DPA</a>
+        <a href="/sub-processors">Sub-processors</a>
+      </div>
+    </div>
+  </div>
+  <div class="container footer-bottom">
+    <span>© 2026 CallGuard AI.</span>
+    <span>UK-based · GDPR-compliant by default</span>
+  </div>
+</footer>
+
+<script>
+  (function () {
+    var toggle = document.querySelector('.nav-toggle');
+    var drawer = document.getElementById('mobile-drawer');
+    if (!toggle || !drawer) return;
+    function setOpen(open) {
+      toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+      toggle.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
+      drawer.classList.toggle('is-open', open);
+      document.body.classList.toggle('no-scroll', open);
+    }
+    toggle.addEventListener('click', function () { setOpen(toggle.getAttribute('aria-expanded') !== 'true'); });
+    drawer.addEventListener('click', function (e) { if (e.target.tagName === 'A') setOpen(false); });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && drawer.classList.contains('is-open')) setOpen(false); });
+    var mq = window.matchMedia('(min-width: 769px)');
+    mq.addEventListener('change', function (e) { if (e.matches) setOpen(false); });
+  })();
+</script>
+
+</body>
+</html>
