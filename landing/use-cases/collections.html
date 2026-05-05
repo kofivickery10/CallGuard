@@ -12,7 +12,7 @@
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 <link rel="preconnect" href="https://rsms.me/" />
 <link rel="stylesheet" href="https://rsms.me/inter/inter.css" />
-<link rel="stylesheet" href="/style.css?v=5" />
+<link rel="stylesheet" href="/style.css?v=6" />
 
 <meta property="og:type" content="article" />
 <meta property="og:site_name" content="CallGuard AI" />
@@ -120,7 +120,7 @@
 
       <div class="problem-grid">
         <div class="problem-card problem-fail">
-          <h4>Sample-based collections QA</h4>
+          <h3>Sample-based collections QA</h3>
           <ul>
             <li>1 to 3% of calls reviewed manually</li>
             <li>Mini-Miranda failures only caught when a customer complains</li>
@@ -131,7 +131,7 @@
           </ul>
         </div>
         <div class="problem-card problem-win">
-          <h4>CallGuard AI on every collections call</h4>
+          <h3>CallGuard AI on every collections call</h3>
           <ul>
             <li>100% of calls transcribed and scored automatically</li>
             <li>Mini-Miranda checked at the start of every call</li>
@@ -155,27 +155,27 @@
 
       <div class="feature-grid feature-grid-2">
         <div class="feature">
-          <h4>Mini-Miranda statement</h4>
+          <h3>Mini-Miranda statement</h3>
           <p>For US FDCPA-regulated calls: the agent identifies as a debt collector, states this is an attempt to collect a debt, and notes any information obtained will be used for that purpose. Captured at the start of every call. Calls without a clean mini-Miranda are flagged as critical.</p>
         </div>
         <div class="feature">
-          <h4>Caller identification + authorisation</h4>
+          <h3>Caller identification + authorisation</h3>
           <p>Agent identifies themselves and the firm. Confirms they are speaking to the right person. No third-party disclosure if they are not. Authorisation captured before any account-specific information is discussed.</p>
         </div>
         <div class="feature">
-          <h4>FCA CONC compliance (UK)</h4>
+          <h3>FCA CONC compliance (UK)</h3>
           <p>For UK consumer-credit collections: forbearance and due-consideration framing, treating customers in financial difficulty fairly, no harassment language, no misleading statements about consequences, complaint route disclosed when triggered.</p>
         </div>
         <div class="feature">
-          <h4>Vulnerability indicators (FG21/1)</h4>
+          <h3>Vulnerability indicators (FG21/1)</h3>
           <p>Health, life event, resilience and capability indicators screened on every call. Mentions of bereavement, redundancy, mental-health, addiction or financial stress trigger a vulnerability flag and check whether the agent adapted the conversation accordingly.</p>
         </div>
         <div class="feature">
-          <h4>Right to dispute the debt</h4>
+          <h3>Right to dispute the debt</h3>
           <p>Customer's right to dispute the debt within the regulatory window communicated in plain English. Dispute handling pathway captured if the customer raises one. Calls where the customer disputed and the agent pressed past it are flagged as critical breaches.</p>
         </div>
         <div class="feature">
-          <h4>No-call windows and frequency</h4>
+          <h3>No-call windows and frequency</h3>
           <p>Outbound dial-time policy compliance scored against Ofcom rules (UK) or TCPA / Reg F windows (US). Excessive call frequency to the same number tracked across the day. Out-of-window dials flagged with the breach severity tied to whether the customer answered.</p>
         </div>
       </div>
@@ -192,19 +192,19 @@
 
       <div class="feature-grid feature-grid-2">
         <div class="feature">
-          <h4>Mini-Miranda missing alert</h4>
+          <h3>Mini-Miranda missing alert</h3>
           <p>If the agent has not delivered a clean mini-Miranda within the first 60 seconds of an FDCPA-regulated call, a webhook fires to the supervisor screen. The supervisor can intervene before the call goes any further.</p>
         </div>
         <div class="feature">
-          <h4>Vulnerability disclosure alert</h4>
+          <h3>Vulnerability disclosure alert</h3>
           <p>If the customer discloses a vulnerability indicator (financial stress, health, bereavement) and the agent continues at the same pace using the same close, a webhook fires for floor-manager intervention. The standard expected by FCA Consumer Duty.</p>
         </div>
         <div class="feature">
-          <h4>Harassment-language alert</h4>
+          <h3>Harassment-language alert</h3>
           <p>Aggressive close language, threats of consequence, false statements about wage garnishment or legal action flagged at the moment they appear in the live transcript. High confidence threshold means no false positives.</p>
         </div>
         <div class="feature">
-          <h4>Complaint trigger alert</h4>
+          <h3>Complaint trigger alert</h3>
           <p>Customer raises a complaint, dispute or third-party concern that the agent does not escalate. Webhook fires to the complaints team's queue so they can pick up the call before the customer hangs up.</p>
         </div>
       </div>
@@ -301,24 +301,7 @@
   </div>
 </footer>
 
-<script>
-  (function () {
-    var toggle = document.querySelector('.nav-toggle');
-    var drawer = document.getElementById('mobile-drawer');
-    if (!toggle || !drawer) return;
-    function setOpen(open) {
-      toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
-      toggle.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
-      drawer.classList.toggle('is-open', open);
-      document.body.classList.toggle('no-scroll', open);
-    }
-    toggle.addEventListener('click', function () { setOpen(toggle.getAttribute('aria-expanded') !== 'true'); });
-    drawer.addEventListener('click', function (e) { if (e.target.tagName === 'A') setOpen(false); });
-    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && drawer.classList.contains('is-open')) setOpen(false); });
-    var mq = window.matchMedia('(min-width: 769px)');
-    mq.addEventListener('change', function (e) { if (e.matches) setOpen(false); });
-  })();
-</script>
+<script defer src="/script.js?v=1"></script>
 
 </body>
 </html>

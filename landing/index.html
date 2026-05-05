@@ -14,7 +14,7 @@
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 <link rel="preconnect" href="https://rsms.me/" />
 <link rel="stylesheet" href="https://rsms.me/inter/inter.css" />
-<link rel="stylesheet" href="style.css?v=5" />
+<link rel="stylesheet" href="style.css?v=6" />
 
 <!-- Open Graph -->
 <meta property="og:type" content="website" />
@@ -266,7 +266,7 @@
 
       <div class="problem-grid">
         <div class="problem-card problem-fail">
-          <h4>The status quo</h4>
+          <h3>The status quo</h3>
           <ul>
             <li>Single-digit sample rate, the rest are invisible</li>
             <li>Subjective scoring varies between checkers</li>
@@ -277,7 +277,7 @@
           </ul>
         </div>
         <div class="problem-card problem-win">
-          <h4>With CallGuard AI</h4>
+          <h3>With CallGuard AI</h3>
           <ul>
             <li>100% of calls transcribed and scored automatically</li>
             <li>One AI scorer calibrated to your company's interpretation</li>
@@ -305,21 +305,21 @@
       <div class="steps">
         <div class="step">
           <div class="step-num">1</div>
-          <h4>Ingest, live or batch</h4>
+          <h3>Ingest, live or batch</h3>
           <p>
             Drag-and-drop, REST API, SFTP / S3 sync for archived recordings, or <strong>live WebSocket streaming</strong> from Twilio, AWS Connect, Vonage, Plivo or any WebRTC-capable dialer. Encrypted at rest with AES-256-GCM.
           </p>
         </div>
         <div class="step">
           <div class="step-num">2</div>
-          <h4>Score, as it happens</h4>
+          <h3>Score, as it happens</h3>
           <p>
             Best-in-class speech recognition produces a live transcript with speaker separation. Claude scores against your company's scorecard, factoring in your knowledge base, prior compliance corrections, and exemplar calls. Mid-call breach detection runs every 30 seconds on the rolling transcript.
           </p>
         </div>
         <div class="step">
           <div class="step-num">3</div>
-          <h4>Act, before the call ends</h4>
+          <h3>Act, before the call ends</h3>
           <p>
             Pass / fail per criterion, weighted overall score, exact quote evidence, an agent-specific coaching brief. Critical breaches fire instantly to email, Slack or your supervisor's screen, and stream back via signed webhooks to your CRM or dialer.
           </p>
@@ -346,7 +346,7 @@
               <path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/>
             </svg>
           </div>
-          <h4>Dialer streaming</h4>
+          <h3>Dialer streaming</h3>
           <p>First-class adapters for Twilio Media Streams and AWS Connect Voice Streams. Vonage, Plivo, Telnyx and any WebRTC dialer supported via our generic protocol. Older Genesys / Avaya stacks via SIPREC.</p>
         </div>
         <div class="feature">
@@ -355,7 +355,7 @@
               <circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
             </svg>
           </div>
-          <h4>Browser audio streaming</h4>
+          <h3>Browser audio streaming</h3>
           <p>Any modern browser can stream audio over the same WebSocket protocol. Useful for soft-phone agent desktops, embedded customer-facing forms, and reference clients you can drop into your own web app without writing the streaming layer.</p>
         </div>
         <div class="feature">
@@ -364,7 +364,7 @@
               <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>
             </svg>
           </div>
-          <h4>Mid-call breach webhooks</h4>
+          <h3>Mid-call breach webhooks</h3>
           <p>HMAC-SHA256 signed POST to your endpoint within 30 seconds of detection. Retry with exponential backoff. Full audit log of every delivery attempt visible in your dashboard.</p>
         </div>
         <div class="feature">
@@ -373,7 +373,7 @@
               <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>
             </svg>
           </div>
-          <h4>Confidence-gated alerts</h4>
+          <h3>Confidence-gated alerts</h3>
           <p>Live scoring only emits a breach when the AI is &gt;75% confident the criterion has clearly already failed, not "might be" or "could happen." Designed to avoid alert fatigue from day one.</p>
         </div>
         <div class="feature">
@@ -382,7 +382,7 @@
               <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
             </svg>
           </div>
-          <h4>Consent capture, audited</h4>
+          <h3>Consent capture, audited</h3>
           <p>The streaming protocol takes a verbal-yes <code>consent.captured</code> event before scoring proceeds. Consent timestamps and excerpts are stored with the call and surfaced in the dashboard, giving you the GDPR Article 6 evidence trail without writing your own logic.</p>
         </div>
       </div>
@@ -402,19 +402,19 @@
 
       <div class="feature-grid feature-grid-2">
         <div class="feature">
-          <h4>Per-company corrections feedback loop</h4>
+          <h3>Per-company corrections feedback loop</h3>
           <p>Your compliance officer corrects the AI on borderline calls. Each correction becomes a few-shot example feeding the next batch of scoring. The AI learns "your fail" vs "industry fail" automatically.</p>
         </div>
         <div class="feature">
-          <h4>Exemplar call library</h4>
+          <h3>Exemplar call library</h3>
           <p>Mark gold-standard calls. The AI uses them as the reference bar when scoring future calls, so your company's "good" defines the AI's "good," not someone else's.</p>
         </div>
         <div class="feature">
-          <h4>AI Insights, written for your CO</h4>
+          <h3>AI Insights, written for your CO</h3>
           <p>A weekly strategic brief: what changed this week, the patterns worth attention, and 3 to 4 specific actions a compliance director will actually take. Written by Claude, not boilerplate.</p>
         </div>
         <div class="feature">
-          <h4>Per-agent coaching memory</h4>
+          <h3>Per-agent coaching memory</h3>
           <p>Coaching builds on what was said to that agent last week. If they've improved on the flagged area, the AI acknowledges it. If they haven't, it escalates the language. Personalised, not template.</p>
         </div>
       </div>
@@ -637,35 +637,7 @@
   </div>
 </footer>
 
-<script>
-  (function () {
-    var toggle = document.querySelector('.nav-toggle');
-    var drawer = document.getElementById('mobile-drawer');
-    if (!toggle || !drawer) return;
-
-    function setOpen(open) {
-      toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
-      toggle.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
-      drawer.classList.toggle('is-open', open);
-      document.body.classList.toggle('no-scroll', open);
-    }
-
-    toggle.addEventListener('click', function () {
-      setOpen(toggle.getAttribute('aria-expanded') !== 'true');
-    });
-
-    drawer.addEventListener('click', function (e) {
-      if (e.target.tagName === 'A') setOpen(false);
-    });
-
-    document.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape' && drawer.classList.contains('is-open')) setOpen(false);
-    });
-
-    var mq = window.matchMedia('(min-width: 769px)');
-    mq.addEventListener('change', function (e) { if (e.matches) setOpen(false); });
-  })();
-</script>
+<script defer src="/script.js?v=1"></script>
 
 </body>
 </html>

@@ -12,7 +12,7 @@
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 <link rel="preconnect" href="https://rsms.me/" />
 <link rel="stylesheet" href="https://rsms.me/inter/inter.css" />
-<link rel="stylesheet" href="/style.css?v=5" />
+<link rel="stylesheet" href="/style.css?v=6" />
 
 <meta property="og:type" content="article" />
 <meta property="og:site_name" content="CallGuard AI" />
@@ -118,19 +118,19 @@
 
       <div class="feature-grid feature-grid-2">
         <div class="feature">
-          <h4>Agent coaching automation at scale</h4>
+          <h3>Agent coaching automation at scale</h3>
           <p>Their coaching and enablement product is a polished part of the platform. Coaching cards, tracker libraries, onboarding workflows for agents. If your priority is scaled agent enablement rather than compliance scoring, that is what they lead with.</p>
         </div>
         <div class="feature">
-          <h4>Sentiment and intent classification</h4>
+          <h3>Sentiment and intent classification</h3>
           <p>Their sentiment models and intent taxonomy have been refined over many deployments. For traditional contact-centre analytics use cases (CSAT-driver analysis, churn-risk signals, tone-of-voice trends), they have library depth.</p>
         </div>
         <div class="feature">
-          <h4>Strong US market presence</h4>
+          <h3>Strong US market presence</h3>
           <p>If you operate in the US BPO market and your buyers expect a vendor with high G2 visibility, conference presence and US enterprise references, Observe.AI is well-positioned.</p>
         </div>
         <div class="feature">
-          <h4>Workforce engagement integrations</h4>
+          <h3>Workforce engagement integrations</h3>
           <p>Integrations with Workday, Salesforce Service Cloud, NICE workforce-engagement-management and similar HR / WEM platforms are well-documented in their stack.</p>
         </div>
       </div>
@@ -147,27 +147,27 @@
 
       <div class="feature-grid feature-grid-2">
         <div class="feature">
-          <h4>FCA Consumer Duty framing is not the headline</h4>
+          <h3>FCA Consumer Duty framing is not the headline</h3>
           <p>Their compliance framing is generic. The four Consumer Duty outcomes, COBS 9.2 suitability scoring, FG21/1 vulnerability indicators and DB-transfer specialist-pathway gates are achievable but not native vocabulary in the platform. UK compliance teams want a vendor who leads with their regulator's words.</p>
         </div>
         <div class="feature">
-          <h4>Per-tenant calibration loop is shallow</h4>
+          <h3>Per-tenant calibration loop is shallow</h3>
           <p>Their scoring drift is managed through tracker tuning and analyst configuration rather than through a feedback loop where compliance officer corrections automatically feed back into next week's scoring prompts. Calibration is configuration, not learning.</p>
         </div>
         <div class="feature">
-          <h4>UK / EU data residency requires negotiation</h4>
+          <h3>UK / EU data residency requires negotiation</h3>
           <p>Their default architecture is US-hosted with EU options available on request. UK GDPR Article 28 DPAs, sub-processor disclosures, UK BCRs and data-residency commitments tend to be procurement conversations rather than published defaults. For some FCA-regulated firms, that adds 30 to 60 days to procurement.</p>
         </div>
         <div class="feature">
-          <h4>Embedding scoring in your own UI</h4>
+          <h3>Embedding scoring in your own UI</h3>
           <p>Observe.AI's results live primarily in their dashboard. Pulling per-call scores out via REST to render inside your own CRM or agent desktop is achievable but not the headline integration story. CallGuard AI ships with a two-endpoint REST flow as the default.</p>
         </div>
         <div class="feature">
-          <h4>Mid-market sales motion</h4>
+          <h3>Mid-market sales motion</h3>
           <p>Observe.AI's GTM is a multi-week mid-market sales cycle: discovery, security review, scorecard configuration, go-live. For a 50- to 200-seat UK contact centre that wants to be scoring calls this fortnight, the cycle length is the wrong shape.</p>
         </div>
         <div class="feature">
-          <h4>Pricing tied to seats and modules</h4>
+          <h3>Pricing tied to seats and modules</h3>
           <p>Per-seat licensing plus modules (analytics, coaching, evaluations) creates expansion-friction as headcount grows or as you want to enable a new capability. Per-call pricing with included AI learning is a simpler model for teams who do not want to negotiate every quarter.</p>
         </div>
       </div>
@@ -205,11 +205,11 @@
 
       <div class="feature-grid feature-grid-2">
         <div class="feature">
-          <h4>Pick Observe.AI if</h4>
+          <h3>Pick Observe.AI if</h3>
           <p>You operate primarily in the US BPO market, your priority is agent coaching and enablement at scale rather than compliance scoring, you have a multi-week implementation runway, and your procurement department prefers a vendor with strong US references.</p>
         </div>
         <div class="feature">
-          <h4>Pick CallGuard AI if</h4>
+          <h3>Pick CallGuard AI if</h3>
           <p>You are UK-regulated (FCA, FSCS, ICO) or operate primarily in UK / EU markets, you want UK / EU data residency by default rather than as a negotiated extra, you want per-tenant AI calibration that learns from your compliance officer's corrections automatically, and you want to embed scoring inside your own CRM or agent desktop without a custom integration project.</p>
         </div>
       </div>
@@ -306,24 +306,7 @@
   </div>
 </footer>
 
-<script>
-  (function () {
-    var toggle = document.querySelector('.nav-toggle');
-    var drawer = document.getElementById('mobile-drawer');
-    if (!toggle || !drawer) return;
-    function setOpen(open) {
-      toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
-      toggle.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
-      drawer.classList.toggle('is-open', open);
-      document.body.classList.toggle('no-scroll', open);
-    }
-    toggle.addEventListener('click', function () { setOpen(toggle.getAttribute('aria-expanded') !== 'true'); });
-    drawer.addEventListener('click', function (e) { if (e.target.tagName === 'A') setOpen(false); });
-    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && drawer.classList.contains('is-open')) setOpen(false); });
-    var mq = window.matchMedia('(min-width: 769px)');
-    mq.addEventListener('change', function (e) { if (e.matches) setOpen(false); });
-  })();
-</script>
+<script defer src="/script.js?v=1"></script>
 
 </body>
 </html>

@@ -12,7 +12,7 @@
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 <link rel="preconnect" href="https://rsms.me/" />
 <link rel="stylesheet" href="https://rsms.me/inter/inter.css" />
-<link rel="stylesheet" href="/style.css?v=5" />
+<link rel="stylesheet" href="/style.css?v=6" />
 
 <meta property="og:type" content="article" />
 <meta property="og:site_name" content="CallGuard AI" />
@@ -122,7 +122,7 @@
 
       <div class="problem-grid">
         <div class="problem-card problem-fail">
-          <h4>Manual sample QA</h4>
+          <h3>Manual sample QA</h3>
           <ul>
             <li>1% to 3% of calls reviewed at most</li>
             <li>Inter-rater variance is meaningful and unmeasured</li>
@@ -133,7 +133,7 @@
           </ul>
         </div>
         <div class="problem-card problem-win">
-          <h4>CallGuard AI on every call</h4>
+          <h3>CallGuard AI on every call</h3>
           <ul>
             <li>100% of calls transcribed and scored automatically</li>
             <li>One AI calibrated to each programme's scorecard</li>
@@ -159,27 +159,27 @@
 
       <div class="feature-grid feature-grid-2">
         <div class="feature">
-          <h4>Empathy and rapport scoring</h4>
+          <h3>Empathy and rapport scoring</h3>
           <p>Did the agent acknowledge the customer's situation? Did they personalise the conversation? Empathy markers identified in the transcript with the quotes that earned the score.</p>
         </div>
         <div class="feature">
-          <h4>First-call resolution</h4>
+          <h3>First-call resolution</h3>
           <p>Was the customer's problem actually resolved on this call, or deferred? Calls that look resolved but actually punted to a second contact get flagged for coaching.</p>
         </div>
         <div class="feature">
-          <h4>Outbound compliance (TPS, PECR, mini-Miranda)</h4>
+          <h3>Outbound compliance (TPS, PECR, mini-Miranda)</h3>
           <p>TPS list checks before dial. PECR consent capture before marketing content. Mini-Miranda statements on collections calls. Caller-identification compliance. All scored on 100% of attempts, not a 5% spot-check.</p>
         </div>
         <div class="feature">
-          <h4>No-pressure-language detection</h4>
+          <h3>No-pressure-language detection</h3>
           <p>Urgency tactics, scarcity language and manipulative closing techniques flagged the moment they appear in a live transcript. Floor managers get a webhook before the customer hangs up.</p>
         </div>
         <div class="feature">
-          <h4>Multi-tenant client scorecards</h4>
+          <h3>Multi-tenant client scorecards</h3>
           <p>Each client gets their own scorecard, knowledge base, target metrics and reporting. Customer share links let each client log in to a scoped portal showing only their own programme. Replaces a multi-person reporting team.</p>
         </div>
         <div class="feature">
-          <h4>Agent risk profiles</h4>
+          <h3>Agent risk profiles</h3>
           <p>Heatmap each agent by breach pattern. Spot the ones who need coaching this week vs the stars worth promoting. Per-agent coaching memory means coaching builds across calls, not template feedback.</p>
         </div>
       </div>
@@ -196,19 +196,19 @@
 
       <div class="feature-grid feature-grid-2">
         <div class="feature">
-          <h4>First-class adapters</h4>
+          <h3>First-class adapters</h3>
           <p>Twilio Media Streams and AWS Connect Voice Streams supported natively. Vonage, Plivo, Telnyx and any WebRTC dialer supported via our generic protocol. Older Genesys / Avaya stacks via SIPREC.</p>
         </div>
         <div class="feature">
-          <h4>HMAC-signed breach webhooks</h4>
+          <h3>HMAC-signed breach webhooks</h3>
           <p>HMAC-SHA256 signed POST to your endpoint within 30 seconds of detection. Retry with exponential backoff. Full audit log of every delivery attempt.</p>
         </div>
         <div class="feature">
-          <h4>Confidence-gated alerts</h4>
+          <h3>Confidence-gated alerts</h3>
           <p>Live scoring only emits a breach when the AI is &gt;75% confident the criterion has clearly already failed. Designed to avoid alert fatigue from day one.</p>
         </div>
         <div class="feature">
-          <h4>REST API for batch and result fetch</h4>
+          <h3>REST API for batch and result fetch</h3>
           <p>Push call recordings via REST or SFTP. Pull score, pass/fail, evidence, breaches and coaching back per call so you can render results inside your own client portal.</p>
         </div>
       </div>
@@ -306,24 +306,7 @@
   </div>
 </footer>
 
-<script>
-  (function () {
-    var toggle = document.querySelector('.nav-toggle');
-    var drawer = document.getElementById('mobile-drawer');
-    if (!toggle || !drawer) return;
-    function setOpen(open) {
-      toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
-      toggle.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
-      drawer.classList.toggle('is-open', open);
-      document.body.classList.toggle('no-scroll', open);
-    }
-    toggle.addEventListener('click', function () { setOpen(toggle.getAttribute('aria-expanded') !== 'true'); });
-    drawer.addEventListener('click', function (e) { if (e.target.tagName === 'A') setOpen(false); });
-    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && drawer.classList.contains('is-open')) setOpen(false); });
-    var mq = window.matchMedia('(min-width: 769px)');
-    mq.addEventListener('change', function (e) { if (e.matches) setOpen(false); });
-  })();
-</script>
+<script defer src="/script.js?v=1"></script>
 
 </body>
 </html>
