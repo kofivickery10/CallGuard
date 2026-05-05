@@ -12,7 +12,7 @@
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 <link rel="preconnect" href="https://rsms.me/" />
 <link rel="stylesheet" href="https://rsms.me/inter/inter.css" />
-<link rel="stylesheet" href="/style.css?v=5" />
+<link rel="stylesheet" href="/style.css?v=6" />
 
 <meta property="og:type" content="article" />
 <meta property="og:site_name" content="CallGuard AI" />
@@ -123,17 +123,17 @@
       <div class="steps">
         <div class="step">
           <div class="step-num">1</div>
-          <h4>Point your TwiML at us</h4>
+          <h3>Point your TwiML at us</h3>
           <p>Add a <code>&lt;Start&gt;&lt;Stream&gt;</code> verb to your Voice TwiML pointing at our streaming endpoint, with your CallGuard API key in the custom parameters. Takes a few minutes.</p>
         </div>
         <div class="step">
           <div class="step-num">2</div>
-          <h4>We score in real time</h4>
+          <h3>We score in real time</h3>
           <p>The adapter consumes Twilio's media frames, runs live transcription with speaker separation, and feeds the rolling transcript into Claude every 30 seconds for breach detection at over 75% confidence.</p>
         </div>
         <div class="step">
           <div class="step-num">3</div>
-          <h4>Webhooks fire back</h4>
+          <h3>Webhooks fire back</h3>
           <p>HMAC-SHA256 signed POST to your endpoint within 30 seconds of a breach being detected, plus a final scored event when the call ends. Retry with exponential backoff. Full audit log in the dashboard.</p>
         </div>
       </div>
@@ -149,27 +149,27 @@
 
       <div class="feature-grid feature-grid-2">
         <div class="feature">
-          <h4>Native Twilio frame parsing</h4>
+          <h3>Native Twilio frame parsing</h3>
           <p>Our adapter parses Twilio's <code>connected</code>, <code>start</code>, <code>media</code> and <code>stop</code> events natively. <code>start.callSid</code> is captured as the external ID so calls match back to your CRM. Custom parameters are surfaced as session metadata.</p>
         </div>
         <div class="feature">
-          <h4>Live transcription with diarisation</h4>
+          <h3>Live transcription with diarisation</h3>
           <p>Speaker separation distinguishes agent and customer turns. Production-grade speech recognition with keyterm boosting for product names, regional accents and acronyms.</p>
         </div>
         <div class="feature">
-          <h4>30-second breach cadence</h4>
+          <h3>30-second breach cadence</h3>
           <p>Mid-call breach detection runs every 30 seconds against the rolling transcript. Only emits a breach when the AI is over 75% confident a criterion has clearly already failed. No alert fatigue.</p>
         </div>
         <div class="feature">
-          <h4>HMAC-SHA256 signed webhooks</h4>
+          <h3>HMAC-SHA256 signed webhooks</h3>
           <p>Every webhook is signed so your endpoint can verify the payload came from CallGuard. Headers include <code>X-CallGuardAI-Event</code> and <code>X-CallGuardAI-Signature: sha256=...</code>. Retries on failure with exponential backoff.</p>
         </div>
         <div class="feature">
-          <h4>Final scored event</h4>
+          <h3>Final scored event</h3>
           <p>When the call ends, a final webhook fires with the overall score, pass/fail per scorecard criterion, evidence quotes, breach list and coaching draft. Same payload as the REST result endpoint.</p>
         </div>
         <div class="feature">
-          <h4>Encryption at rest</h4>
+          <h3>Encryption at rest</h3>
           <p>Recorded audio (if retained) is encrypted at rest with AES-256-GCM. Transport is TLS 1.2+. UK GDPR Article 28 DPA published; sub-processor list public.</p>
         </div>
       </div>
@@ -271,24 +271,7 @@
   </div>
 </footer>
 
-<script>
-  (function () {
-    var toggle = document.querySelector('.nav-toggle');
-    var drawer = document.getElementById('mobile-drawer');
-    if (!toggle || !drawer) return;
-    function setOpen(open) {
-      toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
-      toggle.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
-      drawer.classList.toggle('is-open', open);
-      document.body.classList.toggle('no-scroll', open);
-    }
-    toggle.addEventListener('click', function () { setOpen(toggle.getAttribute('aria-expanded') !== 'true'); });
-    drawer.addEventListener('click', function (e) { if (e.target.tagName === 'A') setOpen(false); });
-    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && drawer.classList.contains('is-open')) setOpen(false); });
-    var mq = window.matchMedia('(min-width: 769px)');
-    mq.addEventListener('change', function (e) { if (e.matches) setOpen(false); });
-  })();
-</script>
+<script defer src="/script.js?v=1"></script>
 
 </body>
 </html>

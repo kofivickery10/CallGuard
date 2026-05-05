@@ -12,7 +12,7 @@
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 <link rel="preconnect" href="https://rsms.me/" />
 <link rel="stylesheet" href="https://rsms.me/inter/inter.css" />
-<link rel="stylesheet" href="/style.css?v=5" />
+<link rel="stylesheet" href="/style.css?v=6" />
 
 <meta property="og:type" content="article" />
 <meta property="og:site_name" content="CallGuard AI" />
@@ -120,7 +120,7 @@
 
       <div class="problem-grid">
         <div class="problem-card problem-fail">
-          <h4>Sample-based outbound QA</h4>
+          <h3>Sample-based outbound QA</h3>
           <ul>
             <li>1 to 3% of calls reviewed manually</li>
             <li>Consent capture failures discovered weeks later</li>
@@ -131,7 +131,7 @@
           </ul>
         </div>
         <div class="problem-card problem-win">
-          <h4>CallGuard AI on every outbound call</h4>
+          <h3>CallGuard AI on every outbound call</h3>
           <ul>
             <li>100% of calls transcribed and scored automatically</li>
             <li>Consent capture verified at the right point in every call</li>
@@ -155,27 +155,27 @@
 
       <div class="feature-grid feature-grid-2">
         <div class="feature">
-          <h4>PECR consent capture</h4>
+          <h3>PECR consent capture</h3>
           <p>Verifies the customer gave explicit consent for the marketing call before any product information is shared, and that the consent was specific (not implied from a generic privacy policy). Calls without proper consent capture are flagged as critical breaches.</p>
         </div>
         <div class="feature">
-          <h4>TPS / CTPS list compliance</h4>
+          <h3>TPS / CTPS list compliance</h3>
           <p>Telephone Preference Service checks scored against your dial-time policy. The dial itself happens upstream of CallGuard, but we score whether the agent acknowledged customer objections appropriately when the customer mentions they are TPS-registered or asks how their number was sourced.</p>
         </div>
         <div class="feature">
-          <h4>No-pressure-language detection</h4>
+          <h3>No-pressure-language detection</h3>
           <p>Urgency tactics, scarcity language ("only available today"), manufactured authority ("I'm calling from your bank") and coercive close patterns flagged in the live transcript. High-confidence threshold so floor managers do not get false positives.</p>
         </div>
         <div class="feature">
-          <h4>Caller identification + recording disclosure</h4>
+          <h3>Caller identification + recording disclosure</h3>
           <p>Agent identifies themselves, the firm, and the purpose of the call within the opening 30 seconds. Recording disclosure given when required. Customer's right to end the call respected without further pitching.</p>
         </div>
         <div class="feature">
-          <h4>Consumer Duty fair-value tests</h4>
+          <h3>Consumer Duty fair-value tests</h3>
           <p>For regulated outbound (financial products, energy switching, insurance) Consumer Duty's price-and-value outcome applies. Charges disclosed clearly, comparable alternatives mentioned where relevant, fair-value justified out loud rather than implied.</p>
         </div>
         <div class="feature">
-          <h4>Vulnerable customer indicators</h4>
+          <h3>Vulnerable customer indicators</h3>
           <p>Health, life event, resilience and capability vulnerability signals screened on every call. Disclosed-but-unaccommodated indicators flagged as critical breaches even when the procedural compliance was fine.</p>
         </div>
       </div>
@@ -192,19 +192,19 @@
 
       <div class="feature-grid feature-grid-2">
         <div class="feature">
-          <h4>Pressure-language alert</h4>
+          <h3>Pressure-language alert</h3>
           <p>If the agent uses urgency tactics, false scarcity or coercive close language, a webhook fires to the floor manager. They can step in before the customer agrees to a sale they were pressured into.</p>
         </div>
         <div class="feature">
-          <h4>Consent missing alert</h4>
+          <h3>Consent missing alert</h3>
           <p>If product details are being discussed without proper PECR consent captured at the start, a webhook fires for floor-manager intervention. The breach has already happened, but the manager can stop the agent from compounding it.</p>
         </div>
         <div class="feature">
-          <h4>Vulnerability disclosure alert</h4>
+          <h3>Vulnerability disclosure alert</h3>
           <p>If the customer discloses a vulnerability indicator and the agent continues at the same pace using the same close, a webhook fires. The standard expected by Consumer Duty.</p>
         </div>
         <div class="feature">
-          <h4>Complaint trigger alert</h4>
+          <h3>Complaint trigger alert</h3>
           <p>Customer raises a complaint or asks how their number was sourced. Webhook fires to your complaints team's queue so they can pick up the call before the customer hangs up.</p>
         </div>
       </div>
@@ -301,24 +301,7 @@
   </div>
 </footer>
 
-<script>
-  (function () {
-    var toggle = document.querySelector('.nav-toggle');
-    var drawer = document.getElementById('mobile-drawer');
-    if (!toggle || !drawer) return;
-    function setOpen(open) {
-      toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
-      toggle.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
-      drawer.classList.toggle('is-open', open);
-      document.body.classList.toggle('no-scroll', open);
-    }
-    toggle.addEventListener('click', function () { setOpen(toggle.getAttribute('aria-expanded') !== 'true'); });
-    drawer.addEventListener('click', function (e) { if (e.target.tagName === 'A') setOpen(false); });
-    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && drawer.classList.contains('is-open')) setOpen(false); });
-    var mq = window.matchMedia('(min-width: 769px)');
-    mq.addEventListener('change', function (e) { if (e.matches) setOpen(false); });
-  })();
-</script>
+<script defer src="/script.js?v=1"></script>
 
 </body>
 </html>

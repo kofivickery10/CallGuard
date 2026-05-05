@@ -12,7 +12,7 @@
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 <link rel="preconnect" href="https://rsms.me/" />
 <link rel="stylesheet" href="https://rsms.me/inter/inter.css" />
-<link rel="stylesheet" href="/style.css?v=5" />
+<link rel="stylesheet" href="/style.css?v=6" />
 
 <meta property="og:type" content="article" />
 <meta property="og:site_name" content="CallGuard AI" />
@@ -118,19 +118,19 @@
 
       <div class="feature-grid feature-grid-2">
         <div class="feature">
-          <h4>Workflow depth at enterprise scale</h4>
+          <h3>Workflow depth at enterprise scale</h3>
           <p>CallMiner has been refined over many large deployments. Custom dashboards, role-specific views, deep integrations with workforce-management and BI tools. If your analytics team wants to slice 50,000 calls a day on six dimensions, the platform supports that out of the box.</p>
         </div>
         <div class="feature">
-          <h4>Established speech analytics</h4>
+          <h3>Established speech analytics</h3>
           <p>The category they helped invent. Acoustic analysis, talk-over detection, prosodic features, decade-old keyterm libraries. For traditional speech-analytics use cases (silence detection, agitation scoring, churn-risk acoustic markers), they have more shelf-tested machinery than newer entrants.</p>
         </div>
         <div class="feature">
-          <h4>Enterprise sales experience</h4>
+          <h3>Enterprise sales experience</h3>
           <p>If your procurement, security, legal and architecture teams expect a vendor with formal enterprise sales motions, multi-stakeholder discovery, and reference customers in your sector, CallMiner has all of that. They will be on RFP shortlists for big-ticket purchases regardless of who else you evaluate.</p>
         </div>
         <div class="feature">
-          <h4>Deep customisation</h4>
+          <h3>Deep customisation</h3>
           <p>For teams with the analyst capacity and the runway to invest, CallMiner can be tuned to almost any scoring model. Categories, weighted indices, sentiment thresholds, agent benchmarking. The ceiling is high.</p>
         </div>
       </div>
@@ -147,27 +147,27 @@
 
       <div class="feature-grid feature-grid-2">
         <div class="feature">
-          <h4>Six to nine month implementations</h4>
+          <h3>Six to nine month implementations</h3>
           <p>CallMiner deployments traditionally involve solution architects, professional services, scorecard configuration sprints and integration discovery. For a 50- to 500-seat contact centre that wants to be scoring calls this quarter, that is the wrong shape of project.</p>
         </div>
         <div class="feature">
-          <h4>Enterprise pricing</h4>
+          <h3>Enterprise pricing</h3>
           <p>List pricing is opaque, contracts are typically multi-year and five-to-six-figure annual minima are normal. For teams who have not yet decided whether AI call QA is the right answer for them, that is a high commitment to make on day one.</p>
         </div>
         <div class="feature">
-          <h4>Pre-LLM scoring engine</h4>
+          <h3>Pre-LLM scoring engine</h3>
           <p>CallMiner's scoring core predates large language models. Their scoring is largely keyword categorisation, statistical models and tuned classifiers. Capable, but not the same as having Claude read the transcript and judge against your scorecard one criterion at a time with an evidence quote attached.</p>
         </div>
         <div class="feature">
-          <h4>No per-tenant calibration loop</h4>
+          <h3>No per-tenant calibration loop</h3>
           <p>Tuning CallMiner to your firm's interpretation of a scorecard item happens through analyst configuration, not through a feedback loop where your compliance officer's corrections automatically feed back into next week's scoring prompts. The drift problem is solved by having an analyst on staff, not by the model learning.</p>
         </div>
         <div class="feature">
-          <h4>UK Consumer Duty framing is bolted on</h4>
+          <h3>UK Consumer Duty framing is bolted on</h3>
           <p>CallMiner's product positioning leads with US contact-centre analytics. The FCA Consumer Duty four-outcomes framing, COBS 9.2 suitability scoring, FG21/1 vulnerability indicators are achievable but not the headline. UK-regulated firms tend to want a vendor who leads with their regulator's vocabulary.</p>
         </div>
         <div class="feature">
-          <h4>Embedding in your own UI is a project</h4>
+          <h3>Embedding in your own UI is a project</h3>
           <p>If you want to render scoring results inside your own CRM or agent desktop rather than in CallMiner's UI, that is achievable but typically a custom-built integration requiring their API team. Not the two-endpoint REST shape modern engineering teams expect.</p>
         </div>
       </div>
@@ -205,11 +205,11 @@
 
       <div class="feature-grid feature-grid-2">
         <div class="feature">
-          <h4>Pick CallMiner if</h4>
+          <h3>Pick CallMiner if</h3>
           <p>You run more than 5,000 seats, you have a dedicated speech analytics analyst team, you can absorb a six-figure annual contract, you have a six-to-nine-month implementation runway, and your procurement department needs a vendor with two decades of references in your sector.</p>
         </div>
         <div class="feature">
-          <h4>Pick CallGuard AI if</h4>
+          <h3>Pick CallGuard AI if</h3>
           <p>You want to be scoring calls this week, you want LLM-native scoring with evidence quotes, you want the AI to calibrate to your compliance officer's interpretation automatically, you want to embed results in your own CRM or agent desktop via REST, and you would rather pay per call than commit to a multi-year minimum.</p>
         </div>
       </div>
@@ -306,24 +306,7 @@
   </div>
 </footer>
 
-<script>
-  (function () {
-    var toggle = document.querySelector('.nav-toggle');
-    var drawer = document.getElementById('mobile-drawer');
-    if (!toggle || !drawer) return;
-    function setOpen(open) {
-      toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
-      toggle.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
-      drawer.classList.toggle('is-open', open);
-      document.body.classList.toggle('no-scroll', open);
-    }
-    toggle.addEventListener('click', function () { setOpen(toggle.getAttribute('aria-expanded') !== 'true'); });
-    drawer.addEventListener('click', function (e) { if (e.target.tagName === 'A') setOpen(false); });
-    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && drawer.classList.contains('is-open')) setOpen(false); });
-    var mq = window.matchMedia('(min-width: 769px)');
-    mq.addEventListener('change', function (e) { if (e.matches) setOpen(false); });
-  })();
-</script>
+<script defer src="/script.js?v=1"></script>
 
 </body>
 </html>

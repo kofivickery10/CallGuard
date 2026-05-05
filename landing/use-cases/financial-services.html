@@ -12,7 +12,7 @@
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 <link rel="preconnect" href="https://rsms.me/" />
 <link rel="stylesheet" href="https://rsms.me/inter/inter.css" />
-<link rel="stylesheet" href="/style.css?v=5" />
+<link rel="stylesheet" href="/style.css?v=6" />
 
 <meta property="og:type" content="article" />
 <meta property="og:site_name" content="CallGuard AI" />
@@ -126,7 +126,7 @@
 
       <div class="problem-grid">
         <div class="problem-card problem-fail">
-          <h4>Sampled file checking</h4>
+          <h3>Sampled file checking</h3>
           <ul>
             <li>One in twenty calls actually reviewed</li>
             <li>Variance between checkers is meaningful</li>
@@ -137,7 +137,7 @@
           </ul>
         </div>
         <div class="problem-card problem-win">
-          <h4>CallGuard AI on every advice call</h4>
+          <h3>CallGuard AI on every advice call</h3>
           <ul>
             <li>100% of calls transcribed and scored automatically</li>
             <li>One AI calibrated to your company's interpretation</li>
@@ -163,27 +163,27 @@
 
       <div class="feature-grid feature-grid-2">
         <div class="feature">
-          <h4>Suitability (COBS 9.2)</h4>
+          <h3>Suitability (COBS 9.2)</h3>
           <p>Attitude to risk explored, capacity for loss assessed, investment horizon confirmed, existing arrangements reviewed, objectives identified, recommendation linked back to objectives. Pass/fail per criterion with the quote that proved it.</p>
         </div>
         <div class="feature">
-          <h4>Vulnerable client indicators (FG21/1)</h4>
+          <h3>Vulnerable client indicators (FG21/1)</h3>
           <p>Health, life event, resilience and capability vulnerability signals screened on every call. Flagged for adviser awareness and surfaced in your breach register if the call did not adapt to the disclosed vulnerability.</p>
         </div>
         <div class="feature">
-          <h4>Consumer Duty: products and services</h4>
+          <h3>Consumer Duty: products and services</h3>
           <p>Was the product genuinely suited to the target market the client falls into? Were features explained in a way the client understood? Was distribution appropriate? CallGuard AI scores against your firm's target-market definitions for each product line.</p>
         </div>
         <div class="feature">
-          <h4>Consumer Duty: price and value</h4>
+          <h3>Consumer Duty: price and value</h3>
           <p>Charges disclosed clearly. Ongoing fees explained against the ongoing service the client receives. Comparable alternatives considered. Fair-value justifications captured in the recording rather than implied.</p>
         </div>
         <div class="feature">
-          <h4>Consumer Duty: consumer understanding</h4>
+          <h3>Consumer Duty: consumer understanding</h3>
           <p>Did the adviser actually check the client understood the recommendation? Did the client repeat key points back? Was technical language adapted to the disclosed financial knowledge level? Confirmation captured in the transcript, not assumed.</p>
         </div>
         <div class="feature">
-          <h4>Consumer Duty: consumer support</h4>
+          <h3>Consumer Duty: consumer support</h3>
           <p>Cancellation and cooling-off rights explained in plain English. Next steps documented. Contact information given for questions or complaints. Specialist-pathway gates triggered correctly on DB transfers, equity release and complex products.</p>
         </div>
       </div>
@@ -202,19 +202,19 @@
 
       <div class="feature-grid feature-grid-2">
         <div class="feature">
-          <h4>Compliance officer corrections feed back</h4>
+          <h3>Compliance officer corrections feed back</h3>
           <p>When your compliance officer disagrees with an AI verdict, they correct it in one click. The correction becomes a few-shot example in the next batch of scoring, with the transcript excerpt and the reason captured. The AI learns "your fail" vs "industry fail" automatically.</p>
         </div>
         <div class="feature">
-          <h4>Exemplar advice calls</h4>
+          <h3>Exemplar advice calls</h3>
           <p>Mark gold-standard advice calls. The AI uses them as the reference bar when scoring future calls. Your "good" defines the AI's "good". The library is per-firm, not shared across customers.</p>
         </div>
         <div class="feature">
-          <h4>Per-adviser coaching memory</h4>
+          <h3>Per-adviser coaching memory</h3>
           <p>Coaching builds on what was said to that adviser last week. If they have improved on the flagged area, the AI acknowledges it. If they have not, the language escalates. Personalised coaching, not template feedback.</p>
         </div>
         <div class="feature">
-          <h4>Strategic insights for the CO</h4>
+          <h3>Strategic insights for the CO</h3>
           <p>A weekly digest summarising what changed, the patterns worth attention, and 3 to 4 specific actions a compliance director will actually take. Written for the CO, not as boilerplate.</p>
         </div>
       </div>
@@ -312,24 +312,7 @@
   </div>
 </footer>
 
-<script>
-  (function () {
-    var toggle = document.querySelector('.nav-toggle');
-    var drawer = document.getElementById('mobile-drawer');
-    if (!toggle || !drawer) return;
-    function setOpen(open) {
-      toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
-      toggle.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
-      drawer.classList.toggle('is-open', open);
-      document.body.classList.toggle('no-scroll', open);
-    }
-    toggle.addEventListener('click', function () { setOpen(toggle.getAttribute('aria-expanded') !== 'true'); });
-    drawer.addEventListener('click', function (e) { if (e.target.tagName === 'A') setOpen(false); });
-    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && drawer.classList.contains('is-open')) setOpen(false); });
-    var mq = window.matchMedia('(min-width: 769px)');
-    mq.addEventListener('change', function (e) { if (e.matches) setOpen(false); });
-  })();
-</script>
+<script defer src="/script.js?v=1"></script>
 
 </body>
 </html>

@@ -12,7 +12,7 @@
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 <link rel="preconnect" href="https://rsms.me/" />
 <link rel="stylesheet" href="https://rsms.me/inter/inter.css" />
-<link rel="stylesheet" href="/style.css?v=5" />
+<link rel="stylesheet" href="/style.css?v=6" />
 
 <meta property="og:type" content="article" />
 <meta property="og:site_name" content="CallGuard AI" />
@@ -120,19 +120,19 @@
 
       <div class="feature-grid feature-grid-2">
         <div class="feature">
-          <h4>Pattern 1: Genesys Cloud + native API</h4>
+          <h3>Pattern 1: Genesys Cloud + native API</h3>
           <p>Genesys Cloud customers can authorise CallGuard AI as a third-party application via OAuth, then we subscribe to the Conversations API for call events and the Recording API for audio. Per-call audio is fetched as soon as the call ends and scored within a minute. Mid-call streaming requires a small Edge bridge (next pattern).</p>
         </div>
         <div class="feature">
-          <h4>Pattern 2: SIPREC for live streaming</h4>
+          <h3>Pattern 2: SIPREC for live streaming</h3>
           <p>Genesys can be configured to mirror a live call's audio to a SIPREC-compatible recorder. We expose a SIPREC endpoint that consumes the SIP-recorded stream as PCM and runs live transcription + breach detection against your scorecard. Works for PureConnect, Engage and Cloud-on-Edge deployments.</p>
         </div>
         <div class="feature">
-          <h4>Pattern 3: Post-call SFTP / S3 export</h4>
+          <h3>Pattern 3: Post-call SFTP / S3 export</h3>
           <p>For environments where streaming is not viable (security policy, network constraints), Genesys can be configured to export call recordings to SFTP or S3. CallGuard polls the source and pulls new recordings for scoring. No live alerts, but the same scoring depth.</p>
         </div>
         <div class="feature">
-          <h4>Pattern 4: Hybrid</h4>
+          <h3>Pattern 4: Hybrid</h3>
           <p>Many large Genesys customers run streaming on compliance-critical queues (collections, outbound regulated sales) and post-call export on customer service queues. Same scorecard, two ingestion paths, results pooled in the same dashboard.</p>
         </div>
       </div>
@@ -146,27 +146,27 @@
 
       <div class="feature-grid feature-grid-2">
         <div class="feature">
-          <h4>Conversation ID round-tripped</h4>
+          <h3>Conversation ID round-tripped</h3>
           <p>Genesys conversation IDs flow through to CallGuard's external_id field, so calls can be matched back to the contact record. Custom attributes (queue, agent, campaign ID, customer ANI) are forwarded as session metadata and returned in webhooks.</p>
         </div>
         <div class="feature">
-          <h4>Live transcription with diarisation</h4>
+          <h3>Live transcription with diarisation</h3>
           <p>Speaker separation distinguishes agent and customer turns. Production-grade speech recognition with keyterm boosting for product names, regional accents and acronyms.</p>
         </div>
         <div class="feature">
-          <h4>30-second breach cadence</h4>
+          <h3>30-second breach cadence</h3>
           <p>Mid-call breach detection runs every 30 seconds against the rolling transcript. Only emits a breach when the AI is over 75% confident a criterion has clearly already failed. No alert fatigue.</p>
         </div>
         <div class="feature">
-          <h4>HMAC-SHA256 signed webhooks</h4>
+          <h3>HMAC-SHA256 signed webhooks</h3>
           <p>Webhooks land at any endpoint Genesys can call: a Genesys API Action that creates an Interaction Comment on the conversation, your CRM, your Slack, or your supervisor dashboard. Every webhook is HMAC-signed.</p>
         </div>
         <div class="feature">
-          <h4>Genesys WEM-friendly</h4>
+          <h3>Genesys WEM-friendly</h3>
           <p>Per-call results can be exported back into Genesys Workforce Engagement Management for evaluations, calibration and reporting alongside Genesys' native Quality Management. Or replace WEM Quality Management entirely if AI scoring is your headline use case.</p>
         </div>
         <div class="feature">
-          <h4>UK and EU data residency</h4>
+          <h3>UK and EU data residency</h3>
           <p>Default eu-west-2 (London region) on AWS. Other regions available. UK GDPR Article 28 DPA published; sub-processor list public.</p>
         </div>
       </div>
@@ -263,24 +263,7 @@
   </div>
 </footer>
 
-<script>
-  (function () {
-    var toggle = document.querySelector('.nav-toggle');
-    var drawer = document.getElementById('mobile-drawer');
-    if (!toggle || !drawer) return;
-    function setOpen(open) {
-      toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
-      toggle.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
-      drawer.classList.toggle('is-open', open);
-      document.body.classList.toggle('no-scroll', open);
-    }
-    toggle.addEventListener('click', function () { setOpen(toggle.getAttribute('aria-expanded') !== 'true'); });
-    drawer.addEventListener('click', function (e) { if (e.target.tagName === 'A') setOpen(false); });
-    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && drawer.classList.contains('is-open')) setOpen(false); });
-    var mq = window.matchMedia('(min-width: 769px)');
-    mq.addEventListener('change', function (e) { if (e.matches) setOpen(false); });
-  })();
-</script>
+<script defer src="/script.js?v=1"></script>
 
 </body>
 </html>

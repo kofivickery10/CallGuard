@@ -12,7 +12,7 @@
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 <link rel="preconnect" href="https://rsms.me/" />
 <link rel="stylesheet" href="https://rsms.me/inter/inter.css" />
-<link rel="stylesheet" href="/style.css?v=5" />
+<link rel="stylesheet" href="/style.css?v=6" />
 
 <meta property="og:type" content="article" />
 <meta property="og:site_name" content="CallGuard AI" />
@@ -123,17 +123,17 @@
       <div class="steps">
         <div class="step">
           <div class="step-num">1</div>
-          <h4>Deploy the bridge Lambda</h4>
+          <h3>Deploy the bridge Lambda</h3>
           <p>Single-purpose Lambda from a CloudFormation template. Reads from your Kinesis Video stream, re-emits to our WebSocket endpoint with your CallGuard API key. Runs in your own AWS account so audio never leaves until it hits CallGuard.</p>
         </div>
         <div class="step">
           <div class="step-num">2</div>
-          <h4>We score in real time</h4>
+          <h3>We score in real time</h3>
           <p>The adapter parses PCM 16-bit 8kHz frames, runs live transcription with speaker separation, and feeds the rolling transcript into Claude every 30 seconds for breach detection at over 75% confidence.</p>
         </div>
         <div class="step">
           <div class="step-num">3</div>
-          <h4>Webhooks fire back</h4>
+          <h3>Webhooks fire back</h3>
           <p>HMAC-SHA256 signed POST to your endpoint within 30 seconds of a breach being detected, plus a final scored event when the call ends. Compatible with AWS EventBridge so you can fan-out to Connect tasks, agent UI overlays, or a Slack channel.</p>
         </div>
       </div>
@@ -149,27 +149,27 @@
 
       <div class="feature-grid feature-grid-2">
         <div class="feature">
-          <h4>Native PCM frame parsing</h4>
+          <h3>Native PCM frame parsing</h3>
           <p>The AWS Connect adapter handles raw PCM 16-bit 8kHz frames. No re-encoding step. The bridge Lambda is small, single-purpose and stays in your AWS account.</p>
         </div>
         <div class="feature">
-          <h4>EventBridge friendly</h4>
+          <h3>EventBridge friendly</h3>
           <p>Webhook payloads are JSON with consistent event names (<code>session.breach_detected</code>, <code>session.scored</code>) so they slot directly into EventBridge rules. From there, fan out to Connect Tasks, Lambda, Step Functions, or third-party endpoints.</p>
         </div>
         <div class="feature">
-          <h4>30-second breach cadence</h4>
+          <h3>30-second breach cadence</h3>
           <p>Mid-call breach detection runs every 30 seconds against the rolling transcript. Only emits a breach when the AI is over 75% confident a criterion has clearly already failed. No alert fatigue.</p>
         </div>
         <div class="feature">
-          <h4>Agent desktop overlays</h4>
+          <h3>Agent desktop overlays</h3>
           <p>Subscribe to live breach webhooks from your agent desktop (Connect CCP or your custom UI). Show whisper-style nudges to the agent the moment the AI flags a breach.</p>
         </div>
         <div class="feature">
-          <h4>Per-tenant AI learning</h4>
+          <h3>Per-tenant AI learning</h3>
           <p>Your supervisors correct AI scores in the dashboard. Corrections feed back into future scoring so the AI calibrates to your interpretation of "fair value", "vulnerable", and "good outcome", not a generic baseline.</p>
         </div>
         <div class="feature">
-          <h4>Encryption and residency</h4>
+          <h3>Encryption and residency</h3>
           <p>Audio (if retained) is encrypted at rest with AES-256-GCM. Hosted in eu-west-2 by default; ap-southeast-2 and us-east-1 available on request. UK GDPR Article 28 DPA published.</p>
         </div>
       </div>
@@ -271,24 +271,7 @@
   </div>
 </footer>
 
-<script>
-  (function () {
-    var toggle = document.querySelector('.nav-toggle');
-    var drawer = document.getElementById('mobile-drawer');
-    if (!toggle || !drawer) return;
-    function setOpen(open) {
-      toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
-      toggle.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
-      drawer.classList.toggle('is-open', open);
-      document.body.classList.toggle('no-scroll', open);
-    }
-    toggle.addEventListener('click', function () { setOpen(toggle.getAttribute('aria-expanded') !== 'true'); });
-    drawer.addEventListener('click', function (e) { if (e.target.tagName === 'A') setOpen(false); });
-    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && drawer.classList.contains('is-open')) setOpen(false); });
-    var mq = window.matchMedia('(min-width: 769px)');
-    mq.addEventListener('change', function (e) { if (e.matches) setOpen(false); });
-  })();
-</script>
+<script defer src="/script.js?v=1"></script>
 
 </body>
 </html>

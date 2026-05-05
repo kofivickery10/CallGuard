@@ -7,7 +7,7 @@
   /* Brand colours */
   --primary:        #4a9e6e;
   --primary-hover:  #3d8a5e;
-  --primary-dark:   #2d6e4a;
+  --primary-dark:   #1f5a37;        /* darker for AA contrast on light backgrounds */
   --primary-light:  #e8f0e8;
   --primary-50:     #f1f7f2;
 
@@ -27,8 +27,8 @@
 
   --text-primary:   #1a2e1a;
   --text-secondary: #3d4a3d;
-  --text-cell:      #5a6e5a;
-  --text-muted:     #8a9e8a;
+  --text-cell:      #4a5e4a;        /* darker for AA contrast */
+  --text-muted:     #66776a;        /* darker for AA contrast (was #8a9e8a, ratio 3.0) */
 
   /* Dark accent (footer / coming-next) */
   --dark-bg:        #1a2e1a;
@@ -118,7 +118,7 @@ h1, h2, h3, h4, h5 { color: var(--text-primary); font-weight: 700; line-height: 
 }
 .brand-mark svg { width: 18px; height: 18px; }
 .brand-text-ai {
-  color: var(--primary);
+  color: var(--primary-dark);    /* AA contrast on white nav */
   font-weight: 800;
   margin-left: 2px;
 }
@@ -155,14 +155,14 @@ h1, h2, h3, h4, h5 { color: var(--text-primary); font-weight: 700; line-height: 
   cursor: pointer;
 }
 .btn-primary {
-  background: var(--primary);
+  background: #2d6e4a;          /* darker for AA contrast against white text */
   color: white;
   box-shadow: 0 1px 2px rgba(26, 46, 26, 0.08);
 }
 .btn-primary:hover {
-  background: var(--primary-hover);
+  background: #1f5a37;
   transform: translateY(-1px);
-  box-shadow: 0 3px 8px rgba(74, 158, 110, 0.25);
+  box-shadow: 0 3px 8px rgba(45, 110, 74, 0.3);
 }
 .btn-ghost {
   background: transparent;
@@ -354,7 +354,7 @@ h1, h2, h3, h4, h5 { color: var(--text-primary); font-weight: 700; line-height: 
   padding: 28px 28px 24px;
   box-shadow: var(--shadow-card);
 }
-.problem-card h4 {
+.problem-card h3 {
   font-size: 12px;
   font-weight: 700;
   text-transform: uppercase;
@@ -427,7 +427,7 @@ h1, h2, h3, h4, h5 { color: var(--text-primary); font-weight: 700; line-height: 
   font-size: 16px;
   margin-bottom: 18px;
 }
-.step h4 {
+.step h3 {
   font-size: 18px;
   font-weight: 700;
   margin-bottom: 10px;
@@ -487,7 +487,7 @@ h1, h2, h3, h4, h5 { color: var(--text-primary); font-weight: 700; line-height: 
   width: 20px;
   height: 20px;
 }
-.feature h4 {
+.feature h3 {
   font-size: 16px;
   font-weight: 700;
   margin-bottom: 8px;
@@ -522,7 +522,7 @@ h1, h2, h3, h4, h5 { color: var(--text-primary); font-weight: 700; line-height: 
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.6px;
-  color: var(--primary);
+  color: var(--primary-dark);    /* AA contrast */
   margin-bottom: 8px;
 }
 .usecase-card h3 {
