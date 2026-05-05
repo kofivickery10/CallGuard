@@ -14,7 +14,7 @@
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 <link rel="preconnect" href="https://rsms.me/" />
 <link rel="stylesheet" href="https://rsms.me/inter/inter.css" />
-<link rel="stylesheet" href="style.css?v=2" />
+<link rel="stylesheet" href="style.css?v=4" />
 
 <!-- Open Graph -->
 <meta property="og:type" content="website" />
@@ -87,6 +87,76 @@
         "REST API to push calls in and pull results out",
         "AES-256-GCM encryption at rest"
       ]
+    },
+    {
+      "@type": "FAQPage",
+      "@id": "https://callguardai.co.uk/#faq",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "What is AI call QA and why does it matter?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "AI call quality assurance uses speech recognition and large language models to transcribe and score every call your team takes against your scorecard, instead of a manual 5% sample done in spreadsheets. For contact centres and regulated businesses it means 100% coverage rather than statistical guesswork, breach detection in seconds rather than weeks, and systematic compliance evidence rather than anecdotes."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "How does CallGuard AI score calls?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Each call is transcribed with speaker separation, then Claude scores it against your scorecard one criterion at a time. Every verdict is backed by a direct quote from the transcript so you can see why the AI passed or failed an item. Your knowledge base, prior compliance corrections and exemplar calls all feed into the prompt so the AI calibrates to your company's interpretation rather than a generic baseline."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Does it integrate with Twilio, AWS Connect or our existing dialer?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes. There are first-class adapters for Twilio Media Streams and AWS Connect Voice Streams. Vonage, Plivo, Telnyx and any WebRTC-capable dialer connect via our generic WebSocket protocol. Older Genesys / Avaya stacks integrate via SIPREC. You can also drag-and-drop recordings, point an SFTP source at us, or push calls in via our REST API."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Can I display CallGuard results inside my own CRM or agent desktop?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes. Mint an API key in the dashboard, push calls in with a POST, then pull the result back per call. The result includes the score percentage, pass/fail per criterion, evidence quotes, breach list and the coaching draft. Render it however you want. Live streaming sessions also fire HMAC-signed webhooks on breach and scored events to your CRM or supervisor screen."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Does this support FCA Consumer Duty and the four outcomes?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes. CallGuard AI scores against your firm's own scorecard, which can encode COBS 9.2 suitability, FG21/1 vulnerable client indicators, charges and fair-value tests, and the four Consumer Duty outcomes (products and services, price and value, consumer understanding, consumer support). Every verdict is evidenced by a transcript quote, which is the audit trail the FCA expects."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "How is customer data secured?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "All audio is encrypted at rest with AES-256-GCM. Transport is TLS 1.2+. Access to the dashboard is JWT-authenticated with role-based access control. Data is hosted in EU/UK regions. A UK GDPR Article 28 Data Processing Agreement is available, and we publish our sub-processor list publicly so you know exactly who handles your data."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "How long does it take to set up?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Sign up at 9am and have 100 calls scored before lunch. Each call is transcribed and scored in under a minute. There is no 90-day pilot, no solution architects, and no integration project. Upload an existing scorecard CSV, drop in any QA manuals or product cheatsheets to the knowledge base, and start scoring."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "How does pricing work?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Pricing is per scored call with volume tiers, with the AI learning, exemplar library and coaching memory included on Growth and Pro plans. There is no per-seat licence fee. Get an exact quote against your call volume by emailing hello@callguardai.co.uk."
+          }
+        }
+      ]
     }
   ]
 }
@@ -114,6 +184,7 @@
       <a href="#live">Live &amp; embedded</a>
       <a href="#learning">AI learning</a>
       <a href="#use-cases">Use cases</a>
+      <a href="#faq">FAQ</a>
     </nav>
 
     <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request" class="btn btn-primary nav-cta">Book a demo</a>
@@ -129,6 +200,7 @@
     <a href="#live">Live &amp; embedded</a>
     <a href="#learning">AI learning</a>
     <a href="#use-cases">Use cases</a>
+    <a href="#faq">FAQ</a>
     <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request" class="btn btn-primary">Book a demo</a>
   </div>
 </header>
@@ -369,6 +441,7 @@
             <li>Pension transfer oversight</li>
             <li>Consumer Duty outcomes evidence</li>
           </ul>
+          <a href="/use-cases/financial-services" class="usecase-link">Read the financial services brief →</a>
         </article>
 
         <article class="usecase-card">
@@ -381,8 +454,77 @@
             <li>Multi-tenant client scorecards</li>
             <li>Customer share links, read-only client portals</li>
           </ul>
+          <a href="/use-cases/bpo" class="usecase-link">Read the contact centre brief →</a>
         </article>
 
+      </div>
+    </div>
+  </section>
+
+  <!-- ============== FAQ ============== -->
+  <section class="section section-alt" id="faq">
+    <div class="container">
+      <span class="section-tag">FAQ</span>
+      <h2 class="section-h2">
+        Common questions, <span class="accent">answered.</span>
+      </h2>
+
+      <div class="faq-list">
+        <details class="faq-item">
+          <summary>What is AI call QA and why does it matter?</summary>
+          <div class="faq-body">
+            <p>AI call quality assurance uses speech recognition and large language models to transcribe and score every call your team takes against your scorecard, instead of a manual 5% sample done in spreadsheets. For contact centres and regulated businesses it means 100% coverage rather than statistical guesswork, breach detection in seconds rather than weeks, and systematic compliance evidence rather than anecdotes.</p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary>How does CallGuard AI score calls?</summary>
+          <div class="faq-body">
+            <p>Each call is transcribed with speaker separation, then Claude scores it against your scorecard one criterion at a time. Every verdict is backed by a direct quote from the transcript so you can see why the AI passed or failed an item. Your knowledge base, prior compliance corrections and exemplar calls all feed into the prompt so the AI calibrates to your company's interpretation rather than a generic baseline.</p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary>Does it integrate with Twilio, AWS Connect or our existing dialer?</summary>
+          <div class="faq-body">
+            <p>Yes. There are first-class adapters for Twilio Media Streams and AWS Connect Voice Streams. Vonage, Plivo, Telnyx and any WebRTC-capable dialer connect via our generic WebSocket protocol. Older Genesys / Avaya stacks integrate via SIPREC. You can also drag-and-drop recordings, point an SFTP source at us, or push calls in via our REST API.</p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary>Can I display CallGuard results inside my own CRM or agent desktop?</summary>
+          <div class="faq-body">
+            <p>Yes. Mint an API key in the dashboard, push calls in with a POST, then pull the result back per call. The result includes the score percentage, pass/fail per criterion, evidence quotes, breach list and the coaching draft. Render it however you want. Live streaming sessions also fire HMAC-signed webhooks on breach + scored events to your CRM or supervisor screen.</p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary>Does this support FCA Consumer Duty and the four outcomes?</summary>
+          <div class="faq-body">
+            <p>Yes. CallGuard AI scores against your firm's own scorecard, which can encode COBS 9.2 suitability, FG21/1 vulnerable client indicators, charges and fair-value tests, and the four Consumer Duty outcomes (products and services, price and value, consumer understanding, consumer support). Every verdict is evidenced by a transcript quote, which is the audit trail the FCA expects.</p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary>How is customer data secured?</summary>
+          <div class="faq-body">
+            <p>All audio is encrypted at rest with AES-256-GCM. Transport is TLS 1.2+. Access to the dashboard is JWT-authenticated with role-based access control. Data is hosted in EU/UK regions. A UK GDPR Article 28 Data Processing Agreement is available, and we publish our sub-processor list publicly so you know exactly who handles your data.</p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary>How long does it take to set up?</summary>
+          <div class="faq-body">
+            <p>Sign up at 9am and have 100 calls scored before lunch. Each call is transcribed and scored in under a minute. There is no 90-day pilot, no solution architects, and no integration project. Upload an existing scorecard CSV, drop in any QA manuals or product cheatsheets to the knowledge base, and start scoring.</p>
+          </div>
+        </details>
+
+        <details class="faq-item">
+          <summary>How does pricing work?</summary>
+          <div class="faq-body">
+            <p>Pricing is per scored call with volume tiers, with the AI learning, exemplar library and coaching memory included on Growth and Pro plans. There is no per-seat licence fee. Get an exact quote against your call volume by emailing <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20pricing">hello@callguardai.co.uk</a>.</p>
+          </div>
+        </details>
       </div>
     </div>
   </section>
@@ -460,20 +602,24 @@
         <a href="#how-it-works">How it works</a>
         <a href="#live">Live &amp; embedded</a>
         <a href="#learning">AI learning</a>
-        <a href="#use-cases">Use cases</a>
+        <a href="#faq">FAQ</a>
       </div>
       <div class="footer-col">
-        <h5>Company</h5>
-        <a href="mailto:hello@callguardai.co.uk">Contact</a>
-        <a href="mailto:privacy@callguardai.co.uk">Privacy contact</a>
-        <a href="mailto:hello@callguardai.co.uk?subject=Press%20enquiry">Press</a>
+        <h5>Use cases</h5>
+        <a href="/use-cases/financial-services">Financial services</a>
+        <a href="/use-cases/bpo">Contact centres &amp; BPOs</a>
+      </div>
+      <div class="footer-col">
+        <h5>Integrations</h5>
+        <a href="/integrations/twilio">Twilio</a>
+        <a href="/integrations/aws-connect">AWS Connect</a>
       </div>
       <div class="footer-col">
         <h5>Legal</h5>
-        <a href="/privacy.html">Privacy policy</a>
-        <a href="/terms.html">Terms of service</a>
-        <a href="/dpa.html">Data processing agreement</a>
-        <a href="/sub-processors.html">Sub-processors</a>
+        <a href="/privacy">Privacy policy</a>
+        <a href="/terms">Terms of service</a>
+        <a href="/dpa">Data processing agreement</a>
+        <a href="/sub-processors">Sub-processors</a>
       </div>
     </div>
   </div>
