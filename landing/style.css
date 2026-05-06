@@ -1373,3 +1373,100 @@ body.no-scroll { overflow: hidden; }
   .btn-primary:hover { transform: none; }
   .feature:hover { transform: none; }
 }
+
+/* ============================================================
+   Animations: scroll-reveal, stat count-up, audio bar pulse
+   All respect prefers-reduced-motion.
+   ============================================================ */
+
+/* Scroll-reveal: elements start translucent + nudged down,
+   transition in when JS adds .is-visible. JS uses IntersectionObserver. */
+.reveal {
+  opacity: 0;
+  transform: translateY(16px);
+  transition: opacity 0.7s cubic-bezier(0.22, 1, 0.36, 1),
+              transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: opacity, transform;
+}
+.reveal.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+.reveal.reveal-delay-1 { transition-delay: 80ms; }
+.reveal.reveal-delay-2 { transition-delay: 160ms; }
+.reveal.reveal-delay-3 { transition-delay: 240ms; }
+
+/* Hero brand-mark audio bars: subtle live pulse to imply "listening" */
+@keyframes audio-pulse-1 {
+  0%, 100% { transform: scaleY(1); }
+  50%      { transform: scaleY(1.35); }
+}
+@keyframes audio-pulse-2 {
+  0%, 100% { transform: scaleY(1); }
+  50%      { transform: scaleY(0.78); }
+}
+@keyframes audio-pulse-3 {
+  0%, 100% { transform: scaleY(1); }
+  50%      { transform: scaleY(1.18); }
+}
+.brand-mark svg rect {
+  transform-origin: center bottom;
+  transform-box: fill-box;
+}
+.nav .brand-mark svg rect:nth-of-type(1) {
+  animation: audio-pulse-1 1.6s ease-in-out infinite;
+}
+.nav .brand-mark svg rect:nth-of-type(2) {
+  animation: audio-pulse-2 1.6s ease-in-out infinite 0.18s;
+}
+.nav .brand-mark svg rect:nth-of-type(3) {
+  animation: audio-pulse-3 1.6s ease-in-out infinite 0.36s;
+}
+.nav .brand-mark svg circle {
+  transform-origin: center;
+  transform-box: fill-box;
+  animation: dot-pulse 2.4s ease-in-out infinite;
+}
+@keyframes dot-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.55; }
+}
+
+/* Hero background ambient gradient drift */
+@keyframes hero-drift {
+  0%   { transform: translate3d(0, 0, 0) scale(1); }
+  50%  { transform: translate3d(2%, -1%, 0) scale(1.03); }
+  100% { transform: translate3d(0, 0, 0) scale(1); }
+}
+.hero {
+  position: relative;
+  isolation: isolate;
+}
+.hero::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(ellipse 800px 400px at 50% -100px, rgba(74, 158, 110, 0.12), transparent 70%),
+    radial-gradient(ellipse 500px 300px at 85% 10%, rgba(110, 197, 154, 0.08), transparent 70%);
+  animation: hero-drift 18s ease-in-out infinite;
+  will-change: transform;
+}
+.hero {
+  background: var(--page-bg);
+}
+
+/* Disable all motion if the user opts out */
+@media (prefers-reduced-motion: reduce) {
+  .reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+  .nav .brand-mark svg rect,
+  .nav .brand-mark svg circle,
+  .hero::before {
+    animation: none;
+  }
+}
