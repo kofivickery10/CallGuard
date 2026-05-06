@@ -18,10 +18,12 @@ const navItems: NavItem[] = [
   { path: '/knowledge-base', label: 'Knowledge Base', icon: 'M4 19.5A2.5 2.5 0 016.5 17H20M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z', adminOnly: true },
   { path: '/integrations', label: 'Integrations', icon: 'M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71', adminOnly: true },
   { path: '/alerts', label: 'Alerts', icon: 'M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0', adminOnly: true },
+  { path: '/review-queue', label: 'Review Queue', icon: 'M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11', adminOnly: true },
   { path: '/breaches', label: 'Breaches', icon: 'M12 2L3 7v5c0 5 3.5 9.5 9 11 5.5-1.5 9-6 9-11V7l-9-5z', adminOnly: true },
   { path: '/adviser-risk', label: 'Adviser Risk', icon: 'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z', adminOnly: true },
   { path: '/insights', label: 'AI Insights', icon: 'M12 2l2.39 7.36H22l-6.19 4.5L18.2 22 12 17.27 5.8 22l2.39-8.14L2 9.36h7.61z', adminOnly: true },
   { path: '/compliance-docs', label: 'Compliance Docs', icon: 'M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8zM14 2v6h6M16 13H8M16 17H8M10 9H8', adminOnly: true },
+  { path: '/audit-log', label: 'Audit Log', icon: 'M12 2v20M2 12h20M12 6l4 4M12 6l-4 4M12 18l4-4M12 18l-4-4', adminOnly: true },
   { path: '/team', label: 'Team', icon: 'M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75', adminOnly: true },
 ];
 

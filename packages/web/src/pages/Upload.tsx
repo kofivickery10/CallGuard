@@ -6,6 +6,48 @@ import { useAuth } from '../context/AuthContext';
 import { api } from '../api/client';
 import type { Call, AgentSummary } from '@callguard/shared';
 
+interface BulkImportResult {
+  total: number;
+  queued: number;
+  duplicates: number;
+  errors: number;
+  error_rows: { row: number; audio_url: string; error: string }[];
+}
+
+interface BulkImportRow {
+  audio_url: string;
+  agent_name?: string;
+  customer_phone?: string;
+  call_date?: string;
+  external_id?: string;
+  tags?: string;
+}
+
+function parseCSV(text: string): BulkImportRow[] {
+  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  if (lines.length === 0) return [];
+  const firstLine = lines[0] ?? '';
+  const headerCells = firstLine.split(',').map((h) => h.trim().toLowerCase());
+  const rows: BulkImportRow[] = [];
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i] ?? '';
+    const cells = line.split(',').map((c) => c.trim());
+    const row: Record<string, string> = {};
+    headerCells.forEach((h, j) => { row[h] = cells[j] || ''; });
+    const audioUrl = row.audio_url;
+    if (!audioUrl) continue;
+    rows.push({
+      audio_url: audioUrl,
+      agent_name: row.agent_name || undefined,
+      customer_phone: row.customer_phone || undefined,
+      call_date: row.call_date || undefined,
+      external_id: row.external_id || undefined,
+      tags: row.tags || undefined,
+    });
+  }
+  return rows;
+}
+
 export function Upload() {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -14,6 +56,11 @@ export function Upload() {
   const [error, setError] = useState('');
   const [agentId, setAgentId] = useState('');
   const [agentName, setAgentName] = useState('');
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [csvText, setCsvText] = useState('');
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkResult, setBulkResult] = useState<BulkImportResult | null>(null);
+  const [bulkError, setBulkError] = useState('');
 
   const { data: agents } = useQuery({
     queryKey: ['agents'],
@@ -103,6 +150,103 @@ export function Upload() {
           <div className="w-10 h-10 border-[3px] border-border border-t-primary rounded-full animate-spin mx-auto mb-4" />
           <div className="text-[16px] font-semibold text-text-primary">Processing your call...</div>
           <div className="text-table-cell text-text-muted mt-1">Uploading and preparing for analysis</div>
+        </div>
+      )}
+
+      {isAdmin && (
+        <div className="mt-8 bg-white border border-border rounded-card overflow-hidden">
+          <button
+            onClick={() => setBulkOpen((v) => !v)}
+            className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-table-header transition-colors"
+          >
+            <div>
+              <div className="text-[15px] font-semibold text-text-primary">Bulk import from URLs</div>
+              <div className="text-table-cell text-text-muted mt-0.5">
+                Paste a CSV of recording URLs to ingest many historical calls at once. Up to 200 per batch.
+              </div>
+            </div>
+            <span className="text-text-muted text-[18px]">{bulkOpen ? '−' : '+'}</span>
+          </button>
+
+          {bulkOpen && (
+            <div className="px-5 py-5 border-t border-border space-y-4">
+              <div>
+                <label className="block text-table-cell font-medium text-text-secondary mb-1.5">
+                  CSV (header row required)
+                </label>
+                <textarea
+                  value={csvText}
+                  onChange={(e) => setCsvText(e.target.value)}
+                  rows={8}
+                  spellCheck={false}
+                  placeholder={`audio_url,agent_name,customer_phone,call_date,external_id,tags\nhttps://your-archive.example.com/call-001.mp3,Marcus Webb,+44 7468 432 368,2026-04-29,crm-12345,suitability\nhttps://your-archive.example.com/call-002.mp3,Tina Lee,+44 7468 432 368,2026-04-30,crm-12346,vulnerability`}
+                  className="w-full border border-border rounded-btn px-3 py-2 text-[12px] font-mono text-text-primary placeholder:text-text-muted focus:outline-none focus:border-primary transition-colors bg-page"
+                />
+                <div className="text-[11px] text-text-muted mt-1.5">
+                  Required: <code>audio_url</code>. Optional: <code>agent_name</code>, <code>customer_phone</code>, <code>call_date</code> (ISO), <code>external_id</code> (your CRM id, used for deduplication), <code>tags</code> (comma-separated).
+                </div>
+              </div>
+
+              {bulkError && (
+                <div className="bg-fail-bg text-fail px-4 py-3 rounded-btn text-table-cell">
+                  {bulkError}
+                </div>
+              )}
+
+              {bulkResult && (
+                <div className="bg-primary-light/40 border border-primary/30 rounded-btn px-4 py-3 text-table-cell text-text-primary">
+                  <div className="font-semibold mb-1">Import complete.</div>
+                  <div>
+                    <strong>{bulkResult.queued}</strong> queued for scoring,{' '}
+                    <strong>{bulkResult.duplicates}</strong> duplicates skipped,{' '}
+                    <strong>{bulkResult.errors}</strong> errors out of <strong>{bulkResult.total}</strong> rows.
+                  </div>
+                  {bulkResult.error_rows.length > 0 && (
+                    <details className="mt-2">
+                      <summary className="cursor-pointer text-fail text-[12px] font-semibold">View errors</summary>
+                      <ul className="mt-2 text-[12px] text-text-secondary space-y-1">
+                        {bulkResult.error_rows.map((e) => (
+                          <li key={e.row} className="font-mono">
+                            row {e.row + 1}: {e.audio_url || '(missing url)'} - {e.error}
+                          </li>
+                        ))}
+                      </ul>
+                    </details>
+                  )}
+                </div>
+              )}
+
+              <button
+                onClick={async () => {
+                  setBulkError('');
+                  setBulkResult(null);
+                  const rows = parseCSV(csvText);
+                  if (rows.length === 0) {
+                    setBulkError('No rows parsed. Paste a CSV with at least one audio_url row beneath the header.');
+                    return;
+                  }
+                  if (rows.length > 200) {
+                    setBulkError(`Too many rows (${rows.length}). Maximum 200 per batch.`);
+                    return;
+                  }
+                  setBulkBusy(true);
+                  try {
+                    const result = await api.post<BulkImportResult>('/calls/bulk-import', { rows });
+                    setBulkResult(result);
+                    setCsvText('');
+                  } catch (err) {
+                    setBulkError((err as Error).message);
+                  } finally {
+                    setBulkBusy(false);
+                  }
+                }}
+                disabled={bulkBusy || !csvText.trim()}
+                className="bg-primary hover:bg-primary-hover text-white px-[18px] py-[9px] rounded-btn text-table-cell font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {bulkBusy ? 'Importing...' : 'Import CSV'}
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>

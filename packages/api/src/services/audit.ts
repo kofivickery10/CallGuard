@@ -1,0 +1,87 @@
+import type { Request } from 'express';
+import { query } from '../db/client.js';
+
+export type AuditActionType =
+  | 'auth.login'
+  | 'auth.logout'
+  | 'call.delete'
+  | 'call.upload'
+  | 'call.bulk_import'
+  | 'call.rescore'
+  | 'score.correct'
+  | 'exemplar.toggle'
+  | 'breach.status_change'
+  | 'breach.assign'
+  | 'breach.note_add'
+  | 'scorecard.create'
+  | 'scorecard.update'
+  | 'scorecard.delete'
+  | 'kb.upload'
+  | 'kb.delete'
+  | 'api_key.create'
+  | 'api_key.revoke'
+  | 'sftp.create'
+  | 'sftp.delete'
+  | 'user.invite'
+  | 'user.role_change'
+  | 'user.delete';
+
+export type AuditEntityType =
+  | 'call'
+  | 'breach'
+  | 'score'
+  | 'scorecard'
+  | 'kb_file'
+  | 'api_key'
+  | 'sftp_source'
+  | 'user'
+  | 'session';
+
+interface AuditEvent {
+  organizationId: string;
+  userId: string | null;
+  actionType: AuditActionType;
+  entityType: AuditEntityType;
+  entityId?: string | string[] | null;
+  summary?: string | null;
+  metadata?: Record<string, unknown>;
+  req?: Request;
+}
+
+const coerceEntityId = (v: AuditEvent['entityId']): string | null => {
+  if (v == null) return null;
+  return Array.isArray(v) ? v.join(',') : String(v);
+};
+
+/**
+ * Records an audit event. Best-effort: failures are logged but never thrown,
+ * so audit-log breakage cannot break a user-facing request.
+ */
+export async function recordAuditEvent(event: AuditEvent): Promise<void> {
+  try {
+    const ip = event.req?.headers['x-forwarded-for']?.toString().split(',')[0].trim()
+            || event.req?.ip
+            || null;
+    const userAgent = event.req?.headers['user-agent']?.toString().slice(0, 500) || null;
+
+    await query(
+      `INSERT INTO audit_log
+         (organization_id, user_id, action_type, entity_type, entity_id,
+          summary, metadata, ip_address, user_agent)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      [
+        event.organizationId,
+        event.userId,
+        event.actionType,
+        event.entityType,
+        coerceEntityId(event.entityId),
+        event.summary ?? null,
+        JSON.stringify(event.metadata ?? {}),
+        ip,
+        userAgent,
+      ]
+    );
+  } catch (err) {
+    console.error('[Audit] Failed to record event:', err);
+  }
+}
