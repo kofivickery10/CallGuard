@@ -7,6 +7,8 @@ import { query, queryOne } from '../db/client.js';
 import { uploadFile, deleteFile } from '../services/storage.js';
 import { transcriptionQueue } from '../jobs/queue.js';
 import { AppError } from '../middleware/errors.js';
+import { ingestCall, inferMimeType } from '../services/ingestion.js';
+import { recordAuditEvent } from '../services/audit.js';
 import type { Call, CallScore, CallItemScore } from '@callguard/shared';
 
 export const callRouter = Router();
@@ -127,6 +129,128 @@ callRouter.post('/upload', upload.single('audio'), async (req, res, next) => {
   }
 });
 
+// Bulk historical recording import (admin only)
+//
+// Accepts JSON: { rows: [{ audio_url, agent_name?, customer_phone?,
+// call_date?, external_id?, tags? }] }
+//
+// Each row is downloaded, ingested via the unified ingestion service
+// (which handles dedupe by external_id, agent matching, and queue for
+// transcription). Capped at 200 rows per request so a typo cannot
+// timeout the worker. Returns a per-row outcome summary.
+interface BulkImportRow {
+  audio_url: string;
+  agent_name?: string | null;
+  customer_phone?: string | null;
+  call_date?: string | null;
+  external_id?: string | null;
+  tags?: string[] | string;
+}
+
+async function fetchAudioUrl(url: string): Promise<{
+  buffer: Buffer;
+  fileName: string;
+  mimeType: string;
+}> {
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status} ${res.statusText}`);
+  }
+  const arrayBuffer = await res.arrayBuffer();
+  const buffer = Buffer.from(arrayBuffer);
+  const urlObj = new URL(url);
+  const lastPart = urlObj.pathname.split('/').pop() || 'call.mp3';
+  const fileName = lastPart.includes('.') ? lastPart : `${lastPart}.mp3`;
+  const mimeType = res.headers.get('content-type')?.split(';')[0]?.trim() || inferMimeType(fileName);
+  return { buffer, fileName, mimeType };
+}
+
+callRouter.post('/bulk-import', requireAdmin, async (req, res, next) => {
+  try {
+    const rows = (req.body?.rows ?? []) as BulkImportRow[];
+    if (!Array.isArray(rows) || rows.length === 0) {
+      throw new AppError(400, 'rows[] is required');
+    }
+    if (rows.length > 200) {
+      throw new AppError(400, 'Maximum 200 rows per request');
+    }
+
+    const orgId = req.user!.organizationId;
+    const userId = req.user!.userId;
+    const queued: { row: number; call_id: string; external_id: string | null }[] = [];
+    const duplicates: { row: number; call_id: string; external_id: string | null }[] = [];
+    const errors: { row: number; audio_url: string; error: string }[] = [];
+
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i];
+      try {
+        if (!r.audio_url || typeof r.audio_url !== 'string') {
+          throw new Error('audio_url missing or not a string');
+        }
+        const { buffer, fileName, mimeType } = await fetchAudioUrl(r.audio_url);
+        const tags = Array.isArray(r.tags)
+          ? r.tags
+          : typeof r.tags === 'string' && r.tags
+            ? r.tags.split(/\s*,\s*/).filter(Boolean)
+            : [];
+
+        const { call, isDuplicate } = await ingestCall({
+          organizationId: orgId,
+          uploadedBy: userId,
+          fileName,
+          buffer,
+          mimeType,
+          ingestionSource: 'upload',
+          agentName: r.agent_name ?? null,
+          customerPhone: r.customer_phone ?? null,
+          callDate: r.call_date ?? null,
+          externalId: r.external_id ?? null,
+          tags,
+        });
+
+        (isDuplicate ? duplicates : queued).push({
+          row: i,
+          call_id: call.id,
+          external_id: call.external_id,
+        });
+      } catch (err) {
+        errors.push({
+          row: i,
+          audio_url: r.audio_url || '',
+          error: err instanceof Error ? err.message : 'unknown error',
+        });
+      }
+    }
+
+    void recordAuditEvent({
+      organizationId: orgId,
+      userId,
+      actionType: 'call.bulk_import',
+      entityType: 'call',
+      summary: `Bulk imported ${queued.length} new + ${duplicates.length} duplicate / ${errors.length} failed`,
+      metadata: {
+        total_rows: rows.length,
+        queued: queued.length,
+        duplicates: duplicates.length,
+        errors: errors.length,
+      },
+      req,
+    });
+
+    res.json({
+      total: rows.length,
+      queued: queued.length,
+      duplicates: duplicates.length,
+      errors: errors.length,
+      queued_calls: queued,
+      duplicate_calls: duplicates,
+      error_rows: errors,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // Get single call (role-scoped)
 callRouter.get('/:id', async (req, res, next) => {
   try {
@@ -165,6 +289,15 @@ callRouter.delete('/:id', requireAdmin, async (req, res, next) => {
     }
 
     await query('DELETE FROM calls WHERE id = $1', [call.id]);
+    void recordAuditEvent({
+      organizationId: req.user!.organizationId,
+      userId: req.user!.userId,
+      actionType: 'call.delete',
+      entityType: 'call',
+      entityId: call.id,
+      summary: `Deleted call ${call.id}`,
+      req,
+    });
     res.json({ message: 'Call deleted', id: call.id });
   } catch (err) {
     next(err);
@@ -382,6 +515,17 @@ callRouter.post('/:id/scores/items/:itemScoreId/correct', requireAdmin, async (r
       );
     }
 
+    void recordAuditEvent({
+      organizationId: req.user!.organizationId,
+      userId: req.user!.userId,
+      actionType: 'score.correct',
+      entityType: 'score',
+      entityId: req.params.itemScoreId,
+      summary: `Corrected scorecard item ${req.params.itemScoreId} on call ${req.params.id} to ${corrected_pass ? 'pass' : 'fail'}`,
+      metadata: { call_id: req.params.id, corrected_pass, reason: reason || null, new_overall: newOverall, new_pass: newPass },
+      req,
+    });
+
     res.json({ message: 'Correction saved', overall_score: newOverall, pass: newPass });
   } catch (err) {
     next(err);
@@ -406,6 +550,17 @@ callRouter.post('/:id/exemplar', requireAdmin, async (req, res, next) => {
       [is_exemplar, reason || 'Manually marked by admin', req.params.id, req.user!.organizationId]
     );
     if (!result) throw new AppError(404, 'Call not found');
+
+    void recordAuditEvent({
+      organizationId: req.user!.organizationId,
+      userId: req.user!.userId,
+      actionType: 'exemplar.toggle',
+      entityType: 'call',
+      entityId: req.params.id,
+      summary: is_exemplar ? `Marked call ${req.params.id} as exemplar` : `Removed exemplar flag from call ${req.params.id}`,
+      metadata: { is_exemplar, reason: reason || null },
+      req,
+    });
 
     res.json({ message: 'Exemplar flag updated' });
   } catch (err) {

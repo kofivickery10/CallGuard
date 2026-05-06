@@ -23,6 +23,8 @@ const AdviserRiskPage = lazy(() => import('./pages/AdviserRisk').then((m) => ({ 
 const ComplianceDocs = lazy(() => import('./pages/ComplianceDocs').then((m) => ({ default: m.ComplianceDocs })));
 const OrganizationSettings = lazy(() => import('./pages/OrganizationSettings').then((m) => ({ default: m.OrganizationSettings })));
 const AIInsights = lazy(() => import('./pages/AIInsights').then((m) => ({ default: m.AIInsights })));
+const ReviewQueue = lazy(() => import('./pages/ReviewQueue').then((m) => ({ default: m.ReviewQueue })));
+const AuditLog = lazy(() => import('./pages/AuditLog').then((m) => ({ default: m.AuditLog })));
 
 function PageLoader() {
   return (
@@ -69,6 +71,8 @@ export function App() {
                   <Route path="/compliance-docs" element={<ComplianceDocs />} />
                   <Route path="/settings" element={<OrganizationSettings />} />
                   <Route path="/insights" element={<AIInsights />} />
+                  <Route path="/review-queue" element={<ReviewQueue />} />
+                  <Route path="/audit-log" element={<AuditLog />} />
                 </Routes>
               </Suspense>
             </Layout>

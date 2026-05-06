@@ -2,6 +2,7 @@ import { Router, Request } from 'express';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
 import { query, queryOne } from '../db/client.js';
 import { AppError } from '../middleware/errors.js';
+import { recordAuditEvent } from '../services/audit.js';
 import {
   BREACH_SEVERITIES,
   BREACH_STATUSES,
@@ -127,6 +128,66 @@ breachesRouter.get('/summary', async (req, res, next) => {
     for (const row of byStatus) summary.by_status[row.status] = parseInt(row.count);
 
     res.json(summary);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ============================================================
+// GET /api/breaches/review-queue
+// Risk-ranked queue of unresolved breaches a compliance officer
+// should look at next. Excludes resolved + coached + noted.
+// Score = severity weight + recency boost.
+// ============================================================
+
+breachesRouter.get('/review-queue', async (req, res, next) => {
+  try {
+    const orgId = req.user!.organizationId;
+    const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
+
+    const rows = await query<BreachWithDetail & { risk_score: number }>(
+      `SELECT
+          b.*,
+          c.file_name as call_file_name,
+          c.agent_name,
+          c.agent_id,
+          u.name as assigned_to_name,
+          si.label as breach_type,
+          sc.name as scorecard_name,
+          cis.evidence,
+          cis.reasoning,
+          cis.normalized_score,
+          (
+            CASE b.severity
+              WHEN 'critical' THEN 100
+              WHEN 'high'     THEN 50
+              WHEN 'medium'   THEN 20
+              WHEN 'low'      THEN 5
+            END
+            +
+            CASE b.status
+              WHEN 'new'          THEN 30
+              WHEN 'acknowledged' THEN 10
+              WHEN 'escalated'    THEN 25
+              ELSE 0
+            END
+            +
+            LEAST(20, EXTRACT(EPOCH FROM (now() - b.detected_at)) / 86400)
+          ) AS risk_score
+        FROM breaches b
+        JOIN calls c ON c.id = b.call_id
+        JOIN call_item_scores cis ON cis.id = b.call_item_score_id
+        JOIN scorecard_items si ON si.id = b.scorecard_item_id
+        LEFT JOIN scorecards sc ON sc.id = si.scorecard_id
+        LEFT JOIN users u ON u.id = b.assigned_to
+        WHERE b.organization_id = $1
+          AND b.status IN ('new', 'acknowledged', 'escalated')
+        ORDER BY risk_score DESC, b.detected_at DESC
+        LIMIT $2`,
+      [orgId, limit]
+    );
+
+    res.json({ data: rows });
   } catch (err) {
     next(err);
   }
@@ -405,6 +466,17 @@ breachesRouter.post('/:id/status', async (req, res, next) => {
        VALUES ($1, $2, 'status_changed', $3, $4)`,
       [existing.id, req.user!.userId, existing.status, status]
     );
+
+    void recordAuditEvent({
+      organizationId: req.user!.organizationId,
+      userId: req.user!.userId,
+      actionType: 'breach.status_change',
+      entityType: 'breach',
+      entityId: existing.id,
+      summary: `Breach status: ${existing.status} → ${status}`,
+      metadata: { from: existing.status, to: status },
+      req,
+    });
 
     res.json({ message: 'Status updated' });
   } catch (err) {

@@ -10,6 +10,7 @@ import { AppError } from '../middleware/errors.js';
 import { generateApiKey } from '../services/api-keys.js';
 import { encrypt } from '../services/crypto.js';
 import { ingestCall, inferMimeType } from '../services/ingestion.js';
+import { recordAuditEvent } from '../services/audit.js';
 import * as sftp from '../services/sftp.js';
 import type { ApiKey, SFTPSource, SFTPPollLog } from '@callguard/shared';
 
@@ -279,6 +280,17 @@ apiKeyRouter.post('/', async (req, res, next) => {
       [req.user!.organizationId, name, hash, prefix, req.user!.userId]
     );
 
+    void recordAuditEvent({
+      organizationId: req.user!.organizationId,
+      userId: req.user!.userId,
+      actionType: 'api_key.create',
+      entityType: 'api_key',
+      entityId: rows[0].id,
+      summary: `Created API key "${name}" (prefix ${prefix})`,
+      metadata: { key_prefix: prefix, name },
+      req,
+    });
+
     res.status(201).json({
       ...rows[0],
       plaintext_key: plaintext,
@@ -297,6 +309,17 @@ apiKeyRouter.delete('/:id', async (req, res, next) => {
       [req.params.id, req.user!.organizationId]
     );
     if (!result) throw new AppError(404, 'API key not found or already revoked');
+
+    void recordAuditEvent({
+      organizationId: req.user!.organizationId,
+      userId: req.user!.userId,
+      actionType: 'api_key.revoke',
+      entityType: 'api_key',
+      entityId: req.params.id,
+      summary: `Revoked API key ${req.params.id}`,
+      req,
+    });
+
     res.json({ message: 'API key revoked' });
   } catch (err) {
     next(err);
