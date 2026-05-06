@@ -6,7 +6,7 @@ import {
 } from '@callguard/shared';
 
 const severityClass: Record<BreachSeverity, string> = {
-  critical: 'bg-fail-bg text-fail',
+  critical: 'bg-fail-bg text-fail relative animate-breach-pulse',
   high: 'bg-fail-bg/80 text-fail',
   medium: 'bg-review-bg text-review',
   low: 'bg-table-header text-text-muted',

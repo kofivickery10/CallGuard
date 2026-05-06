@@ -1,43 +1,85 @@
+import { useCountUp } from '../hooks/useCountUp';
+
 interface ScoreGaugeProps {
   score: number;
   size?: 'sm' | 'lg';
   showBar?: boolean;
 }
 
+const tierColours = (score: number) => ({
+  fill:
+    score >= 80 ? 'bg-primary' : score >= 65 ? 'bg-review' : 'bg-fail',
+  text:
+    score >= 80 ? 'text-pass' : score >= 65 ? 'text-review' : 'text-fail',
+  ringStroke:
+    score >= 80 ? 'stroke-primary' : score >= 65 ? 'stroke-review' : 'stroke-fail',
+});
+
 export function ScoreGauge({ score, size = 'sm', showBar = false }: ScoreGaugeProps) {
-  const roundedScore = Math.round(score);
-  const fillColor =
-    roundedScore >= 80 ? 'bg-primary' : roundedScore >= 65 ? 'bg-review' : 'bg-fail';
-  const textColor =
-    roundedScore >= 80 ? 'text-pass' : roundedScore >= 65 ? 'text-review' : 'text-fail';
+  const animated = useCountUp(score);
+  const display = Math.round(animated);
+  const c = tierColours(display);
 
   if (showBar) {
     return (
       <span className="inline-flex items-center gap-2">
         <span className="inline-block w-[50px] h-[5px] bg-border rounded-[3px] overflow-hidden">
           <span
-            className={`block h-full rounded-[3px] ${fillColor}`}
-            style={{ width: `${roundedScore}%` }}
+            className={`block h-full rounded-[3px] transition-[width] duration-700 ease-out ${c.fill}`}
+            style={{ width: `${display}%` }}
           />
         </span>
-        <span className={`text-table-cell font-semibold ${textColor}`}>
-          {roundedScore}%
+        <span className={`text-table-cell font-semibold tabular-nums ${c.text}`}>
+          {display}%
         </span>
       </span>
     );
   }
 
   if (size === 'lg') {
+    // Animated circular ring. SVG arc length 2 * pi * r = 2 * pi * 22 ≈ 138.23.
+    // We animate the dashoffset proportionally to (100 - score)/100.
+    const radius = 22;
+    const circumference = 2 * Math.PI * radius;
+    const offset = circumference * (1 - display / 100);
+
     return (
-      <span className={`text-[22px] font-bold ${textColor}`}>
-        {roundedScore}%
+      <span className="relative inline-flex items-center justify-center w-[60px] h-[60px]">
+        <svg
+          viewBox="0 0 50 50"
+          className="absolute inset-0 w-full h-full -rotate-90"
+          aria-hidden="true"
+        >
+          <circle
+            cx="25"
+            cy="25"
+            r={radius}
+            fill="none"
+            className="stroke-border"
+            strokeWidth="3.5"
+          />
+          <circle
+            cx="25"
+            cy="25"
+            r={radius}
+            fill="none"
+            className={`${c.ringStroke} transition-[stroke-dashoffset] duration-700 ease-out`}
+            strokeWidth="3.5"
+            strokeLinecap="round"
+            strokeDasharray={circumference}
+            strokeDashoffset={offset}
+          />
+        </svg>
+        <span className={`relative text-[15px] font-bold tabular-nums ${c.text}`}>
+          {display}%
+        </span>
       </span>
     );
   }
 
   return (
-    <span className={`text-table-cell font-semibold ${textColor}`}>
-      {roundedScore}%
+    <span className={`text-table-cell font-semibold tabular-nums ${c.text}`}>
+      {display}%
     </span>
   );
 }

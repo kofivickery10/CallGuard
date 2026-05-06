@@ -60,7 +60,22 @@ export function Calls() {
           </thead>
           <tbody>
             {isLoading ? (
-              <tr><td colSpan={6} className="px-5 py-12 text-center text-text-muted">Loading...</td></tr>
+              Array.from({ length: 8 }).map((_, i) => (
+                <tr key={`skeleton-${i}`} className="border-b border-border-light last:border-0">
+                  {Array.from({ length: 6 }).map((__, j) => (
+                    <td key={j} className="px-5 py-3.5">
+                      <div
+                        className="h-4 rounded bg-[length:800px_100%] animate-skeleton-shimmer"
+                        style={{
+                          backgroundImage:
+                            'linear-gradient(90deg, #f0f5f0 0%, #e2e8e2 50%, #f0f5f0 100%)',
+                          width: j === 0 ? '70%' : j === 3 ? '60%' : '40%',
+                        }}
+                      />
+                    </td>
+                  ))}
+                </tr>
+              ))
             ) : (
               data?.data.map((call) => (
                 <tr key={call.id} className="hover:bg-table-header transition-colors cursor-pointer border-b border-border-light last:border-0">
