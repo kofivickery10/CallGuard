@@ -27,11 +27,30 @@ export async function processScoring(job: Job<{ callId: string }>) {
   );
 
   try {
-    // Get the org's active scorecard
-    const scorecard = await queryOne<{ id: string }>(
-      'SELECT id FROM scorecards WHERE organization_id = $1 AND is_active = true LIMIT 1',
-      [call.organization_id]
-    );
+    // Pick the scorecard:
+    //   1. The caller-specified scorecard on the call (per-campaign BPO use case)
+    //   2. Otherwise the org's active scorecard
+    let scorecard: { id: string } | null = null;
+
+    const callScorecardId = call.scorecard_id;
+    if (callScorecardId) {
+      scorecard = await queryOne<{ id: string }>(
+        'SELECT id FROM scorecards WHERE id = $1 AND organization_id = $2',
+        [callScorecardId, call.organization_id]
+      );
+      if (!scorecard) {
+        throw new Error(
+          `Specified scorecard ${callScorecardId} not found for this organization`
+        );
+      }
+    }
+
+    if (!scorecard) {
+      scorecard = await queryOne<{ id: string }>(
+        'SELECT id FROM scorecards WHERE organization_id = $1 AND is_active = true LIMIT 1',
+        [call.organization_id]
+      );
+    }
 
     if (!scorecard) {
       throw new Error('No active scorecard found for this organization');

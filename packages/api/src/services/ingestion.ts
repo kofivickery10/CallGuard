@@ -17,6 +17,11 @@ export interface IngestCallParams {
   callDate?: string | null;
   externalId?: string | null;
   tags?: string[];
+  // When set, the caller picks which scorecard the call should be scored
+  // against. Useful for BPOs running multiple campaigns / clients.
+  // Validated against the org before being persisted; falls back to the
+  // org's active scorecard if null.
+  scorecardId?: string | null;
 }
 
 export interface IngestedCall {
@@ -40,6 +45,19 @@ export async function ingestCall(params: IngestCallParams): Promise<IngestedCall
     if (existing) return { call: existing, isDuplicate: true };
   }
 
+  // Validate scorecard_id (if provided) belongs to this org
+  let scorecardId: string | null = null;
+  if (params.scorecardId) {
+    const scorecard = await queryOne<{ id: string }>(
+      'SELECT id FROM scorecards WHERE id = $1 AND organization_id = $2',
+      [params.scorecardId, params.organizationId]
+    );
+    if (!scorecard) {
+      throw new Error(`Scorecard ${params.scorecardId} not found for this organization`);
+    }
+    scorecardId = scorecard.id;
+  }
+
   const callId = uuid();
   const fileKey = `calls/${params.organizationId}/${callId}/${params.fileName}`;
   await uploadFile(fileKey, params.buffer, params.mimeType);
@@ -49,9 +67,9 @@ export async function ingestCall(params: IngestCallParams): Promise<IngestedCall
        id, organization_id, uploaded_by, file_name, file_key,
        file_size_bytes, mime_type, agent_id, agent_name,
        customer_phone, call_date, tags, status,
-       external_id, ingestion_source, encrypted_at_rest
+       external_id, ingestion_source, encrypted_at_rest, scorecard_id
      )
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'uploaded', $13, $14, true)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'uploaded', $13, $14, true, $15)
      RETURNING *`,
     [
       callId,
@@ -68,6 +86,7 @@ export async function ingestCall(params: IngestCallParams): Promise<IngestedCall
       params.tags ?? [],
       params.externalId ?? null,
       params.ingestionSource,
+      scorecardId,
     ]
   );
 

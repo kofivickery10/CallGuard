@@ -21,6 +21,14 @@ interface BulkImportRow {
   call_date?: string;
   external_id?: string;
   tags?: string;
+  scorecard_id?: string;
+}
+
+interface ScorecardSummary {
+  id: string;
+  name: string;
+  description: string | null;
+  is_active: boolean;
 }
 
 function parseCSV(text: string): BulkImportRow[] {
@@ -43,6 +51,7 @@ function parseCSV(text: string): BulkImportRow[] {
       call_date: row.call_date || undefined,
       external_id: row.external_id || undefined,
       tags: row.tags || undefined,
+      scorecard_id: row.scorecard_id || undefined,
     });
   }
   return rows;
@@ -56,6 +65,7 @@ export function Upload() {
   const [error, setError] = useState('');
   const [agentId, setAgentId] = useState('');
   const [agentName, setAgentName] = useState('');
+  const [scorecardId, setScorecardId] = useState('');
   const [bulkOpen, setBulkOpen] = useState(false);
   const [csvText, setCsvText] = useState('');
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -65,6 +75,12 @@ export function Upload() {
   const { data: agents } = useQuery({
     queryKey: ['agents'],
     queryFn: () => api.get<{ data: AgentSummary[] }>('/agents'),
+    enabled: isAdmin,
+  });
+
+  const { data: scorecards } = useQuery({
+    queryKey: ['scorecards'],
+    queryFn: () => api.get<{ data: ScorecardSummary[] }>('/scorecards'),
     enabled: isAdmin,
   });
 
@@ -83,6 +99,9 @@ export function Upload() {
           if (selectedAgent) formData.append('agent_name', selectedAgent.name);
         } else if (agentName) {
           formData.append('agent_name', agentName);
+        }
+        if (scorecardId) {
+          formData.append('scorecard_id', scorecardId);
         }
       }
 
@@ -134,6 +153,29 @@ export function Upload() {
               className="w-full border border-border rounded-btn px-3 py-2 text-table-cell text-text-primary placeholder:text-text-muted focus:outline-none focus:border-primary transition-colors"
             />
           )}
+
+          {scorecards && scorecards.data.length > 1 && (
+            <>
+              <label className="block text-table-cell font-medium text-text-secondary mb-1.5 mt-4">
+                Score against scorecard <span className="text-text-muted font-normal">(optional)</span>
+              </label>
+              <select
+                value={scorecardId}
+                onChange={(e) => setScorecardId(e.target.value)}
+                className="w-full border border-border rounded-btn px-3 py-2 text-table-cell text-text-primary focus:outline-none focus:border-primary transition-colors bg-white"
+              >
+                <option value="">Use the active scorecard</option>
+                {scorecards.data.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}{s.is_active ? ' (active)' : ''}
+                  </option>
+                ))}
+              </select>
+              <p className="text-[12px] text-text-muted mt-1.5">
+                Leave on "active" unless you are scoring against a specific campaign or client scorecard.
+              </p>
+            </>
+          )}
         </div>
       )}
 
@@ -179,11 +221,11 @@ export function Upload() {
                   onChange={(e) => setCsvText(e.target.value)}
                   rows={8}
                   spellCheck={false}
-                  placeholder={`audio_url,agent_name,customer_phone,call_date,external_id,tags\nhttps://your-archive.example.com/call-001.mp3,Marcus Webb,+44 7468 432 368,2026-04-29,crm-12345,suitability\nhttps://your-archive.example.com/call-002.mp3,Tina Lee,+44 7468 432 368,2026-04-30,crm-12346,vulnerability`}
+                  placeholder={`audio_url,agent_name,customer_phone,call_date,external_id,tags,scorecard_id\nhttps://your-archive.example.com/call-001.mp3,Marcus Webb,+44 7468 432 368,2026-04-29,crm-12345,suitability,\nhttps://your-archive.example.com/call-002.mp3,Tina Lee,+44 7468 432 368,2026-04-30,crm-12346,vulnerability,`}
                   className="w-full border border-border rounded-btn px-3 py-2 text-[12px] font-mono text-text-primary placeholder:text-text-muted focus:outline-none focus:border-primary transition-colors bg-page"
                 />
                 <div className="text-[11px] text-text-muted mt-1.5">
-                  Required: <code>audio_url</code>. Optional: <code>agent_name</code>, <code>customer_phone</code>, <code>call_date</code> (ISO), <code>external_id</code> (your CRM id, used for deduplication), <code>tags</code> (comma-separated).
+                  Required: <code>audio_url</code>. Optional: <code>agent_name</code>, <code>customer_phone</code>, <code>call_date</code> (ISO), <code>external_id</code> (your CRM id, used for deduplication), <code>tags</code> (comma-separated), <code>scorecard_id</code> (UUID of a scorecard from <a href="/scorecards" className="text-primary hover:underline">Scorecards</a>; leave blank to use the active one).
                 </div>
               </div>
 

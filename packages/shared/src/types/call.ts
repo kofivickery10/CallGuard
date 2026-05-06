@@ -25,6 +25,7 @@ export interface Call {
   tags: string[];
   external_id: string | null;
   ingestion_source: 'upload' | 'api' | 'sftp';
+  scorecard_id: string | null;
   is_exemplar: boolean;
   exemplar_reason: string | null;
   created_at: string;
