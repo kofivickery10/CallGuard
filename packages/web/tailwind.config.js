@@ -85,6 +85,20 @@ export default {
         card: '10px',
         btn: '8px',
       },
+      keyframes: {
+        'breach-pulse': {
+          '0%, 100%': { boxShadow: '0 0 0 0 rgba(192, 57, 43, 0.45)' },
+          '50%':       { boxShadow: '0 0 0 6px rgba(192, 57, 43, 0)' },
+        },
+        'skeleton-shimmer': {
+          '0%':   { backgroundPosition: '-400px 0' },
+          '100%': { backgroundPosition: '400px 0' },
+        },
+      },
+      animation: {
+        'breach-pulse': 'breach-pulse 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+        'skeleton-shimmer': 'skeleton-shimmer 1.4s ease-in-out infinite',
+      },
     },
   },
   plugins: [],

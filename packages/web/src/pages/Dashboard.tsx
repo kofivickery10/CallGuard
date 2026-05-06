@@ -5,9 +5,38 @@ import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { CallStatusBadge } from '../components/CallStatusBadge';
 import { ScoreGauge } from '../components/ScoreGauge';
+import { CountUp } from '../components/CountUp';
 import { AgentFilter } from '../components/AgentFilter';
 import { TrendCharts } from '../components/TrendCharts';
 import type { DashboardSummary, Call, AgentSummary, BreachSummary } from '@callguard/shared';
+
+function StatValue({ raw }: { raw: number | string | null | undefined }) {
+  if (typeof raw === 'string' && raw.endsWith('%')) {
+    const n = parseFloat(raw);
+    if (Number.isFinite(n)) return <CountUp value={n} suffix="%" />;
+  }
+  if (typeof raw === 'number') return <CountUp value={raw} />;
+  return <>{raw ?? '-'}</>;
+}
+
+function SkeletonRow({ cols }: { cols: number }) {
+  return (
+    <tr className="border-b border-border-light last:border-0">
+      {Array.from({ length: cols }).map((_, i) => (
+        <td key={i} className="px-5 py-3.5">
+          <div
+            className="h-4 rounded bg-[length:800px_100%] animate-skeleton-shimmer"
+            style={{
+              backgroundImage:
+                'linear-gradient(90deg, #f0f5f0 0%, #e2e8e2 50%, #f0f5f0 100%)',
+              width: i === 0 ? '60%' : '40%',
+            }}
+          />
+        </td>
+      ))}
+    </tr>
+  );
+}
 
 const statIcons = [
   'M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6A19.79 19.79 0 012.12 4.18 2 2 0 014.11 2h3',
@@ -117,7 +146,9 @@ export function Dashboard() {
                   </svg>
                 )}
               </div>
-              <div className={`text-card-value mt-2.5 ${valueColor}`}>{stat.value}</div>
+              <div className={`text-card-value mt-2.5 ${valueColor}`}>
+                <StatValue raw={stat.value as number | string | null | undefined} />
+              </div>
               {stat.change && <div className={`text-[12px] mt-1 ${changeColor}`}>{stat.change}</div>}
             </div>
           );
@@ -181,6 +212,13 @@ export function Dashboard() {
             </tr>
           </thead>
           <tbody>
+            {!recent && (
+              <>
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <SkeletonRow key={i} cols={isAdmin ? 6 : 5} />
+                ))}
+              </>
+            )}
             {recent?.data.map((call) => (
               <tr key={call.id} className="hover:bg-table-header transition-colors cursor-pointer border-b border-border-light last:border-0">
                 <td className="px-5 py-3.5">
