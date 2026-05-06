@@ -88,9 +88,20 @@ callRouter.post('/upload', upload.single('audio'), async (req, res, next) => {
       agentId = req.user!.userId;
     }
 
+    // Validate per-call scorecard selection (BPO multi-campaign use case)
+    let scorecardId: string | null = null;
+    if (req.body.scorecard_id) {
+      const sc = await queryOne<{ id: string }>(
+        'SELECT id FROM scorecards WHERE id = $1 AND organization_id = $2',
+        [req.body.scorecard_id, req.user!.organizationId]
+      );
+      if (!sc) throw new AppError(404, `Scorecard ${req.body.scorecard_id} not found`);
+      scorecardId = sc.id;
+    }
+
     const rows = await query<Call>(
-      `INSERT INTO calls (id, organization_id, uploaded_by, file_name, file_key, file_size_bytes, mime_type, agent_id, agent_name, customer_phone, call_date, tags, status, encrypted_at_rest)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'uploaded', true) RETURNING *`,
+      `INSERT INTO calls (id, organization_id, uploaded_by, file_name, file_key, file_size_bytes, mime_type, agent_id, agent_name, customer_phone, call_date, tags, status, encrypted_at_rest, scorecard_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'uploaded', true, $13) RETURNING *`,
       [
         callId,
         req.user!.organizationId,
@@ -104,6 +115,7 @@ callRouter.post('/upload', upload.single('audio'), async (req, res, next) => {
         req.body.customer_phone || null,
         req.body.call_date || null,
         req.body.tags ? JSON.parse(req.body.tags) : [],
+        scorecardId,
       ]
     );
 
@@ -145,6 +157,7 @@ interface BulkImportRow {
   call_date?: string | null;
   external_id?: string | null;
   tags?: string[] | string;
+  scorecard_id?: string | null;
 }
 
 async function fetchAudioUrl(url: string): Promise<{
@@ -206,6 +219,7 @@ callRouter.post('/bulk-import', requireAdmin, async (req, res, next) => {
           callDate: r.call_date ?? null,
           externalId: r.external_id ?? null,
           tags,
+          scorecardId: r.scorecard_id ?? null,
         });
 
         (isDuplicate ? duplicates : queued).push({

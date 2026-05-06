@@ -38,6 +38,7 @@ ingestionRouter.post(
         (req.body.customer_phone as string | undefined) || null;
       const call_date = (req.body.call_date as string | undefined) || null;
       const external_id = (req.body.external_id as string | undefined) || null;
+      const scorecard_id = (req.body.scorecard_id as string | undefined) || null;
       const tags = parseTags(req.body.tags);
 
       if (req.file) {
@@ -69,6 +70,7 @@ ingestionRouter.post(
         callDate: call_date,
         externalId: external_id,
         tags,
+        scorecardId: scorecard_id,
       });
 
       res.status(isDuplicate ? 200 : 201).json({
@@ -78,6 +80,39 @@ ingestionRouter.post(
         created_at: call.created_at,
         is_duplicate: isDuplicate,
       });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// ============================================================
+// GET /api/ingestion/scorecards (X-API-Key auth)
+// Lets an integrator list the scorecards available to their org so
+// they can pick the right one when ingesting per-campaign calls.
+// Returns id + name + description + is_active. No items leaked.
+// ============================================================
+
+ingestionRouter.get(
+  '/scorecards',
+  authenticateApiKey,
+  async (req, res, next) => {
+    try {
+      const orgId = req.user!.organizationId;
+      const scorecards = await query<{
+        id: string;
+        name: string;
+        description: string | null;
+        is_active: boolean;
+        created_at: string;
+      }>(
+        `SELECT id, name, description, is_active, created_at
+           FROM scorecards
+          WHERE organization_id = $1
+          ORDER BY is_active DESC, created_at DESC`,
+        [orgId]
+      );
+      res.json({ data: scorecards });
     } catch (err) {
       next(err);
     }
