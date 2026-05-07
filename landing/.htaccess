@@ -1,11 +1,19 @@
 # CallGuard AI — Apache config for Linux hosting
 # Drop this in the same directory as index.html (typically public_html)
 
-# ─── Force HTTPS (recommended once your SSL cert is active) ──────────────
-# Comment out the next 3 lines if you haven't enabled SSL yet
+# ─── Canonical host: force https://callguardai.co.uk (no www) ────────────
+# Every variant (http, www, http+www) ends up at the same URL in a single
+# 301 hop. This avoids "Page with redirect" warnings in Search Console
+# and stops link equity from being split across two hosts.
 RewriteEngine On
+
+# Strip "www." and force HTTPS in one go
+RewriteCond %{HTTP_HOST} ^www\.callguardai\.co\.uk$ [NC]
+RewriteRule ^ https://callguardai.co.uk%{REQUEST_URI} [L,R=301]
+
+# Force HTTPS for the bare host
 RewriteCond %{HTTPS} !=on
-RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+RewriteRule ^ https://callguardai.co.uk%{REQUEST_URI} [L,R=301]
 
 # ─── Pretty URLs: /privacy -> /privacy.html ──────────────────────────────
 RewriteCond %{REQUEST_FILENAME} !-d
