@@ -148,6 +148,19 @@ h1, h2, h3, h4, h5 { color: var(--text-primary); font-weight: 700; line-height: 
 }
 .nav-links a:hover { color: var(--text-primary); }
 
+.nav-login {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  padding: 8px 14px;
+  border-radius: var(--radius-btn);
+  transition: color 0.15s ease, background 0.15s ease;
+}
+.nav-login:hover {
+  color: var(--primary-dark);
+  background: var(--primary-50);
+}
+
 /* ============================================================
    Buttons
    ============================================================ */
@@ -1307,7 +1320,8 @@ body.no-scroll { overflow: hidden; }
   html { scroll-padding-top: 68px; }
   .nav-inner { height: 60px; gap: 12px; }
   .nav-links { display: none; }
-  .nav-inner:has(.nav-toggle) .nav-cta { display: none; }
+  .nav-inner:has(.nav-toggle) .nav-cta,
+  .nav-inner:has(.nav-toggle) .nav-login { display: none; }
   .nav-toggle { display: inline-flex; }
   .nav-drawer { top: 60px; }
   .nav-cta { padding: 8px 14px; font-size: 13px; }
