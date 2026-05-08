@@ -3,6 +3,18 @@
    Sage-green B2B SaaS theme. No JS dependencies.
    ============================================================ */
 
+/* Self-hosted Inter Variable. font-display: swap means the system
+   fallback paints first, then we swap to Inter once the woff2 lands.
+   Eliminates the 1.5s render-block we used to inherit from rsms.me. */
+@font-face {
+  font-family: 'Inter Variable';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/fonts/InterVariable.woff2') format('woff2-variations'),
+       url('/fonts/InterVariable.woff2') format('woff2');
+}
+
 :root {
   /* Brand colours */
   --primary:        #4a9e6e;
@@ -59,7 +71,7 @@ html {
   scroll-padding-top: 76px;
 }
 body {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: 'Inter Variable', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
   color: var(--text-primary);
   background: var(--page-bg);
