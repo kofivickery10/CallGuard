@@ -42,19 +42,35 @@ RewriteRule ^ /%1 [R=301,L]
   # Permissions-Policy — disable APIs we don't use
   Header set Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
 
-  # Basic CSP — restrict to self + Inter font CDN
-  Header set Content-Security-Policy "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline' https://rsms.me; font-src 'self' https://rsms.me; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self' mailto:"
+  # Basic CSP — fully self-hosted now, no external CSS/font/script
+  Header set Content-Security-Policy "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self' mailto:"
 </IfModule>
 
 # ─── Caching for static assets ───────────────────────────────────────────
+# CSS, fonts and images are versioned via querystring (?v=N) or stable
+# filenames, so we can safely cache them aggressively. HTML stays short.
 <IfModule mod_expires.c>
   ExpiresActive On
-  ExpiresByType text/css "access plus 30 days"
-  ExpiresByType image/svg+xml "access plus 30 days"
-  ExpiresByType image/png "access plus 30 days"
-  ExpiresByType image/jpeg "access plus 30 days"
-  ExpiresByType image/x-icon "access plus 30 days"
+  ExpiresByType text/css "access plus 1 year"
+  ExpiresByType font/woff2 "access plus 1 year"
+  ExpiresByType image/svg+xml "access plus 1 year"
+  ExpiresByType image/png "access plus 1 year"
+  ExpiresByType image/jpeg "access plus 1 year"
+  ExpiresByType image/x-icon "access plus 1 year"
+  ExpiresByType application/javascript "access plus 30 days"
   ExpiresByType text/html "access plus 1 hour"
+</IfModule>
+
+<IfModule mod_headers.c>
+  # Mark long-cached assets as immutable for browsers that honour it
+  <FilesMatch "\.(woff2|svg|png|jpe?g|ico)$">
+    Header set Cache-Control "public, max-age=31536000, immutable"
+  </FilesMatch>
+</IfModule>
+
+# Ensure the right MIME type is sent for variable woff2
+<IfModule mod_mime.c>
+  AddType font/woff2 .woff2
 </IfModule>
 
 # ─── GZIP compression ────────────────────────────────────────────────────
