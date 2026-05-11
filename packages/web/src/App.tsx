@@ -25,6 +25,7 @@ const OrganizationSettings = lazy(() => import('./pages/OrganizationSettings').t
 const AIInsights = lazy(() => import('./pages/AIInsights').then((m) => ({ default: m.AIInsights })));
 const ReviewQueue = lazy(() => import('./pages/ReviewQueue').then((m) => ({ default: m.ReviewQueue })));
 const AuditLog = lazy(() => import('./pages/AuditLog').then((m) => ({ default: m.AuditLog })));
+const SignupRequests = lazy(() => import('./pages/SignupRequests').then((m) => ({ default: m.SignupRequests })));
 
 function PageLoader() {
   return (
@@ -73,6 +74,7 @@ export function App() {
                   <Route path="/insights" element={<AIInsights />} />
                   <Route path="/review-queue" element={<ReviewQueue />} />
                   <Route path="/audit-log" element={<AuditLog />} />
+                  <Route path="/signup-requests" element={<SignupRequests />} />
                 </Routes>
               </Suspense>
             </Layout>
