@@ -297,13 +297,15 @@ async function main() {
     if (HERO_ITEMS[item.label]?.pass) heroWeighted += item.weight;
   }
   const heroScore = Math.round((heroWeighted / heroTotalWeight) * 100);
+  // A critical-severity breach fails the call regardless of overall score (matches score.ts).
+  const heroHasCritical = scorecardItems.some((it) => !HERO_ITEMS[it.label]?.pass && it.severity === 'critical');
   const heroScoreRow = await queryOne<{ id: string }>(
     `INSERT INTO call_scores (
        call_id, scorecard_id, overall_score, pass, scored_at,
        model_id, prompt_tokens, completion_tokens, coaching, prior_coaching_count, created_at
      )
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$5) RETURNING id`,
-    [heroCallId, scorecardId, heroScore, heroScore >= 70, heroCreatedAt, 'claude-sonnet-4-demo', 5100, 2100, JSON.stringify(HERO_COACHING), 0]
+    [heroCallId, scorecardId, heroScore, heroScore >= 70 && !heroHasCritical, heroCreatedAt, 'claude-sonnet-4-demo', 5100, 2100, JSON.stringify(HERO_COACHING), 0]
   );
   for (const item of scorecardItems) {
     const r = HERO_ITEMS[item.label]!;
@@ -415,7 +417,14 @@ Agent: Great. Let's start with what's prompted this and what you'd want to happe
       totalCalls++;
 
       if (spec.status === 'scored') {
-        const pass = (spec.overallScore || 0) >= 70;
+        // Decide failing items first so the critical-fail gate can be applied to `pass`.
+        const failingItemCount = spec.failingItems || 0;
+        const shuffledItems = [...scorecardItems].sort(() => Math.random() - 0.5);
+        const failingItems = shuffledItems.slice(0, failingItemCount);
+        const failingItemSet = new Set(failingItems.map((i) => i.id));
+        const hasCritical = failingItems.some((i) => i.severity === 'critical');
+        const pass = (spec.overallScore || 0) >= 70 && !hasCritical;
+
         const coaching = buildDemoCoaching(agent.name, spec.overallScore || 0, spec.failingItems || 0);
         const priorCoachingCount = Math.min(priorCoachingForAgent, 3);
         const callScoreRow = await queryOne<{ id: string }>(
@@ -432,11 +441,6 @@ Agent: Great. Let's start with what's prompted this and what you'd want to happe
         if (agent.profile === 'star' && (!topCall || (spec.overallScore || 0) > topCall.score)) {
           topCall = { callId, score: spec.overallScore || 0 };
         }
-
-        const failingItemCount = spec.failingItems || 0;
-        const shuffledItems = [...scorecardItems].sort(() => Math.random() - 0.5);
-        const failingItems = shuffledItems.slice(0, failingItemCount);
-        const failingItemSet = new Set(failingItems.map((i) => i.id));
 
         for (const item of scorecardItems) {
           const failed = failingItemSet.has(item.id);

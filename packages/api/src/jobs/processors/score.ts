@@ -159,7 +159,17 @@ export async function processScoring(job: Job<{ callId: string }>) {
     }
 
     const overallScore = totalWeight > 0 ? totalWeightedScore / totalWeight : 0;
-    const pass = overallScore >= PASS_THRESHOLD;
+
+    // A critical-severity breach fails the call regardless of overall score:
+    // a high % can otherwise mask a single regulator-grade failure.
+    const hasCriticalFail = output.items.some((it) => {
+      const item = items.find((i) => i.id === it.scorecard_item_id);
+      if (!item) return false;
+      if (normalizeScore(it.score, item.score_type) >= 70) return false;
+      return deriveSeverity(Number(item.weight), (item as { severity?: string }).severity) === 'critical';
+    });
+
+    const pass = overallScore >= PASS_THRESHOLD && !hasCriticalFail;
 
     // Update call_score with overall
     await query(
