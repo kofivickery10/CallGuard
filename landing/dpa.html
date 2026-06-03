@@ -204,6 +204,8 @@
     <li>Delete all Customer Personal Data and existing copies, save where retention is required by applicable law (e.g., financial records, audit logs).</li>
   </ul>
 
+  <p>Deleted Customer Personal Data may persist in routine backups for up to 7 days, after which it is permanently overwritten.</p>
+
   <h2 id="audit">12. Audits</h2>
 
   <p>The Processor shall make available to the Controller all information reasonably necessary to demonstrate compliance with this DPA, including by responding to written audit questionnaires.</p>
@@ -287,9 +289,9 @@
 
   <h3>Backups and resilience</h3>
   <ul>
-    <li>The managed database is hosted on infrastructure that provides automated, provider-level backups.</li>
+    <li>Automated daily backups of the database and audio storage, retained for 7 days.</li>
+    <li>Point-in-time recovery available on the managed database.</li>
     <li>Audio is stored as AES-256-GCM ciphertext on encrypted disk in the London region.</li>
-    <li>We are expanding off-site backup coverage and documenting and testing our recovery procedures.</li>
   </ul>
 
   <h3>Personnel</h3>
