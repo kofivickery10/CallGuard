@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
+import { rateLimit } from 'express-rate-limit';
 import { errorHandler } from './middleware/errors.js';
 import { authRouter } from './routes/auth.js';
 import { scorecardRouter } from './routes/scorecards.js';
@@ -21,13 +22,49 @@ import { streamRouter } from './routes/stream.js';
 
 const app = express();
 
+// Behind nginx (and Cloudflare). Trust one proxy hop so req.ip and the rate
+// limiter key on the real client IP, not the proxy's.
+app.set('trust proxy', 1);
+
 app.use(cors());
 app.use(express.json());
+
+// Abuse / brute-force protection.
+const globalLimiter = rateLimit({
+  windowMs: 60_000,
+  limit: 300,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { message: 'Too many requests. Please slow down and try again shortly.' },
+});
+// Tight bucket for credential endpoints (login / register).
+const authLimiter = rateLimit({
+  windowMs: 60_000,
+  limit: 10,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { message: 'Too many attempts. Please wait a minute and try again.' },
+});
+// Tight bucket for the unauthenticated public form.
+const publicFormLimiter = rateLimit({
+  windowMs: 60_000,
+  limit: 5,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { message: 'Too many submissions. Please try again shortly.' },
+});
+
+app.use(globalLimiter);
 
 // API routes
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
+
+// Strict limits must be registered before the routers they protect.
+app.use('/api/auth/login', authLimiter);
+app.use('/api/auth/register', authLimiter);
+app.use('/api/public/demo-requests', publicFormLimiter);
 
 app.use('/api/auth', authRouter);
 app.use('/api/scorecards', scorecardRouter);
