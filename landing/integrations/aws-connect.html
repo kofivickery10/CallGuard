@@ -171,7 +171,7 @@
         </div>
         <div class="feature">
           <h3>Encryption and residency</h3>
-          <p>Audio (if retained) is encrypted at rest with AES-256-GCM. Hosted in eu-west-2 by default; ap-southeast-2 and us-east-1 available on request. UK GDPR Article 28 DPA published.</p>
+          <p>Audio (if retained) is encrypted at rest with AES-256-GCM. Hosted in the UK (London region). UK GDPR Article 28 DPA published.</p>
         </div>
       </div>
     </div>
@@ -193,7 +193,7 @@
         </details>
         <details class="faq-item">
           <summary>Can we use this with Connect post-call recordings instead of streaming?</summary>
-          <div class="faq-body"><p>Yes. Push the Connect S3 recording URL or audio file into our REST ingest endpoint after the call ends. You get the same scoring output without the mid-call breach webhooks. Many customers run streaming for compliance-critical queues and post-call ingest for the rest.</p></div>
+          <div class="faq-body"><p>Yes. Push the Connect recording URL or audio file into our REST ingest endpoint after the call ends. You get the same scoring output without the mid-call breach webhooks. You can run streaming for compliance-critical queues and post-call ingest for the rest.</p></div>
         </details>
         <details class="faq-item">
           <summary>Does the bridge Lambda count against our AWS service limits?</summary>
@@ -205,7 +205,7 @@
         </details>
         <details class="faq-item">
           <summary>Can we keep audio in our own S3 instead of CallGuard storage?</summary>
-          <div class="faq-body"><p>Yes. The default deployment retains audio in CallGuard for the audit trail, but you can configure the bridge to point at your own S3 bucket and pass only a presigned URL plus the transcript to CallGuard. You retain custody of the audio; CallGuard scores against the transcript.</p></div>
+          <div class="faq-body"><p>Yes. The default deployment retains audio in CallGuard for the audit trail, but you can keep the audio in your own bucket and pass a presigned URL to our REST endpoint instead. CallGuard fetches it to transcribe and score, and you keep the master copy.</p></div>
         </details>
       </div>
 
@@ -254,8 +254,6 @@
         <h5>Integrations</h5>
         <a href="/integrations/twilio">Twilio</a>
         <a href="/integrations/aws-connect">AWS Connect</a>
-        <a href="/integrations/genesys">Genesys</a>
-        <a href="/integrations/five9">Five9</a>
       </div>
       <div class="footer-col">
         <h5>Legal</h5>

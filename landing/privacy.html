@@ -91,7 +91,7 @@
   <h3>When you (a customer) use the Services (we are the processor)</h3>
   <ul>
     <li><strong>Account data:</strong> names, work emails and roles of users you grant access to. Treated as controller-supplied data.</li>
-    <li><strong>Audio recordings:</strong> call audio you upload, stream from a dialer, or capture via our mobile SDK. May contain personal data of your end-customers (voice, name, financial details, health data).</li>
+    <li><strong>Audio recordings:</strong> call audio you upload or stream from a dialer. May contain personal data of your end-customers (voice, name, financial details, health data).</li>
     <li><strong>Transcripts and metadata:</strong> text transcripts derived from audio, plus call metadata you supply (agent ID, customer ID, date, duration, GPS for field visits).</li>
     <li><strong>Scoring outputs:</strong> pass/fail per scorecard item, breach records, coaching briefs, AI-generated insight digests.</li>
     <li><strong>Usage data:</strong> logs of which users took which actions in the platform, for security, audit and billing purposes.</li>
@@ -112,7 +112,7 @@
     <li><strong>Consent:</strong> for any optional marketing communications from us, where required.</li>
   </ul>
 
-  <p>For audio recordings of end-customers (where we are the processor), the <strong>customer</strong> is responsible for establishing a lawful basis for capturing and processing those recordings, including any required consent under PECR or equivalent. Our SDK includes a recording-disclosure prompt to help with this.</p>
+  <p>For audio recordings of end-customers (where we are the processor), the <strong>customer</strong> is responsible for establishing a lawful basis for capturing and processing those recordings, including any required consent under PECR or equivalent, and for disclosing call recording to their end-customers.</p>
 
   <h2 id="how-long">4. How long we keep it</h2>
 
@@ -123,9 +123,8 @@
     <tbody>
       <tr><td>Demo requests / sales enquiries</td><td>24 months from last contact</td></tr>
       <tr><td>Customer account data</td><td>Duration of contract + 7 years (UK statutory minimum for business records)</td></tr>
-      <tr><td>Audio recordings, transcripts, scores (customer data)</td><td>As configured by the customer in their account settings; default 12 months from upload, deleted within 30 days of contract termination unless the customer requests earlier deletion</td></tr>
-      <tr><td>Server access logs, security logs</td><td>90 days</td></tr>
-      <tr><td>Backups</td><td>Up to 35 days, then permanently deleted</td></tr>
+      <tr><td>Audio recordings, transcripts, scores (customer data)</td><td>Retained while held in the customer's account. Customers can delete calls at any time, and we delete a customer's data within 30 days of a deletion request or contract termination, unless retention is required by law</td></tr>
+      <tr><td>Server access logs, security logs</td><td>Retained for operational and security purposes</td></tr>
     </tbody>
   </table>
 

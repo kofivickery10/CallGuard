@@ -169,7 +169,7 @@
         </div>
         <div class="feature">
           <h3>Outbound compliance (TPS, PECR, mini-Miranda)</h3>
-          <p>TPS list checks before dial. PECR consent capture before marketing content. Mini-Miranda statements on collections calls. Caller-identification compliance. All scored on 100% of attempts, not a 5% spot-check.</p>
+          <p>Scores whether the agent gave required caller-identification and consent statements, captured PECR consent before marketing content, and read the mini-Miranda on collections calls. Every connected call scored, not a 5% spot-check.</p>
         </div>
         <div class="feature">
           <h3>No-pressure-language detection</h3>
@@ -198,7 +198,7 @@
       <div class="feature-grid feature-grid-2">
         <div class="feature">
           <h3>First-class adapters</h3>
-          <p>Twilio Media Streams and AWS Connect Voice Streams supported natively. Vonage, Plivo, Telnyx and any WebRTC dialer supported via our generic protocol. Older Genesys / Avaya stacks via SIPREC.</p>
+          <p>Twilio Media Streams and AWS Connect Voice Streams supported natively. Other dialers can connect via our generic WebSocket protocol.</p>
         </div>
         <div class="feature">
           <h3>HMAC-signed breach webhooks</h3>
@@ -210,7 +210,7 @@
         </div>
         <div class="feature">
           <h3>REST API for batch and result fetch</h3>
-          <p>Push call recordings via REST or SFTP. Pull score, pass/fail, evidence, breaches and coaching back per call so you can render results inside your own client portal.</p>
+          <p>Push call recordings via REST. Pull score, pass/fail, evidence, breaches and coaching back per call so you can render results inside your own client portal.</p>
         </div>
       </div>
     </div>
@@ -228,15 +228,15 @@
         </details>
         <details class="faq-item">
           <summary>How do you handle peak-volume calls?</summary>
-          <div class="faq-body"><p>Calls are processed in parallel. Whether you have 10 calls or 10,000 in a queue, transcription and scoring happen concurrently rather than serially. Each call still completes in under a minute end to end.</p></div>
+          <div class="faq-body"><p>Calls are processed through a queue, so a backlog drains steadily without manual intervention. A single call is transcribed and scored in about a minute; large overnight batches process in the background and are ready by morning. For sustained high-volume programmes we scale processing capacity to match your call rate.</p></div>
         </details>
         <details class="faq-item">
           <summary>Will it integrate with our existing dialer (Genesys, Five9, NICE, etc.)?</summary>
-          <div class="faq-body"><p>Yes. Twilio Media Streams and AWS Connect Voice Streams are first-class adapters. Vonage, Plivo, Telnyx and any WebRTC-capable dialer connect via our generic WebSocket protocol. Older Genesys / Avaya stacks via SIPREC. SFTP polling supported for environments where streaming is not viable.</p></div>
+          <div class="faq-body"><p>Twilio Media Streams and AWS Connect Voice Streams are first-class adapters, and other dialers can connect via our generic WebSocket protocol for live streaming. For any dialer, including Genesys, Five9 or NICE, you can also export call recordings and bring them in via upload or our REST API (including pushing a recording URL).</p></div>
         </details>
         <details class="faq-item">
           <summary>How do you avoid alert fatigue from live breach detection?</summary>
-          <div class="faq-body"><p>Live scoring only emits a breach when the AI is over 75% confident a criterion has clearly already failed. Not "might be" or "could happen". The threshold is tunable per scorecard item. Confidence is checked every 30 seconds against the rolling transcript.</p></div>
+          <div class="faq-body"><p>Live scoring only emits a breach when the AI is over 75% confident a criterion has clearly already failed. Not "might be" or "could happen". The threshold is set conservatively at 75% to keep false positives low. Confidence is checked every 30 seconds against the rolling transcript.</p></div>
         </details>
         <details class="faq-item">
           <summary>Can clients see live scores on their own dashboard rather than ours?</summary>
@@ -289,8 +289,6 @@
         <h5>Integrations</h5>
         <a href="/integrations/twilio">Twilio</a>
         <a href="/integrations/aws-connect">AWS Connect</a>
-        <a href="/integrations/genesys">Genesys</a>
-        <a href="/integrations/five9">Five9</a>
       </div>
       <div class="footer-col">
         <h5>Legal</h5>
