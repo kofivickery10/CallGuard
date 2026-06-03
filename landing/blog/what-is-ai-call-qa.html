@@ -158,7 +158,7 @@
 
     <p>There are two operating modes worth understanding. Most legacy speech analytics tools only do the second.</p>
 
-    <p><strong>After-call scoring</strong> processes the recording once the call has ended. The transcript and score are ready inside a minute. This is appropriate for compliance review, breach detection, agent coaching and reporting. It is also the only mode you need if your audio is uploaded as files (recordings from a dialer, SFTP-synced from a compliance recorder, or pushed in via API).</p>
+    <p><strong>After-call scoring</strong> processes the recording once the call has ended. The transcript and score are ready inside a minute. This is appropriate for compliance review, breach detection, agent coaching and reporting. It is also the only mode you need if your audio is uploaded as files (recordings from a dialer, exported from a compliance recorder, or pushed in via API).</p>
 
     <p><strong>Mid-call scoring</strong> runs while the conversation is still happening. Audio streams over a WebSocket from the dialer (Twilio, AWS Connect, generic WebRTC). The system transcribes live, runs scoring against a rolling transcript every 30 seconds or so, and emits high-confidence breach alerts via signed webhook to your supervisor screen or CRM before the call ends. This mode matters for outbound campaigns where a critical breach (urgency-language, missing consent capture, mini-Miranda failure) is regulator-grade and you need to intervene mid-call rather than file a finding three weeks later.</p>
 
@@ -168,7 +168,7 @@
 
     <p><strong>"AI call QA is just sentiment analysis."</strong> No. Sentiment analysis is one cell on the scorecard. AI QA scores arbitrary scorecard items, including binary compliance checks (was the consent statement read), categorical judgements (was the recommendation suitable for the disclosed risk profile), and weighted scoring (how clearly were charges disclosed on a 1 to 5 scale). Sentiment is rarely the headline use case.</p>
 
-    <p><strong>"It will just give every call a high score."</strong> Without per-tenant calibration, models do tend toward leniency on subjective items. With calibration, the AI scores against the bar your compliance officer has already drawn through their corrections. We have customers running it stricter than their own QA team because the AI does not have the empathy gradient that biases human reviewers.</p>
+    <p><strong>"It will just give every call a high score."</strong> Without per-tenant calibration, models do tend toward leniency on subjective items. With calibration, the AI scores against the bar your compliance officer has already drawn through their corrections. It can be calibrated to score more strictly than a human QA team, because it does not have the empathy gradient that biases human reviewers.</p>
 
     <p><strong>"It's just transcription with summarisation slapped on top."</strong> Summaries are non-auditable. AI call QA produces a structured per-criterion verdict with the evidence quote underneath. That is the difference between a feature and a compliance tool.</p>
 
@@ -182,7 +182,7 @@
 
     <p><strong>Contact centres and BPOs at scale.</strong> Anyone running more than 50 seats hits the same wall: hiring more QA staff does not scale, sample sizes have to drop as call volume rises, and clients increasingly demand programme-level visibility that a monthly PDF report cannot provide. AI scoring breaks the curve.</p>
 
-    <p><strong>Outbound and field sales operations.</strong> Anywhere the regulator can fine you for a single bad call (urgency language, missing consent capture, fair-value failure), the cost of missing one in your sample is asymmetric. AI gives you full coverage on 100% of attempts.</p>
+    <p><strong>Outbound and field sales operations.</strong> Anywhere the regulator can fine you for a single bad call (urgency language, missing consent capture, fair-value failure), the cost of missing one in your sample is asymmetric. AI gives you full coverage on 100% of connected calls.</p>
 
     <h2>How to evaluate AI call QA software</h2>
 
@@ -252,8 +252,6 @@
         <h5>Integrations</h5>
         <a href="/integrations/twilio">Twilio</a>
         <a href="/integrations/aws-connect">AWS Connect</a>
-        <a href="/integrations/genesys">Genesys</a>
-        <a href="/integrations/five9">Five9</a>
       </div>
       <div class="footer-col">
         <h5>Legal</h5>

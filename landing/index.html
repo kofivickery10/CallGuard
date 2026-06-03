@@ -64,7 +64,7 @@
       "@type": "SoftwareApplication",
       "@id": "https://callguardai.co.uk/#software",
       "name": "CallGuard AI",
-      "operatingSystem": "Web, iOS, Android",
+      "operatingSystem": "Web",
       "applicationCategory": "BusinessApplication",
       "applicationSubCategory": "Call Quality Assurance Software",
       "description": "AI-powered call QA and compliance scoring. Transcribes and scores 100% of calls against your scorecard, flags critical compliance breaches mid-call, and produces per-agent coaching drafts.",
@@ -112,7 +112,7 @@
           "name": "Does it integrate with Twilio, AWS Connect or our existing dialer?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "Yes. There are first-class adapters for Twilio Media Streams and AWS Connect Voice Streams. Vonage, Plivo, Telnyx and any WebRTC-capable dialer connect via our generic WebSocket protocol. Older Genesys / Avaya stacks integrate via SIPREC. You can also drag-and-drop recordings, point an SFTP source at us, or push calls in via our REST API."
+            "text": "Yes. There are first-class adapters for Twilio Media Streams and AWS Connect Voice Streams. Other dialers can connect via our generic WebSocket protocol. You can also drag-and-drop recordings or push calls in via our REST API."
           }
         },
         {
@@ -136,7 +136,7 @@
           "name": "How is customer data secured?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "All audio is encrypted at rest with AES-256-GCM. Transport is TLS 1.2+. Access to the dashboard is JWT-authenticated with role-based access control. Data is hosted in EU/UK regions. A UK GDPR Article 28 Data Processing Agreement is available, and we publish our sub-processor list publicly so you know exactly who handles your data."
+            "text": "All audio is encrypted at rest with AES-256-GCM. Transport is TLS 1.2+. Access to the dashboard is JWT-authenticated with role-based access control. Data is hosted in the UK. A UK GDPR Article 28 Data Processing Agreement is available, and we publish our sub-processor list publicly so you know exactly who handles your data."
           }
         },
         {
@@ -308,7 +308,7 @@
           <div class="step-num">1</div>
           <h3>Ingest, live or batch</h3>
           <p>
-            Drag-and-drop, REST API, SFTP / S3 sync for archived recordings, or <strong>live WebSocket streaming</strong> from Twilio, AWS Connect, Vonage, Plivo or any WebRTC-capable dialer. Encrypted at rest with AES-256-GCM.
+            Drag-and-drop, REST API (including pushing a recording URL), or <strong>live WebSocket streaming</strong> from Twilio, AWS Connect, or any dialer that can stream over our generic WebSocket protocol. Encrypted at rest with AES-256-GCM.
           </p>
         </div>
         <div class="step">
@@ -348,7 +348,7 @@
             </svg>
           </div>
           <h3>Dialer streaming</h3>
-          <p>First-class adapters for Twilio Media Streams and AWS Connect Voice Streams. Vonage, Plivo, Telnyx and any WebRTC dialer supported via our generic protocol. Older Genesys / Avaya stacks via SIPREC.</p>
+          <p>First-class adapters for Twilio Media Streams and AWS Connect Voice Streams. Other dialers can connect via our generic WebSocket protocol.</p>
         </div>
         <div class="feature">
           <div class="feature-icon">
@@ -490,7 +490,7 @@
         <details class="faq-item">
           <summary>Does it integrate with Twilio, AWS Connect or our existing dialer?</summary>
           <div class="faq-body">
-            <p>Yes. There are first-class adapters for Twilio Media Streams and AWS Connect Voice Streams. Vonage, Plivo, Telnyx and any WebRTC-capable dialer connect via our generic WebSocket protocol. Older Genesys / Avaya stacks integrate via SIPREC. You can also drag-and-drop recordings, point an SFTP source at us, or push calls in via our REST API.</p>
+            <p>Yes. There are first-class adapters for Twilio Media Streams and AWS Connect Voice Streams. Other dialers can connect via our generic WebSocket protocol. You can also drag-and-drop recordings or push calls in via our REST API.</p>
           </div>
         </details>
 
@@ -511,7 +511,7 @@
         <details class="faq-item">
           <summary>How is customer data secured?</summary>
           <div class="faq-body">
-            <p>All audio is encrypted at rest with AES-256-GCM. Transport is TLS 1.2+. Access to the dashboard is JWT-authenticated with role-based access control. Data is hosted in EU/UK regions. A UK GDPR Article 28 Data Processing Agreement is available, and we publish our sub-processor list publicly so you know exactly who handles your data.</p>
+            <p>All audio is encrypted at rest with AES-256-GCM. Transport is TLS 1.2+. Access to the dashboard is JWT-authenticated with role-based access control. Data is hosted in the UK. A UK GDPR Article 28 Data Processing Agreement is available, and we publish our sub-processor list publicly so you know exactly who handles your data.</p>
           </div>
         </details>
 
@@ -565,7 +565,7 @@
         <div class="cta-meta">
           <span>UK-based</span>
           <span class="dot">·</span>
-          <span>UK-first hosting</span>
+          <span>UK-hosted</span>
           <span class="dot">·</span>
           <span>Privacy-by-design build</span>
           <span class="dot">·</span>
@@ -619,8 +619,6 @@
         <h5>Integrations</h5>
         <a href="/integrations/twilio">Twilio</a>
         <a href="/integrations/aws-connect">AWS Connect</a>
-        <a href="/integrations/genesys">Genesys</a>
-        <a href="/integrations/five9">Five9</a>
       </div>
       <div class="footer-col">
         <h5>Legal</h5>

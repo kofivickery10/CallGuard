@@ -204,7 +204,7 @@
     <li>Delete all Customer Personal Data and existing copies, save where retention is required by applicable law (e.g., financial records, audit logs).</li>
   </ul>
 
-  <p>Backups containing Customer Personal Data are retained for a maximum of 35 days post-deletion before being permanently overwritten.</p>
+  <p>Deleted Customer Personal Data may persist in routine backups for up to 7 days, after which it is permanently overwritten.</p>
 
   <h2 id="audit">12. Audits</h2>
 
@@ -250,7 +250,7 @@
     <tr><th>Categories of data subjects</th><td>Authorised Users; the Controller's customers; third parties whose voice is incidentally captured</td></tr>
     <tr><th>Categories of data</th><td>Identification, contact, communication content, financial, health (where discussed), voice biometrics (incidental), behavioural/performance, technical metadata</td></tr>
     <tr><th>Frequency</th><td>Continuous for the duration of Service use</td></tr>
-    <tr><th>Retention</th><td>As configured by the Controller, default 12 months from upload; deleted within 30 days of contract termination subject to Section 11</td></tr>
+    <tr><th>Retention</th><td>Retained while held in the Controller's account; deleted within 30 days of a deletion request or contract termination, subject to Section 11</td></tr>
   </table>
 
   <h2 id="annex2">Annex 2: Technical and organisational measures (TOMs)</h2>
@@ -261,51 +261,48 @@
   <ul>
     <li>JWT-based authentication for all platform access; bcrypt-hashed passwords with secure salt; password complexity rules enforced.</li>
     <li>Role-based access control for organisations, with separate admin and member roles and least-privilege defaults.</li>
-    <li>Multi-factor authentication available for administrative accounts.</li>
-    <li>Session expiry, automatic logout on inactivity, and revocable session tokens.</li>
+    <li>Session tokens that expire after a set period.</li>
+    <li>API access authenticated via per-organisation API keys, stored only as hashes.</li>
   </ul>
 
   <h3>Encryption</h3>
   <ul>
     <li>TLS 1.2+ enforced for all client and inter-service traffic.</li>
-    <li>Audio files encrypted at rest with AES-256-GCM using rotating keys.</li>
+    <li>Audio files encrypted at rest with AES-256-GCM.</li>
     <li>Database storage encrypted at rest at the cloud-provider layer.</li>
     <li>Signed share-links for any external customer access, with token expiry and revocation.</li>
   </ul>
 
   <h3>Network and infrastructure</h3>
   <ul>
-    <li>Hosting with reputable cloud providers in UK or EU regions where possible.</li>
-    <li>Web Application Firewall (WAF) and DDoS protection at the edge layer.</li>
-    <li>Private networking between application and database tiers; no direct database exposure.</li>
-    <li>Automated security patching for OS-level dependencies.</li>
+    <li>Hosting with a reputable cloud provider in the UK (London region).</li>
+    <li>DDoS mitigation and a Web Application Firewall at the edge (via Cloudflare).</li>
+    <li>The database is not exposed directly to the public internet.</li>
+    <li>Security patching of OS-level dependencies.</li>
   </ul>
 
   <h3>Logging and monitoring</h3>
   <ul>
-    <li>Audit logs retained for 90 days minimum, recording user, timestamp, action and source IP for all data-modifying events.</li>
-    <li>Application error monitoring with PII redaction.</li>
-    <li>Periodic review of access logs by the security lead.</li>
+    <li>An audit log recording user, timestamp, action and source IP for key data-modifying events (such as deletions, score corrections and breach updates).</li>
+    <li>Periodic review of access logs.</li>
   </ul>
 
-  <h3>Backups and disaster recovery</h3>
+  <h3>Backups and resilience</h3>
   <ul>
-    <li>Daily encrypted backups of database and audio storage.</li>
-    <li>Backup retention of up to 35 days.</li>
-    <li>Tested recovery procedures with documented Recovery Point Objective (RPO) and Recovery Time Objective (RTO).</li>
+    <li>Automated daily backups of the database and audio storage, retained for 7 days.</li>
+    <li>Point-in-time recovery available on the managed database.</li>
+    <li>Audio is stored as AES-256-GCM ciphertext on encrypted disk in the London region.</li>
   </ul>
 
   <h3>Personnel</h3>
   <ul>
-    <li>Background checks for all personnel with production data access.</li>
-    <li>Confidentiality clauses in all employment and contractor agreements.</li>
-    <li>Mandatory data-protection and security training on hiring and annually thereafter.</li>
+    <li>All individuals with access to production data are bound by confidentiality obligations.</li>
+    <li>Access to production data is limited to those who need it to operate the Services.</li>
   </ul>
 
   <h3>Incident response</h3>
   <ul>
-    <li>Documented incident-response plan with named roles.</li>
-    <li>72-hour Personal Data Breach notification to Controllers.</li>
+    <li>We notify affected Controllers of a Personal Data Breach without undue delay and within 72 hours of becoming aware of it.</li>
     <li>Post-incident review and remediation.</li>
   </ul>
 

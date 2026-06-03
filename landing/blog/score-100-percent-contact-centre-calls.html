@@ -150,15 +150,15 @@
 
     <h2>The architecture of 100% coverage</h2>
 
-    <p>What does the system actually look like? Five components, each of which exists in production today.</p>
+    <p>What does the system actually look like? Five components, each of which is built into the platform today.</p>
 
     <h3>1. Audio ingestion</h3>
 
     <p>Calls have to get into the system. There are three patterns:</p>
 
     <ul class="article-list">
-      <li><strong>Live streaming over WebSocket</strong> from your dialer. Twilio Media Streams and AWS Connect Voice Streams are the most common. <a href="/integrations/twilio">Our Twilio integration</a> and <a href="/integrations/aws-connect">AWS Connect integration</a> walk through the wiring. Vonage, Plivo, Telnyx and any WebRTC-capable dialer connect via a generic WebSocket protocol.</li>
-      <li><strong>Batch upload of recordings</strong> via REST API or SFTP. Useful for legacy stacks where streaming is not available, or for archived recordings being scored retrospectively.</li>
+      <li><strong>Live streaming over WebSocket</strong> from your dialer. Twilio Media Streams and AWS Connect Voice Streams are the most common. <a href="/integrations/twilio">Our Twilio integration</a> and <a href="/integrations/aws-connect">AWS Connect integration</a> walk through the wiring. Other dialers connect via a generic WebSocket protocol.</li>
+      <li><strong>Batch upload of recordings</strong> via REST API or the dashboard. Useful for legacy stacks where streaming is not available, or for archived recordings being scored retrospectively.</li>
       <li><strong>Drag-and-drop</strong> for one-off calls being reviewed in the dashboard.</li>
     </ul>
 
@@ -260,8 +260,6 @@
         <h5>Integrations</h5>
         <a href="/integrations/twilio">Twilio</a>
         <a href="/integrations/aws-connect">AWS Connect</a>
-        <a href="/integrations/genesys">Genesys</a>
-        <a href="/integrations/five9">Five9</a>
       </div>
       <div class="footer-col">
         <h5>Legal</h5>

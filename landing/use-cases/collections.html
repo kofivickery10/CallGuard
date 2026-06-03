@@ -228,11 +228,11 @@
         </details>
         <details class="faq-item">
           <summary>How does this integrate with our dialer (Five9, Genesys, Twilio)?</summary>
-          <div class="faq-body"><p>First-class adapters for Twilio Media Streams and AWS Connect Voice Streams. <a href="/integrations/twilio">Twilio integration here</a>, <a href="/integrations/aws-connect">AWS Connect here</a>. Five9 and Genesys via SIPREC or recording API, depending on your plan. SFTP polling supported for environments where streaming is not available.</p></div>
+          <div class="faq-body"><p>First-class adapters for Twilio Media Streams and AWS Connect Voice Streams. <a href="/integrations/twilio">Twilio integration here</a>, <a href="/integrations/aws-connect">AWS Connect here</a>. Other dialers can connect via our generic WebSocket protocol for live streaming. For any dialer, including Five9 and Genesys, you can also export recordings and bring them in via upload or our REST API.</p></div>
         </details>
         <details class="faq-item">
           <summary>Can complaint handling be triggered automatically?</summary>
-          <div class="faq-body"><p>Yes. Set a webhook to fire when a complaint trigger is detected (specific phrases, dispute language, regulatory mention). The webhook lands in your complaint-handling queue with the call recording, transcript and the trigger sentence. Many customers automate the SLA timer from this signal.</p></div>
+          <div class="faq-body"><p>Yes. Set a webhook to fire when a complaint trigger is detected (specific phrases, dispute language, regulatory mention). The webhook lands in your complaint-handling queue with the call recording, transcript and the trigger sentence. You can automate the SLA timer from this signal.</p></div>
         </details>
         <details class="faq-item">
           <summary>What's the audit trail for an FCA visit or FDCPA case?</summary>
@@ -284,8 +284,6 @@
         <h5>Integrations</h5>
         <a href="/integrations/twilio">Twilio</a>
         <a href="/integrations/aws-connect">AWS Connect</a>
-        <a href="/integrations/genesys">Genesys</a>
-        <a href="/integrations/five9">Five9</a>
       </div>
       <div class="footer-col">
         <h5>Legal</h5>

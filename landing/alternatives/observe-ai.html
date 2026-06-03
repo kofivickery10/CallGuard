@@ -186,7 +186,7 @@
           <tbody>
             <tr><td>Time to first scored call</td><td>Multi-week implementation</td><td>Same day (self-serve sign-up)</td></tr>
             <tr><td>FCA Consumer Duty scorecards</td><td>Achievable via configuration</td><td>Native, four outcomes by default</td></tr>
-            <tr><td>UK / EU data residency</td><td>Negotiable, US-default</td><td>Default eu-west-2 (London region)</td></tr>
+            <tr><td>UK / EU data residency</td><td>Negotiable, US-default</td><td>UK (London region)</td></tr>
             <tr><td>Per-tenant AI learning</td><td>Tracker / analyst config</td><td>Compliance corrections feed back automatically</td></tr>
             <tr><td>API-first results fetch</td><td>Available, secondary motion</td><td>Two endpoints, REST, JSON, default</td></tr>
             <tr><td>Live mid-call breach detection</td><td>Available via real-time AI</td><td>30-second cadence, &gt;75% confidence threshold</td></tr>
@@ -232,15 +232,15 @@
         </details>
         <details class="faq-item">
           <summary>What data residency does CallGuard AI offer?</summary>
-          <div class="faq-body"><p>Default eu-west-2 (London region) on AWS. Other regions available on request without re-architecting. Sub-processors are <a href="/sub-processors">published publicly</a>. UK GDPR Article 28 DPA is at <a href="/dpa">/dpa</a>.</p></div>
+          <div class="faq-body"><p>The UK (London region) on AWS. Sub-processors are <a href="/sub-processors">published publicly</a>. UK GDPR Article 28 DPA is at <a href="/dpa">/dpa</a>.</p></div>
         </details>
         <details class="faq-item">
           <summary>Is CallGuard AI suitable for a US BPO?</summary>
-          <div class="faq-body"><p>Architecturally yes; we serve US-hosted customers and the scorecard system supports any regulatory regime including TCPA, FDCPA, mini-Miranda. Practically, our default UK-first orientation may feel like a poorer fit if your buyers expect heavy US enterprise references. If you are running cross-Atlantic operations, talk to us; we have customers running both regimes side-by-side on one scorecard library.</p></div>
+          <div class="faq-body"><p>Architecturally yes; the scorecard system supports any regulatory regime including TCPA, FDCPA and mini-Miranda, and a single scorecard library can hold multiple regimes side by side. Practically, our default UK-first orientation may feel like a poorer fit if your buyers expect heavy US enterprise references. If you are running cross-Atlantic operations, talk to us.</p></div>
         </details>
         <details class="faq-item">
           <summary>What does the migration look like?</summary>
-          <div class="faq-body"><p>If your call recordings live in S3, SFTP or a CCaaS archive, push them to CallGuard via REST or SFTP and we re-score them. Your scorecard transfers cleanly because CallGuard AI uses the same per-criterion structure most QA scorecards already use. Migration runways are typically a week, not a quarter.</p></div>
+          <div class="faq-body"><p>If your call recordings live in S3, SFTP or a CCaaS archive, push them to CallGuard via our REST API and we re-score them. Your scorecard transfers cleanly because CallGuard AI uses the same per-criterion structure most QA scorecards already use. Migration runways are typically a week, not a quarter.</p></div>
         </details>
         <details class="faq-item">
           <summary>Can I run CallGuard AI alongside Observe.AI?</summary>
@@ -288,8 +288,6 @@
         <h5>Integrations</h5>
         <a href="/integrations/twilio">Twilio</a>
         <a href="/integrations/aws-connect">AWS Connect</a>
-        <a href="/integrations/genesys">Genesys</a>
-        <a href="/integrations/five9">Five9</a>
       </div>
       <div class="footer-col">
         <h5>Legal</h5>
