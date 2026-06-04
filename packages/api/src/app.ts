@@ -1,7 +1,8 @@
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
-import { rateLimit } from 'express-rate-limit';
+import { rateLimit, ipKeyGenerator } from 'express-rate-limit';
+import type { Request } from 'express';
 import { errorHandler } from './middleware/errors.js';
 import { authRouter } from './routes/auth.js';
 import { scorecardRouter } from './routes/scorecards.js';
@@ -22,12 +23,22 @@ import { streamRouter } from './routes/stream.js';
 
 const app = express();
 
-// Behind nginx (and Cloudflare). Trust one proxy hop so req.ip and the rate
-// limiter key on the real client IP, not the proxy's.
-app.set('trust proxy', 1);
+// Client traffic flows Cloudflare -> nginx -> app (two proxy hops). Trust both
+// so req.ip resolves to the real client IP rather than a proxy. Override with
+// TRUST_PROXY_HOPS if the deployment chain changes.
+app.set('trust proxy', Number(process.env.TRUST_PROXY_HOPS ?? 2));
 
 app.use(cors());
 app.use(express.json());
+
+// Rate-limit key: prefer Cloudflare's CF-Connecting-IP (set at the edge to the
+// true client IP and not client-spoofable when traffic arrives via Cloudflare),
+// falling back to the trusted req.ip. ipKeyGenerator normalises IPv6.
+const clientIpKey = (req: Request): string => {
+  const cf = req.headers['cf-connecting-ip'];
+  const ip = (Array.isArray(cf) ? cf[0] : cf) || req.ip || '';
+  return ipKeyGenerator(ip);
+};
 
 // Abuse / brute-force protection.
 const globalLimiter = rateLimit({
@@ -35,6 +46,7 @@ const globalLimiter = rateLimit({
   limit: 300,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
+  keyGenerator: clientIpKey,
   message: { message: 'Too many requests. Please slow down and try again shortly.' },
 });
 // Tight bucket for credential endpoints (login / register).
@@ -43,6 +55,7 @@ const authLimiter = rateLimit({
   limit: 10,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
+  keyGenerator: clientIpKey,
   message: { message: 'Too many attempts. Please wait a minute and try again.' },
 });
 // Tight bucket for the unauthenticated public form.
@@ -51,6 +64,7 @@ const publicFormLimiter = rateLimit({
   limit: 5,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
+  keyGenerator: clientIpKey,
   message: { message: 'Too many submissions. Please try again shortly.' },
 });
 
