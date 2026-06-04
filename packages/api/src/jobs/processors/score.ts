@@ -4,7 +4,7 @@ import { scoreTranscript, normalizeScore } from '../../services/scoring.js';
 import { getKBContext } from '../../services/kb.js';
 import { evaluateAlertsForCall } from '../../services/alert-evaluator.js';
 import { getLearningContext } from '../../services/learning-context.js';
-import { PASS_THRESHOLD, hasFeature } from '@callguard/shared';
+import { hasFeature, isItemPass, deriveSeverity, callPasses } from '@callguard/shared';
 import type { Call, ScorecardItem, Plan } from '@callguard/shared';
 
 export async function processScoring(job: Job<{ callId: string }>) {
@@ -139,7 +139,7 @@ export async function processScoring(job: Job<{ callId: string }>) {
       const itemScoreId = insertedItemScore[0]!.id;
 
       // Auto-create a breach for failed items
-      if (normalized < 70) {
+      if (!isItemPass(normalized)) {
         const severity = deriveSeverity(
           Number(item.weight),
           (item as { severity?: string }).severity
@@ -160,16 +160,16 @@ export async function processScoring(job: Job<{ callId: string }>) {
 
     const overallScore = totalWeight > 0 ? totalWeightedScore / totalWeight : 0;
 
-    // A critical-severity breach fails the call regardless of overall score:
-    // a high % can otherwise mask a single regulator-grade failure.
-    const hasCriticalFail = output.items.some((it) => {
+    // Severities of the failing items. A critical-severity breach fails the call
+    // regardless of overall score (callPasses), so a high % cannot mask a single
+    // regulator-grade failure.
+    const failingSeverities = output.items.flatMap((it) => {
       const item = items.find((i) => i.id === it.scorecard_item_id);
-      if (!item) return false;
-      if (normalizeScore(it.score, item.score_type) >= 70) return false;
-      return deriveSeverity(Number(item.weight), (item as { severity?: string }).severity) === 'critical';
+      if (!item || isItemPass(normalizeScore(it.score, item.score_type))) return [];
+      return [deriveSeverity(Number(item.weight), (item as { severity?: string }).severity)];
     });
 
-    const pass = overallScore >= PASS_THRESHOLD && !hasCriticalFail;
+    const pass = callPasses(overallScore, failingSeverities);
 
     // Update call_score with overall
     await query(
@@ -181,7 +181,7 @@ export async function processScoring(job: Job<{ callId: string }>) {
     const failingCount = output.items.filter((it) => {
       const item = items.find((i) => i.id === it.scorecard_item_id);
       if (!item) return false;
-      return normalizeScore(it.score, item.score_type) < 70;
+      return !isItemPass(normalizeScore(it.score, item.score_type));
     }).length;
     const shouldAutoExemplar = overallScore >= 95 && failingCount === 0;
 
@@ -211,13 +211,4 @@ export async function processScoring(job: Job<{ callId: string }>) {
     });
     throw err;
   }
-}
-
-function deriveSeverity(weight: number, explicitSeverity?: string): 'critical' | 'high' | 'medium' | 'low' {
-  if (explicitSeverity && ['critical', 'high', 'medium', 'low'].includes(explicitSeverity)) {
-    return explicitSeverity as 'critical' | 'high' | 'medium' | 'low';
-  }
-  if (weight >= 2.0) return 'critical';
-  if (weight >= 1.5) return 'high';
-  return 'medium';
 }

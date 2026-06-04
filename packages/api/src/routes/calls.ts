@@ -10,6 +10,7 @@ import { AppError } from '../middleware/errors.js';
 import { ingestCall, inferMimeType } from '../services/ingestion.js';
 import { recordAuditEvent } from '../services/audit.js';
 import type { Call, CallScore, CallItemScore } from '@callguard/shared';
+import { deriveSeverity } from '@callguard/shared';
 
 export const callRouter = Router();
 callRouter.use(authenticate);
@@ -519,7 +520,7 @@ callRouter.post('/:id/scores/items/:itemScoreId/correct', requireAdmin, async (r
         [itemScore.scorecard_item_id]
       );
       const w = sItem ? Number(sItem.weight) : 1;
-      const severity = sItem?.severity || (w >= 2 ? 'critical' : w >= 1.5 ? 'high' : 'medium');
+      const severity = deriveSeverity(w, sItem?.severity);
       await query(
         `INSERT INTO breaches
            (organization_id, call_id, call_item_score_id, scorecard_item_id, severity, detected_at)

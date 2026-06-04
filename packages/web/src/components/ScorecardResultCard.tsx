@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { isItemPass } from '@callguard/shared';
 
 interface ScorecardResultCardProps {
   label: string;
@@ -25,7 +26,7 @@ export function ScorecardResultCard({
   wasCorrected,
   onCorrect,
 }: ScorecardResultCardProps) {
-  const passed = normalizedScore >= 70;
+  const passed = isItemPass(normalizedScore);
   const [expanded, setExpanded] = useState(false);
   const hasDetails = Boolean(evidence || reasoning);
 

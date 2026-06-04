@@ -20,6 +20,7 @@
 import bcrypt from 'bcryptjs';
 import { v4 as uuid } from 'uuid';
 import { randomBytes } from 'crypto';
+import { deriveSeverity, callPasses } from '@callguard/shared';
 import { pool, query, queryOne } from '../db/client.js';
 
 const DEMO_ORG = 'Brookfield Protection';
@@ -297,15 +298,17 @@ async function main() {
     if (HERO_ITEMS[item.label]?.pass) heroWeighted += item.weight;
   }
   const heroScore = Math.round((heroWeighted / heroTotalWeight) * 100);
-  // A critical-severity breach fails the call regardless of overall score (matches score.ts).
-  const heroHasCritical = scorecardItems.some((it) => !HERO_ITEMS[it.label]?.pass && it.severity === 'critical');
+  // Pass uses the shared gate (overall threshold + no critical breach), matching score.ts.
+  const heroFailingSeverities = scorecardItems
+    .filter((it) => !HERO_ITEMS[it.label]?.pass)
+    .map((it) => deriveSeverity(it.weight, it.severity));
   const heroScoreRow = await queryOne<{ id: string }>(
     `INSERT INTO call_scores (
        call_id, scorecard_id, overall_score, pass, scored_at,
        model_id, prompt_tokens, completion_tokens, coaching, prior_coaching_count, created_at
      )
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$5) RETURNING id`,
-    [heroCallId, scorecardId, heroScore, heroScore >= 70 && !heroHasCritical, heroCreatedAt, 'claude-sonnet-4-demo', 5100, 2100, JSON.stringify(HERO_COACHING), 0]
+    [heroCallId, scorecardId, heroScore, callPasses(heroScore, heroFailingSeverities), heroCreatedAt, 'claude-sonnet-4-demo', 5100, 2100, JSON.stringify(HERO_COACHING), 0]
   );
   for (const item of scorecardItems) {
     const r = HERO_ITEMS[item.label]!;
@@ -422,7 +425,6 @@ Agent: Great. Let's start with what's prompted this and what you'd want to happe
         const shuffledItems = [...scorecardItems].sort(() => Math.random() - 0.5);
         const failingItems = shuffledItems.slice(0, failingItemCount);
         const failingItemSet = new Set(failingItems.map((i) => i.id));
-        const hasCritical = failingItems.some((i) => i.severity === 'critical');
         // Derive the overall score from the items that actually failed (same
         // weighting as the real scorer), so the headline score, the per-item
         // badges and pass/fail are always consistent. Otherwise a randomly
@@ -430,7 +432,7 @@ Agent: Great. Let's start with what's prompted this and what you'd want to happe
         const totalWeight = scorecardItems.reduce((s, i) => s + i.weight, 0);
         const failedWeight = failingItems.reduce((s, i) => s + i.weight, 0);
         const overallScore = Math.round(((totalWeight - failedWeight) / totalWeight) * 100);
-        const pass = overallScore >= 70 && !hasCritical;
+        const pass = callPasses(overallScore, failingItems.map((i) => deriveSeverity(i.weight, i.severity)));
 
         const coaching = buildDemoCoaching(agent.name, overallScore, failingItemCount);
         const priorCoachingCount = Math.min(priorCoachingForAgent, 3);

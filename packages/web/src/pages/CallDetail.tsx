@@ -11,7 +11,7 @@ import { AssignAgentDropdown } from '../components/AssignAgentDropdown';
 import { ShareLinksPanel } from '../components/ShareLinksPanel';
 import { CoachingPanel } from '../components/CoachingPanel';
 import { ScoreCorrectionModal } from '../components/ScoreCorrectionModal';
-import { hasFeature } from '@callguard/shared';
+import { hasFeature, isItemPass } from '@callguard/shared';
 import type { Call, CallScore, CallItemScore, CallCoaching } from '@callguard/shared';
 
 type ScoreWithItems = CallScore & {
@@ -186,7 +186,7 @@ export function CallDetail() {
                   onCorrect={() => setCorrectingItem({
                     itemScoreId: item.id,
                     label: item.label,
-                    pass: item.normalized_score >= 70,
+                    pass: isItemPass(item.normalized_score),
                     evidence: item.evidence,
                   })}
                 />

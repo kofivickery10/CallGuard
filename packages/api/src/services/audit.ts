@@ -59,9 +59,12 @@ const coerceEntityId = (v: AuditEvent['entityId']): string | null => {
  */
 export async function recordAuditEvent(event: AuditEvent): Promise<void> {
   try {
-    const ip = event.req?.headers['x-forwarded-for']?.toString().split(',')[0].trim()
-            || event.req?.ip
-            || null;
+    // Use the trusted client IP: Cloudflare's CF-Connecting-IP when present
+    // (set at the edge, not client-spoofable), else Express's req.ip (with
+    // 'trust proxy' configured). Never the raw leftmost X-Forwarded-For, which
+    // the caller can forge.
+    const cfIp = event.req?.headers['cf-connecting-ip'];
+    const ip = (Array.isArray(cfIp) ? cfIp[0] : cfIp) || event.req?.ip || null;
     const userAgent = event.req?.headers['user-agent']?.toString().slice(0, 500) || null;
 
     await query(
