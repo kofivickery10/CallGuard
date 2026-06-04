@@ -20,6 +20,7 @@
 import bcrypt from 'bcryptjs';
 import { v4 as uuid } from 'uuid';
 import { randomBytes } from 'crypto';
+import { deriveSeverity, callPasses } from '@callguard/shared';
 import { pool, query, queryOne } from '../db/client.js';
 
 const DEMO_ORG = 'Brookfield Protection';
@@ -297,15 +298,17 @@ async function main() {
     if (HERO_ITEMS[item.label]?.pass) heroWeighted += item.weight;
   }
   const heroScore = Math.round((heroWeighted / heroTotalWeight) * 100);
-  // A critical-severity breach fails the call regardless of overall score (matches score.ts).
-  const heroHasCritical = scorecardItems.some((it) => !HERO_ITEMS[it.label]?.pass && it.severity === 'critical');
+  // Pass uses the shared gate (overall threshold + no critical breach), matching score.ts.
+  const heroFailingSeverities = scorecardItems
+    .filter((it) => !HERO_ITEMS[it.label]?.pass)
+    .map((it) => deriveSeverity(it.weight, it.severity));
   const heroScoreRow = await queryOne<{ id: string }>(
     `INSERT INTO call_scores (
        call_id, scorecard_id, overall_score, pass, scored_at,
        model_id, prompt_tokens, completion_tokens, coaching, prior_coaching_count, created_at
      )
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$5) RETURNING id`,
-    [heroCallId, scorecardId, heroScore, heroScore >= 70 && !heroHasCritical, heroCreatedAt, 'claude-sonnet-4-demo', 5100, 2100, JSON.stringify(HERO_COACHING), 0]
+    [heroCallId, scorecardId, heroScore, callPasses(heroScore, heroFailingSeverities), heroCreatedAt, 'claude-sonnet-4-demo', 5100, 2100, JSON.stringify(HERO_COACHING), 0]
   );
   for (const item of scorecardItems) {
     const r = HERO_ITEMS[item.label]!;
@@ -422,10 +425,16 @@ Agent: Great. Let's start with what's prompted this and what you'd want to happe
         const shuffledItems = [...scorecardItems].sort(() => Math.random() - 0.5);
         const failingItems = shuffledItems.slice(0, failingItemCount);
         const failingItemSet = new Set(failingItems.map((i) => i.id));
-        const hasCritical = failingItems.some((i) => i.severity === 'critical');
-        const pass = (spec.overallScore || 0) >= 70 && !hasCritical;
+        // Derive the overall score from the items that actually failed (same
+        // weighting as the real scorer), so the headline score, the per-item
+        // badges and pass/fail are always consistent. Otherwise a randomly
+        // high score could show next to a FAIL with mostly-green items.
+        const totalWeight = scorecardItems.reduce((s, i) => s + i.weight, 0);
+        const failedWeight = failingItems.reduce((s, i) => s + i.weight, 0);
+        const overallScore = Math.round(((totalWeight - failedWeight) / totalWeight) * 100);
+        const pass = callPasses(overallScore, failingItems.map((i) => deriveSeverity(i.weight, i.severity)));
 
-        const coaching = buildDemoCoaching(agent.name, spec.overallScore || 0, spec.failingItems || 0);
+        const coaching = buildDemoCoaching(agent.name, overallScore, failingItemCount);
         const priorCoachingCount = Math.min(priorCoachingForAgent, 3);
         const callScoreRow = await queryOne<{ id: string }>(
           `INSERT INTO call_scores (
@@ -433,13 +442,13 @@ Agent: Great. Let's start with what's prompted this and what you'd want to happe
              model_id, prompt_tokens, completion_tokens, coaching, prior_coaching_count, created_at
            )
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$5) RETURNING id`,
-          [callId, scorecardId, spec.overallScore, pass, createdAt, 'claude-sonnet-4-demo', 4200, 1800, JSON.stringify(coaching), priorCoachingCount]
+          [callId, scorecardId, overallScore, pass, createdAt, 'claude-sonnet-4-demo', 4200, 1800, JSON.stringify(coaching), priorCoachingCount]
         );
         priorCoachingForAgent++;
         const callScoreId = callScoreRow!.id;
 
-        if (agent.profile === 'star' && (!topCall || (spec.overallScore || 0) > topCall.score)) {
-          topCall = { callId, score: spec.overallScore || 0 };
+        if (agent.profile === 'star' && (!topCall || overallScore > topCall.score)) {
+          topCall = { callId, score: overallScore };
         }
 
         for (const item of scorecardItems) {
@@ -592,18 +601,36 @@ Looking ahead: a short team refresher on (1) always explaining the duty of discl
 }
 
 async function wipeOrg(orgId: string) {
-  await query(`DELETE FROM score_corrections WHERE organization_id = $1`, [orgId]);
-  await query(`DELETE FROM insight_digests WHERE organization_id = $1`, [orgId]);
-  await query(`DELETE FROM calls WHERE organization_id = $1`, [orgId]);
-  await query(`DELETE FROM scorecards WHERE organization_id = $1`, [orgId]);
-  await query(`DELETE FROM knowledge_base_sections WHERE organization_id = $1`, [orgId]);
-  await query(`DELETE FROM alert_rules WHERE organization_id = $1`, [orgId]);
-  await query(`DELETE FROM notifications WHERE organization_id = $1`, [orgId]);
-  await query(`DELETE FROM api_keys WHERE organization_id = $1`, [orgId]);
-  await query(`DELETE FROM sftp_sources WHERE organization_id = $1`, [orgId]);
-  await query(`DELETE FROM breaches WHERE organization_id = $1`, [orgId]);
-  await query(`DELETE FROM users WHERE organization_id = $1`, [orgId]);
-  await query(`DELETE FROM organizations WHERE id = $1`, [orgId]);
+  // Delete every org-scoped table in FK-safe order. webhook_deliveries,
+  // live_sessions and audit_log reference organizations / users / api_keys /
+  // scorecards with NO ON DELETE CASCADE, so they must go before those parents
+  // or the final DELETE FROM users / organizations raises a foreign-key
+  // violation. (call_share_links and call_feedback cascade off calls, so
+  // deleting calls already covers them.) delOrg tolerates a missing table so the
+  // wipe still works on a DB where a later migration has not been applied yet.
+  const delOrg = async (table: string, col = 'organization_id') => {
+    try {
+      await query(`DELETE FROM ${table} WHERE ${col} = $1`, [orgId]);
+    } catch (err) {
+      if ((err as { code?: string })?.code !== '42P01') throw err; // 42P01 = undefined_table
+    }
+  };
+
+  await delOrg('webhook_deliveries');
+  await delOrg('live_sessions');
+  await delOrg('audit_log');
+  await delOrg('score_corrections');
+  await delOrg('insight_digests');
+  await delOrg('calls');
+  await delOrg('scorecards');
+  await delOrg('knowledge_base_sections');
+  await delOrg('alert_rules');
+  await delOrg('notifications');
+  await delOrg('api_keys');
+  await delOrg('sftp_sources');
+  await delOrg('breaches');
+  await delOrg('users');
+  await delOrg('organizations', 'id');
 }
 
 function buildDemoCoaching(agent: string, score: number, failingItems: number) {
