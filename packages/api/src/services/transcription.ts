@@ -124,11 +124,16 @@ export async function transcribeCall(
     {
       model: 'nova-3',
       smart_format: true,
+      // Transcribe each channel separately. Split-stereo call recordings put the
+      // adviser and customer on separate channels, so per-channel attribution is
+      // exact (no guessing) and each voice is transcribed without the other
+      // bleeding over it (sharper postcodes / names). diarize stays on as the
+      // fall-back for mono recordings, which come back as a single channel.
+      multichannel: true,
       diarize: true,
       punctuate: true,
       utterances: true,
       language: 'en',
-      multichannel: false,
       profanity_filter: false,
       redact: false,
       numerals: true,
@@ -145,20 +150,29 @@ export async function transcribeCall(
     throw new Error(`Deepgram returned no result and no error (audio bytes=${audioBuffer.length})`);
   }
 
-  // The first speaker is typically the agent (they greet)
   const utterances = result.results?.utterances || [];
-  let agentSpeakerId: number | null = null;
+  type Utt = { transcript: string; speaker?: number; channel?: number; start?: number };
+  const utts = utterances as unknown as Utt[];
 
-  if (utterances.length > 0) {
-    agentSpeakerId = utterances[0].speaker ?? 0;
-  }
+  // Split-stereo recordings come back with utterances tagged by channel. When
+  // more than one channel is present, attribute by channel (exact, no guessing).
+  // Otherwise (mono) fall back to the diarized speaker label.
+  const isMultichannel = new Set(utts.map((u) => u.channel ?? 0)).size > 1;
 
-  // Merge consecutive utterances from the same speaker into single blocks
+  // Order by time so interleaved channels read as one conversation.
+  const ordered = [...utts].sort((a, b) => (a.start ?? 0) - (b.start ?? 0));
+
+  // Whichever party speaks first is treated as the adviser (they greet).
+  const agentKey = isMultichannel
+    ? ordered[0]?.channel ?? 0
+    : ordered[0]?.speaker ?? 0;
+
+  // Merge consecutive utterances from the same party into single blocks
   const merged: { speaker: string; text: string }[] = [];
 
-  for (const u of utterances) {
-    const speakerId = u.speaker ?? 0;
-    const speaker = speakerId === agentSpeakerId ? 'Agent' : 'Customer';
+  for (const u of ordered) {
+    const key = isMultichannel ? u.channel ?? 0 : u.speaker ?? 0;
+    const speaker = key === agentKey ? 'Agent' : 'Customer';
     const last = merged[merged.length - 1];
 
     if (last && last.speaker === speaker) {
