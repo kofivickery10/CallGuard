@@ -7,51 +7,95 @@ interface TranscriptionResult {
   duration_seconds: number;
 }
 
-// Domain-specific terms that Deepgram may mishear without boosting
-// Covers UK telecom/broadband sales, compliance terminology, and products
+// Domain-specific terms Deepgram may mishear without boosting.
+// Tuned for UK protection & mortgage advice: identity/verification terms,
+// products, FCA/ICOBS compliance vocabulary, and common insurers.
+// NOTE: this is a global list; per-tenant keyterms are a separate piece of work.
 const DOMAIN_KEYTERMS = [
-  // Product / brand names
-  'KOA',
-  'Utility Warehouse',
+  // Brand
   'CallGuard',
   'CallGuard AI',
+  'Trust Point',
 
-  // Compliance / regulatory
-  'DPA',
-  'Data Protection Act',
-  'Ofcom',
-  'GDPR',
-  'Telecare',
+  // Identity / verification (commonly misheard, and the items advisers must capture)
+  'postcode',
+  'date of birth',
+  'sort code',
+  'account number',
+  'direct debit',
+  'National Insurance number',
+  'first line of address',
+  'surname',
+  'middle name',
+
+  // Protection products & features
+  'life cover',
+  'level term',
+  'decreasing term',
+  'whole of life',
+  'critical illness',
+  'critical illness cover',
+  'income protection',
+  'family income benefit',
+  'waiver of premium',
+  'total permanent disability',
+  'terminal illness',
+  'sum assured',
+  'survival period',
+  'deferred period',
+  'own occupation',
+  'any occupation',
+  'guaranteed premiums',
+  'reviewable premiums',
+  'indexation',
+  'in trust',
+  'beneficiaries',
+  'underwriting',
+
+  // Mortgage
+  'mortgage',
+  'remortgage',
+  'repayment',
+  'interest only',
+  'fixed rate',
+  'loan to value',
+  'decision in principle',
+  'affordability',
+  'stamp duty',
+
+  // FCA / ICOBS compliance vocabulary
+  'FCA',
+  'ICOBS',
+  'COBS',
+  'MCOB',
+  'demands and needs',
+  'fact find',
+  'attitude to risk',
+  'capacity for loss',
+  'vulnerability',
+  'vulnerable customer',
+  'Consumer Duty',
+  'fair value',
+  'suitability',
+  'disclosure',
+  'non-disclosure',
   'cooling off',
   'cooling-off',
-  'mandatory statement',
-  'one touch switch',
-  'cashback card',
+  'CIDRA',
+  'IPID',
+  'GDPR',
 
-  // Sales / product terms
-  'broadband',
-  'bill payer',
-  'contract buyout',
-  'energy hotkey',
-  'exit fees',
-  'price rise',
-  'bundle',
-  'bundling',
-
-  // UK-specific
-  'postcode',
-  'sort code',
-  'direct debit',
-
-  // Telecom providers often mentioned
-  'BT',
-  'Sky',
-  'Virgin Media',
-  'TalkTalk',
-  'Vodafone',
-  'EE',
-  'O2',
-  'Three',
+  // Common UK protection insurers / providers
+  'Aviva',
+  'Legal and General',
+  'Royal London',
+  'Vitality',
+  'Zurich',
+  'AIG',
+  'LV',
+  'Guardian',
+  'Scottish Widows',
+  'Aegon',
 ];
 
 export async function transcribeCall(
@@ -80,11 +124,18 @@ export async function transcribeCall(
     {
       model: 'nova-3',
       smart_format: true,
+      // Transcribe each channel separately. Split-stereo call recordings put the
+      // adviser and customer on separate channels, so per-channel attribution is
+      // exact (no guessing) and each voice is transcribed without the other
+      // bleeding over it (sharper postcodes / names). diarize stays on as the
+      // fall-back for mono recordings, which come back as a single channel.
+      multichannel: true,
       diarize: true,
       punctuate: true,
       utterances: true,
-      language: 'en',
-      multichannel: false,
+      // en-GB (matches the live path): UK date formatting (DD/MM, not MM/DD),
+      // postcodes, number and spelling conventions.
+      language: 'en-GB',
       profanity_filter: false,
       redact: false,
       numerals: true,
@@ -101,20 +152,29 @@ export async function transcribeCall(
     throw new Error(`Deepgram returned no result and no error (audio bytes=${audioBuffer.length})`);
   }
 
-  // The first speaker is typically the agent (they greet)
   const utterances = result.results?.utterances || [];
-  let agentSpeakerId: number | null = null;
+  type Utt = { transcript: string; speaker?: number; channel?: number; start?: number };
+  const utts = utterances as unknown as Utt[];
 
-  if (utterances.length > 0) {
-    agentSpeakerId = utterances[0].speaker ?? 0;
-  }
+  // Split-stereo recordings come back with utterances tagged by channel. When
+  // more than one channel is present, attribute by channel (exact, no guessing).
+  // Otherwise (mono) fall back to the diarized speaker label.
+  const isMultichannel = new Set(utts.map((u) => u.channel ?? 0)).size > 1;
 
-  // Merge consecutive utterances from the same speaker into single blocks
+  // Order by time so interleaved channels read as one conversation.
+  const ordered = [...utts].sort((a, b) => (a.start ?? 0) - (b.start ?? 0));
+
+  // Whichever party speaks first is treated as the adviser (they greet).
+  const agentKey = isMultichannel
+    ? ordered[0]?.channel ?? 0
+    : ordered[0]?.speaker ?? 0;
+
+  // Merge consecutive utterances from the same party into single blocks
   const merged: { speaker: string; text: string }[] = [];
 
-  for (const u of utterances) {
-    const speakerId = u.speaker ?? 0;
-    const speaker = speakerId === agentSpeakerId ? 'Agent' : 'Customer';
+  for (const u of ordered) {
+    const key = isMultichannel ? u.channel ?? 0 : u.speaker ?? 0;
+    const speaker = key === agentKey ? 'Agent' : 'Customer';
     const last = merged[merged.length - 1];
 
     if (last && last.speaker === speaker) {
