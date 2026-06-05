@@ -133,7 +133,9 @@ export async function transcribeCall(
       diarize: true,
       punctuate: true,
       utterances: true,
-      language: 'en',
+      // en-GB (matches the live path): UK date formatting (DD/MM, not MM/DD),
+      // postcodes, number and spelling conventions.
+      language: 'en-GB',
       profanity_filter: false,
       redact: false,
       numerals: true,
