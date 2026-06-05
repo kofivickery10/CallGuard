@@ -164,9 +164,16 @@ export async function transcribeCall(
   // Order by time so interleaved channels read as one conversation.
   const ordered = [...utts].sort((a, b) => (a.start ?? 0) - (b.start ?? 0));
 
-  // Whichever party speaks first is treated as the adviser (they greet).
+  // Which party is the adviser. For split-stereo the adviser is consistently on
+  // one channel, so allow it to be pinned via ADVISER_CHANNEL ('0' or '1') -
+  // deterministic, no guessing. If unset, fall back to "whoever speaks first"
+  // (they usually greet). Mono recordings always use the first-speaker guess.
+  const pinnedAdviserChannel =
+    process.env.ADVISER_CHANNEL === '0' || process.env.ADVISER_CHANNEL === '1'
+      ? Number(process.env.ADVISER_CHANNEL)
+      : null;
   const agentKey = isMultichannel
-    ? ordered[0]?.channel ?? 0
+    ? pinnedAdviserChannel ?? (ordered[0]?.channel ?? 0)
     : ordered[0]?.speaker ?? 0;
 
   // Merge consecutive utterances from the same party into single blocks
