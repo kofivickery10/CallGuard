@@ -11,8 +11,12 @@ export interface IngestCallParams {
   buffer: Buffer;
   mimeType: string;
   ingestionSource: 'upload' | 'api' | 'sftp';
+  // Agent attribution. Any of these may be supplied by a dialler; they are
+  // resolved to a CallGuard adviser in precedence order (see resolveAgent).
   agentName?: string | null;
-  agentId?: string | null;
+  agentId?: string | null;        // CallGuard user id
+  agentEmail?: string | null;     // adviser's email (most diallers send this)
+  agentExternalId?: string | null; // the dialler's own agent id (mapped via users.external_agent_id)
   customerPhone?: string | null;
   callDate?: string | null;
   externalId?: string | null;
@@ -27,6 +31,38 @@ export interface IngestCallParams {
 export interface IngestedCall {
   call: Call;
   isDuplicate: boolean;
+}
+
+/**
+ * Resolve a dialler-supplied agent identifier to a CallGuard adviser, so calls
+ * attribute correctly regardless of which dialler / CRM the customer uses.
+ * Precedence: explicit CallGuard user id > email > the dialler's external agent
+ * id (users.external_agent_id) > display name. All scoped to the org. Returns
+ * the linked user id (or null) plus a display name to store on the call.
+ */
+async function resolveAgent(
+  organizationId: string,
+  p: Pick<IngestCallParams, 'agentId' | 'agentEmail' | 'agentExternalId' | 'agentName'>
+): Promise<{ agentId: string | null; agentName: string | null }> {
+  const lookups: Array<[string, string] | null> = [
+    p.agentId ? ['id = $2', p.agentId] : null,
+    p.agentEmail ? ['lower(email) = lower($2)', p.agentEmail] : null,
+    p.agentExternalId ? ['external_agent_id = $2', p.agentExternalId] : null,
+    p.agentName ? ['lower(trim(name)) = lower(trim($2))', p.agentName] : null,
+  ];
+
+  for (const lookup of lookups) {
+    if (!lookup) continue;
+    const [clause, value] = lookup;
+    const user = await queryOne<{ id: string; name: string }>(
+      `SELECT id, name FROM users WHERE organization_id = $1 AND ${clause} LIMIT 1`,
+      [organizationId, value]
+    );
+    if (user) return { agentId: user.id, agentName: user.name };
+  }
+
+  // No adviser matched - keep the supplied name for display, leave unlinked.
+  return { agentId: null, agentName: p.agentName ?? null };
 }
 
 /**
@@ -58,6 +94,9 @@ export async function ingestCall(params: IngestCallParams): Promise<IngestedCall
     scorecardId = scorecard.id;
   }
 
+  // Resolve the agent (dialler-agnostic) before inserting.
+  const { agentId, agentName } = await resolveAgent(params.organizationId, params);
+
   const callId = uuid();
   const fileKey = `calls/${params.organizationId}/${callId}/${params.fileName}`;
   await uploadFile(fileKey, params.buffer, params.mimeType);
@@ -79,8 +118,8 @@ export async function ingestCall(params: IngestCallParams): Promise<IngestedCall
       fileKey,
       params.buffer.length,
       params.mimeType,
-      params.agentId ?? null,
-      params.agentName ?? null,
+      agentId,
+      agentName,
       params.customerPhone ?? null,
       params.callDate ?? null,
       params.tags ?? [],
@@ -89,19 +128,6 @@ export async function ingestCall(params: IngestCallParams): Promise<IngestedCall
       scorecardId,
     ]
   );
-
-  // Auto-match agent by name if no agent_id was set
-  if (!params.agentId && params.agentName) {
-    await query(
-      `UPDATE calls SET agent_id = u.id
-         FROM users u
-        WHERE calls.id = $1
-          AND u.organization_id = $2
-          AND u.role = 'member'
-          AND lower(trim(u.name)) = lower(trim($3))`,
-      [callId, params.organizationId, params.agentName]
-    );
-  }
 
   await transcriptionQueue.add('transcribe', { callId }, { jobId: callId });
 
