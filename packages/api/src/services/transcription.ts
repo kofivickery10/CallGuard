@@ -7,51 +7,95 @@ interface TranscriptionResult {
   duration_seconds: number;
 }
 
-// Domain-specific terms that Deepgram may mishear without boosting
-// Covers UK telecom/broadband sales, compliance terminology, and products
+// Domain-specific terms Deepgram may mishear without boosting.
+// Tuned for UK protection & mortgage advice: identity/verification terms,
+// products, FCA/ICOBS compliance vocabulary, and common insurers.
+// NOTE: this is a global list; per-tenant keyterms are a separate piece of work.
 const DOMAIN_KEYTERMS = [
-  // Product / brand names
-  'KOA',
-  'Utility Warehouse',
+  // Brand
   'CallGuard',
   'CallGuard AI',
+  'Trust Point',
 
-  // Compliance / regulatory
-  'DPA',
-  'Data Protection Act',
-  'Ofcom',
-  'GDPR',
-  'Telecare',
+  // Identity / verification (commonly misheard, and the items advisers must capture)
+  'postcode',
+  'date of birth',
+  'sort code',
+  'account number',
+  'direct debit',
+  'National Insurance number',
+  'first line of address',
+  'surname',
+  'middle name',
+
+  // Protection products & features
+  'life cover',
+  'level term',
+  'decreasing term',
+  'whole of life',
+  'critical illness',
+  'critical illness cover',
+  'income protection',
+  'family income benefit',
+  'waiver of premium',
+  'total permanent disability',
+  'terminal illness',
+  'sum assured',
+  'survival period',
+  'deferred period',
+  'own occupation',
+  'any occupation',
+  'guaranteed premiums',
+  'reviewable premiums',
+  'indexation',
+  'in trust',
+  'beneficiaries',
+  'underwriting',
+
+  // Mortgage
+  'mortgage',
+  'remortgage',
+  'repayment',
+  'interest only',
+  'fixed rate',
+  'loan to value',
+  'decision in principle',
+  'affordability',
+  'stamp duty',
+
+  // FCA / ICOBS compliance vocabulary
+  'FCA',
+  'ICOBS',
+  'COBS',
+  'MCOB',
+  'demands and needs',
+  'fact find',
+  'attitude to risk',
+  'capacity for loss',
+  'vulnerability',
+  'vulnerable customer',
+  'Consumer Duty',
+  'fair value',
+  'suitability',
+  'disclosure',
+  'non-disclosure',
   'cooling off',
   'cooling-off',
-  'mandatory statement',
-  'one touch switch',
-  'cashback card',
+  'CIDRA',
+  'IPID',
+  'GDPR',
 
-  // Sales / product terms
-  'broadband',
-  'bill payer',
-  'contract buyout',
-  'energy hotkey',
-  'exit fees',
-  'price rise',
-  'bundle',
-  'bundling',
-
-  // UK-specific
-  'postcode',
-  'sort code',
-  'direct debit',
-
-  // Telecom providers often mentioned
-  'BT',
-  'Sky',
-  'Virgin Media',
-  'TalkTalk',
-  'Vodafone',
-  'EE',
-  'O2',
-  'Three',
+  // Common UK protection insurers / providers
+  'Aviva',
+  'Legal and General',
+  'Royal London',
+  'Vitality',
+  'Zurich',
+  'AIG',
+  'LV',
+  'Guardian',
+  'Scottish Widows',
+  'Aegon',
 ];
 
 export async function transcribeCall(
