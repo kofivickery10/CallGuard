@@ -139,7 +139,28 @@ export interface WebhookScoredPayload {
   }>;
 }
 
-export type WebhookPayload = WebhookBreachPayload | WebhookScoredPayload;
+// Fired when a batch-ingested or uploaded call finishes scoring (not a live session).
+export interface WebhookCallScoredPayload {
+  event: 'call.scored';
+  call_id: string;
+  external_id: string | null;
+  agent_name: string | null;
+  scorecard_id: string;
+  overall_score: number;
+  pass: boolean;
+  scored_at: string;
+  breaches: Array<{
+    scorecard_item_id: string;
+    scorecard_item_label: string;
+    severity: string;
+    evidence: string;
+  }>;
+}
+
+export type WebhookPayload =
+  | WebhookBreachPayload
+  | WebhookScoredPayload
+  | WebhookCallScoredPayload;
 
 // ─── Token mint ──────────────────────────────────────────────────────────
 

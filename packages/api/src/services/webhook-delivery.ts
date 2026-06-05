@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import { query, queryOne } from '../db/client.js';
 import { decrypt } from './crypto.js';
-import type { WebhookPayload } from '@callguard/shared';
+import type { WebhookPayload, WebhookCallScoredPayload } from '@callguard/shared';
 
 interface ApiKeyWebhookConfig {
   api_key_id: string;
@@ -120,4 +120,26 @@ export async function deliverWebhook(
       WHERE id = $1`,
     [deliveryId, lastStatus || null, lastError.slice(0, 2000), maxAttempts],
   );
+}
+
+/**
+ * Deliver a `call.scored` event for a batch-ingested or uploaded call. There is
+ * no live session/api-key on the call, so fire to every webhook-configured,
+ * non-revoked API key in the org (typically one - e.g. the CRM integration key).
+ * Best-effort: errors are swallowed per delivery.
+ */
+export async function deliverCallScored(
+  organizationId: string,
+  payload: WebhookCallScoredPayload,
+): Promise<void> {
+  const keys = await query<{ id: string }>(
+    `SELECT id FROM api_keys
+       WHERE organization_id = $1 AND revoked_at IS NULL AND webhook_url IS NOT NULL`,
+    [organizationId],
+  );
+  for (const k of keys) {
+    await deliverWebhook(k.id, null, payload).catch((err) => {
+      console.warn(`[Webhook] call.scored delivery failed for key ${k.id}:`, (err as Error).message);
+    });
+  }
 }

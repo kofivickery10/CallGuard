@@ -4,6 +4,7 @@ import { scoreTranscript, normalizeScore } from '../../services/scoring.js';
 import { getKBContext } from '../../services/kb.js';
 import { evaluateAlertsForCall } from '../../services/alert-evaluator.js';
 import { getLearningContext } from '../../services/learning-context.js';
+import { deliverCallScored } from '../../services/webhook-delivery.js';
 import { hasFeature, isItemPass, deriveSeverity, callPasses } from '@callguard/shared';
 import type { Call, ScorecardItem, Plan } from '@callguard/shared';
 
@@ -160,16 +161,22 @@ export async function processScoring(job: Job<{ callId: string }>) {
 
     const overallScore = totalWeight > 0 ? totalWeightedScore / totalWeight : 0;
 
-    // Severities of the failing items. A critical-severity breach fails the call
+    // The failing items, with the detail reused by the pass gate, the auto-exemplar
+    // check and the webhook payload. A critical-severity failure fails the call
     // regardless of overall score (callPasses), so a high % cannot mask a single
     // regulator-grade failure.
-    const failingSeverities = output.items.flatMap((it) => {
+    const failures = output.items.flatMap((it) => {
       const item = items.find((i) => i.id === it.scorecard_item_id);
       if (!item || isItemPass(normalizeScore(it.score, item.score_type))) return [];
-      return [deriveSeverity(Number(item.weight), (item as { severity?: string }).severity)];
+      return [{
+        scorecard_item_id: item.id,
+        scorecard_item_label: item.label,
+        severity: deriveSeverity(Number(item.weight), (item as { severity?: string }).severity),
+        evidence: it.evidence ?? '',
+      }];
     });
 
-    const pass = callPasses(overallScore, failingSeverities);
+    const pass = callPasses(overallScore, failures.map((f) => f.severity));
 
     // Update call_score with overall
     await query(
@@ -178,12 +185,7 @@ export async function processScoring(job: Job<{ callId: string }>) {
     );
 
     // Update call status + auto-exemplar if 95%+ with zero failed items
-    const failingCount = output.items.filter((it) => {
-      const item = items.find((i) => i.id === it.scorecard_item_id);
-      if (!item) return false;
-      return !isItemPass(normalizeScore(it.score, item.score_type));
-    }).length;
-    const shouldAutoExemplar = overallScore >= 95 && failingCount === 0;
+    const shouldAutoExemplar = overallScore >= 95 && failures.length === 0;
 
     await query(
       `UPDATE calls SET
@@ -196,6 +198,23 @@ export async function processScoring(job: Job<{ callId: string }>) {
     );
 
     console.log(`[Scoring] Call ${callId} scored: ${overallScore.toFixed(1)} (${pass ? 'PASS' : 'FAIL'})${shouldAutoExemplar ? ' [auto-exemplar]' : ''}`);
+
+    // Fire a signed call.scored webhook (best-effort) so batch/uploaded calls
+    // reach integrations (e.g. CRM write-back), not just live sessions.
+    const callRow = call as Call & { external_id?: string | null; agent_name?: string | null };
+    deliverCallScored(call.organization_id, {
+      event: 'call.scored',
+      call_id: callId,
+      external_id: callRow.external_id ?? null,
+      agent_name: callRow.agent_name ?? null,
+      scorecard_id: scorecard.id,
+      overall_score: overallScore,
+      pass,
+      scored_at: new Date().toISOString(),
+      breaches: failures,
+    }).catch((err) => {
+      console.error(`[Scoring] call.scored webhook failed for ${callId}:`, (err as Error).message);
+    });
 
     // Evaluate alert rules after scoring completes
     evaluateAlertsForCall(callId, 'scored').catch((alertErr) => {
