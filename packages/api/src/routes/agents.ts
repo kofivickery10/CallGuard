@@ -14,7 +14,7 @@ agentRouter.get('/', async (req, res, next) => {
   try {
     const agents = await query(
       `SELECT
-        u.id, u.name, u.email, u.created_at,
+        u.id, u.name, u.email, u.external_agent_id, u.created_at,
         COUNT(c.id) as total_calls,
         COUNT(c.id) FILTER (WHERE c.status = 'scored') as scored_calls,
         AVG(cs.overall_score) as average_score,
@@ -50,6 +50,7 @@ agentRouter.get('/', async (req, res, next) => {
 agentRouter.post('/', async (req, res, next) => {
   try {
     const { email, name, password } = req.body;
+    const externalAgentId = (req.body.external_agent_id as string | undefined)?.trim() || null;
     if (!email || !name || !password) {
       throw new AppError(400, 'email, name, and password are required');
     }
@@ -62,12 +63,30 @@ agentRouter.post('/', async (req, res, next) => {
     const passwordHash = await bcrypt.hash(password, 12);
 
     const rows = await query<{ id: string; email: string; name: string; role: string; created_at: string }>(
-      `INSERT INTO users (organization_id, email, name, password_hash, role)
-       VALUES ($1, $2, $3, $4, 'member') RETURNING id, email, name, role, created_at`,
-      [req.user!.organizationId, email, name, passwordHash]
+      `INSERT INTO users (organization_id, email, name, password_hash, role, external_agent_id)
+       VALUES ($1, $2, $3, $4, 'member', $5)
+       RETURNING id, email, name, role, external_agent_id, created_at`,
+      [req.user!.organizationId, email, name, passwordHash, externalAgentId]
     );
 
     res.status(201).json(rows[0]);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Update an agent's dialler mapping (external agent id)
+agentRouter.put('/:id', async (req, res, next) => {
+  try {
+    const externalAgentId = (req.body.external_agent_id as string | undefined)?.trim() || null;
+    const rows = await query<{ id: string; name: string; email: string; external_agent_id: string | null }>(
+      `UPDATE users SET external_agent_id = $3, updated_at = now()
+        WHERE id = $1 AND organization_id = $2 AND role = 'member'
+        RETURNING id, name, email, external_agent_id`,
+      [req.params.id, req.user!.organizationId, externalAgentId]
+    );
+    if (rows.length === 0) throw new AppError(404, 'Agent not found');
+    res.json(rows[0]);
   } catch (err) {
     next(err);
   }

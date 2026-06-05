@@ -34,6 +34,9 @@ ingestionRouter.post(
 
       // Pull metadata from body (works for both JSON and multipart)
       const agent_name = (req.body.agent_name as string | undefined) || null;
+      const agent_id = (req.body.agent_id as string | undefined) || null;
+      const agent_email = (req.body.agent_email as string | undefined) || null;
+      const agent_external_id = (req.body.agent_external_id as string | undefined) || null;
       const customer_phone =
         (req.body.customer_phone as string | undefined) || null;
       const call_date = (req.body.call_date as string | undefined) || null;
@@ -66,6 +69,9 @@ ingestionRouter.post(
         mimeType,
         ingestionSource: 'api',
         agentName: agent_name,
+        agentId: agent_id,
+        agentEmail: agent_email,
+        agentExternalId: agent_external_id,
         customerPhone: customer_phone,
         callDate: call_date,
         externalId: external_id,

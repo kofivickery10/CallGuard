@@ -9,7 +9,7 @@ interface InviteAgentModalProps {
 
 export function InviteAgentModal({ open, onClose }: InviteAgentModalProps) {
   const queryClient = useQueryClient();
-  const [form, setForm] = useState({ name: '', email: '', password: '' });
+  const [form, setForm] = useState({ name: '', email: '', password: '', external_agent_id: '' });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [created, setCreated] = useState<{ email: string; password: string } | null>(null);
@@ -24,7 +24,7 @@ export function InviteAgentModal({ open, onClose }: InviteAgentModalProps) {
       await api.post('/agents', form);
       setCreated({ email: form.email, password: form.password });
       queryClient.invalidateQueries({ queryKey: ['agents'] });
-      setForm({ name: '', email: '', password: '' });
+      setForm({ name: '', email: '', password: '', external_agent_id: '' });
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -35,7 +35,7 @@ export function InviteAgentModal({ open, onClose }: InviteAgentModalProps) {
   const handleClose = () => {
     setCreated(null);
     setError('');
-    setForm({ name: '', email: '', password: '' });
+    setForm({ name: '', email: '', password: '', external_agent_id: '' });
     onClose();
   };
 
@@ -74,6 +74,13 @@ export function InviteAgentModal({ open, onClose }: InviteAgentModalProps) {
               <div>
                 <label className="block text-table-cell font-medium text-text-secondary mb-1">Password</label>
                 <input type="text" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="Temporary password" className="w-full border border-border rounded-btn px-3 py-2 text-table-cell text-text-primary placeholder:text-text-muted focus:outline-none focus:border-primary transition-colors" required minLength={6} />
+              </div>
+              <div>
+                <label className="block text-table-cell font-medium text-text-secondary mb-1">
+                  Dialler agent ID <span className="text-text-muted font-normal">(optional)</span>
+                </label>
+                <input type="text" value={form.external_agent_id} onChange={(e) => setForm({ ...form, external_agent_id: e.target.value })} placeholder="Their ID in your dialler, if it isn't their email" className="w-full border border-border rounded-btn px-3 py-2 text-table-cell text-text-primary placeholder:text-text-muted focus:outline-none focus:border-primary transition-colors" />
+                <p className="text-[11px] text-text-muted mt-1">Lets calls from your dialler attribute to this adviser automatically.</p>
               </div>
             </div>
 
