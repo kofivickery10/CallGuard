@@ -25,6 +25,8 @@ export interface OrganizationInfo {
   id: string;
   name: string;
   plan: Plan;
+  // Stereo channel the adviser is recorded on: 0 = left, 1 = right, null = auto-detect.
+  adviser_channel?: number | null;
 }
 
 export type FeatureFlag = 'coaching' | 'ai_learning' | 'insights';

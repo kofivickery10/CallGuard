@@ -35,10 +35,17 @@ export async function processTranscription(job: Job<{ callId: string }>) {
     );
     const agentNames = agents.map((a) => a.name).filter(Boolean);
 
+    // Per-tenant stereo channel mapping (which channel is the adviser).
+    const orgRow = await queryOne<{ adviser_channel: number | null }>(
+      'SELECT adviser_channel FROM organizations WHERE id = $1',
+      [call.organization_id]
+    );
+
     const result = await transcribeCall(
       call.file_key,
       agentNames,
-      (call as Call & { encrypted_at_rest?: boolean }).encrypted_at_rest ?? false
+      (call as Call & { encrypted_at_rest?: boolean }).encrypted_at_rest ?? false,
+      orgRow?.adviser_channel ?? null
     );
 
     // Clean up transcript with LLM (pass org ID + KB context so Claude knows business details)

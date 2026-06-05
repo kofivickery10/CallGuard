@@ -101,7 +101,8 @@ const DOMAIN_KEYTERMS = [
 export async function transcribeCall(
   fileKey: string,
   extraKeyterms: string[] = [],
-  encryptedAtRest: boolean = false
+  encryptedAtRest: boolean = false,
+  adviserChannel: number | null = null
 ): Promise<TranscriptionResult> {
   if (!config.deepgram.apiKey) {
     throw new Error('DEEPGRAM_API_KEY is not set in .env - needed for transcription');
@@ -165,13 +166,15 @@ export async function transcribeCall(
   const ordered = [...utts].sort((a, b) => (a.start ?? 0) - (b.start ?? 0));
 
   // Which party is the adviser. For split-stereo the adviser is consistently on
-  // one channel, so allow it to be pinned via ADVISER_CHANNEL ('0' or '1') -
-  // deterministic, no guessing. If unset, fall back to "whoever speaks first"
-  // (they usually greet). Mono recordings always use the first-speaker guess.
-  const pinnedAdviserChannel =
+  // one channel, so we pin it deterministically (no guessing). Precedence:
+  // the per-tenant setting (adviserChannel arg) > the global ADVISER_CHANNEL env
+  // fallback > "whoever speaks first" (they usually greet). Mono recordings
+  // always fall back to the first-speaker guess via diarisation.
+  const envChannel =
     process.env.ADVISER_CHANNEL === '0' || process.env.ADVISER_CHANNEL === '1'
       ? Number(process.env.ADVISER_CHANNEL)
       : null;
+  const pinnedAdviserChannel = adviserChannel === 0 || adviserChannel === 1 ? adviserChannel : envChannel;
   const agentKey = isMultichannel
     ? pinnedAdviserChannel ?? (ordered[0]?.channel ?? 0)
     : ordered[0]?.speaker ?? 0;

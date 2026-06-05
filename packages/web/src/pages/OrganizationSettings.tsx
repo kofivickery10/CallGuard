@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../api/client';
 import {
@@ -17,6 +17,32 @@ export function OrganizationSettings() {
   const [error, setError] = useState('');
 
   const currentPlan = user?.organization_plan as Plan | undefined;
+
+  // Adviser stereo-channel mapping (undefined = loading)
+  const [adviserChannel, setAdviserChannel] = useState<number | null | undefined>(undefined);
+  const [savingChannel, setSavingChannel] = useState(false);
+
+  useEffect(() => {
+    api
+      .get<OrganizationInfo>('/organization')
+      .then((org) => setAdviserChannel(org.adviser_channel ?? null))
+      .catch(() => setAdviserChannel(null));
+  }, []);
+
+  const handleChannelChange = async (value: number | null) => {
+    setSavingChannel(true);
+    setError('');
+    try {
+      const updated = await api.put<OrganizationInfo>('/organization/adviser-channel', {
+        adviser_channel: value,
+      });
+      setAdviserChannel(updated.adviser_channel ?? null);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSavingChannel(false);
+    }
+  };
 
   const handleChange = async (plan: Plan) => {
     setSaving(plan);
@@ -45,6 +71,47 @@ export function OrganizationSettings() {
           Organisation
         </h3>
         <p className="text-table-cell text-text-primary font-semibold">{user?.organization_name}</p>
+      </div>
+
+      <div className="bg-white border border-border rounded-card p-5 mb-5">
+        <h3 className="text-[13px] uppercase tracking-wider text-text-muted font-semibold mb-1">
+          Call recording
+        </h3>
+        <p className="text-[12px] text-text-subtle mb-3">
+          Which stereo channel is the adviser recorded on? Most diallers record the adviser and
+          customer on separate channels. If unsure, play a recording and check the balance (left vs
+          right).
+        </p>
+        {adviserChannel === undefined ? (
+          <p className="text-[12px] text-text-muted">Loading…</p>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {[
+              { value: null as number | null, label: 'Auto-detect' },
+              { value: 0 as number | null, label: 'Left channel' },
+              { value: 1 as number | null, label: 'Right channel' },
+            ].map((opt) => {
+              const active = adviserChannel === opt.value;
+              return (
+                <button
+                  key={String(opt.value)}
+                  onClick={() => isAdmin && handleChannelChange(opt.value)}
+                  disabled={!isAdmin || savingChannel}
+                  className={`px-3 py-2 rounded-btn text-table-cell border transition-colors disabled:opacity-60 ${
+                    active
+                      ? 'border-primary bg-primary-light text-pass font-semibold'
+                      : 'border-border text-text-secondary hover:border-primary/50'
+                  } ${!isAdmin ? 'cursor-default' : ''}`}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
+        )}
+        {!isAdmin && (
+          <p className="text-[11px] text-text-muted mt-2">Ask your admin to change this.</p>
+        )}
       </div>
 
       <div className="mb-3 flex items-center justify-between">
