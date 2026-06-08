@@ -56,3 +56,93 @@ insightsRouter.post('/generate', requireActioner, async (req, res, next) => {
     next(err);
   }
 });
+
+// ============================================================
+// GET /api/insights/calibration
+// Calibration health: how often reviewers override the AI, the trend over time
+// (lower = better aligned), and which scorecard items are least aligned + which
+// way (AI too harsh vs too lenient). Computed from real human corrections.
+// ============================================================
+insightsRouter.get('/calibration', async (req, res, next) => {
+  try {
+    const orgId = req.user!.organizationId;
+
+    const correctionsByMonth = await query<{ month: string; corrections: string }>(
+      `SELECT to_char(date_trunc('month', created_at), 'YYYY-MM') AS month,
+              COUNT(*)::text AS corrections
+         FROM score_corrections
+        WHERE organization_id = $1 AND created_at >= date_trunc('month', now()) - interval '5 months'
+        GROUP BY 1`,
+      [orgId]
+    );
+
+    const scoredByMonth = await query<{ month: string; scored_calls: string }>(
+      `SELECT to_char(date_trunc('month', cs.scored_at), 'YYYY-MM') AS month,
+              COUNT(*)::text AS scored_calls
+         FROM call_scores cs
+         JOIN calls c ON c.id = cs.call_id
+        WHERE c.organization_id = $1 AND cs.scored_at >= date_trunc('month', now()) - interval '5 months'
+        GROUP BY 1`,
+      [orgId]
+    );
+
+    // Build last 6 months oldest->newest
+    const months: string[] = [];
+    const base = new Date();
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth() - i, 1));
+      months.push(`${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`);
+    }
+    const corr = (m: string) => parseInt(correctionsByMonth.find((r) => r.month === m)?.corrections || '0', 10);
+    const scored = (m: string) => parseInt(scoredByMonth.find((r) => r.month === m)?.scored_calls || '0', 10);
+    const trend = months.map((m) => {
+      const c = corr(m);
+      const s = scored(m);
+      return {
+        month: m,
+        scored_calls: s,
+        corrections: c,
+        overrides_per_100_calls: s > 0 ? Math.round((c / s) * 1000) / 10 : null,
+      };
+    });
+
+    const topItems = await query<{
+      label: string; total: string; too_lenient: string; too_harsh: string;
+    }>(
+      `SELECT si.label,
+              COUNT(*)::text AS total,
+              COUNT(*) FILTER (WHERE sc.original_pass = true  AND sc.corrected_pass = false)::text AS too_lenient,
+              COUNT(*) FILTER (WHERE sc.original_pass = false AND sc.corrected_pass = true )::text AS too_harsh
+         FROM score_corrections sc
+         JOIN scorecard_items si ON si.id = sc.scorecard_item_id
+        WHERE sc.organization_id = $1
+        GROUP BY si.label
+        ORDER BY total DESC
+        LIMIT 8`,
+      [orgId]
+    );
+
+    const totalsRow = await queryOne<{ total: string }>(
+      `SELECT COUNT(*)::text AS total FROM score_corrections WHERE organization_id = $1`,
+      [orgId]
+    );
+
+    const current = trend[trend.length - 1];
+    const previous = trend[trend.length - 2];
+
+    res.json({
+      total_corrections: parseInt(totalsRow?.total || '0', 10),
+      current_override_rate: current?.overrides_per_100_calls ?? null,
+      previous_override_rate: previous?.overrides_per_100_calls ?? null,
+      trend,
+      top_items: topItems.map((t) => ({
+        label: t.label,
+        corrections: parseInt(t.total, 10),
+        too_lenient: parseInt(t.too_lenient, 10),
+        too_harsh: parseInt(t.too_harsh, 10),
+      })),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
