@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { authenticate } from '../middleware/auth.js';
+import { authenticate, requireAdmin } from '../middleware/auth.js';
 import { query, queryOne } from '../db/client.js';
 import { AppError } from '../middleware/errors.js';
 import type { Scorecard, ScorecardItem } from '@callguard/shared';
@@ -41,7 +41,7 @@ scorecardRouter.get('/:id', async (req, res, next) => {
 });
 
 // Create scorecard with items
-scorecardRouter.post('/', async (req, res, next) => {
+scorecardRouter.post('/', requireAdmin, async (req, res, next) => {
   try {
     const { name, description, items } = req.body;
     if (!name || !items || !Array.isArray(items) || items.length === 0) {
@@ -80,7 +80,7 @@ scorecardRouter.post('/', async (req, res, next) => {
 });
 
 // Update scorecard
-scorecardRouter.put('/:id', async (req, res, next) => {
+scorecardRouter.put('/:id', requireAdmin, async (req, res, next) => {
   try {
     const scorecard = await queryOne<Scorecard>(
       'SELECT * FROM scorecards WHERE id = $1 AND organization_id = $2',
@@ -136,7 +136,7 @@ scorecardRouter.put('/:id', async (req, res, next) => {
 });
 
 // Delete scorecard (soft delete)
-scorecardRouter.delete('/:id', async (req, res, next) => {
+scorecardRouter.delete('/:id', requireAdmin, async (req, res, next) => {
   try {
     const result = await queryOne(
       `UPDATE scorecards SET is_active = false, updated_at = now()

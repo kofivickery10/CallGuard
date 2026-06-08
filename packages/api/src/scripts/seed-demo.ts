@@ -236,7 +236,7 @@ async function main() {
   for (const a of AGENTS) {
     const row = await queryOne<{ id: string }>(
       `INSERT INTO users (organization_id, email, name, password_hash, role)
-       VALUES ($1, $2, $3, $4, 'member') RETURNING id`,
+       VALUES ($1, $2, $3, $4, 'adviser') RETURNING id`,
       [orgId, a.email, a.name, agentHash]
     );
     agents.push({ id: row!.id, name: a.name, profile: a.profile });

@@ -1,5 +1,5 @@
 import { Router, Request } from 'express';
-import { authenticate, requireAdmin } from '../middleware/auth.js';
+import { authenticate, requireOrgView, requireActioner } from '../middleware/auth.js';
 import { query, queryOne } from '../db/client.js';
 import { AppError } from '../middleware/errors.js';
 import { recordAuditEvent } from '../services/audit.js';
@@ -17,7 +17,8 @@ import {
 
 export const breachesRouter = Router();
 breachesRouter.use(authenticate);
-breachesRouter.use(requireAdmin);
+// Org-wide read for all breach views; mutations add requireActioner below.
+breachesRouter.use(requireOrgView);
 
 interface BreachFilters {
   severity?: BreachSeverity;
@@ -437,7 +438,7 @@ breachesRouter.get('/:id', async (req, res, next) => {
 // PATCH /api/breaches/:id/status
 // ============================================================
 
-breachesRouter.post('/:id/status', async (req, res, next) => {
+breachesRouter.post('/:id/status', requireActioner, async (req, res, next) => {
   try {
     const { status } = req.body;
     if (!BREACH_STATUSES.includes(status)) {
@@ -488,7 +489,7 @@ breachesRouter.post('/:id/status', async (req, res, next) => {
 // PATCH /api/breaches/:id/assign
 // ============================================================
 
-breachesRouter.post('/:id/assign', async (req, res, next) => {
+breachesRouter.post('/:id/assign', requireActioner, async (req, res, next) => {
   try {
     const { assigned_to } = req.body;
 
@@ -527,7 +528,7 @@ breachesRouter.post('/:id/assign', async (req, res, next) => {
 // POST /api/breaches/:id/notes
 // ============================================================
 
-breachesRouter.post('/:id/notes', async (req, res, next) => {
+breachesRouter.post('/:id/notes', requireActioner, async (req, res, next) => {
   try {
     const { note } = req.body;
     if (!note || typeof note !== 'string' || !note.trim()) {

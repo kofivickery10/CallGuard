@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { v4 as uuid } from 'uuid';
 import { authenticate } from '../middleware/auth.js';
-import { requireAdmin } from '../middleware/auth.js';
+import { requireAdmin, requireActioner } from '../middleware/auth.js';
 import { upload } from '../middleware/upload.js';
 import { query, queryOne } from '../db/client.js';
 import { uploadFile, deleteFile } from '../services/storage.js';
@@ -28,7 +28,7 @@ callRouter.get('/', async (req, res, next) => {
     const params: unknown[] = [req.user!.organizationId];
 
     // Members can only see their own calls
-    if (req.user!.role === 'member') {
+    if (req.user!.role === 'adviser') {
       params.push(req.user!.userId);
       whereClause += ` AND c.agent_id = $${params.length}`;
     } else if (agentId) {
@@ -85,7 +85,7 @@ callRouter.post('/upload', upload.single('audio'), async (req, res, next) => {
     let agentId = req.body.agent_id || null;
     const agentName = req.body.agent_name || null;
 
-    if (req.user!.role === 'member') {
+    if (req.user!.role === 'adviser') {
       agentId = req.user!.userId;
     }
 
@@ -127,7 +127,7 @@ callRouter.post('/upload', upload.single('audio'), async (req, res, next) => {
          FROM users u
          WHERE calls.id = $1
            AND u.organization_id = $2
-           AND u.role = 'member'
+           AND u.role = 'adviser'
            AND lower(trim(u.name)) = lower(trim($3))`,
         [callId, req.user!.organizationId, agentName]
       );
@@ -272,7 +272,7 @@ callRouter.get('/:id', async (req, res, next) => {
     let sql = 'SELECT c.*, u.name as resolved_agent_name FROM calls c LEFT JOIN users u ON u.id = c.agent_id WHERE c.id = $1 AND c.organization_id = $2';
     const params: unknown[] = [req.params.id, req.user!.organizationId];
 
-    if (req.user!.role === 'member') {
+    if (req.user!.role === 'adviser') {
       params.push(req.user!.userId);
       sql += ` AND c.agent_id = $${params.length}`;
     }
@@ -325,7 +325,7 @@ callRouter.get('/:id/scores', async (req, res, next) => {
     let sql = 'SELECT id FROM calls WHERE id = $1 AND organization_id = $2';
     const params: unknown[] = [req.params.id, req.user!.organizationId];
 
-    if (req.user!.role === 'member') {
+    if (req.user!.role === 'adviser') {
       params.push(req.user!.userId);
       sql += ` AND agent_id = $${params.length}`;
     }
@@ -372,7 +372,7 @@ callRouter.patch('/:id/assign-agent', authenticate, requireAdmin, async (req, re
     if (agent_id) {
       const agent = await queryOne(
         'SELECT id FROM users WHERE id = $1 AND organization_id = $2 AND role = $3',
-        [agent_id, req.user!.organizationId, 'member']
+        [agent_id, req.user!.organizationId, 'adviser']
       );
       if (!agent) throw new AppError(404, 'Agent not found');
     }
@@ -389,7 +389,7 @@ callRouter.patch('/:id/assign-agent', authenticate, requireAdmin, async (req, re
 });
 
 // Re-score a call
-callRouter.post('/:id/rescore', async (req, res, next) => {
+callRouter.post('/:id/rescore', requireActioner, async (req, res, next) => {
   try {
     const call = await queryOne<Call>(
       'SELECT * FROM calls WHERE id = $1 AND organization_id = $2',
@@ -415,7 +415,7 @@ callRouter.post('/:id/rescore', async (req, res, next) => {
 });
 
 // Correct a scorecard item score (admin only) - feeds the AI learning loop
-callRouter.post('/:id/scores/items/:itemScoreId/correct', requireAdmin, async (req, res, next) => {
+callRouter.post('/:id/scores/items/:itemScoreId/correct', requireActioner, async (req, res, next) => {
   try {
     const { corrected_pass, reason } = req.body;
     if (typeof corrected_pass !== 'boolean') {
@@ -548,7 +548,7 @@ callRouter.post('/:id/scores/items/:itemScoreId/correct', requireAdmin, async (r
 });
 
 // Toggle exemplar (admin only)
-callRouter.post('/:id/exemplar', requireAdmin, async (req, res, next) => {
+callRouter.post('/:id/exemplar', requireActioner, async (req, res, next) => {
   try {
     const { is_exemplar, reason } = req.body;
     if (typeof is_exemplar !== 'boolean') {

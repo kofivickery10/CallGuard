@@ -9,7 +9,7 @@ export const CALL_STATUSES = [
 
 export const SCORE_TYPES = ['binary', 'scale_1_5', 'scale_1_10'] as const;
 
-export const USER_ROLES = ['admin', 'member'] as const;
+export const USER_ROLES = ['admin', 'supervisor', 'viewer', 'adviser'] as const;
 
 export const PASS_THRESHOLD = 70;
 

@@ -14,7 +14,7 @@ export async function cleanupTranscript(
   let agentNames: string[] = [];
   if (organizationId) {
     const agents = await query<{ name: string }>(
-      "SELECT name FROM users WHERE organization_id = $1 AND role = 'member'",
+      "SELECT name FROM users WHERE organization_id = $1 AND role = 'adviser'",
       [organizationId]
     );
     agentNames = agents.map((a) => a.name).filter(Boolean);

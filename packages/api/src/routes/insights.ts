@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { authenticate, requireAdmin } from '../middleware/auth.js';
+import { authenticate, requireOrgView, requireActioner } from '../middleware/auth.js';
 import { query, queryOne } from '../db/client.js';
 import { AppError } from '../middleware/errors.js';
 import { generateInsights } from '../services/ai-insights.js';
@@ -7,7 +7,7 @@ import { hasFeature, type Plan, type InsightDigest } from '@callguard/shared';
 
 export const insightsRouter = Router();
 insightsRouter.use(authenticate);
-insightsRouter.use(requireAdmin);
+insightsRouter.use(requireOrgView);
 
 async function requirePlan(orgId: string): Promise<void> {
   const row = await queryOne<{ plan: Plan }>(
@@ -46,7 +46,7 @@ insightsRouter.get('/:id', async (req, res, next) => {
   }
 });
 
-insightsRouter.post('/generate', async (req, res, next) => {
+insightsRouter.post('/generate', requireActioner, async (req, res, next) => {
   try {
     await requirePlan(req.user!.organizationId);
     const days = Math.min(Math.max(parseInt(req.body?.days) || 7, 1), 90);

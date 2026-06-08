@@ -30,7 +30,7 @@ export async function processTranscription(job: Job<{ callId: string }>) {
     // Fetch agent names in this org to pass as Deepgram keyterms
     // (helps correctly transcribe agent names mentioned in the call)
     const agents = await query<{ name: string }>(
-      "SELECT name FROM users WHERE organization_id = $1 AND role = 'member'",
+      "SELECT name FROM users WHERE organization_id = $1 AND role = 'adviser'",
       [call.organization_id]
     );
     const agentNames = agents.map((a) => a.name).filter(Boolean);

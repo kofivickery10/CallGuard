@@ -74,7 +74,7 @@ async function gatherMetrics(organizationId: string, periodDays: number): Promis
        AND c.created_at >= now() - ($2 || ' days')::interval
      LEFT JOIN breaches b ON b.call_id = c.id
        AND b.detected_at >= now() - ($2 || ' days')::interval
-     WHERE u.organization_id = $1 AND u.role = 'member'
+     WHERE u.organization_id = $1 AND u.role = 'adviser'
      GROUP BY u.id`,
     [organizationId, periodDays]
   );
