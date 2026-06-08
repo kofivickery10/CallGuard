@@ -11,7 +11,8 @@
     "start:worker": "node dist/jobs/worker.js",
     "migrate": "tsx src/db/migrate.ts",
     "encrypt-existing": "tsx src/scripts/encrypt-existing-files.ts",
-    "seed-demo": "tsx src/scripts/seed-demo.ts"
+    "seed-demo": "tsx src/scripts/seed-demo.ts",
+    "export-training-data": "tsx src/scripts/export-training-data.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
