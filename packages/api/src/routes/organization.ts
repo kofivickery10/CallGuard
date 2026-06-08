@@ -57,3 +57,56 @@ organizationRouter.put('/adviser-channel', requireAdmin, async (req, res, next) 
     next(err);
   }
 });
+
+// Active seats = distinct advisers with at least one scored call in a month.
+// Returns the current and previous calendar month (basis for per-seat billing).
+organizationRouter.get('/active-seats', requireAdmin, async (req, res, next) => {
+  try {
+    const orgId = req.user!.organizationId;
+
+    const byMonth = await query<{ month: string; active_seats: string }>(
+      `SELECT to_char(date_trunc('month', created_at), 'YYYY-MM') AS month,
+              COUNT(DISTINCT agent_id)::text AS active_seats
+         FROM calls
+        WHERE organization_id = $1
+          AND status = 'scored'
+          AND agent_id IS NOT NULL
+          AND created_at >= date_trunc('month', now()) - interval '1 month'
+        GROUP BY 1`,
+      [orgId]
+    );
+
+    const advisers = await query<{ id: string; name: string; scored_calls: string }>(
+      `SELECT u.id, u.name, COUNT(c.id)::text AS scored_calls
+         FROM calls c
+         JOIN users u ON u.id = c.agent_id
+        WHERE c.organization_id = $1
+          AND c.status = 'scored'
+          AND c.created_at >= date_trunc('month', now())
+        GROUP BY u.id, u.name
+        ORDER BY u.name`,
+      [orgId]
+    );
+
+    const now = new Date();
+    const fmt = (d: Date) => `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+    const currentMonth = fmt(now);
+    const prevMonth = fmt(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1)));
+    const seatsFor = (m: string) =>
+      parseInt(byMonth.find((r) => r.month === m)?.active_seats || '0', 10);
+
+    res.json({
+      current_month: currentMonth,
+      current_active_seats: seatsFor(currentMonth),
+      previous_month: prevMonth,
+      previous_active_seats: seatsFor(prevMonth),
+      current_advisers: advisers.map((a) => ({
+        id: a.id,
+        name: a.name,
+        scored_calls: parseInt(a.scored_calls, 10),
+      })),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
