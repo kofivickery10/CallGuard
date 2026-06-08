@@ -93,6 +93,88 @@ ingestionRouter.post(
 );
 
 // ============================================================
+// POST /api/ingestion/cloudtalk (X-API-Key auth)
+// CloudTalk "Recording Uploaded" webhook receiver. CloudTalk's payload shape
+// varies by setup, so we read the recording URL + agent + call id tolerantly
+// from a range of likely field names (top-level or nested under call/Call/data).
+// Maps to the generic ingest. If a CloudTalk recording URL needs auth to
+// download, set CLOUDTALK_API_KEY_ID / CLOUDTALK_API_SECRET (Basic auth).
+// ============================================================
+
+// Find the first non-empty string at any of the candidate keys, checking the
+// body and one level of common nesting (call / Call / data / payload).
+function pickField(body: Record<string, unknown>, keys: string[]): string | null {
+  const containers: Record<string, unknown>[] = [body];
+  for (const c of ['call', 'Call', 'data', 'payload']) {
+    const nested = body[c];
+    if (nested && typeof nested === 'object') containers.push(nested as Record<string, unknown>);
+  }
+  for (const container of containers) {
+    for (const key of keys) {
+      const v = container[key];
+      if (typeof v === 'string' && v.trim()) return v.trim();
+      if (typeof v === 'number') return String(v);
+    }
+  }
+  return null;
+}
+
+ingestionRouter.post('/cloudtalk', authenticateApiKey, async (req, res, next) => {
+  try {
+    const orgId = req.user!.organizationId;
+    const body = (req.body || {}) as Record<string, unknown>;
+
+    const recordingUrl = pickField(body, [
+      'recording_url', 'recording', 'call_recording_url', 'recording_link', 'audio_url', 'url',
+    ]);
+    const externalId = pickField(body, ['call_uuid', 'uuid', 'call_id', 'id']);
+    const agentEmail = pickField(body, ['agent_email', 'agent_mail', 'internal_email']);
+    const agentExternalId = pickField(body, ['agent_id', 'agent', 'internal_id']);
+    const agentName = pickField(body, ['agent_name', 'internal_name']);
+    const customerPhone = pickField(body, ['external_number', 'public_external_number', 'contact_number', 'phone_number']);
+
+    // CloudTalk fires events before the recording exists too - acknowledge and skip.
+    if (!recordingUrl) {
+      res.status(202).json({ status: 'ignored', reason: 'no recording URL in payload' });
+      return;
+    }
+
+    // Optional Basic auth for protected CloudTalk recording URLs.
+    const headers: Record<string, string> = {};
+    if (process.env.CLOUDTALK_API_KEY_ID && process.env.CLOUDTALK_API_SECRET) {
+      const token = Buffer.from(
+        `${process.env.CLOUDTALK_API_KEY_ID}:${process.env.CLOUDTALK_API_SECRET}`
+      ).toString('base64');
+      headers['Authorization'] = `Basic ${token}`;
+    }
+
+    const downloaded = await downloadUrl(recordingUrl, headers);
+
+    const { call, isDuplicate } = await ingestCall({
+      organizationId: orgId,
+      uploadedBy: null,
+      fileName: downloaded.fileName,
+      buffer: downloaded.buffer,
+      mimeType: downloaded.mimeType,
+      ingestionSource: 'api',
+      agentEmail,
+      agentExternalId,
+      agentName,
+      customerPhone,
+      externalId,
+    });
+
+    res.status(isDuplicate ? 200 : 201).json({
+      status: isDuplicate ? 'duplicate' : 'accepted',
+      call_id: call.id,
+      external_id: call.external_id,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ============================================================
 // GET /api/ingestion/scorecards (X-API-Key auth)
 // Lets an integrator list the scorecards available to their org so
 // they can pick the right one when ingesting per-campaign calls.
@@ -627,12 +709,12 @@ function parseTags(raw: unknown): string[] {
   return [];
 }
 
-async function downloadUrl(url: string): Promise<{
+async function downloadUrl(url: string, headers: Record<string, string> = {}): Promise<{
   buffer: Buffer;
   fileName: string;
   mimeType: string;
 }> {
-  const res = await fetch(url);
+  const res = await fetch(url, Object.keys(headers).length ? { headers } : undefined);
   if (!res.ok) {
     throw new AppError(400, `Failed to download audio from URL: ${res.status} ${res.statusText}`);
   }
