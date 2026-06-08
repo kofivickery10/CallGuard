@@ -77,10 +77,11 @@ authRouter.post('/login', async (req, res, next) => {
       email: string;
       name: string;
       role: string;
+      is_staff: boolean;
       password_hash: string;
       organization_id: string;
     }>(
-      `SELECT u.id, u.email, u.name, u.role, u.password_hash, u.organization_id
+      `SELECT u.id, u.email, u.name, u.role, u.is_staff, u.password_hash, u.organization_id
        FROM users u WHERE u.email = $1`,
       [email]
     );
@@ -116,6 +117,7 @@ authRouter.post('/login', async (req, res, next) => {
         email: user.email,
         name: user.name,
         role: user.role,
+        is_staff: user.is_staff,
         organization_id: user.organization_id,
         organization_name: org?.name || '',
         organization_plan: org?.plan || 'starter',
@@ -133,9 +135,10 @@ authRouter.get('/me', authenticate, async (req, res, next) => {
       email: string;
       name: string;
       role: string;
+      is_staff: boolean;
       organization_id: string;
     }>(
-      'SELECT id, email, name, role, organization_id FROM users WHERE id = $1',
+      'SELECT id, email, name, role, is_staff, organization_id FROM users WHERE id = $1',
       [req.user!.userId]
     );
 

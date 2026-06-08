@@ -19,6 +19,7 @@ import { publicRouter } from './routes/public.js';
 import { organizationRouter } from './routes/organization.js';
 import { insightsRouter } from './routes/insights.js';
 import { auditRouter } from './routes/audit.js';
+import { supportRouter } from './routes/support.js';
 import { streamRouter } from './routes/stream.js';
 
 const app = express();
@@ -96,6 +97,7 @@ app.use('/api/public', publicRouter);
 app.use('/api/organization', organizationRouter);
 app.use('/api/insights', insightsRouter);
 app.use('/api/audit-log', auditRouter);
+app.use('/api/support', supportRouter);
 app.use('/v1', streamRouter);
 
 // Serve React static build in production

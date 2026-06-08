@@ -67,6 +67,26 @@ export const requireOrgView = requireRole('admin', 'supervisor', 'viewer');
 // Actioning calls (review breaches, correct scores, coach). Not viewers/advisers.
 export const requireActioner = requireRole('admin', 'supervisor');
 
+// CallGuard platform operator (cross-tenant support inbox). Looked up live so it
+// never depends on a stale token claim.
+export async function requireStaff(
+  req: Request,
+  _res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    if (!req.user) throw new AppError(401, 'Not authenticated');
+    const row = await queryOne<{ is_staff: boolean }>(
+      'SELECT is_staff FROM users WHERE id = $1',
+      [req.user.userId]
+    );
+    if (!row?.is_staff) throw new AppError(403, 'Staff access required');
+    next();
+  } catch (err) {
+    next(err);
+  }
+}
+
 export async function authenticateApiKey(
   req: Request,
   _res: Response,

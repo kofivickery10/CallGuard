@@ -26,6 +26,7 @@ const AIInsights = lazy(() => import('./pages/AIInsights').then((m) => ({ defaul
 const ReviewQueue = lazy(() => import('./pages/ReviewQueue').then((m) => ({ default: m.ReviewQueue })));
 const AuditLog = lazy(() => import('./pages/AuditLog').then((m) => ({ default: m.AuditLog })));
 const Calibration = lazy(() => import('./pages/Calibration').then((m) => ({ default: m.Calibration })));
+const SupportInbox = lazy(() => import('./pages/SupportInbox').then((m) => ({ default: m.SupportInbox })));
 
 function PageLoader() {
   return (
@@ -75,6 +76,7 @@ export function App() {
                   <Route path="/review-queue" element={<ReviewQueue />} />
                   <Route path="/audit-log" element={<AuditLog />} />
                   <Route path="/calibration" element={<Calibration />} />
+                  <Route path="/support-inbox" element={<SupportInbox />} />
                 </Routes>
               </Suspense>
             </Layout>
