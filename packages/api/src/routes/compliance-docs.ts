@@ -1,12 +1,12 @@
 import { Router } from 'express';
-import { authenticate, requireAdmin } from '../middleware/auth.js';
+import { authenticate, requireOrgView } from '../middleware/auth.js';
 import { queryOne } from '../db/client.js';
 import { AppError } from '../middleware/errors.js';
 import { DOC_TYPES, findDocType, renderDocument } from '../services/doc-generator.js';
 
 export const complianceDocsRouter = Router();
 complianceDocsRouter.use(authenticate);
-complianceDocsRouter.use(requireAdmin);
+complianceDocsRouter.use(requireOrgView);
 
 complianceDocsRouter.get('/', (_req, res) => {
   res.json({

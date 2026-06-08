@@ -9,7 +9,7 @@ interface InviteAgentModalProps {
 
 export function InviteAgentModal({ open, onClose }: InviteAgentModalProps) {
   const queryClient = useQueryClient();
-  const [form, setForm] = useState({ name: '', email: '', password: '', external_agent_id: '' });
+  const [form, setForm] = useState({ name: '', email: '', password: '', external_agent_id: '', role: 'adviser' });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [created, setCreated] = useState<{ email: string; password: string } | null>(null);
@@ -24,7 +24,7 @@ export function InviteAgentModal({ open, onClose }: InviteAgentModalProps) {
       await api.post('/agents', form);
       setCreated({ email: form.email, password: form.password });
       queryClient.invalidateQueries({ queryKey: ['agents'] });
-      setForm({ name: '', email: '', password: '', external_agent_id: '' });
+      setForm({ name: '', email: '', password: '', external_agent_id: '', role: 'adviser' });
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -35,7 +35,7 @@ export function InviteAgentModal({ open, onClose }: InviteAgentModalProps) {
   const handleClose = () => {
     setCreated(null);
     setError('');
-    setForm({ name: '', email: '', password: '', external_agent_id: '' });
+    setForm({ name: '', email: '', password: '', external_agent_id: '', role: 'adviser' });
     onClose();
   };
 
@@ -70,6 +70,15 @@ export function InviteAgentModal({ open, onClose }: InviteAgentModalProps) {
               <div>
                 <label className="block text-table-cell font-medium text-text-secondary mb-1">Email</label>
                 <input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="agent@company.com" className="w-full border border-border rounded-btn px-3 py-2 text-table-cell text-text-primary placeholder:text-text-muted focus:outline-none focus:border-primary transition-colors" required />
+              </div>
+              <div>
+                <label className="block text-table-cell font-medium text-text-secondary mb-1">Role</label>
+                <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} className="w-full border border-border rounded-btn px-3 py-2 text-table-cell text-text-primary focus:outline-none focus:border-primary transition-colors bg-white">
+                  <option value="adviser">Adviser — sees only their own calls</option>
+                  <option value="supervisor">Supervisor — sees & actions all calls</option>
+                  <option value="viewer">Viewer — read-only across the org</option>
+                  <option value="admin">Admin — full access incl. settings</option>
+                </select>
               </div>
               <div>
                 <label className="block text-table-cell font-medium text-text-secondary mb-1">Password</label>

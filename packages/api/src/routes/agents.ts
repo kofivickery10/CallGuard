@@ -4,6 +4,10 @@ import { authenticate } from '../middleware/auth.js';
 import { requireAdmin } from '../middleware/auth.js';
 import { query, queryOne } from '../db/client.js';
 import { AppError } from '../middleware/errors.js';
+import { USER_ROLES } from '@callguard/shared';
+
+const isValidRole = (r: unknown): r is string =>
+  typeof r === 'string' && (USER_ROLES as readonly string[]).includes(r);
 
 export const agentRouter = Router();
 agentRouter.use(authenticate);
@@ -14,7 +18,7 @@ agentRouter.get('/', async (req, res, next) => {
   try {
     const agents = await query(
       `SELECT
-        u.id, u.name, u.email, u.external_agent_id, u.created_at,
+        u.id, u.name, u.email, u.role, u.external_agent_id, u.created_at,
         COUNT(c.id) as total_calls,
         COUNT(c.id) FILTER (WHERE c.status = 'scored') as scored_calls,
         AVG(cs.overall_score) as average_score,
@@ -26,7 +30,7 @@ agentRouter.get('/', async (req, res, next) => {
        FROM users u
        LEFT JOIN calls c ON c.agent_id = u.id
        LEFT JOIN call_scores cs ON cs.call_id = c.id
-       WHERE u.organization_id = $1 AND u.role = 'member'
+       WHERE u.organization_id = $1
        GROUP BY u.id
        ORDER BY u.name`,
       [req.user!.organizationId]
@@ -50,6 +54,7 @@ agentRouter.get('/', async (req, res, next) => {
 agentRouter.post('/', async (req, res, next) => {
   try {
     const { email, name, password } = req.body;
+    const role = isValidRole(req.body.role) ? req.body.role : 'adviser';
     const externalAgentId = (req.body.external_agent_id as string | undefined)?.trim() || null;
     if (!email || !name || !password) {
       throw new AppError(400, 'email, name, and password are required');
@@ -64,9 +69,9 @@ agentRouter.post('/', async (req, res, next) => {
 
     const rows = await query<{ id: string; email: string; name: string; role: string; created_at: string }>(
       `INSERT INTO users (organization_id, email, name, password_hash, role, external_agent_id)
-       VALUES ($1, $2, $3, $4, 'member', $5)
+       VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING id, email, name, role, external_agent_id, created_at`,
-      [req.user!.organizationId, email, name, passwordHash, externalAgentId]
+      [req.user!.organizationId, email, name, passwordHash, role, externalAgentId]
     );
 
     res.status(201).json(rows[0]);
@@ -75,17 +80,18 @@ agentRouter.post('/', async (req, res, next) => {
   }
 });
 
-// Update an agent's dialler mapping (external agent id)
+// Update a team member's role and/or dialler mapping (external agent id)
 agentRouter.put('/:id', async (req, res, next) => {
   try {
     const externalAgentId = (req.body.external_agent_id as string | undefined)?.trim() || null;
-    const rows = await query<{ id: string; name: string; email: string; external_agent_id: string | null }>(
-      `UPDATE users SET external_agent_id = $3, updated_at = now()
-        WHERE id = $1 AND organization_id = $2 AND role = 'member'
-        RETURNING id, name, email, external_agent_id`,
-      [req.params.id, req.user!.organizationId, externalAgentId]
+    const role = isValidRole(req.body.role) ? req.body.role : null; // null = leave unchanged
+    const rows = await query<{ id: string; name: string; email: string; role: string; external_agent_id: string | null }>(
+      `UPDATE users SET external_agent_id = $3, role = COALESCE($4, role), updated_at = now()
+        WHERE id = $1 AND organization_id = $2
+        RETURNING id, name, email, role, external_agent_id`,
+      [req.params.id, req.user!.organizationId, externalAgentId, role]
     );
-    if (rows.length === 0) throw new AppError(404, 'Agent not found');
+    if (rows.length === 0) throw new AppError(404, 'User not found');
     res.json(rows[0]);
   } catch (err) {
     next(err);
@@ -96,8 +102,8 @@ agentRouter.put('/:id', async (req, res, next) => {
 agentRouter.get('/:id/stats', async (req, res, next) => {
   try {
     const agent = await queryOne(
-      'SELECT id, name, email FROM users WHERE id = $1 AND organization_id = $2 AND role = $3',
-      [req.params.id, req.user!.organizationId, 'member']
+      'SELECT id, name, email FROM users WHERE id = $1 AND organization_id = $2',
+      [req.params.id, req.user!.organizationId]
     );
     if (!agent) throw new AppError(404, 'Agent not found');
 
@@ -137,9 +143,12 @@ agentRouter.get('/:id/stats', async (req, res, next) => {
 // Delete agent
 agentRouter.delete('/:id', async (req, res, next) => {
   try {
+    if (req.params.id === req.user!.userId) {
+      throw new AppError(400, 'You cannot remove your own account');
+    }
     const agent = await queryOne(
-      'SELECT id FROM users WHERE id = $1 AND organization_id = $2 AND role = $3',
-      [req.params.id, req.user!.organizationId, 'member']
+      'SELECT id FROM users WHERE id = $1 AND organization_id = $2',
+      [req.params.id, req.user!.organizationId]
     );
     if (!agent) throw new AppError(404, 'Agent not found');
 

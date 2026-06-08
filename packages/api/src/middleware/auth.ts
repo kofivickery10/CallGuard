@@ -39,6 +39,16 @@ export function authenticate(
   }
 }
 
+export function requireRole(...roles: string[]) {
+  return (req: Request, _res: Response, next: NextFunction): void => {
+    if (!req.user || !roles.includes(req.user.role)) {
+      throw new AppError(403, 'Insufficient permissions');
+    }
+    next();
+  };
+}
+
+// Configuration / management - admin only.
 export function requireAdmin(
   req: Request,
   _res: Response,
@@ -49,6 +59,13 @@ export function requireAdmin(
   }
   next();
 }
+
+// Org-wide read access (dashboards, breaches, insights, audit). Advisers are
+// scoped to their own calls and are intentionally excluded.
+export const requireOrgView = requireRole('admin', 'supervisor', 'viewer');
+
+// Actioning calls (review breaches, correct scores, coach). Not viewers/advisers.
+export const requireActioner = requireRole('admin', 'supervisor');
 
 export async function authenticateApiKey(
   req: Request,

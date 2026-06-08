@@ -5,7 +5,14 @@ export interface Organization {
   updated_at: string;
 }
 
-export type UserRole = 'admin' | 'member';
+// admin    - full access incl. all configuration
+// supervisor - sees & actions all calls (review, correct, coach); no config
+// viewer   - read-only across the whole org; no config, no uploads (leadership)
+// adviser  - sees only their own calls/scores (front-line agent)
+export type UserRole = 'admin' | 'supervisor' | 'viewer' | 'adviser';
+
+// Roles that see org-wide data (everyone except advisers, who are scoped to self)
+export const ORG_WIDE_ROLES: UserRole[] = ['admin', 'supervisor', 'viewer'];
 
 export interface User {
   id: string;

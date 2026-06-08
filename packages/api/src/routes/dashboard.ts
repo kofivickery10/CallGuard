@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { authenticate } from '../middleware/auth.js';
-import { requireAdmin } from '../middleware/auth.js';
+import { requireOrgView } from '../middleware/auth.js';
 import { query, queryOne } from '../db/client.js';
 
 export const dashboardRouter = Router();
@@ -16,7 +16,7 @@ dashboardRouter.get('/summary', async (req, res, next) => {
     const params: unknown[] = [orgId];
 
     // Members see only their own stats
-    if (req.user!.role === 'member') {
+    if (req.user!.role === 'adviser') {
       params.push(req.user!.userId);
       callWhere += ` AND c.agent_id = $${params.length}`;
     } else if (agentId) {
@@ -74,7 +74,7 @@ dashboardRouter.get('/recent', async (req, res, next) => {
     let callWhere = 'WHERE c.organization_id = $1';
     const params: unknown[] = [req.user!.organizationId];
 
-    if (req.user!.role === 'member') {
+    if (req.user!.role === 'adviser') {
       params.push(req.user!.userId);
       callWhere += ` AND c.agent_id = $${params.length}`;
     } else if (agentId) {
@@ -114,7 +114,7 @@ function buildTrendWhere(orgId: string, agentId?: string): { where: string; para
 }
 
 // Calls per day for last N days - fills gaps with zeros
-dashboardRouter.get('/trends/calls-per-day', requireAdmin, async (req, res, next) => {
+dashboardRouter.get('/trends/calls-per-day', requireOrgView, async (req, res, next) => {
   try {
     const days = Math.min(parseInt(req.query.days as string) || 30, 180);
     const agentId = req.query.agent_id as string | undefined;
@@ -154,7 +154,7 @@ dashboardRouter.get('/trends/calls-per-day', requireAdmin, async (req, res, next
 });
 
 // Avg score + pass rate per week for last N weeks
-dashboardRouter.get('/trends/scores-over-time', requireAdmin, async (req, res, next) => {
+dashboardRouter.get('/trends/scores-over-time', requireOrgView, async (req, res, next) => {
   try {
     const weeks = Math.min(parseInt(req.query.weeks as string) || 12, 52);
     const agentId = req.query.agent_id as string | undefined;
@@ -195,7 +195,7 @@ dashboardRouter.get('/trends/scores-over-time', requireAdmin, async (req, res, n
 });
 
 // Per-scorecard breakdown with flags and critical counts
-dashboardRouter.get('/trends/by-scorecard', requireAdmin, async (req, res, next) => {
+dashboardRouter.get('/trends/by-scorecard', requireOrgView, async (req, res, next) => {
   try {
     const agentId = req.query.agent_id as string | undefined;
     const params: unknown[] = [req.user!.organizationId];
@@ -251,7 +251,7 @@ dashboardRouter.get('/trends/by-scorecard', requireAdmin, async (req, res, next)
 });
 
 // Breach severity trend (weekly stacked counts)
-dashboardRouter.get('/trends/breach-severity', requireAdmin, async (req, res, next) => {
+dashboardRouter.get('/trends/breach-severity', requireOrgView, async (req, res, next) => {
   try {
     const weeks = Math.min(parseInt(req.query.weeks as string) || 12, 52);
     const agentId = req.query.agent_id as string | undefined;
@@ -300,7 +300,7 @@ dashboardRouter.get('/trends/breach-severity', requireAdmin, async (req, res, ne
 });
 
 // Adviser risk profile (admin only)
-dashboardRouter.get('/adviser-risk', requireAdmin, async (req, res, next) => {
+dashboardRouter.get('/adviser-risk', requireOrgView, async (req, res, next) => {
   try {
     const rawDays = parseInt(req.query.days as string);
     const daysParam = Number.isFinite(rawDays) ? rawDays : 30;
@@ -337,7 +337,7 @@ dashboardRouter.get('/adviser-risk', requireAdmin, async (req, res, next) => {
            AND c.created_at >= now() - ($2 || ' days')::interval
          LEFT JOIN breaches b ON b.call_id = c.id
            AND b.detected_at >= now() - ($2 || ' days')::interval
-         WHERE u.organization_id = $1 AND u.role = 'member'
+         WHERE u.organization_id = $1 AND u.role = 'adviser'
          GROUP BY u.id
        ),
        agent_breach_counts AS (
@@ -423,7 +423,7 @@ function recommendAction(
 }
 
 // Agent leaderboard (admin only)
-dashboardRouter.get('/agent-leaderboard', authenticate, requireAdmin, async (req, res, next) => {
+dashboardRouter.get('/agent-leaderboard', authenticate, requireOrgView, async (req, res, next) => {
   try {
     const agents = await query(
       `SELECT
@@ -439,7 +439,7 @@ dashboardRouter.get('/agent-leaderboard', authenticate, requireAdmin, async (req
        FROM users u
        LEFT JOIN calls c ON c.agent_id = u.id
        LEFT JOIN call_scores cs ON cs.call_id = c.id
-       WHERE u.organization_id = $1 AND u.role = 'member'
+       WHERE u.organization_id = $1 AND u.role = 'adviser'
        GROUP BY u.id
        ORDER BY AVG(cs.overall_score) DESC NULLS LAST`,
       [req.user!.organizationId]

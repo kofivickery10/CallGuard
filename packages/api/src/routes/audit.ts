@@ -1,10 +1,10 @@
 import { Router } from 'express';
-import { authenticate, requireAdmin } from '../middleware/auth.js';
+import { authenticate, requireOrgView } from '../middleware/auth.js';
 import { query, queryOne } from '../db/client.js';
 
 export const auditRouter = Router();
 auditRouter.use(authenticate);
-auditRouter.use(requireAdmin);
+auditRouter.use(requireOrgView);
 
 interface AuditRow {
   id: string;
