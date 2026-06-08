@@ -8,6 +8,8 @@ export type AuditActionType =
   | 'call.upload'
   | 'call.bulk_import'
   | 'call.rescore'
+  | 'call.reviewed'
+  | 'call.review_cleared'
   | 'score.correct'
   | 'exemplar.toggle'
   | 'breach.status_change'
