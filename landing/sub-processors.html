@@ -47,7 +47,7 @@
   <div class="container">
     <div class="crumb"><a href="/">Home</a> · Legal</div>
     <h1>Sub-processors</h1>
-    <p class="meta"><strong>Last updated:</strong> 28 April 2026 · <strong>Version:</strong> 1.0</p>
+    <p class="meta"><strong>Last updated:</strong> 8 June 2026 · <strong>Version:</strong> 1.1</p>
   </div>
 </section>
 
@@ -133,6 +133,23 @@
     </tbody>
   </table>
 
+  <h2 id="analytics-web">Website analytics</h2>
+
+  <table>
+    <thead>
+      <tr><th>Sub-processor</th><th>Purpose</th><th>Data accessed</th><th>Location</th><th>Transfer safeguard</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Google (Google Analytics 4)</strong><br/><a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Privacy</a> · <a href="https://business.safety.google/adsprocessorterms/" target="_blank" rel="noopener">Data processing terms</a></td>
+        <td>Aggregate website usage measurement on callguardai.co.uk. Loaded only after the visitor consents via our cookie banner. Not used on the application or for any Customer Personal Data.</td>
+        <td>Marketing-site visitor data only: anonymised IP, pages viewed, referrer, device/browser. No call audio, transcripts or account data.</td>
+        <td>Google Ireland Limited (EU), with onward transfer to the United States</td>
+        <td>EU SCCs · UK Addendum · IP anonymisation and Google Consent Mode enabled</td>
+      </tr>
+    </tbody>
+  </table>
+
   <h2 id="optional">Customer-configured integrations</h2>
 
   <p>Where a customer chooses to integrate the Services with a third-party platform of their own (e.g., Twilio, AWS Connect, Vonage for live audio streaming; their own CRM or webhook endpoint), that third party is acting on the customer's instruction, not on ours. CallGuard AI does not enter into a Sub-processor relationship with these third parties on the customer's behalf. The customer is responsible for any DPAs or transfer safeguards required between themselves and those parties.</p>
@@ -168,5 +185,6 @@
   </div>
 </footer>
 
+<script defer src="/analytics.js?v=1"></script>
 </body>
 </html>
