@@ -2,6 +2,7 @@ import { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { NotificationBell } from './NotificationBell';
+import { SupportWidget } from './SupportWidget';
 
 interface NavItem {
   path: string;
@@ -9,6 +10,8 @@ interface NavItem {
   icon: string;
   // Roles allowed to see this item. Omitted = everyone.
   roles?: string[];
+  // Only CallGuard platform staff (cross-tenant support inbox).
+  staffOnly?: boolean;
 }
 
 // Role groups for nav visibility.
@@ -32,6 +35,7 @@ const navItems: NavItem[] = [
   { path: '/compliance-docs', label: 'Compliance Docs', icon: 'M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8zM14 2v6h6M16 13H8M16 17H8M10 9H8', roles: ORG_VIEW },
   { path: '/audit-log', label: 'Audit Log', icon: 'M12 2v20M2 12h20M12 6l4 4M12 6l-4 4M12 18l4-4M12 18l-4-4', roles: ORG_VIEW },
   { path: '/team', label: 'Team', icon: 'M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75', roles: ADMIN_ONLY },
+  { path: '/support-inbox', label: 'Support', icon: 'M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z', staffOnly: true },
 ];
 
 export function Layout({ children }: { children: ReactNode }) {
@@ -63,7 +67,11 @@ export function Layout({ children }: { children: ReactNode }) {
         {/* Nav */}
         <nav className="flex-1 px-3">
           {navItems
-            .filter((item) => !item.roles || (!!user?.role && item.roles.includes(user.role)))
+            .filter((item) =>
+              item.staffOnly
+                ? !!user?.is_staff
+                : !item.roles || (!!user?.role && item.roles.includes(user.role))
+            )
             .map((item) => {
               const isActive =
                 item.path === '/'
@@ -137,6 +145,9 @@ export function Layout({ children }: { children: ReactNode }) {
         </div>
         <div className="p-8 px-9 max-w-[1200px]">{children}</div>
       </main>
+
+      {/* Tenant-facing support chat (self-hides for staff) */}
+      <SupportWidget />
     </div>
   );
 }

@@ -9,6 +9,7 @@ interface AuthUser {
   email: string;
   name: string;
   role: string;
+  is_staff?: boolean;
   organization_id: string;
   organization_name: string;
   organization_plan: Plan;
