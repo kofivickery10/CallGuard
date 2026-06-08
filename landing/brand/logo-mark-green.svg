@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="CallGuard AI mark">
+  <g fill="#4a9e6e">
+    <rect x="96"  y="304" width="51.2" height="86.4"  rx="24"/>
+    <rect x="192" y="240" width="51.2" height="150.4" rx="24"/>
+    <rect x="288" y="176" width="51.2" height="214.4" rx="24"/>
+    <circle cx="400" cy="128" r="35.2"/>
+  </g>
+</svg>
