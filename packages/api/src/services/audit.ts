@@ -26,7 +26,8 @@ export type AuditActionType =
   | 'sftp.delete'
   | 'user.invite'
   | 'user.role_change'
-  | 'user.delete';
+  | 'user.delete'
+  | 'org.data_improvement_optin';
 
 export type AuditEntityType =
   | 'call'
@@ -37,7 +38,8 @@ export type AuditEntityType =
   | 'api_key'
   | 'sftp_source'
   | 'user'
-  | 'session';
+  | 'session'
+  | 'organization';
 
 interface AuditEvent {
   organizationId: string;
