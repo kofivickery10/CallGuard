@@ -30,14 +30,26 @@ export function OrganizationSettings() {
   const [adviserChannel, setAdviserChannel] = useState<number | null | undefined>(undefined);
   const [savingChannel, setSavingChannel] = useState(false);
 
+  // Data-improvement opt-in (DPA §4.2). undefined = loading.
+  const [dataOptIn, setDataOptIn] = useState<boolean | undefined>(undefined);
+  const [dataOptInAt, setDataOptInAt] = useState<string | null>(null);
+  const [savingOptIn, setSavingOptIn] = useState(false);
+
   // Active-seat usage (admin only)
   const [seats, setSeats] = useState<ActiveSeats | null>(null);
 
   useEffect(() => {
     api
       .get<OrganizationInfo>('/organization')
-      .then((org) => setAdviserChannel(org.adviser_channel ?? null))
-      .catch(() => setAdviserChannel(null));
+      .then((org) => {
+        setAdviserChannel(org.adviser_channel ?? null);
+        setDataOptIn(org.data_improvement_opt_in ?? false);
+        setDataOptInAt(org.data_improvement_opt_in_at ?? null);
+      })
+      .catch(() => {
+        setAdviserChannel(null);
+        setDataOptIn(false);
+      });
   }, []);
 
   useEffect(() => {
@@ -57,6 +69,22 @@ export function OrganizationSettings() {
       setError((err as Error).message);
     } finally {
       setSavingChannel(false);
+    }
+  };
+
+  const handleOptInChange = async (value: boolean) => {
+    setSavingOptIn(true);
+    setError('');
+    try {
+      const updated = await api.put<OrganizationInfo>('/organization/data-improvement', {
+        opt_in: value,
+      });
+      setDataOptIn(updated.data_improvement_opt_in ?? false);
+      setDataOptInAt(updated.data_improvement_opt_in_at ?? null);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSavingOptIn(false);
     }
   };
 
@@ -161,6 +189,56 @@ export function OrganizationSettings() {
             })}
           </div>
         )}
+        {!isAdmin && (
+          <p className="text-[11px] text-text-muted mt-2">Ask your admin to change this.</p>
+        )}
+      </div>
+
+      <div className="bg-white border border-border rounded-card p-5 mb-5">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h3 className="text-[13px] uppercase tracking-wider text-text-muted font-semibold mb-1">
+              Help improve CallGuard
+            </h3>
+            <p className="text-[12px] text-text-subtle max-w-xl">
+              Off by default. When on, you allow CallGuard to use{' '}
+              <strong>irreversibly anonymised</strong> data derived from your calls to improve our
+              scoring and calibration models. Your raw audio, transcripts and identifiable data are{' '}
+              <strong>never</strong> used, special-category data is excluded, and you can switch this
+              off at any time. See{' '}
+              <a
+                href="https://callguardai.co.uk/dpa#instructions"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary underline"
+              >
+                DPA §4.2
+              </a>
+              .
+            </p>
+            {dataOptIn && dataOptInAt && (
+              <p className="text-[11px] text-text-muted mt-2">
+                Opted in on {new Date(dataOptInAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}.
+              </p>
+            )}
+          </div>
+          <button
+            role="switch"
+            aria-checked={!!dataOptIn}
+            aria-label="Allow anonymised data to improve CallGuard"
+            disabled={!isAdmin || savingOptIn || dataOptIn === undefined}
+            onClick={() => isAdmin && handleOptInChange(!dataOptIn)}
+            className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors disabled:opacity-50 ${
+              dataOptIn ? 'bg-primary' : 'bg-border'
+            } ${!isAdmin ? 'cursor-default' : 'cursor-pointer'}`}
+          >
+            <span
+              className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+                dataOptIn ? 'translate-x-5' : 'translate-x-0.5'
+              }`}
+            />
+          </button>
+        </div>
         {!isAdmin && (
           <p className="text-[11px] text-text-muted mt-2">Ask your admin to change this.</p>
         )}

@@ -27,6 +27,10 @@ export interface OrganizationInfo {
   plan: Plan;
   // Stereo channel the adviser is recorded on: 0 = left, 1 = right, null = auto-detect.
   adviser_channel?: number | null;
+  // Opt-in (default false) to let CallGuard use anonymised, customer-derived
+  // data to improve the Services, per DPA §4.2.
+  data_improvement_opt_in?: boolean;
+  data_improvement_opt_in_at?: string | null;
 }
 
 export type FeatureFlag = 'coaching' | 'ai_learning' | 'insights';

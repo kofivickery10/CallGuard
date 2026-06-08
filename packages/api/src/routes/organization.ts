@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
 import { query, queryOne } from '../db/client.js';
 import { AppError } from '../middleware/errors.js';
+import { recordAuditEvent } from '../services/audit.js';
 import { PLANS, type Plan, type OrganizationInfo } from '@callguard/shared';
 
 export const organizationRouter = Router();
@@ -11,7 +12,9 @@ organizationRouter.use(authenticate);
 organizationRouter.get('/', async (req, res, next) => {
   try {
     const org = await queryOne<OrganizationInfo>(
-      'SELECT id, name, plan, adviser_channel FROM organizations WHERE id = $1',
+      `SELECT id, name, plan, adviser_channel,
+              data_improvement_opt_in, data_improvement_opt_in_at
+         FROM organizations WHERE id = $1`,
       [req.user!.organizationId]
     );
     if (!org) throw new AppError(404, 'Organisation not found');
@@ -52,6 +55,45 @@ organizationRouter.put('/adviser-channel', requireAdmin, async (req, res, next) 
         WHERE id = $2 RETURNING id, name, plan, adviser_channel`,
       [adviser_channel, req.user!.organizationId]
     );
+    res.json(rows[0]);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Admins opt the organisation in/out of anonymised data use for Service
+// improvement (DPA §4.2). Default is OFF; this is the explicit consent record.
+organizationRouter.put('/data-improvement', requireAdmin, async (req, res, next) => {
+  try {
+    const { opt_in } = req.body as { opt_in: unknown };
+    if (typeof opt_in !== 'boolean') {
+      throw new AppError(400, 'opt_in must be a boolean');
+    }
+    const rows = await query<OrganizationInfo>(
+      `UPDATE organizations
+          SET data_improvement_opt_in = $1,
+              data_improvement_opt_in_at = CASE WHEN $1 THEN now() ELSE NULL END,
+              data_improvement_opt_in_by = CASE WHEN $1 THEN $2::uuid ELSE NULL END,
+              updated_at = now()
+        WHERE id = $3
+        RETURNING id, name, plan, adviser_channel,
+                  data_improvement_opt_in, data_improvement_opt_in_at`,
+      [opt_in, req.user!.userId, req.user!.organizationId]
+    );
+
+    await recordAuditEvent({
+      organizationId: req.user!.organizationId,
+      userId: req.user!.userId,
+      actionType: 'org.data_improvement_optin',
+      entityType: 'organization',
+      entityId: req.user!.organizationId,
+      summary: opt_in
+        ? 'Opted in to anonymised data use for Service improvement (DPA §4.2)'
+        : 'Opted out of anonymised data use for Service improvement (DPA §4.2)',
+      metadata: { opt_in },
+      req,
+    });
+
     res.json(rows[0]);
   } catch (err) {
     next(err);
