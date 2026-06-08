@@ -285,6 +285,38 @@ callRouter.get('/:id', async (req, res, next) => {
   }
 });
 
+// Mark a call reviewed (or clear it). The implicit calibration signal: items
+// the reviewer didn't correct on a reviewed call count as agreements.
+callRouter.post('/:id/review', requireActioner, async (req, res, next) => {
+  try {
+    const reviewed = req.body?.reviewed !== false; // default true
+    const rows = await query<Call>(
+      `UPDATE calls
+          SET reviewed_at = ${reviewed ? 'now()' : 'NULL'},
+              reviewed_by = ${reviewed ? '$3' : 'NULL'},
+              updated_at = now()
+        WHERE id = $1 AND organization_id = $2
+        RETURNING *`,
+      reviewed
+        ? [req.params.id, req.user!.organizationId, req.user!.userId]
+        : [req.params.id, req.user!.organizationId]
+    );
+    if (rows.length === 0) throw new AppError(404, 'Call not found');
+    void recordAuditEvent({
+      organizationId: req.user!.organizationId,
+      userId: req.user!.userId,
+      actionType: reviewed ? 'call.reviewed' : 'call.review_cleared',
+      entityType: 'call',
+      entityId: req.params.id,
+      summary: reviewed ? 'Marked call as reviewed' : 'Cleared call review',
+      req,
+    });
+    res.json(rows[0]);
+  } catch (err) {
+    next(err);
+  }
+});
+
 // Delete a call (admin only). DB cascades to call_scores, call_item_scores,
 // breaches, score_corrections; we also remove the audio file from storage.
 callRouter.delete('/:id', requireAdmin, async (req, res, next) => {

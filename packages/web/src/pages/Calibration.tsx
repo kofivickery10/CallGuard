@@ -6,6 +6,8 @@ interface TrendPoint {
   scored_calls: number;
   corrections: number;
   overrides_per_100_calls: number | null;
+  reviewed_items: number;
+  agreement_pct: number | null;
 }
 interface TopItem {
   label: string;
@@ -15,6 +17,9 @@ interface TopItem {
 }
 interface CalibrationData {
   total_corrections: number;
+  total_reviewed_items: number;
+  current_agreement_pct: number | null;
+  previous_agreement_pct: number | null;
   current_override_rate: number | null;
   previous_override_rate: number | null;
   trend: TrendPoint[];
@@ -58,15 +63,48 @@ export function Calibration() {
 
       {data && (
         <>
-          {data.total_corrections === 0 ? (
+          {data.total_corrections === 0 && data.total_reviewed_items === 0 ? (
             <div className="bg-white border border-border rounded-card p-6 text-table-cell text-text-secondary">
-              No corrections logged yet. Each time a supervisor overrides a score, the AI learns your
-              interpretation — and this page will show how its agreement with your team improves over
-              time.
+              No reviewed calls yet. As supervisors mark calls reviewed and correct the odd score, the
+              AI learns your interpretation — and this page shows its agreement with your team climbing
+              over time. Open a call and use <strong>Mark reviewed</strong> to start.
             </div>
           ) : (
             <>
-              {/* Headline */}
+              {/* Agreement headline (the real moat metric) */}
+              {data.current_agreement_pct != null && (
+                <div className="bg-white border border-border rounded-card p-5 mb-5">
+                  <h3 className="text-[13px] uppercase tracking-wider text-text-muted font-semibold mb-1">
+                    AI ↔ reviewer agreement
+                  </h3>
+                  <p className="text-[12px] text-text-subtle mb-3">
+                    On calls your reviewers checked, the share of item scores they agreed with. Higher
+                    means the AI is scoring the way your team does.
+                  </p>
+                  <div className="flex items-end gap-3">
+                    <div className="text-[40px] font-bold text-pass leading-none">
+                      {data.current_agreement_pct}%
+                    </div>
+                    {data.previous_agreement_pct != null && (
+                      <span
+                        className={`mb-1.5 text-[12px] font-semibold px-2 py-0.5 rounded ${
+                          data.current_agreement_pct >= data.previous_agreement_pct
+                            ? 'bg-pass-bg text-pass'
+                            : 'bg-fail-bg text-fail'
+                        }`}
+                      >
+                        {data.current_agreement_pct >= data.previous_agreement_pct ? '↑' : '↓'} from{' '}
+                        {data.previous_agreement_pct}%
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-[12px] text-text-muted mt-1">
+                    Across {data.total_reviewed_items} reviewed item scores.
+                  </div>
+                </div>
+              )}
+
+              {/* Override rate */}
               <div className="bg-white border border-border rounded-card p-5 mb-5">
                 <h3 className="text-[13px] uppercase tracking-wider text-text-muted font-semibold mb-1">
                   Reviewer override rate

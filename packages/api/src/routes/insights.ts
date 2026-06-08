@@ -93,16 +93,39 @@ insightsRouter.get('/calibration', async (req, res, next) => {
       const d = new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth() - i, 1));
       months.push(`${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`);
     }
+    // True agreement: over calls a reviewer marked reviewed, the item scores they
+    // did NOT correct are agreements. agreement = (reviewed items - corrections) / reviewed items.
+    const reviewedByMonth = await query<{ month: string; reviewed_items: string; disagreements: string }>(
+      `SELECT to_char(date_trunc('month', c.reviewed_at), 'YYYY-MM') AS month,
+              COUNT(cis.id)::text AS reviewed_items,
+              COUNT(sc.id)::text  AS disagreements
+         FROM calls c
+         JOIN call_scores cscore ON cscore.call_id = c.id
+         JOIN call_item_scores cis ON cis.call_score_id = cscore.id
+         LEFT JOIN score_corrections sc ON sc.call_item_score_id = cis.id
+        WHERE c.organization_id = $1
+          AND c.reviewed_at IS NOT NULL
+          AND c.reviewed_at >= date_trunc('month', now()) - interval '5 months'
+        GROUP BY 1`,
+      [orgId]
+    );
+
     const corr = (m: string) => parseInt(correctionsByMonth.find((r) => r.month === m)?.corrections || '0', 10);
     const scored = (m: string) => parseInt(scoredByMonth.find((r) => r.month === m)?.scored_calls || '0', 10);
+    const reviewedItems = (m: string) => parseInt(reviewedByMonth.find((r) => r.month === m)?.reviewed_items || '0', 10);
+    const disagreements = (m: string) => parseInt(reviewedByMonth.find((r) => r.month === m)?.disagreements || '0', 10);
     const trend = months.map((m) => {
       const c = corr(m);
       const s = scored(m);
+      const ri = reviewedItems(m);
+      const dis = disagreements(m);
       return {
         month: m,
         scored_calls: s,
         corrections: c,
         overrides_per_100_calls: s > 0 ? Math.round((c / s) * 1000) / 10 : null,
+        reviewed_items: ri,
+        agreement_pct: ri > 0 ? Math.round(((ri - dis) / ri) * 1000) / 10 : null,
       };
     });
 
@@ -130,8 +153,15 @@ insightsRouter.get('/calibration', async (req, res, next) => {
     const current = trend[trend.length - 1];
     const previous = trend[trend.length - 2];
 
+    // Headline agreement = most recent month that actually has reviewed calls.
+    const withAgreement = [...trend].reverse().filter((t) => t.agreement_pct != null);
+    const totalReviewedItems = trend.reduce((a, t) => a + t.reviewed_items, 0);
+
     res.json({
       total_corrections: parseInt(totalsRow?.total || '0', 10),
+      total_reviewed_items: totalReviewedItems,
+      current_agreement_pct: withAgreement[0]?.agreement_pct ?? null,
+      previous_agreement_pct: withAgreement[1]?.agreement_pct ?? null,
       current_override_rate: current?.overrides_per_100_calls ?? null,
       previous_override_rate: previous?.overrides_per_100_calls ?? null,
       trend,

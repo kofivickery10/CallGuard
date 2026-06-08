@@ -28,6 +28,8 @@ export interface Call {
   scorecard_id: string | null;
   is_exemplar: boolean;
   exemplar_reason: string | null;
+  reviewed_at: string | null;
+  reviewed_by: string | null;
   created_at: string;
   updated_at: string;
 }

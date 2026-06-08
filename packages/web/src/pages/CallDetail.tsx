@@ -25,6 +25,7 @@ export function CallDetail() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const isAdmin = user?.role === 'admin';
+  const canAction = user?.role === 'admin' || user?.role === 'supervisor';
   const canLearn = user ? hasFeature(user.organization_plan, 'ai_learning') : false;
   const [correctingItem, setCorrectingItem] = useState<{
     itemScoreId: string;
@@ -33,6 +34,12 @@ export function CallDetail() {
     evidence: string | null;
   } | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  const handleToggleReviewed = async () => {
+    if (!call) return;
+    await api.post(`/calls/${call.id}/review`, { reviewed: !call.reviewed_at });
+    queryClient.invalidateQueries({ queryKey: ['call', call.id] });
+  };
 
   const handleToggleExemplar = async () => {
     if (!call) return;
@@ -112,7 +119,16 @@ export function CallDetail() {
                 {Math.floor(call.duration_seconds / 60)}:{String(Math.floor(call.duration_seconds % 60)).padStart(2, '0')}
               </span>
             )}
-            {isAdmin && call.status === 'scored' && canLearn && (
+            {canAction && call.status === 'scored' && (
+              <button
+                onClick={handleToggleReviewed}
+                className={`text-[12px] font-semibold transition-colors ${call.reviewed_at ? 'text-pass' : 'text-text-muted hover:text-text-secondary'}`}
+                title={call.reviewed_at ? 'Reviewed - click to clear' : 'Mark this call reviewed (feeds calibration / agreement tracking)'}
+              >
+                {call.reviewed_at ? '✓ Reviewed' : 'Mark reviewed'}
+              </button>
+            )}
+            {canAction && call.status === 'scored' && canLearn && (
               <button
                 onClick={handleToggleExemplar}
                 className="text-[12px] text-text-muted hover:text-secondary font-semibold transition-colors"
@@ -182,7 +198,7 @@ export function CallDetail() {
                   confidence={item.confidence}
                   evidence={item.evidence}
                   reasoning={item.reasoning}
-                  canCorrect={isAdmin && canLearn}
+                  canCorrect={canAction && canLearn}
                   onCorrect={() => setCorrectingItem({
                     itemScoreId: item.id,
                     label: item.label,
