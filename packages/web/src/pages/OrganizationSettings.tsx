@@ -10,6 +10,14 @@ import {
   type OrganizationInfo,
 } from '@callguard/shared';
 
+interface ActiveSeats {
+  current_month: string;
+  current_active_seats: number;
+  previous_month: string;
+  previous_active_seats: number;
+  current_advisers: { id: string; name: string; scored_calls: number }[];
+}
+
 export function OrganizationSettings() {
   const { user, refreshUser } = useAuth();
   const isAdmin = user?.role === 'admin';
@@ -22,12 +30,20 @@ export function OrganizationSettings() {
   const [adviserChannel, setAdviserChannel] = useState<number | null | undefined>(undefined);
   const [savingChannel, setSavingChannel] = useState(false);
 
+  // Active-seat usage (admin only)
+  const [seats, setSeats] = useState<ActiveSeats | null>(null);
+
   useEffect(() => {
     api
       .get<OrganizationInfo>('/organization')
       .then((org) => setAdviserChannel(org.adviser_channel ?? null))
       .catch(() => setAdviserChannel(null));
   }, []);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    api.get<ActiveSeats>('/organization/active-seats').then(setSeats).catch(() => setSeats(null));
+  }, [isAdmin]);
 
   const handleChannelChange = async (value: number | null) => {
     setSavingChannel(true);
@@ -72,6 +88,42 @@ export function OrganizationSettings() {
         </h3>
         <p className="text-table-cell text-text-primary font-semibold">{user?.organization_name}</p>
       </div>
+
+      {isAdmin && seats && (
+        <div className="bg-white border border-border rounded-card p-5 mb-5">
+          <h3 className="text-[13px] uppercase tracking-wider text-text-muted font-semibold mb-1">
+            Active seats
+          </h3>
+          <p className="text-[12px] text-text-subtle mb-3">
+            Advisers with at least one scored call in the month. This is the basis for per-seat billing.
+          </p>
+          <div className="flex gap-8">
+            <div>
+              <div className="text-[28px] font-bold text-text-primary leading-none">{seats.current_active_seats}</div>
+              <div className="text-[11px] text-text-muted mt-1">This month ({seats.current_month})</div>
+            </div>
+            <div>
+              <div className="text-[28px] font-bold text-text-muted leading-none">{seats.previous_active_seats}</div>
+              <div className="text-[11px] text-text-muted mt-1">Last month ({seats.previous_month})</div>
+            </div>
+          </div>
+          {seats.current_advisers.length > 0 && (
+            <div className="mt-4 border-t border-border-light pt-3">
+              <div className="text-[11px] uppercase tracking-wider text-text-muted font-semibold mb-2">
+                Active this month
+              </div>
+              <ul className="space-y-1">
+                {seats.current_advisers.map((a) => (
+                  <li key={a.id} className="flex justify-between text-table-cell">
+                    <span className="text-text-secondary">{a.name}</span>
+                    <span className="text-text-muted">{a.scored_calls} scored</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="bg-white border border-border rounded-card p-5 mb-5">
         <h3 className="text-[13px] uppercase tracking-wider text-text-muted font-semibold mb-1">
