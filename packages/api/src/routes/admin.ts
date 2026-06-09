@@ -62,6 +62,13 @@ adminRouter.post('/tenants', async (req, res, next) => {
     }
     const chosenPlan: Plan = PLANS.includes(plan as Plan) ? (plan as Plan) : 'growth';
 
+    // Pre-check the admin email BEFORE creating the org, so a duplicate email
+    // can't leave behind an orphaned, admin-less tenant.
+    const emailTaken = await queryOne('SELECT id FROM users WHERE lower(email) = lower($1)', [
+      admin_email,
+    ]);
+    if (emailTaken) throw new AppError(409, 'A user with that email already exists');
+
     const orgRows = await query<{ id: string; name: string; plan: string; created_at: string }>(
       `INSERT INTO organizations (name, plan) VALUES ($1, $2)
        RETURNING id, name, plan, created_at`,
@@ -275,40 +282,42 @@ adminRouter.post('/invites/:id/resend', async (req, res, next) => {
 
 adminRouter.get('/overview', async (_req, res, next) => {
   try {
-    const tenants = await queryOne<{ total: number; active: number }>(
-      `SELECT COUNT(*)::int AS total,
-              COUNT(*) FILTER (
-                WHERE EXISTS (SELECT 1 FROM calls c
-                              WHERE c.organization_id = o.id
-                                AND c.created_at >= now() - interval '30 days')
-              )::int AS active
-         FROM organizations o`
-    );
-
-    const usage = await queryOne<{
-      total_users: number;
-      active_agents: number;
-      scored_today: number;
-      scored_week: number;
-      scored_month: number;
-    }>(
-      `SELECT
-         (SELECT COUNT(*)::int FROM users) AS total_users,
-         (SELECT COUNT(DISTINCT agent_id)::int FROM calls
-            WHERE status='scored' AND created_at >= date_trunc('month', now())) AS active_agents,
-         (SELECT COUNT(*)::int FROM calls WHERE status='scored' AND created_at >= date_trunc('day', now())) AS scored_today,
-         (SELECT COUNT(*)::int FROM calls WHERE status='scored' AND created_at >= now() - interval '7 days') AS scored_week,
-         (SELECT COUNT(*)::int FROM calls WHERE status='scored' AND created_at >= date_trunc('month', now())) AS scored_month`
-    );
-
-    const passRate = await queryOne<{ current: number | null; previous: number | null }>(
-      `SELECT
-         ROUND(AVG(CASE WHEN pass THEN 100.0 ELSE 0 END) FILTER (WHERE scored_at >= now() - interval '30 days'), 1) AS current,
-         ROUND(AVG(CASE WHEN pass THEN 100.0 ELSE 0 END) FILTER (WHERE scored_at >= now() - interval '60 days' AND scored_at < now() - interval '30 days'), 1) AS previous
-       FROM call_scores`
-    );
-
-    const jobs = await getJobCounts();
+    // Independent aggregates — run concurrently.
+    const [tenants, usage, passRate, jobs] = await Promise.all([
+      queryOne<{ total: number; active: number }>(
+        `SELECT COUNT(*)::int AS total,
+                COUNT(*) FILTER (
+                  WHERE EXISTS (SELECT 1 FROM calls c
+                                WHERE c.organization_id = o.id
+                                  AND c.created_at >= now() - interval '30 days')
+                )::int AS active
+           FROM organizations o`
+      ),
+      queryOne<{
+        total_users: number;
+        active_agents: number;
+        scored_today: number;
+        scored_week: number;
+        scored_month: number;
+      }>(
+        `SELECT
+           (SELECT COUNT(*)::int FROM users) AS total_users,
+           (SELECT COUNT(DISTINCT agent_id)::int FROM calls
+              WHERE status='scored' AND created_at >= date_trunc('month', now())) AS active_agents,
+           (SELECT COUNT(*)::int FROM calls WHERE status='scored' AND created_at >= date_trunc('day', now())) AS scored_today,
+           (SELECT COUNT(*)::int FROM calls WHERE status='scored' AND created_at >= now() - interval '7 days') AS scored_week,
+           (SELECT COUNT(*)::int FROM calls WHERE status='scored' AND created_at >= date_trunc('month', now())) AS scored_month`
+      ),
+      // Bounded to 60 days so it uses the scored_at index instead of scanning all history.
+      queryOne<{ current: number | null; previous: number | null }>(
+        `SELECT
+           ROUND(AVG(CASE WHEN pass THEN 100.0 ELSE 0 END) FILTER (WHERE scored_at >= now() - interval '30 days'), 1) AS current,
+           ROUND(AVG(CASE WHEN pass THEN 100.0 ELSE 0 END) FILTER (WHERE scored_at < now() - interval '30 days'), 1) AS previous
+         FROM call_scores
+        WHERE scored_at >= now() - interval '60 days'`
+      ),
+      getJobCounts(),
+    ]);
 
     res.json({
       tenants: tenants ?? { total: 0, active: 0 },
@@ -338,8 +347,10 @@ adminRouter.get('/pass-rate', async (req, res, next) => {
       week: '12 weeks',
       month: '12 months',
     };
+    // Bucket in UK local time (not UTC) so day/week/month boundaries match how
+    // the client labels them; return a plain YYYY-MM-DD the client renders as-is.
     const rows = await query(
-      `SELECT date_trunc('${bucket}', scored_at) AS bucket,
+      `SELECT to_char(date_trunc('${bucket}', scored_at AT TIME ZONE 'Europe/London'), 'YYYY-MM-DD') AS bucket,
               COUNT(*)::int AS scored,
               ROUND(AVG(CASE WHEN pass THEN 100.0 ELSE 0 END), 1) AS pass_rate
          FROM call_scores

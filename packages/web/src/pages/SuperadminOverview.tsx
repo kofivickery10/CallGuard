@@ -44,10 +44,12 @@ export function SuperadminOverview() {
     queryFn: () => api.get<{ bucket: string; data: PassRatePoint[] }>(`/admin/pass-rate?bucket=${bucket}`),
   });
 
-  const fmt = (iso: string) => {
-    const d = new Date(iso);
-    if (bucket === 'month') return d.toLocaleDateString('en-GB', { month: 'short', year: '2-digit' });
-    return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  const fmt = (dateStr: string) => {
+    // Server returns a plain YYYY-MM-DD (UK-local bucket start); render in UTC
+    // so the label matches the date string exactly (no extra tz shift).
+    const d = new Date(`${dateStr}T00:00:00Z`);
+    if (bucket === 'month') return d.toLocaleDateString('en-GB', { month: 'short', year: '2-digit', timeZone: 'UTC' });
+    return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' });
   };
   const chartData = (series?.data ?? []).map((p) => ({
     label: fmt(p.bucket),

@@ -35,9 +35,17 @@ export function TenantDetail() {
   const [name, setName] = useState('');
   const [plan, setPlan] = useState<Plan>('growth');
   const [channel, setChannel] = useState<number | null>(null);
+  // Hydrate the form once per tenant (on first load / navigation), NOT on every
+  // background refetch — otherwise a refetch would wipe the operator's edits.
+  const [hydratedId, setHydratedId] = useState<string | null>(null);
   useEffect(() => {
-    if (t) { setName(t.name); setPlan(t.plan as Plan); setChannel(t.adviser_channel); }
-  }, [t]);
+    if (t && t.id !== hydratedId) {
+      setName(t.name);
+      setPlan(t.plan as Plan);
+      setChannel(t.adviser_channel);
+      setHydratedId(t.id);
+    }
+  }, [t, hydratedId]);
 
   const save = useMutation({
     mutationFn: () => api.put(`/admin/tenants/${id}`, { name, plan, adviser_channel: channel }),
@@ -48,7 +56,10 @@ export function TenantDetail() {
   const [resendMsg, setResendMsg] = useState('');
   const resend = useMutation({
     mutationFn: (inviteId: string) => api.post<{ email_sent: boolean }>(`/admin/invites/${inviteId}/resend`, {}),
-    onSuccess: (r) => setResendMsg(r.email_sent ? 'Invite resent.' : 'Resend failed — email not sent.'),
+    onSuccess: (r) => {
+      setResendMsg(r.email_sent ? 'Invite resent.' : 'Resend failed — email not sent.');
+      queryClient.invalidateQueries({ queryKey: ['admin-tenant-users', id] });
+    },
     onError: (e) => setResendMsg((e as Error).message),
   });
 

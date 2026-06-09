@@ -2,71 +2,16 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { config } from '../config.js';
-import { query, queryOne } from '../db/client.js';
+import { queryOne } from '../db/client.js';
 import { AppError } from '../middleware/errors.js';
-import { authenticate, requireStaff, AuthPayload } from '../middleware/auth.js';
+import { authenticate, AuthPayload } from '../middleware/auth.js';
 import { acceptInvite, getInvitePreview } from '../services/invites.js';
 
 export const authRouter = Router();
 
-// Public self-service signup is disabled — tenants are provisioned by a
-// superadmin (see /api/admin/tenants). Kept behind staff auth so it can only
-// be reached by the platform operator, never the public.
-authRouter.post('/register', authenticate, requireStaff, async (req, res, next) => {
-  try {
-    const { email, password, name, organization_name } = req.body;
-
-    if (!email || !password || !name || !organization_name) {
-      throw new AppError(400, 'email, password, name, and organization_name are required');
-    }
-
-    const existing = await queryOne('SELECT id FROM users WHERE email = $1', [email]);
-    if (existing) {
-      throw new AppError(409, 'Email already registered');
-    }
-
-    const passwordHash = await bcrypt.hash(password, 12);
-
-    // Create org and user in a transaction
-    const orgRows = await query<{ id: string }>(
-      'INSERT INTO organizations (name) VALUES ($1) RETURNING id',
-      [organization_name]
-    );
-    const orgId = orgRows[0].id;
-
-    const userRows = await query<{ id: string; email: string; name: string; role: string }>(
-      `INSERT INTO users (organization_id, email, name, password_hash, role)
-       VALUES ($1, $2, $3, $4, 'admin') RETURNING id, email, name, role`,
-      [orgId, email, name, passwordHash]
-    );
-    const user = userRows[0];
-
-    const payload: AuthPayload = {
-      userId: user.id,
-      organizationId: orgId,
-      role: user.role,
-    };
-
-    const token = jwt.sign(payload, config.jwt.secret, {
-      expiresIn: config.jwt.expiresIn,
-    });
-
-    res.status(201).json({
-      token,
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-        organization_id: orgId,
-        organization_name,
-        organization_plan: 'growth',
-      },
-    });
-  } catch (err) {
-    next(err);
-  }
-});
+// Self-service registration has been removed. Organisations are provisioned by
+// a superadmin (POST /api/admin/tenants), and their users join via emailed
+// invitations (/auth/invite/:token + /auth/accept-invite below).
 
 // Preview an invitation (for the accept page) — no auth, no token leakage.
 authRouter.get('/invite/:token', async (req, res, next) => {

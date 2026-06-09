@@ -79,7 +79,9 @@ app.get('/api/health', (_req, res) => {
 
 // Strict limits must be registered before the routers they protect.
 app.use('/api/auth/login', authLimiter);
-app.use('/api/auth/register', authLimiter);
+// Unauthenticated, credential-adjacent endpoints: invite token oracle + bcrypt on accept.
+app.use('/api/auth/invite', authLimiter);
+app.use('/api/auth/accept-invite', authLimiter);
 app.use('/api/public/demo-requests', publicFormLimiter);
 
 app.use('/api/auth', authRouter);

@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import { config } from '../config.js';
-import { query, queryOne } from '../db/client.js';
+import { pool, query, queryOne } from '../db/client.js';
 import { AppError } from '../middleware/errors.js';
 import { sendEmail } from './email.js';
 
@@ -99,48 +99,69 @@ export async function acceptInvite(rawToken: string, password: string): Promise<
     throw new AppError(400, 'A valid token and a password of at least 8 characters are required');
   }
 
-  const invite = await queryOne<{
-    id: string;
-    organization_id: string;
-    email: string;
-    name: string;
-    role: string;
-    expires_at: string;
-    accepted_at: string | null;
-  }>(
-    `SELECT id, organization_id, email, name, role, expires_at, accepted_at
-       FROM invites WHERE token_hash = $1`,
-    [hashToken(rawToken)]
-  );
-
-  if (!invite) throw new AppError(404, 'Invitation not found');
-  if (invite.accepted_at) throw new AppError(410, 'This invitation has already been used');
-  if (new Date(invite.expires_at).getTime() < Date.now()) {
-    throw new AppError(410, 'This invitation has expired');
-  }
-
-  // Guard against a duplicate user created between issue and accept.
-  const existing = await queryOne('SELECT id FROM users WHERE lower(email) = lower($1)', [
-    invite.email,
-  ]);
-  if (existing) throw new AppError(409, 'A user with that email already exists');
-
+  const tokenHash = hashToken(rawToken);
+  // Hash before opening a transaction so we don't hold a pooled connection
+  // during the expensive bcrypt work.
   const passwordHash = await bcrypt.hash(password, 12);
-  const userRows = await query<{ id: string }>(
-    `INSERT INTO users (organization_id, email, name, password_hash, role)
-     VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-    [invite.organization_id, invite.email, invite.name, passwordHash, invite.role]
-  );
 
-  await query('UPDATE invites SET accepted_at = now() WHERE id = $1', [invite.id]);
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
 
-  return {
-    userId: userRows[0].id,
-    email: invite.email,
-    name: invite.name,
-    role: invite.role,
-    organizationId: invite.organization_id,
-  };
+    // Atomically claim the invite: only succeeds if it's unused and unexpired.
+    // This makes the invite genuinely single-use even under concurrent accepts.
+    const claim = await client.query<{
+      organization_id: string;
+      email: string;
+      name: string;
+      role: string;
+    }>(
+      `UPDATE invites SET accepted_at = now()
+        WHERE token_hash = $1 AND accepted_at IS NULL AND expires_at > now()
+        RETURNING organization_id, email, name, role`,
+      [tokenHash]
+    );
+
+    if (claim.rows.length === 0) {
+      // Claim failed — explain why (not found / used / expired).
+      const row = await queryOne<{ accepted_at: string | null }>(
+        'SELECT accepted_at FROM invites WHERE token_hash = $1',
+        [tokenHash]
+      );
+      if (!row) throw new AppError(404, 'Invitation not found');
+      if (row.accepted_at) throw new AppError(410, 'This invitation has already been used');
+      throw new AppError(410, 'This invitation has expired');
+    }
+
+    const invite = claim.rows[0];
+    const userRows = await client.query<{ id: string }>(
+      `INSERT INTO users (organization_id, email, name, password_hash, role)
+       VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+      [invite.organization_id, invite.email, invite.name, passwordHash, invite.role]
+    );
+
+    await client.query('COMMIT');
+    return {
+      userId: userRows.rows[0].id,
+      email: invite.email,
+      name: invite.name,
+      role: invite.role,
+      organizationId: invite.organization_id,
+    };
+  } catch (err) {
+    try {
+      await client.query('ROLLBACK');
+    } catch {
+      /* connection may already be unusable */
+    }
+    // Duplicate email (unique violation) → friendly 409; the claim is rolled back.
+    if ((err as { code?: string }).code === '23505') {
+      throw new AppError(409, 'A user with that email already exists');
+    }
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 /**
