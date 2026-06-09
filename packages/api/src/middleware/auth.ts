@@ -87,6 +87,26 @@ export async function requireStaff(
   }
 }
 
+// Full platform superadmin (provisioning, tenant settings, staff management).
+// Looked up live so it never depends on a stale token claim.
+export async function requireSuperadmin(
+  req: Request,
+  _res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    if (!req.user) throw new AppError(401, 'Not authenticated');
+    const row = await queryOne<{ is_superadmin: boolean }>(
+      'SELECT is_superadmin FROM users WHERE id = $1',
+      [req.user.userId]
+    );
+    if (!row?.is_superadmin) throw new AppError(403, 'Superadmin access required');
+    next();
+  } catch (err) {
+    next(err);
+  }
+}
+
 export async function authenticateApiKey(
   req: Request,
   _res: Response,

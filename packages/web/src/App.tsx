@@ -31,6 +31,7 @@ const SupportInbox = lazy(() => import('./pages/SupportInbox').then((m) => ({ de
 const SuperadminOverview = lazy(() => import('./pages/SuperadminOverview').then((m) => ({ default: m.SuperadminOverview })));
 const Tenants = lazy(() => import('./pages/Tenants').then((m) => ({ default: m.Tenants })));
 const TenantDetail = lazy(() => import('./pages/TenantDetail').then((m) => ({ default: m.TenantDetail })));
+const PlatformStaff = lazy(() => import('./pages/PlatformStaff').then((m) => ({ default: m.PlatformStaff })));
 
 function PageLoader() {
   return (
@@ -85,6 +86,7 @@ export function App() {
                   <Route path="/admin" element={<SuperadminOverview />} />
                   <Route path="/admin/tenants" element={<Tenants />} />
                   <Route path="/admin/tenants/:id" element={<TenantDetail />} />
+                  <Route path="/admin/staff" element={<PlatformStaff />} />
                 </Routes>
               </Suspense>
             </Layout>

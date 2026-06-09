@@ -51,7 +51,8 @@ authRouter.post('/accept-invite', async (req, res, next) => {
         email: accepted.email,
         name: accepted.name,
         role: accepted.role,
-        is_staff: false,
+        is_staff: accepted.isStaff,
+        is_superadmin: accepted.isSuperadmin,
         organization_id: accepted.organizationId,
         organization_name: org?.name || '',
         organization_plan: org?.plan || 'starter',
@@ -76,10 +77,11 @@ authRouter.post('/login', async (req, res, next) => {
       name: string;
       role: string;
       is_staff: boolean;
+      is_superadmin: boolean;
       password_hash: string;
       organization_id: string;
     }>(
-      `SELECT u.id, u.email, u.name, u.role, u.is_staff, u.password_hash, u.organization_id
+      `SELECT u.id, u.email, u.name, u.role, u.is_staff, u.is_superadmin, u.password_hash, u.organization_id
        FROM users u WHERE u.email = $1`,
       [email]
     );
@@ -116,6 +118,7 @@ authRouter.post('/login', async (req, res, next) => {
         name: user.name,
         role: user.role,
         is_staff: user.is_staff,
+        is_superadmin: user.is_superadmin,
         organization_id: user.organization_id,
         organization_name: org?.name || '',
         organization_plan: org?.plan || 'starter',
@@ -134,9 +137,10 @@ authRouter.get('/me', authenticate, async (req, res, next) => {
       name: string;
       role: string;
       is_staff: boolean;
+      is_superadmin: boolean;
       organization_id: string;
     }>(
-      'SELECT id, email, name, role, is_staff, organization_id FROM users WHERE id = $1',
+      'SELECT id, email, name, role, is_staff, is_superadmin, organization_id FROM users WHERE id = $1',
       [req.user!.userId]
     );
 

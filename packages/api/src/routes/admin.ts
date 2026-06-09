@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { authenticate, requireStaff } from '../middleware/auth.js';
+import { authenticate, requireStaff, requireSuperadmin } from '../middleware/auth.js';
 import { query, queryOne } from '../db/client.js';
 import { AppError } from '../middleware/errors.js';
 import { recordAuditEvent } from '../services/audit.js';
@@ -13,7 +13,13 @@ import {
 import { PLANS, type Plan } from '@callguard/shared';
 
 /**
- * Superadmin (platform operator) API. All routes are gated by requireStaff.
+ * Platform operator API.
+ *
+ * ACCESS LEVELS:
+ *   - requireStaff (router-level): support staff + superadmins. Covers the
+ *     read-only analytics endpoints (/overview, /pass-rate, /jobs).
+ *   - requireSuperadmin (per-route): full powers only. Covers all provisioning
+ *     (/tenants*, /invites*) and staff management (/staff*).
  *
  * PRIVACY BOUNDARY: the analytics endpoints return AGGREGATES ONLY — counts,
  * rates and dates. They never select call content, transcripts, evidence,
@@ -29,7 +35,7 @@ const ROLES = ['admin', 'supervisor', 'viewer', 'adviser'];
 // ─────────────────────────── Provisioning ───────────────────────────
 
 // List all tenants with aggregate stats (no call content / PII).
-adminRouter.get('/tenants', async (_req, res, next) => {
+adminRouter.get('/tenants', requireSuperadmin, async (_req, res, next) => {
   try {
     const rows = await query(
       `SELECT o.id, o.name, o.plan, o.created_at,
@@ -49,7 +55,7 @@ adminRouter.get('/tenants', async (_req, res, next) => {
 });
 
 // Create a tenant + invite its first admin by email.
-adminRouter.post('/tenants', async (req, res, next) => {
+adminRouter.post('/tenants', requireSuperadmin, async (req, res, next) => {
   try {
     const { name, plan, admin_email, admin_name } = req.body as {
       name?: string;
@@ -113,7 +119,7 @@ adminRouter.post('/tenants', async (req, res, next) => {
 });
 
 // Tenant detail: settings + aggregate stats (no PII / call content).
-adminRouter.get('/tenants/:id', async (req, res, next) => {
+adminRouter.get('/tenants/:id', requireSuperadmin, async (req, res, next) => {
   try {
     const org = await queryOne<{
       id: string;
@@ -146,7 +152,7 @@ adminRouter.get('/tenants/:id', async (req, res, next) => {
 });
 
 // Update tenant settings.
-adminRouter.put('/tenants/:id', async (req, res, next) => {
+adminRouter.put('/tenants/:id', requireSuperadmin, async (req, res, next) => {
   try {
     const { name, plan, adviser_channel } = req.body as {
       name?: string;
@@ -183,7 +189,7 @@ adminRouter.put('/tenants/:id', async (req, res, next) => {
     if (!rows.length) throw new AppError(404, 'Tenant not found');
 
     await recordAuditEvent({
-      organizationId: req.params.id,
+      organizationId: String(req.params.id),
       userId: req.user!.userId,
       actionType: 'tenant.update',
       entityType: 'organization',
@@ -198,7 +204,7 @@ adminRouter.put('/tenants/:id', async (req, res, next) => {
 });
 
 // List a tenant's users (operational: account management only).
-adminRouter.get('/tenants/:id/users', async (req, res, next) => {
+adminRouter.get('/tenants/:id/users', requireSuperadmin, async (req, res, next) => {
   try {
     const users = await query(
       `SELECT id, name, email, role, is_staff, created_at
@@ -218,7 +224,7 @@ adminRouter.get('/tenants/:id/users', async (req, res, next) => {
 });
 
 // Add a user to a tenant (invite by email).
-adminRouter.post('/tenants/:id/users', async (req, res, next) => {
+adminRouter.post('/tenants/:id/users', requireSuperadmin, async (req, res, next) => {
   try {
     const { email, name, role } = req.body as { email?: string; name?: string; role?: string };
     if (!email || !name) throw new AppError(400, 'email and name are required');
@@ -230,7 +236,7 @@ adminRouter.post('/tenants/:id/users', async (req, res, next) => {
     if (!org) throw new AppError(404, 'Tenant not found');
 
     const { invite, rawToken } = await createInvite({
-      organizationId: req.params.id,
+      organizationId: String(req.params.id),
       email,
       name,
       role: chosenRole,
@@ -244,7 +250,7 @@ adminRouter.post('/tenants/:id/users', async (req, res, next) => {
     });
 
     await recordAuditEvent({
-      organizationId: req.params.id,
+      organizationId: String(req.params.id),
       userId: req.user!.userId,
       actionType: 'user.invite',
       entityType: 'user',
@@ -258,10 +264,10 @@ adminRouter.post('/tenants/:id/users', async (req, res, next) => {
 });
 
 // Resend a pending invite (re-issues the token and emails a fresh link).
-adminRouter.post('/invites/:id/resend', async (req, res, next) => {
+adminRouter.post('/invites/:id/resend', requireSuperadmin, async (req, res, next) => {
   try {
     const { rawToken, email, name, organizationId, organizationName } = await resendInvite(
-      req.params.id
+      String(req.params.id)
     );
     const emailResult = await sendInviteEmail({ to: email, name, organizationName, rawToken });
     await recordAuditEvent({
@@ -273,6 +279,126 @@ adminRouter.post('/invites/:id/resend', async (req, res, next) => {
       req,
     });
     res.json({ email_sent: emailResult.ok, email_error: emailResult.error });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─────────────────────────── Platform staff management (superadmin only) ───────────────────────────
+
+// List platform staff + pending staff invites.
+adminRouter.get('/staff', requireSuperadmin, async (_req, res, next) => {
+  try {
+    const staff = await query(
+      `SELECT id, name, email, is_superadmin, created_at
+         FROM users WHERE is_staff = true ORDER BY created_at`
+    );
+    const pending = await query(
+      `SELECT id, name, email, is_superadmin, expires_at, created_at
+         FROM invites
+        WHERE is_staff = true AND accepted_at IS NULL AND expires_at > now()
+        ORDER BY created_at DESC`
+    );
+    res.json({ staff, pending_invites: pending });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Invite a platform staff member (level = 'support' | 'superadmin').
+adminRouter.post('/staff', requireSuperadmin, async (req, res, next) => {
+  try {
+    const { email, name, level } = req.body as { email?: string; name?: string; level?: string };
+    if (!email || !name) throw new AppError(400, 'email and name are required');
+    const isSuperadmin = level === 'superadmin';
+
+    // Staff live in the inviting superadmin's organisation; their platform
+    // powers come from the is_staff / is_superadmin flags, not their org role.
+    const { invite, rawToken } = await createInvite({
+      organizationId: req.user!.organizationId,
+      email,
+      name,
+      role: 'viewer',
+      invitedBy: req.user!.userId,
+      isStaff: true,
+      isSuperadmin,
+    });
+    const emailResult = await sendInviteEmail({
+      to: email,
+      name,
+      organizationName: 'CallGuard AI',
+      rawToken,
+    });
+
+    await recordAuditEvent({
+      organizationId: req.user!.organizationId,
+      userId: req.user!.userId,
+      actionType: 'user.invite',
+      entityType: 'user',
+      summary: `Invited platform staff ${email} (${isSuperadmin ? 'superadmin' : 'support'})`,
+      req,
+    });
+    res.status(201).json({ invite, email_sent: emailResult.ok, email_error: emailResult.error });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Change a staff member's level (superadmin on/off).
+adminRouter.put('/staff/:id', requireSuperadmin, async (req, res, next) => {
+  try {
+    if (req.params.id === req.user!.userId) {
+      throw new AppError(400, "You can't change your own access level");
+    }
+    const { is_superadmin } = req.body as { is_superadmin?: boolean };
+    if (typeof is_superadmin !== 'boolean') throw new AppError(400, 'is_superadmin must be a boolean');
+
+    const rows = await query(
+      `UPDATE users SET is_superadmin = $1
+        WHERE id = $2 AND is_staff = true
+        RETURNING id, name, email, is_superadmin`,
+      [is_superadmin, req.params.id]
+    );
+    if (!rows.length) throw new AppError(404, 'Staff member not found');
+
+    await recordAuditEvent({
+      organizationId: req.user!.organizationId,
+      userId: req.user!.userId,
+      actionType: 'user.role_change',
+      entityType: 'user',
+      entityId: req.params.id,
+      summary: `Set platform staff level to ${is_superadmin ? 'superadmin' : 'support'}`,
+      req,
+    });
+    res.json(rows[0]);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Revoke a staff member's platform access (keeps their user account).
+adminRouter.delete('/staff/:id', requireSuperadmin, async (req, res, next) => {
+  try {
+    if (req.params.id === req.user!.userId) {
+      throw new AppError(400, "You can't revoke your own access");
+    }
+    const rows = await query<{ id: string; email: string }>(
+      `UPDATE users SET is_staff = false, is_superadmin = false
+        WHERE id = $1 AND is_staff = true RETURNING id, email`,
+      [req.params.id]
+    );
+    if (!rows.length) throw new AppError(404, 'Staff member not found');
+
+    await recordAuditEvent({
+      organizationId: req.user!.organizationId,
+      userId: req.user!.userId,
+      actionType: 'user.role_change',
+      entityType: 'user',
+      entityId: req.params.id,
+      summary: `Revoked platform staff access for ${rows[0].email}`,
+      req,
+    });
+    res.json({ ok: true });
   } catch (err) {
     next(err);
   }

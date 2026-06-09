@@ -29,6 +29,8 @@ export async function createInvite(input: {
   name: string;
   role: string;
   invitedBy: string | null;
+  isStaff?: boolean;
+  isSuperadmin?: boolean;
 }): Promise<{ invite: CreatedInvite; rawToken: string }> {
   const existingUser = await queryOne('SELECT id FROM users WHERE lower(email) = lower($1)', [
     input.email,
@@ -40,10 +42,12 @@ export async function createInvite(input: {
   const rawToken = crypto.randomBytes(32).toString('hex');
   const tokenHash = hashToken(rawToken);
   const expiresAt = new Date(Date.now() + INVITE_TTL_DAYS * 24 * 60 * 60 * 1000);
+  const isSuperadmin = !!input.isSuperadmin;
+  const isStaff = isSuperadmin || !!input.isStaff; // superadmin implies staff
 
   const rows = await query<CreatedInvite>(
-    `INSERT INTO invites (organization_id, email, name, role, token_hash, invited_by, expires_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
+    `INSERT INTO invites (organization_id, email, name, role, token_hash, invited_by, expires_at, is_staff, is_superadmin)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
      RETURNING id, email, name, role, expires_at`,
     [
       input.organizationId,
@@ -53,6 +57,8 @@ export async function createInvite(input: {
       tokenHash,
       input.invitedBy,
       expiresAt.toISOString(),
+      isStaff,
+      isSuperadmin,
     ]
   );
 
@@ -88,6 +94,8 @@ export interface AcceptedInvite {
   name: string;
   role: string;
   organizationId: string;
+  isStaff: boolean;
+  isSuperadmin: boolean;
 }
 
 /**
@@ -115,10 +123,12 @@ export async function acceptInvite(rawToken: string, password: string): Promise<
       email: string;
       name: string;
       role: string;
+      is_staff: boolean;
+      is_superadmin: boolean;
     }>(
       `UPDATE invites SET accepted_at = now()
         WHERE token_hash = $1 AND accepted_at IS NULL AND expires_at > now()
-        RETURNING organization_id, email, name, role`,
+        RETURNING organization_id, email, name, role, is_staff, is_superadmin`,
       [tokenHash]
     );
 
@@ -135,9 +145,17 @@ export async function acceptInvite(rawToken: string, password: string): Promise<
 
     const invite = claim.rows[0];
     const userRows = await client.query<{ id: string }>(
-      `INSERT INTO users (organization_id, email, name, password_hash, role)
-       VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-      [invite.organization_id, invite.email, invite.name, passwordHash, invite.role]
+      `INSERT INTO users (organization_id, email, name, password_hash, role, is_staff, is_superadmin)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+      [
+        invite.organization_id,
+        invite.email,
+        invite.name,
+        passwordHash,
+        invite.role,
+        invite.is_staff,
+        invite.is_superadmin,
+      ]
     );
 
     await client.query('COMMIT');
@@ -147,6 +165,8 @@ export async function acceptInvite(rawToken: string, password: string): Promise<
       name: invite.name,
       role: invite.role,
       organizationId: invite.organization_id,
+      isStaff: invite.is_staff,
+      isSuperadmin: invite.is_superadmin,
     };
   } catch (err) {
     try {

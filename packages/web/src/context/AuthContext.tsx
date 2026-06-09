@@ -10,6 +10,7 @@ interface AuthUser {
   name: string;
   role: string;
   is_staff?: boolean;
+  is_superadmin?: boolean;
   organization_id: string;
   organization_name: string;
   organization_plan: Plan;
