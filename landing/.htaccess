@@ -42,8 +42,9 @@ RewriteRule ^ /%1 [R=301,L]
   # Permissions-Policy — disable APIs we don't use
   Header set Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
 
-  # Basic CSP — fully self-hosted now, no external CSS/font/script
-  Header set Content-Security-Policy "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self' mailto:"
+  # CSP — self-hosted, plus Google Analytics (gtag.js + collect endpoints).
+  # GA only fires after cookie consent; these allowances do not load anything by themselves.
+  Header set Content-Security-Policy "default-src 'self'; img-src 'self' data: https://www.google-analytics.com https://www.googletagmanager.com; style-src 'self' 'unsafe-inline'; font-src 'self'; script-src 'self' https://www.googletagmanager.com; connect-src 'self' https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com https://www.googletagmanager.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self' mailto:"
 </IfModule>
 
 # ─── Caching for static assets ───────────────────────────────────────────
