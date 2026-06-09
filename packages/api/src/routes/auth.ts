@@ -4,11 +4,15 @@ import jwt from 'jsonwebtoken';
 import { config } from '../config.js';
 import { query, queryOne } from '../db/client.js';
 import { AppError } from '../middleware/errors.js';
-import { authenticate, AuthPayload } from '../middleware/auth.js';
+import { authenticate, requireStaff, AuthPayload } from '../middleware/auth.js';
+import { acceptInvite, getInvitePreview } from '../services/invites.js';
 
 export const authRouter = Router();
 
-authRouter.post('/register', async (req, res, next) => {
+// Public self-service signup is disabled — tenants are provisioned by a
+// superadmin (see /api/admin/tenants). Kept behind staff auth so it can only
+// be reached by the platform operator, never the public.
+authRouter.post('/register', authenticate, requireStaff, async (req, res, next) => {
   try {
     const { email, password, name, organization_name } = req.body;
 
@@ -57,6 +61,55 @@ authRouter.post('/register', async (req, res, next) => {
         organization_id: orgId,
         organization_name,
         organization_plan: 'growth',
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Preview an invitation (for the accept page) — no auth, no token leakage.
+authRouter.get('/invite/:token', async (req, res, next) => {
+  try {
+    const preview = await getInvitePreview(req.params.token);
+    if (!preview) throw new AppError(404, 'This invitation is invalid or has expired');
+    res.json(preview);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Accept an invitation: set a password, create the user, return a session.
+authRouter.post('/accept-invite', async (req, res, next) => {
+  try {
+    const { token, password } = req.body as { token?: string; password?: string };
+    if (!token) throw new AppError(400, 'token is required');
+
+    const accepted = await acceptInvite(token, password || '');
+
+    const org = await queryOne<{ name: string; plan: string }>(
+      'SELECT name, plan FROM organizations WHERE id = $1',
+      [accepted.organizationId]
+    );
+
+    const payload: AuthPayload = {
+      userId: accepted.userId,
+      organizationId: accepted.organizationId,
+      role: accepted.role,
+    };
+    const sessionToken = jwt.sign(payload, config.jwt.secret, { expiresIn: config.jwt.expiresIn });
+
+    res.status(201).json({
+      token: sessionToken,
+      user: {
+        id: accepted.userId,
+        email: accepted.email,
+        name: accepted.name,
+        role: accepted.role,
+        is_staff: false,
+        organization_id: accepted.organizationId,
+        organization_name: org?.name || '',
+        organization_plan: org?.plan || 'starter',
       },
     });
   } catch (err) {

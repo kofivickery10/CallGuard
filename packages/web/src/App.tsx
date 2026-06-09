@@ -9,6 +9,7 @@ import { CallDetail } from './pages/CallDetail';
 import { Upload } from './pages/Upload';
 import { PublicCallView } from './pages/PublicCallView';
 import { Welcome } from './pages/Welcome';
+import { AcceptInvite } from './pages/AcceptInvite';
 
 // Lazy-loaded admin-heavy pages (most users never visit)
 const Scorecards = lazy(() => import('./pages/Scorecards').then((m) => ({ default: m.Scorecards })));
@@ -27,6 +28,9 @@ const ReviewQueue = lazy(() => import('./pages/ReviewQueue').then((m) => ({ defa
 const AuditLog = lazy(() => import('./pages/AuditLog').then((m) => ({ default: m.AuditLog })));
 const Calibration = lazy(() => import('./pages/Calibration').then((m) => ({ default: m.Calibration })));
 const SupportInbox = lazy(() => import('./pages/SupportInbox').then((m) => ({ default: m.SupportInbox })));
+const SuperadminOverview = lazy(() => import('./pages/SuperadminOverview').then((m) => ({ default: m.SuperadminOverview })));
+const Tenants = lazy(() => import('./pages/Tenants').then((m) => ({ default: m.Tenants })));
+const TenantDetail = lazy(() => import('./pages/TenantDetail').then((m) => ({ default: m.TenantDetail })));
 
 function PageLoader() {
   return (
@@ -48,6 +52,7 @@ export function App() {
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/welcome" element={<Welcome />} />
+      <Route path="/accept-invite" element={<AcceptInvite />} />
       <Route path="/shared/:token" element={<PublicCallView />} />
       <Route
         path="/*"
@@ -77,6 +82,9 @@ export function App() {
                   <Route path="/audit-log" element={<AuditLog />} />
                   <Route path="/calibration" element={<Calibration />} />
                   <Route path="/support-inbox" element={<SupportInbox />} />
+                  <Route path="/admin" element={<SuperadminOverview />} />
+                  <Route path="/admin/tenants" element={<Tenants />} />
+                  <Route path="/admin/tenants/:id" element={<TenantDetail />} />
                 </Routes>
               </Suspense>
             </Layout>

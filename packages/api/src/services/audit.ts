@@ -27,7 +27,9 @@ export type AuditActionType =
   | 'user.invite'
   | 'user.role_change'
   | 'user.delete'
-  | 'org.data_improvement_optin';
+  | 'org.data_improvement_optin'
+  | 'tenant.create'
+  | 'tenant.update';
 
 export type AuditEntityType =
   | 'call'
