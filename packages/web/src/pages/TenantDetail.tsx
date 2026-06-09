@@ -45,6 +45,13 @@ export function TenantDetail() {
     onError: (e) => setError((e as Error).message),
   });
 
+  const [resendMsg, setResendMsg] = useState('');
+  const resend = useMutation({
+    mutationFn: (inviteId: string) => api.post<{ email_sent: boolean }>(`/admin/invites/${inviteId}/resend`, {}),
+    onSuccess: (r) => setResendMsg(r.email_sent ? 'Invite resent.' : 'Resend failed — email not sent.'),
+    onError: (e) => setResendMsg((e as Error).message),
+  });
+
   if (!t) return <div className="text-table-cell text-text-muted">Loading…</div>;
 
   return (
@@ -104,14 +111,24 @@ export function TenantDetail() {
               </tr>
             ))}
             {(usersData?.pending_invites ?? []).map((p) => (
-              <tr key={p.id} className="border-b border-border-light opacity-70">
-                <td className="py-2 text-table-cell font-medium text-text-primary">{p.name}</td>
-                <td className="py-2 text-table-cell text-text-muted">{p.email}</td>
-                <td className="py-2 text-table-cell text-review capitalize text-right">{p.role} · invite pending</td>
+              <tr key={p.id} className="border-b border-border-light">
+                <td className="py-2 text-table-cell font-medium text-text-primary opacity-70">{p.name}</td>
+                <td className="py-2 text-table-cell text-text-muted opacity-70">{p.email}</td>
+                <td className="py-2 text-right whitespace-nowrap">
+                  <span className="text-table-cell text-review capitalize mr-3">{p.role} · pending</span>
+                  <button
+                    onClick={() => resend.mutate(p.id)}
+                    disabled={resend.isPending}
+                    className="text-[12px] font-semibold text-primary hover:underline disabled:opacity-50"
+                  >
+                    Resend
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
+        {resendMsg && <p className="text-[12px] text-text-muted -mt-2 mb-3">{resendMsg}</p>}
         <AddUser tenantId={id!} />
       </div>
     </div>

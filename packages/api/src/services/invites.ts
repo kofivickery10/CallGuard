@@ -143,6 +143,49 @@ export async function acceptInvite(rawToken: string, password: string): Promise<
   };
 }
 
+/**
+ * Re-issues a fresh token for a pending invite and returns it so the caller
+ * can re-send the email. The old link stops working (token is replaced).
+ */
+export async function resendInvite(inviteId: string): Promise<{
+  rawToken: string;
+  email: string;
+  name: string;
+  organizationId: string;
+  organizationName: string;
+}> {
+  const row = await queryOne<{
+    email: string;
+    name: string;
+    accepted_at: string | null;
+    organization_id: string;
+    org_name: string;
+  }>(
+    `SELECT i.email, i.name, i.accepted_at, i.organization_id, o.name AS org_name
+       FROM invites i JOIN organizations o ON o.id = i.organization_id
+      WHERE i.id = $1`,
+    [inviteId]
+  );
+  if (!row) throw new AppError(404, 'Invitation not found');
+  if (row.accepted_at) throw new AppError(410, 'This invitation has already been used');
+
+  const rawToken = crypto.randomBytes(32).toString('hex');
+  const expiresAt = new Date(Date.now() + INVITE_TTL_DAYS * 24 * 60 * 60 * 1000);
+  await query('UPDATE invites SET token_hash = $1, expires_at = $2 WHERE id = $3', [
+    hashToken(rawToken),
+    expiresAt.toISOString(),
+    inviteId,
+  ]);
+
+  return {
+    rawToken,
+    email: row.email,
+    name: row.name,
+    organizationId: row.organization_id,
+    organizationName: row.org_name,
+  };
+}
+
 /** Public preview of an invite (for the accept page) — no token leakage. */
 export async function getInvitePreview(
   rawToken: string

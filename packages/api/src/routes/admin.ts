@@ -3,7 +3,7 @@ import { authenticate, requireStaff } from '../middleware/auth.js';
 import { query, queryOne } from '../db/client.js';
 import { AppError } from '../middleware/errors.js';
 import { recordAuditEvent } from '../services/audit.js';
-import { createInvite, sendInviteEmail } from '../services/invites.js';
+import { createInvite, sendInviteEmail, resendInvite } from '../services/invites.js';
 import {
   getTranscriptionQueue,
   getScoringQueue,
@@ -245,6 +245,27 @@ adminRouter.post('/tenants/:id/users', async (req, res, next) => {
       req,
     });
     res.status(201).json({ invite, email_sent: emailResult.ok, email_error: emailResult.error });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Resend a pending invite (re-issues the token and emails a fresh link).
+adminRouter.post('/invites/:id/resend', async (req, res, next) => {
+  try {
+    const { rawToken, email, name, organizationId, organizationName } = await resendInvite(
+      req.params.id
+    );
+    const emailResult = await sendInviteEmail({ to: email, name, organizationName, rawToken });
+    await recordAuditEvent({
+      organizationId,
+      userId: req.user!.userId,
+      actionType: 'user.invite',
+      entityType: 'user',
+      summary: `Resent invite to ${email}`,
+      req,
+    });
+    res.json({ email_sent: emailResult.ok, email_error: emailResult.error });
   } catch (err) {
     next(err);
   }
