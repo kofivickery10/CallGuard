@@ -1,9 +1,9 @@
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
 import path from 'path';
-import { rateLimit, ipKeyGenerator } from 'express-rate-limit';
-import type { Request } from 'express';
 import { errorHandler } from './middleware/errors.js';
+import { globalLimiter, authLimiter, publicFormLimiter } from './middleware/rate-limits.js';
 import { authRouter } from './routes/auth.js';
 import { scorecardRouter } from './routes/scorecards.js';
 import { callRouter } from './routes/calls.js';
@@ -21,6 +21,9 @@ import { insightsRouter } from './routes/insights.js';
 import { auditRouter } from './routes/audit.js';
 import { supportRouter } from './routes/support.js';
 import { streamRouter } from './routes/stream.js';
+import { superadminRouter } from './routes/superadmin.js';
+import { customersRouter } from './routes/customers.js';
+import { usersRouter } from './routes/users.js';
 
 const app = express();
 
@@ -29,45 +32,69 @@ const app = express();
 // TRUST_PROXY_HOPS if the deployment chain changes.
 app.set('trust proxy', Number(process.env.TRUST_PROXY_HOPS ?? 2));
 
-app.use(cors());
+// Security headers. In production Cloudflare handles TLS so HSTS is set there
+// too, but we emit it from the app as belt-and-braces for direct connections.
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        connectSrc: [
+          "'self'",
+          'https://*.anthropic.com',
+          'https://*.deepgram.com',
+          'https://*.amazonaws.com', // S3
+          'wss:', // WebSocket for live streaming
+        ],
+        scriptSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'"], // Tailwind inline styles
+        imgSrc: ["'self'", 'data:', 'blob:'],
+        fontSrc: ["'self'"],
+        frameSrc: ["'none'"],
+        objectSrc: ["'none'"],
+        upgradeInsecureRequests: [],
+      },
+    },
+    // HSTS: 1 year, include subdomains
+    strictTransportSecurity: {
+      maxAge: 31_536_000,
+      includeSubDomains: true,
+    },
+  })
+);
+
+// CORS: browser-originated traffic only (diallers use API key auth, not CORS).
+// ALLOWED_ORIGINS env var is the canonical source — set it in production:
+//   ALLOWED_ORIGINS=https://app.callguardai.co.uk,https://admin.callguardai.co.uk
+// The production fallback below prevents a missing env var from silently
+// blocking all browser traffic; update it when domains change.
+const PROD_ORIGINS = [
+  'https://app.callguardai.co.uk',
+  'https://admin.callguardai.co.uk',
+];
+const DEV_ORIGINS = ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:3001'];
+
+const rawOrigins = process.env.ALLOWED_ORIGINS;
+const allowedOrigins: string[] = rawOrigins
+  ? rawOrigins.split(',').map((o) => o.trim()).filter(Boolean)
+  : process.env.NODE_ENV === 'production'
+    ? PROD_ORIGINS
+    : DEV_ORIGINS;
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // Allow requests with no Origin (server-to-server, curl, health checks)
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin)) return callback(null, true);
+      callback(new Error(`CORS: origin '${origin}' not allowed`));
+    },
+    credentials: true,
+  })
+);
+
 app.use(express.json());
 
-// Rate-limit key: prefer Cloudflare's CF-Connecting-IP (set at the edge to the
-// true client IP and not client-spoofable when traffic arrives via Cloudflare),
-// falling back to the trusted req.ip. ipKeyGenerator normalises IPv6.
-const clientIpKey = (req: Request): string => {
-  const cf = req.headers['cf-connecting-ip'];
-  const ip = (Array.isArray(cf) ? cf[0] : cf) || req.ip || '';
-  return ipKeyGenerator(ip);
-};
-
-// Abuse / brute-force protection.
-const globalLimiter = rateLimit({
-  windowMs: 60_000,
-  limit: 300,
-  standardHeaders: 'draft-7',
-  legacyHeaders: false,
-  keyGenerator: clientIpKey,
-  message: { message: 'Too many requests. Please slow down and try again shortly.' },
-});
-// Tight bucket for credential endpoints (login / register).
-const authLimiter = rateLimit({
-  windowMs: 60_000,
-  limit: 10,
-  standardHeaders: 'draft-7',
-  legacyHeaders: false,
-  keyGenerator: clientIpKey,
-  message: { message: 'Too many attempts. Please wait a minute and try again.' },
-});
-// Tight bucket for the unauthenticated public form.
-const publicFormLimiter = rateLimit({
-  windowMs: 60_000,
-  limit: 5,
-  standardHeaders: 'draft-7',
-  legacyHeaders: false,
-  keyGenerator: clientIpKey,
-  message: { message: 'Too many submissions. Please try again shortly.' },
-});
 
 app.use(globalLimiter);
 
@@ -78,7 +105,6 @@ app.get('/api/health', (_req, res) => {
 
 // Strict limits must be registered before the routers they protect.
 app.use('/api/auth/login', authLimiter);
-app.use('/api/auth/register', authLimiter);
 app.use('/api/public/demo-requests', publicFormLimiter);
 
 app.use('/api/auth', authRouter);
@@ -98,6 +124,9 @@ app.use('/api/organization', organizationRouter);
 app.use('/api/insights', insightsRouter);
 app.use('/api/audit-log', auditRouter);
 app.use('/api/support', supportRouter);
+app.use('/api/superadmin', superadminRouter);
+app.use('/api/customers', customersRouter);
+app.use('/api/users', usersRouter);
 app.use('/v1', streamRouter);
 
 // Serve React static build in production

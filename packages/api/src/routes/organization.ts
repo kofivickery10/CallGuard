@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { authenticate, requireAdmin } from '../middleware/auth.js';
+import { authenticate, requireAdmin, requireOrgView } from '../middleware/auth.js';
 import { query, queryOne } from '../db/client.js';
 import { AppError } from '../middleware/errors.js';
 import { recordAuditEvent } from '../services/audit.js';
@@ -31,11 +31,23 @@ organizationRouter.put('/plan', requireAdmin, async (req, res, next) => {
     if (!PLANS.includes(plan)) {
       throw new AppError(400, `Invalid plan. Must be one of: ${PLANS.join(', ')}`);
     }
+    const current = await queryOne<{ plan: string }>(
+      'SELECT plan FROM organizations WHERE id = $1',
+      [req.user!.organizationId]
+    );
     const rows = await query<OrganizationInfo>(
       `UPDATE organizations SET plan = $1, updated_at = now()
         WHERE id = $2 RETURNING id, name, plan`,
       [plan as Plan, req.user!.organizationId]
     );
+    void recordAuditEvent({
+      organizationId: req.user!.organizationId,
+      userId: req.user!.userId,
+      actionType: 'plan.change',
+      entityType: 'organization',
+      entityId: req.user!.organizationId,
+      metadata: { from: current?.plan, to: plan },
+    });
     res.json(rows[0]);
   } catch (err) {
     next(err);
@@ -102,7 +114,7 @@ organizationRouter.put('/data-improvement', requireAdmin, async (req, res, next)
 
 // Active seats = distinct advisers with at least one scored call in a month.
 // Returns the current and previous calendar month (basis for per-seat billing).
-organizationRouter.get('/active-seats', requireAdmin, async (req, res, next) => {
+organizationRouter.get('/active-seats', requireOrgView, async (req, res, next) => {
   try {
     const orgId = req.user!.organizationId;
 
@@ -118,14 +130,14 @@ organizationRouter.get('/active-seats', requireAdmin, async (req, res, next) => 
       [orgId]
     );
 
-    const advisers = await query<{ id: string; name: string; scored_calls: string }>(
-      `SELECT u.id, u.name, COUNT(c.id)::text AS scored_calls
+    const advisers = await query<{ id: string; name: string; scored_calls: string; plan_override: string | null }>(
+      `SELECT u.id, u.name, COUNT(c.id)::text AS scored_calls, u.plan_override
          FROM calls c
          JOIN users u ON u.id = c.agent_id
         WHERE c.organization_id = $1
           AND c.status = 'scored'
           AND c.created_at >= date_trunc('month', now())
-        GROUP BY u.id, u.name
+        GROUP BY u.id, u.name, u.plan_override
         ORDER BY u.name`,
       [orgId]
     );
@@ -146,6 +158,7 @@ organizationRouter.get('/active-seats', requireAdmin, async (req, res, next) => 
         id: a.id,
         name: a.name,
         scored_calls: parseInt(a.scored_calls, 10),
+        plan_override: a.plan_override,
       })),
     });
   } catch (err) {

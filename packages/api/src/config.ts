@@ -29,7 +29,8 @@ export const config = {
 
   jwt: {
     secret: required('JWT_SECRET'),
-    expiresIn: '7d',
+    expiresIn: '15m',
+    refreshExpiresInDays: 30,
   },
 
   encryptionKey: required('ENCRYPTION_KEY'),

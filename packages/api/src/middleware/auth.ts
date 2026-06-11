@@ -7,6 +7,7 @@ import { hashApiKey } from '../services/api-keys.js';
 
 export interface AuthPayload {
   userId: string;
+  // Empty string for superadmin users (no org context).
   organizationId: string;
   role: string;
 }
@@ -16,6 +17,27 @@ declare global {
     interface Request {
       user?: AuthPayload;
     }
+  }
+}
+
+// Track which user IDs had last_active_at updated in the current 5-min window.
+// Cleared on a rolling timer so the memory footprint stays bounded.
+const recentlyActiveUsers = new Set<string>();
+let clearTimer: ReturnType<typeof setTimeout> | null = null;
+
+function touchLastActive(userId: string): void {
+  if (recentlyActiveUsers.has(userId)) return;
+  recentlyActiveUsers.add(userId);
+  // Write fire-and-forget; never throws on the request path.
+  query('UPDATE users SET last_active_at = now() WHERE id = $1', [userId]).catch(
+    (err) => console.error('[auth] last_active_at update failed:', err)
+  );
+  // Reset the dedup window every 5 minutes.
+  if (!clearTimer) {
+    clearTimer = setTimeout(() => {
+      recentlyActiveUsers.clear();
+      clearTimer = null;
+    }, 5 * 60 * 1000);
   }
 }
 
@@ -33,6 +55,7 @@ export function authenticate(
   try {
     const payload = jwt.verify(token, config.jwt.secret) as AuthPayload;
     req.user = payload;
+    touchLastActive(payload.userId);
     next();
   } catch {
     throw new AppError(401, 'Invalid or expired token');
@@ -66,6 +89,18 @@ export const requireOrgView = requireRole('admin', 'supervisor', 'viewer');
 
 // Actioning calls (review breaches, correct scores, coach). Not viewers/advisers.
 export const requireActioner = requireRole('admin', 'supervisor');
+
+// Platform superadmin — full cross-tenant access.
+export function requireSuperadmin(
+  req: Request,
+  _res: Response,
+  next: NextFunction
+): void {
+  if (!req.user || req.user.role !== 'superadmin') {
+    throw new AppError(403, 'Superadmin access required');
+  }
+  next();
+}
 
 // CallGuard platform operator (cross-tenant support inbox). Looked up live so it
 // never depends on a stale token claim.

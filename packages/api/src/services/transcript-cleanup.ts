@@ -1,5 +1,6 @@
 import { config } from '../config.js';
 import { query } from '../db/client.js';
+import { CLAUDE_MODELS } from '@callguard/shared';
 
 export async function cleanupTranscript(
   rawTranscript: string,
@@ -32,7 +33,7 @@ export async function cleanupTranscript(
   const client = new Anthropic({ apiKey: config.anthropic.apiKey });
 
   const response = await client.messages.create({
-    model: 'claude-sonnet-4-20250514',
+    model: CLAUDE_MODELS.SONNET,
     max_tokens: 8192,
     messages: [
       {

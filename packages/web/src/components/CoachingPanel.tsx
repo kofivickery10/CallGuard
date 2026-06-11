@@ -4,7 +4,7 @@ import { hasFeature, PLAN_LABELS } from '@callguard/shared';
 
 interface CoachingPanelProps {
   coaching: CallCoaching | null;
-  plan: Plan;
+  plan: Plan | null;
   callStatus: string;
   isAdmin: boolean;
   priorCoachingCount?: number;
@@ -38,7 +38,7 @@ export function CoachingPanel({ coaching, plan, callStatus, isAdmin, priorCoachi
             </Link>
           ) : (
             <p className="text-[12px] text-text-muted">
-              Ask your admin to upgrade to {PLAN_LABELS.growth} or {PLAN_LABELS.pro} to enable this feature.
+              Ask your admin to upgrade to {PLAN_LABELS.professional} or {PLAN_LABELS.enterprise} to enable this feature.
             </p>
           )}
         </div>

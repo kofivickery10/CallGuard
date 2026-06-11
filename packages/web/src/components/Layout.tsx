@@ -28,6 +28,7 @@ const navItems: NavItem[] = [
   { path: '/integrations', label: 'Integrations', icon: 'M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71', roles: ADMIN_ONLY },
   { path: '/alerts', label: 'Alerts', icon: 'M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0', roles: ADMIN_ONLY },
   { path: '/review-queue', label: 'Review Queue', icon: 'M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11', roles: ORG_VIEW },
+  { path: '/customers', label: 'Customers', icon: 'M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 7a4 4 0 100 8 4 4 0 000-8M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75' },
   { path: '/breaches', label: 'Breaches', icon: 'M12 2L3 7v5c0 5 3.5 9.5 9 11 5.5-1.5 9-6 9-11V7l-9-5z', roles: ORG_VIEW },
   { path: '/adviser-risk', label: 'Adviser Risk', icon: 'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z', roles: ORG_VIEW },
   { path: '/insights', label: 'AI Insights', icon: 'M12 2l2.39 7.36H22l-6.19 4.5L18.2 22 12 17.27 5.8 22l2.39-8.14L2 9.36h7.61z', roles: ORG_VIEW },
@@ -35,6 +36,7 @@ const navItems: NavItem[] = [
   { path: '/compliance-docs', label: 'Compliance Docs', icon: 'M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8zM14 2v6h6M16 13H8M16 17H8M10 9H8', roles: ORG_VIEW },
   { path: '/audit-log', label: 'Audit Log', icon: 'M12 2v20M2 12h20M12 6l4 4M12 6l-4 4M12 18l4-4M12 18l-4-4', roles: ORG_VIEW },
   { path: '/team', label: 'Team', icon: 'M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75', roles: ADMIN_ONLY },
+  { path: '/billing', label: 'Billing', icon: 'M3 3h18v18H3zM3 9h18M9 21V9', roles: ['admin', 'supervisor'] },
   { path: '/support-inbox', label: 'Support', icon: 'M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z', staffOnly: true },
 ];
 
@@ -112,9 +114,9 @@ export function Layout({ children }: { children: ReactNode }) {
             <Link
               to="/settings"
               className={`inline-block mt-2 px-2 py-[2px] rounded text-[10px] font-bold uppercase tracking-wider ${
-                user.organization_plan === 'pro'
+                user.organization_plan === 'enterprise'
                   ? 'bg-secondary text-white'
-                  : user.organization_plan === 'growth'
+                  : user.organization_plan === 'professional'
                     ? 'bg-primary-light text-pass'
                     : 'bg-table-header text-text-muted'
               } hover:opacity-80 transition-opacity`}
@@ -123,9 +125,19 @@ export function Layout({ children }: { children: ReactNode }) {
               {user.organization_plan} plan
             </Link>
           )}
+          <Link
+            to="/account"
+            className="flex items-center gap-1 text-text-muted hover:text-text-secondary transition-colors text-[12px] mt-2"
+          >
+            <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.8">
+              <circle cx="12" cy="8" r="4" />
+              <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" />
+            </svg>
+            My account
+          </Link>
           <button
             onClick={logout}
-            className="flex items-center gap-1 text-text-muted hover:text-text-secondary transition-colors text-[12px] mt-2"
+            className="flex items-center gap-1 text-text-muted hover:text-text-secondary transition-colors text-[12px] mt-1"
           >
             <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.8">
               <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" />

@@ -5,7 +5,7 @@ import { getKBContext } from '../../services/kb.js';
 import { evaluateAlertsForCall } from '../../services/alert-evaluator.js';
 import { getLearningContext } from '../../services/learning-context.js';
 import { deliverCallScored } from '../../services/webhook-delivery.js';
-import { hasFeature, isItemPass, deriveSeverity, callPasses } from '@callguard/shared';
+import { hasFeature, isItemPass, deriveSeverity, callPasses, MIN_SCOREABLE_WORDS, MIN_SCOREABLE_DURATION_SECONDS } from '@callguard/shared';
 import type { Call, ScorecardItem, Plan } from '@callguard/shared';
 
 export async function processScoring(job: Job<{ callId: string }>) {
@@ -19,6 +19,26 @@ export async function processScoring(job: Job<{ callId: string }>) {
 
   if (!call || !call.transcript_text) {
     throw new Error(`Call ${callId} not found or has no transcript`);
+  }
+
+  // Skip calls too short to score meaningfully (wrong numbers, voicemails,
+  // instant hangups). Either too few words OR — when duration is known — too
+  // short trips it. This avoids wasting a Claude call and polluting scores,
+  // breaches and agent averages with junk. Not a failure: dedicated status.
+  const wordCount = call.transcript_text.trim().split(/\s+/).filter(Boolean).length;
+  const durationSeconds = Number(call.duration_seconds ?? 0);
+  const tooFewWords = wordCount < MIN_SCOREABLE_WORDS;
+  const tooShortDuration = durationSeconds > 0 && durationSeconds < MIN_SCOREABLE_DURATION_SECONDS;
+
+  if (tooFewWords || tooShortDuration) {
+    const reason = `Skipped scoring: too short to evaluate (${wordCount} words` +
+      (durationSeconds > 0 ? `, ${durationSeconds.toFixed(0)}s` : '') + ')';
+    await query(
+      "UPDATE calls SET status = 'skipped', error_message = $2, updated_at = now() WHERE id = $1",
+      [callId, reason]
+    );
+    console.log(`[Scoring] Call ${callId} ${reason}`);
+    return;
   }
 
   // Update status
@@ -92,9 +112,10 @@ export async function processScoring(job: Job<{ callId: string }>) {
         description: i.description,
         score_type: i.score_type,
       })),
+      null,       // use default model
       kbContext,
-      coachingEnabled,
-      learning
+      learning,
+      coachingEnabled
     );
 
     // Create call_score record (with coaching if generated)
@@ -199,9 +220,51 @@ export async function processScoring(job: Job<{ callId: string }>) {
 
     console.log(`[Scoring] Call ${callId} scored: ${overallScore.toFixed(1)} (${pass ? 'PASS' : 'FAIL'})${shouldAutoExemplar ? ' [auto-exemplar]' : ''}`);
 
+    // Recompute customer aggregate stats from source data so re-scoring a call
+    // doesn't increment call_count a second time (COUNT is idempotent; +1 is not).
+    if ((call as Call & { customer_id?: string | null }).customer_id) {
+      query(
+        `UPDATE customers SET
+           call_count   = (SELECT COUNT(DISTINCT c2.id)
+                           FROM calls c2
+                           WHERE c2.customer_id = $1 AND c2.status = 'scored'),
+           avg_score    = (SELECT AVG(cs2.overall_score)
+                           FROM call_scores cs2
+                           JOIN calls c2 ON c2.id = cs2.call_id
+                           WHERE c2.customer_id = $1
+                           AND cs2.id = (
+                             SELECT id FROM call_scores
+                             WHERE call_id = c2.id
+                             ORDER BY scored_at DESC LIMIT 1
+                           )),
+           last_seen_at = now()
+         WHERE id = $1`,
+        [(call as Call & { customer_id: string }).customer_id]
+      ).catch((err) => {
+        console.error(`[Scoring] Customer stats update failed for ${callId}:`, err);
+      });
+    }
+
     // Fire a signed call.scored webhook (best-effort) so batch/uploaded calls
     // reach integrations (e.g. CRM write-back), not just live sessions.
-    const callRow = call as Call & { external_id?: string | null; agent_name?: string | null };
+    type ExtendedCall = Call & {
+      external_id?: string | null;
+      agent_name?: string | null;
+      customer_id?: string | null;
+      customer_phone?: string | null;
+    };
+    const callRow = call as ExtendedCall;
+
+    // Look up external_crm_id if customer is linked.
+    let customerExternalCrmId: string | null = null;
+    if (callRow.customer_id) {
+      const cust = await queryOne<{ external_crm_id: string | null }>(
+        'SELECT external_crm_id FROM customers WHERE id = $1',
+        [callRow.customer_id]
+      );
+      customerExternalCrmId = cust?.external_crm_id ?? null;
+    }
+
     deliverCallScored(call.organization_id, {
       event: 'call.scored',
       call_id: callId,
@@ -211,6 +274,9 @@ export async function processScoring(job: Job<{ callId: string }>) {
       overall_score: overallScore,
       pass,
       scored_at: new Date().toISOString(),
+      customer_id: callRow.customer_id ?? null,
+      customer_phone: callRow.customer_phone ?? null,
+      customer_external_crm_id: customerExternalCrmId,
       breaches: failures,
     }).catch((err) => {
       console.error(`[Scoring] call.scored webhook failed for ${callId}:`, (err as Error).message);

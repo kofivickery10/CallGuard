@@ -282,8 +282,8 @@ export function OrganizationSettings() {
                 <li className={`flex items-center gap-1.5 ${hasFeature(p, 'coaching') ? '' : 'text-text-muted line-through'}`}>
                   {hasFeature(p, 'coaching') ? <Check /> : <Cross />} AI coaching per call
                 </li>
-                <li className={`flex items-center gap-1.5 ${p === 'pro' ? '' : 'text-text-muted line-through'}`}>
-                  {p === 'pro' ? <Check /> : <Cross />} Webhooks & priority support
+                <li className={`flex items-center gap-1.5 ${p === 'enterprise' ? '' : 'text-text-muted line-through'}`}>
+                  {p === 'enterprise' ? <Check /> : <Cross />} Dedicated support & white-label
                 </li>
               </ul>
               {!isCurrent && isAdmin && (

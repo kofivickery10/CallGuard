@@ -23,10 +23,13 @@ export type AuditActionType =
   | 'api_key.create'
   | 'api_key.revoke'
   | 'sftp.create'
+  | 'sftp.update'
   | 'sftp.delete'
   | 'user.invite'
   | 'user.role_change'
   | 'user.delete'
+  | 'plan.change'
+  | 'scorecard.deactivate'
   | 'org.data_improvement_optin';
 
 export type AuditEntityType =

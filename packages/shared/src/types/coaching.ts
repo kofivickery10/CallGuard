@@ -1,17 +1,17 @@
-export type Plan = 'starter' | 'growth' | 'pro';
+export type Plan = 'core' | 'professional' | 'enterprise';
 
-export const PLANS: Plan[] = ['starter', 'growth', 'pro'];
+export const PLANS: Plan[] = ['core', 'professional', 'enterprise'];
 
 export const PLAN_LABELS: Record<Plan, string> = {
-  starter: 'Starter',
-  growth: 'Growth',
-  pro: 'Pro',
+  core: 'Core',
+  professional: 'Professional',
+  enterprise: 'Enterprise',
 };
 
 export const PLAN_DESCRIPTIONS: Record<Plan, string> = {
-  starter: 'Scoring & breach register',
-  growth: 'Scoring, coaching, integrations',
-  pro: 'Everything + webhooks & dedicated support',
+  core: 'Scoring, coaching, AI insights, compliance docs, customer journey, SFTP',
+  professional: 'Core + live streaming + live coaching',
+  enterprise: 'Professional + dedicated support & white-label',
 };
 
 export interface CallCoaching {
@@ -33,14 +33,44 @@ export interface OrganizationInfo {
   data_improvement_opt_in_at?: string | null;
 }
 
-export type FeatureFlag = 'coaching' | 'ai_learning' | 'insights';
+export type FeatureFlag =
+  | 'coaching'
+  | 'ai_learning'
+  | 'insights'
+  | 'customer_journey'
+  | 'live_streaming'
+  | 'live_coaching'
+  | 'dedicated_support'
+  | 'white_label';
 
 export const FEATURES: Record<FeatureFlag, Plan[]> = {
-  coaching: ['growth', 'pro'],
-  ai_learning: ['growth', 'pro'],
-  insights: ['pro'],
+  // Available on all tiers
+  coaching:          ['core', 'professional', 'enterprise'],
+  ai_learning:       ['core', 'professional', 'enterprise'],
+  insights:          ['core', 'professional', 'enterprise'],
+  customer_journey:  ['core', 'professional', 'enterprise'],
+  // Professional+
+  live_streaming:    ['professional', 'enterprise'],
+  live_coaching:     ['professional', 'enterprise'],
+  // Enterprise only
+  dedicated_support: ['enterprise'],
+  white_label:       ['enterprise'],
 };
 
-export function hasFeature(plan: Plan, feature: FeatureFlag): boolean {
+export function hasFeature(plan: Plan | null | undefined, feature: FeatureFlag): boolean {
+  if (!plan) return false;
   return FEATURES[feature].includes(plan);
+}
+
+const PLAN_RANK: Record<Plan, number> = { core: 0, professional: 1, enterprise: 2 };
+
+export function planRank(plan: Plan): number {
+  return PLAN_RANK[plan] ?? 0;
+}
+
+// Returns the higher of the two plans — used when a user has a per-user tier
+// override that bumps them above the base org plan.
+export function effectivePlan(orgPlan: Plan, override: Plan | null | undefined): Plan {
+  if (!override) return orgPlan;
+  return planRank(override) > planRank(orgPlan) ? override : orgPlan;
 }

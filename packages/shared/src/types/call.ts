@@ -4,6 +4,7 @@ export type CallStatus =
   | 'transcribed'
   | 'scoring'
   | 'scored'
+  | 'skipped'
   | 'failed';
 
 export interface Call {

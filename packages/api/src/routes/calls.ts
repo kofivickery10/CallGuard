@@ -4,7 +4,7 @@ import { authenticate } from '../middleware/auth.js';
 import { requireAdmin, requireActioner } from '../middleware/auth.js';
 import { upload } from '../middleware/upload.js';
 import { query, queryOne } from '../db/client.js';
-import { uploadFile, deleteFile } from '../services/storage.js';
+import { uploadFile, deleteFile, readFile } from '../services/storage.js';
 import { transcriptionQueue } from '../jobs/queue.js';
 import { AppError } from '../middleware/errors.js';
 import { ingestCall, inferMimeType } from '../services/ingestion.js';
@@ -346,6 +346,45 @@ callRouter.delete('/:id', requireAdmin, async (req, res, next) => {
       req,
     });
     res.json({ message: 'Call deleted', id: call.id });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Stream the decrypted audio file for a call.
+// Access is auth-gated and org-scoped — no public URLs exposed.
+callRouter.get('/:id/audio', async (req, res, next) => {
+  try {
+    let sql =
+      'SELECT file_key, mime_type, file_name, encrypted_at_rest FROM calls WHERE id = $1 AND organization_id = $2';
+    const params: unknown[] = [req.params.id, req.user!.organizationId];
+
+    if (req.user!.role === 'adviser') {
+      params.push(req.user!.userId);
+      sql += ` AND agent_id = $${params.length}`;
+    }
+
+    const call = await queryOne<{
+      file_key: string | null;
+      mime_type: string | null;
+      file_name: string | null;
+      encrypted_at_rest: boolean;
+    }>(sql, params);
+
+    if (!call) throw new AppError(404, 'Call not found');
+    if (!call.file_key) throw new AppError(404, 'No audio file for this call');
+
+    const buffer = await readFile(call.file_key, call.encrypted_at_rest);
+    const contentType = call.mime_type || 'audio/mpeg';
+
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Length', buffer.length);
+    res.setHeader('Accept-Ranges', 'none');
+    res.setHeader(
+      'Content-Disposition',
+      `inline; filename="${encodeURIComponent(call.file_name || 'audio')}"`,
+    );
+    res.send(buffer);
   } catch (err) {
     next(err);
   }

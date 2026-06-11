@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
 import { query, queryOne } from '../db/client.js';
 import { AppError } from '../middleware/errors.js';
+import { recordAuditEvent } from '../services/audit.js';
 import type { Scorecard, ScorecardItem } from '@callguard/shared';
 
 export const scorecardRouter = Router();
@@ -72,6 +73,15 @@ scorecardRouter.post('/', requireAdmin, async (req, res, next) => {
       );
       createdItems.push(itemRows[0]);
     }
+
+    void recordAuditEvent({
+      organizationId: req.user!.organizationId,
+      userId: req.user!.userId,
+      actionType: 'scorecard.create',
+      entityType: 'scorecard',
+      entityId: scorecard.id,
+      metadata: { name: scorecard.name, item_count: createdItems.length },
+    });
 
     res.status(201).json({ ...scorecard, items: createdItems });
   } catch (err) {
@@ -144,6 +154,13 @@ scorecardRouter.delete('/:id', requireAdmin, async (req, res, next) => {
       [req.params.id, req.user!.organizationId]
     );
     if (!result) throw new AppError(404, 'Scorecard not found');
+    void recordAuditEvent({
+      organizationId: req.user!.organizationId,
+      userId: req.user!.userId,
+      actionType: 'scorecard.deactivate',
+      entityType: 'scorecard',
+      entityId: req.params.id,
+    });
     res.json({ message: 'Scorecard deactivated' });
   } catch (err) {
     next(err);

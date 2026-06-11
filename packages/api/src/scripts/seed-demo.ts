@@ -214,7 +214,7 @@ async function main() {
 
   // 1. Create org (Pro plan so demo shows all features)
   const org = await queryOne<{ id: string }>(
-    `INSERT INTO organizations (name, plan) VALUES ($1, 'pro') RETURNING id`,
+    `INSERT INTO organizations (name, plan) VALUES ($1, 'enterprise') RETURNING id`,
     [DEMO_ORG]
   );
   const orgId = org!.id;

@@ -12,3 +12,6 @@ uploads/
 
 # TypeScript incremental build cache
 *.tsbuildinfo
+
+# Model evaluation output (generated artifact)
+evaluation-report.json
