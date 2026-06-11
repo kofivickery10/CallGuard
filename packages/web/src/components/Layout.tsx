@@ -14,30 +14,51 @@ interface NavItem {
   staffOnly?: boolean;
 }
 
+interface NavSection {
+  // Optional header shown above the group; omitted = no header.
+  label?: string;
+  items: NavItem[];
+}
+
 // Role groups for nav visibility.
 const ORG_VIEW = ['admin', 'supervisor', 'viewer']; // org-wide read
-const ADMIN_ONLY = ['admin'];                        // configuration
-const UPLOADERS = ['admin', 'supervisor', 'adviser']; // viewers are read-only
+const ADMIN_SUPERVISOR = ['admin', 'supervisor'];   // see the Settings hub
 
-const navItems: NavItem[] = [
-  { path: '/', label: 'Dashboard', icon: 'M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z' },
-  { path: '/calls', label: 'Calls', icon: 'M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6A19.79 19.79 0 012.12 4.18 2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z' },
-  { path: '/calls/upload', label: 'Upload', icon: 'M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12', roles: UPLOADERS },
-  { path: '/scorecards', label: 'Scorecards', icon: 'M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11', roles: ADMIN_ONLY },
-  { path: '/knowledge-base', label: 'Knowledge Base', icon: 'M4 19.5A2.5 2.5 0 016.5 17H20M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z', roles: ADMIN_ONLY },
-  { path: '/integrations', label: 'Integrations', icon: 'M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71', roles: ADMIN_ONLY },
-  { path: '/alerts', label: 'Alerts', icon: 'M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0', roles: ADMIN_ONLY },
-  { path: '/review-queue', label: 'Review Queue', icon: 'M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11', roles: ORG_VIEW },
-  { path: '/customers', label: 'Customers', icon: 'M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 7a4 4 0 100 8 4 4 0 000-8M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75' },
-  { path: '/breaches', label: 'Breaches', icon: 'M12 2L3 7v5c0 5 3.5 9.5 9 11 5.5-1.5 9-6 9-11V7l-9-5z', roles: ORG_VIEW },
-  { path: '/adviser-risk', label: 'Adviser Risk', icon: 'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z', roles: ORG_VIEW },
-  { path: '/insights', label: 'AI Insights', icon: 'M12 2l2.39 7.36H22l-6.19 4.5L18.2 22 12 17.27 5.8 22l2.39-8.14L2 9.36h7.61z', roles: ORG_VIEW },
-  { path: '/calibration', label: 'Calibration', icon: 'M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83', roles: ORG_VIEW },
-  { path: '/compliance-docs', label: 'Compliance Docs', icon: 'M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8zM14 2v6h6M16 13H8M16 17H8M10 9H8', roles: ORG_VIEW },
-  { path: '/audit-log', label: 'Audit Log', icon: 'M12 2v20M2 12h20M12 6l4 4M12 6l-4 4M12 18l4-4M12 18l-4-4', roles: ORG_VIEW },
-  { path: '/team', label: 'Team', icon: 'M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75', roles: ADMIN_ONLY },
-  { path: '/billing', label: 'Billing', icon: 'M3 3h18v18H3zM3 9h18M9 21V9', roles: ['admin', 'supervisor'] },
-  { path: '/support-inbox', label: 'Support', icon: 'M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z', staffOnly: true },
+// Nav is grouped into sections. Set-once configuration (scorecards, knowledge
+// base, alerts, integrations, team, billing, organisation) lives behind the
+// single "Settings" hub rather than cluttering the top level. Upload is an
+// action button on the Calls page, not a nav destination.
+const NAV_SECTIONS: NavSection[] = [
+  {
+    items: [
+      { path: '/', label: 'Dashboard', icon: 'M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z' },
+      { path: '/calls', label: 'Calls', icon: 'M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6A19.79 19.79 0 012.12 4.18 2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z' },
+      { path: '/customers', label: 'Customers', icon: 'M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 7a4 4 0 100 8 4 4 0 000-8M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75' },
+    ],
+  },
+  {
+    label: 'Quality',
+    items: [
+      { path: '/review-queue', label: 'Review Queue', icon: 'M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11', roles: ORG_VIEW },
+      { path: '/breaches', label: 'Breaches', icon: 'M12 2L3 7v5c0 5 3.5 9.5 9 11 5.5-1.5 9-6 9-11V7l-9-5z', roles: ORG_VIEW },
+      { path: '/adviser-risk', label: 'Adviser Risk', icon: 'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z', roles: ORG_VIEW },
+      { path: '/insights', label: 'AI Insights', icon: 'M12 2l2.39 7.36H22l-6.19 4.5L18.2 22 12 17.27 5.8 22l2.39-8.14L2 9.36h7.61z', roles: ORG_VIEW },
+      { path: '/calibration', label: 'Calibration', icon: 'M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83', roles: ORG_VIEW },
+    ],
+  },
+  {
+    label: 'Compliance',
+    items: [
+      { path: '/compliance-docs', label: 'Compliance Docs', icon: 'M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8zM14 2v6h6M16 13H8M16 17H8M10 9H8', roles: ORG_VIEW },
+      { path: '/audit-log', label: 'Audit Log', icon: 'M12 2v20M2 12h20M12 6l4 4M12 6l-4 4M12 18l4-4M12 18l-4-4', roles: ORG_VIEW },
+    ],
+  },
+  {
+    items: [
+      { path: '/settings', label: 'Settings', icon: 'M4 21v-7M4 10V3M12 21v-11M12 6V3M20 21v-9M20 8V3M1 14h6M9 6h6M17 12h6', roles: ADMIN_SUPERVISOR },
+      { path: '/support-inbox', label: 'Support', icon: 'M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z', staffOnly: true },
+    ],
+  },
 ];
 
 export function Layout({ children }: { children: ReactNode }) {
@@ -61,49 +82,55 @@ export function Layout({ children }: { children: ReactNode }) {
           <span className="text-[17px] font-bold text-text-primary tracking-tight">CallGuard <span className="text-primary">AI</span></span>
         </div>
 
-        {/* Nav label */}
-        <div className="px-4 pt-2.5 pb-1 flex-shrink-0">
-          <span className="text-nav-label uppercase text-text-muted">Menu</span>
-        </div>
-
         {/* Nav (scrolls independently when items exceed viewport height) */}
-        <nav className="flex-1 min-h-0 overflow-y-auto px-3 py-0.5">
-          {navItems
-            .filter((item) =>
+        <nav className="flex-1 min-h-0 overflow-y-auto px-3 py-1">
+          {NAV_SECTIONS.map((section, si) => {
+            const visible = section.items.filter((item) =>
               item.staffOnly
                 ? !!user?.is_staff
                 : !item.roles || (!!user?.role && item.roles.includes(user.role))
-            )
-            .map((item) => {
-              const isActive =
-                item.path === '/'
-                  ? location.pathname === '/'
-                  : location.pathname.startsWith(item.path);
-              return (
-                <Link
-                  key={item.path}
-                  to={item.path}
-                  className={`flex items-center gap-2.5 px-2.5 py-[6px] rounded-btn mb-px transition-all text-nav-item ${
-                    isActive
-                      ? 'bg-sidebar-active text-pass font-semibold'
-                      : 'text-text-secondary hover:bg-sidebar-hover hover:text-text-primary'
-                  }`}
-                >
-                  <svg
-                    viewBox="0 0 24 24"
-                    className="w-[18px] h-[18px] flex-shrink-0"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.8"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <path d={item.icon} />
-                  </svg>
-                  <span>{item.label}</span>
-                </Link>
-              );
-            })}
+            );
+            if (visible.length === 0) return null;
+            return (
+              <div key={si} className={si === 0 ? '' : 'mt-3'}>
+                {section.label && (
+                  <div className="px-2.5 pb-1">
+                    <span className="text-nav-label uppercase text-text-muted">{section.label}</span>
+                  </div>
+                )}
+                {visible.map((item) => {
+                  const isActive =
+                    item.path === '/'
+                      ? location.pathname === '/'
+                      : location.pathname.startsWith(item.path);
+                  return (
+                    <Link
+                      key={item.path}
+                      to={item.path}
+                      className={`flex items-center gap-2.5 px-2.5 py-[6px] rounded-btn mb-px transition-all text-nav-item ${
+                        isActive
+                          ? 'bg-sidebar-active text-pass font-semibold'
+                          : 'text-text-secondary hover:bg-sidebar-hover hover:text-text-primary'
+                      }`}
+                    >
+                      <svg
+                        viewBox="0 0 24 24"
+                        className="w-[18px] h-[18px] flex-shrink-0"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.8"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d={item.icon} />
+                      </svg>
+                      <span>{item.label}</span>
+                    </Link>
+                  );
+                })}
+              </div>
+            );
+          })}
         </nav>
 
         {/* Footer */}
@@ -112,7 +139,7 @@ export function Layout({ children }: { children: ReactNode }) {
           <div className="text-[12px] text-text-muted mt-0.5">{user?.email}</div>
           {user?.organization_plan && (
             <Link
-              to="/settings"
+              to="/settings/organization"
               className={`inline-block mt-2 px-2 py-[2px] rounded text-[10px] font-bold uppercase tracking-wider ${
                 user.organization_plan === 'enterprise'
                   ? 'bg-secondary text-white'
