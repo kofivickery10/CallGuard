@@ -49,7 +49,7 @@ export function Layout({ children }: { children: ReactNode }) {
       {/* Sidebar - white */}
       <aside className="w-[220px] bg-white border-r border-sidebar-border flex flex-col fixed left-0 top-0 h-screen">
         {/* Logo */}
-        <div className="px-5 py-5 flex items-center gap-2.5">
+        <div className="px-4 py-4 flex items-center gap-2.5 flex-shrink-0">
           <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center">
             <svg viewBox="0 0 24 24" className="w-[18px] h-[18px]" fill="none" stroke="none">
               <rect x="4.5"  y="14"   width="2.4" height="4"  rx="1.1" fill="white"/>
@@ -62,12 +62,12 @@ export function Layout({ children }: { children: ReactNode }) {
         </div>
 
         {/* Nav label */}
-        <div className="px-5 pt-3 pb-1.5">
+        <div className="px-4 pt-2.5 pb-1 flex-shrink-0">
           <span className="text-nav-label uppercase text-text-muted">Menu</span>
         </div>
 
-        {/* Nav */}
-        <nav className="flex-1 px-3">
+        {/* Nav (scrolls independently when items exceed viewport height) */}
+        <nav className="flex-1 min-h-0 overflow-y-auto px-3 py-0.5">
           {navItems
             .filter((item) =>
               item.staffOnly
@@ -83,7 +83,7 @@ export function Layout({ children }: { children: ReactNode }) {
                 <Link
                   key={item.path}
                   to={item.path}
-                  className={`flex items-center gap-2.5 px-3 py-[9px] rounded-btn mb-0.5 transition-all text-nav-item ${
+                  className={`flex items-center gap-2.5 px-2.5 py-[6px] rounded-btn mb-px transition-all text-nav-item ${
                     isActive
                       ? 'bg-sidebar-active text-pass font-semibold'
                       : 'text-text-secondary hover:bg-sidebar-hover hover:text-text-primary'
@@ -107,7 +107,7 @@ export function Layout({ children }: { children: ReactNode }) {
         </nav>
 
         {/* Footer */}
-        <div className="px-5 py-4 border-t border-sidebar-border">
+        <div className="px-4 py-3 border-t border-sidebar-border flex-shrink-0">
           <div className="text-[13px] font-semibold text-text-primary">{user?.name}</div>
           <div className="text-[12px] text-text-muted mt-0.5">{user?.email}</div>
           {user?.organization_plan && (
@@ -155,7 +155,7 @@ export function Layout({ children }: { children: ReactNode }) {
         <div className="absolute top-4 right-6 z-10">
           <NotificationBell />
         </div>
-        <div className="p-8 px-9 max-w-[1200px]">{children}</div>
+        <div className="py-6 px-7 max-w-[1280px]">{children}</div>
       </main>
 
       {/* Tenant-facing support chat (self-hides for staff) */}
