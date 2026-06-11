@@ -1,5 +1,6 @@
 import { config } from '../config.js';
 import { query, queryOne } from '../db/client.js';
+import { CLAUDE_MODELS } from '@callguard/shared';
 import type { InsightRecommendation, InsightDigest } from '@callguard/shared';
 
 interface InsightsMetrics {
@@ -175,7 +176,7 @@ export async function generateInsights(
 
   const { default: Anthropic } = await import('@anthropic-ai/sdk');
   const client = new Anthropic({ apiKey: config.anthropic.apiKey });
-  const model = 'claude-sonnet-4-20250514';
+  const model = CLAUDE_MODELS.SONNET;
 
   const response = await client.messages.create({
     model,

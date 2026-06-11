@@ -6,7 +6,7 @@ import { hasFeature } from '@callguard/shared';
 /**
  * Build the tenant-specific learning context that gets fed into the scoring prompt.
  * Contains: past human corrections, firm exemplars, agent's prior coaching.
- * Gated by plan - starter plan gets no learning context.
+ * Gated by plan — core and above get learning context (requires ai_learning feature).
  */
 export async function getLearningContext(
   organizationId: string,

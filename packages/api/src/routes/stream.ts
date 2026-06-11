@@ -4,9 +4,11 @@ import { v4 as uuid } from 'uuid';
 import crypto from 'crypto';
 import { config } from '../config.js';
 import { authenticateApiKey } from '../middleware/auth.js';
+import { apiKeyLimiter } from '../middleware/rate-limits.js';
 import { AppError } from '../middleware/errors.js';
 import { query, queryOne } from '../db/client.js';
 import { encrypt } from '../services/crypto.js';
+import { hasFeature } from '@callguard/shared';
 import type { MintTokenRequest, MintTokenResponse } from '@callguard/shared';
 
 export const streamRouter = Router();
@@ -26,10 +28,19 @@ interface StreamTokenPayload {
  * Server-to-server: the partner's backend calls this with their API key,
  * receives a JWT that the mobile/browser client uses to open the WebSocket.
  */
-streamRouter.post('/sessions/mint-token', authenticateApiKey, async (req, res, next) => {
+streamRouter.post('/sessions/mint-token', authenticateApiKey, apiKeyLimiter, async (req, res, next) => {
   try {
     const apiKeyId = req.user!.userId;
     const orgId = req.user!.organizationId;
+
+    // Verify the organisation is on a plan that includes live streaming.
+    const org = await queryOne<{ plan: string }>(
+      `SELECT plan FROM organizations WHERE id = $1`,
+      [orgId]
+    );
+    if (!hasFeature(org?.plan as any, 'live_streaming')) {
+      throw new AppError(403, 'Live streaming requires a Professional or Enterprise plan');
+    }
 
     const apiKey = await queryOne<{ allow_streaming: boolean }>(
       `SELECT allow_streaming FROM api_keys WHERE id = $1 AND revoked_at IS NULL`,
@@ -101,7 +112,7 @@ streamRouter.post('/sessions/mint-token', authenticateApiKey, async (req, res, n
 /**
  * Configure or update the webhook URL + secret on an API key.
  */
-streamRouter.put('/api-keys/:id/webhook', authenticateApiKey, async (req, res, next) => {
+streamRouter.put('/api-keys/:id/webhook', authenticateApiKey, apiKeyLimiter, async (req, res, next) => {
   try {
     const apiKeyId = req.user!.userId;
     if (req.params.id !== apiKeyId) {
@@ -165,12 +176,22 @@ export async function verifyApiKeyForStreaming(apiKey: string): Promise<{
 }> {
   const { hashApiKey } = await import('../services/api-keys.js');
   const keyHash = hashApiKey(apiKey);
-  const record = await queryOne<{ id: string; organization_id: string; allow_streaming: boolean }>(
-    `SELECT id, organization_id, allow_streaming FROM api_keys
-      WHERE key_hash = $1 AND revoked_at IS NULL`,
+  const record = await queryOne<{
+    id: string;
+    organization_id: string;
+    allow_streaming: boolean;
+    org_plan: string;
+  }>(
+    `SELECT ak.id, ak.organization_id, ak.allow_streaming, o.plan AS org_plan
+       FROM api_keys ak
+       JOIN organizations o ON o.id = ak.organization_id
+      WHERE ak.key_hash = $1 AND ak.revoked_at IS NULL`,
     [keyHash],
   );
   if (!record) throw new AppError(401, 'Invalid or revoked API key');
   if (!record.allow_streaming) throw new AppError(403, 'API key not authorised for streaming');
+  if (!hasFeature(record.org_plan as any, 'live_streaming')) {
+    throw new AppError(403, 'Live streaming requires a Professional or Enterprise plan');
+  }
   return { api_key_id: record.id, organization_id: record.organization_id };
 }

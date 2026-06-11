@@ -27,6 +27,10 @@ const ReviewQueue = lazy(() => import('./pages/ReviewQueue').then((m) => ({ defa
 const AuditLog = lazy(() => import('./pages/AuditLog').then((m) => ({ default: m.AuditLog })));
 const Calibration = lazy(() => import('./pages/Calibration').then((m) => ({ default: m.Calibration })));
 const SupportInbox = lazy(() => import('./pages/SupportInbox').then((m) => ({ default: m.SupportInbox })));
+const Customers = lazy(() => import('./pages/Customers'));
+const CustomerProfile = lazy(() => import('./pages/CustomerProfile'));
+const Account = lazy(() => import('./pages/Account'));
+const BillingOverview = lazy(() => import('./pages/BillingOverview'));
 
 function PageLoader() {
   return (
@@ -77,6 +81,10 @@ export function App() {
                   <Route path="/audit-log" element={<AuditLog />} />
                   <Route path="/calibration" element={<Calibration />} />
                   <Route path="/support-inbox" element={<SupportInbox />} />
+                  <Route path="/customers" element={<Customers />} />
+                  <Route path="/customers/:id" element={<CustomerProfile />} />
+                  <Route path="/account" element={<Account />} />
+                  <Route path="/billing" element={<BillingOverview />} />
                 </Routes>
               </Suspense>
             </Layout>

@@ -149,6 +149,10 @@ export interface WebhookCallScoredPayload {
   overall_score: number;
   pass: boolean;
   scored_at: string;
+  // Customer fields — present when the call is linked to a customer record.
+  customer_id: string | null;
+  customer_phone: string | null;
+  customer_external_crm_id: string | null;
   breaches: Array<{
     scorecard_item_id: string;
     scorecard_item_label: string;

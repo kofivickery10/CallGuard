@@ -4,6 +4,7 @@ import { authenticate } from '../middleware/auth.js';
 import { requireAdmin } from '../middleware/auth.js';
 import { query, queryOne } from '../db/client.js';
 import { AppError } from '../middleware/errors.js';
+import { recordAuditEvent } from '../services/audit.js';
 import { USER_ROLES } from '@callguard/shared';
 
 const isValidRole = (r: unknown): r is string =>
@@ -73,6 +74,15 @@ agentRouter.post('/', async (req, res, next) => {
        RETURNING id, email, name, role, external_agent_id, created_at`,
       [req.user!.organizationId, email, name, passwordHash, role, externalAgentId]
     );
+
+    void recordAuditEvent({
+      organizationId: req.user!.organizationId,
+      userId: req.user!.userId,
+      actionType: 'user.invite',
+      entityType: 'user',
+      entityId: rows[0].id,
+      metadata: { email: rows[0].email, role: rows[0].role },
+    });
 
     res.status(201).json(rows[0]);
   } catch (err) {
@@ -155,6 +165,14 @@ agentRouter.delete('/:id', async (req, res, next) => {
     // Unlink calls, don't delete the user (preserve history)
     await query('UPDATE calls SET agent_id = NULL WHERE agent_id = $1', [req.params.id]);
     await query('DELETE FROM users WHERE id = $1', [req.params.id]);
+
+    void recordAuditEvent({
+      organizationId: req.user!.organizationId,
+      userId: req.user!.userId,
+      actionType: 'user.delete',
+      entityType: 'user',
+      entityId: req.params.id,
+    });
 
     res.json({ message: 'Agent removed' });
   } catch (err) {

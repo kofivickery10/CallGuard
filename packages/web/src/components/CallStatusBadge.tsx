@@ -21,6 +21,10 @@ const statusConfig: Record<CallStatus, { label: string; className: string }> = {
     label: 'Pass',
     className: 'bg-pass-bg text-pass',
   },
+  skipped: {
+    label: 'Too short',
+    className: 'bg-table-header text-text-muted',
+  },
   failed: {
     label: 'Failed',
     className: 'bg-fail-bg text-fail',

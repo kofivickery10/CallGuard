@@ -3,17 +3,14 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 export function Login() {
-  const { login, register } = useAuth();
+  const { login } = useAuth();
   const navigate = useNavigate();
-  const [isRegister, setIsRegister] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
   const [form, setForm] = useState({
     email: '',
     password: '',
-    name: '',
-    organization_name: '',
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -22,11 +19,7 @@ export function Login() {
     setLoading(true);
 
     try {
-      if (isRegister) {
-        await register(form.email, form.password, form.name, form.organization_name);
-      } else {
-        await login(form.email, form.password);
-      }
+      await login(form.email, form.password);
       navigate('/');
     } catch (err) {
       setError((err as Error).message);
@@ -52,41 +45,12 @@ export function Login() {
         </div>
 
         <form onSubmit={handleSubmit} className="bg-white border border-border rounded-card p-8 space-y-5">
-          <h2 className="text-[18px] font-semibold text-text-primary">
-            {isRegister ? 'Create your account' : 'Welcome back'}
-          </h2>
+          <h2 className="text-[18px] font-semibold text-text-primary">Welcome back</h2>
 
           {error && (
             <div className="bg-fail-bg text-fail px-4 py-2.5 rounded-btn text-table-cell">
               {error}
             </div>
-          )}
-
-          {isRegister && (
-            <>
-              <div>
-                <label className="block text-table-cell font-medium text-text-secondary mb-1.5">Name</label>
-                <input
-                  type="text"
-                  value={form.name}
-                  onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  className="w-full border border-border rounded-btn px-3 py-2 text-table-cell text-text-primary placeholder:text-text-muted focus:outline-none focus:border-primary transition-colors"
-                  placeholder="Your name"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-table-cell font-medium text-text-secondary mb-1.5">Organization Name</label>
-                <input
-                  type="text"
-                  value={form.organization_name}
-                  onChange={(e) => setForm({ ...form, organization_name: e.target.value })}
-                  className="w-full border border-border rounded-btn px-3 py-2 text-table-cell text-text-primary placeholder:text-text-muted focus:outline-none focus:border-primary transition-colors"
-                  placeholder="Your company"
-                  required
-                />
-              </div>
-            </>
           )}
 
           <div>
@@ -108,9 +72,8 @@ export function Login() {
               value={form.password}
               onChange={(e) => setForm({ ...form, password: e.target.value })}
               className="w-full border border-border rounded-btn px-3 py-2 text-table-cell text-text-primary placeholder:text-text-muted focus:outline-none focus:border-primary transition-colors"
-              placeholder="Min 6 characters"
+              placeholder="Your password"
               required
-              minLength={6}
             />
           </div>
 
@@ -119,14 +82,11 @@ export function Login() {
             disabled={loading}
             className="w-full bg-primary text-white py-[9px] px-[18px] rounded-btn font-semibold text-table-cell hover:bg-primary-hover disabled:opacity-50 transition-colors"
           >
-            {loading ? 'Loading...' : isRegister ? 'Create Account' : 'Sign In'}
+            {loading ? 'Loading...' : 'Sign In'}
           </button>
 
           <p className="text-center text-[12px] text-text-muted">
-            {isRegister ? 'Already have an account?' : "Don't have an account?"}{' '}
-            <button type="button" onClick={() => setIsRegister(!isRegister)} className="text-primary hover:underline font-medium">
-              {isRegister ? 'Sign In' : 'Register'}
-            </button>
+            Need an account? Contact your CallGuard administrator.
           </p>
         </form>
       </div>

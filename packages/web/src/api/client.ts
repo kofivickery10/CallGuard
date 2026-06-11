@@ -1,20 +1,66 @@
 const BASE_URL = '/api';
 
+const TOKEN_KEY = 'callguard_token';
+const REFRESH_KEY = 'callguard_refresh_token';
+
 function getToken(): string | null {
-  return localStorage.getItem('callguard_token');
+  return localStorage.getItem(TOKEN_KEY);
 }
 
+function getRefreshToken(): string | null {
+  return localStorage.getItem(REFRESH_KEY);
+}
+
+export function setTokens(token: string, refreshToken: string) {
+  localStorage.setItem(TOKEN_KEY, token);
+  localStorage.setItem(REFRESH_KEY, refreshToken);
+}
+
+// Kept for backwards compatibility with AuthContext.
 export function setToken(token: string) {
-  localStorage.setItem('callguard_token', token);
+  localStorage.setItem(TOKEN_KEY, token);
 }
 
 export function clearToken() {
-  localStorage.removeItem('callguard_token');
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(REFRESH_KEY);
+}
+
+// In-flight refresh promise — prevents multiple concurrent refreshes.
+let refreshPromise: Promise<string> | null = null;
+
+async function attemptTokenRefresh(): Promise<string> {
+  if (refreshPromise) return refreshPromise;
+
+  refreshPromise = (async () => {
+    const rt = getRefreshToken();
+    if (!rt) throw new Error('No refresh token');
+
+    const res = await fetch(`${BASE_URL}/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: rt }),
+    });
+
+    if (!res.ok) {
+      clearToken();
+      throw new Error('Session expired. Please log in again.');
+    }
+
+    const data = (await res.json()) as { token: string; refresh_token: string };
+    setTokens(data.token, data.refresh_token);
+    return data.token;
+  })().finally(() => {
+    refreshPromise = null;
+  });
+
+  return refreshPromise;
 }
 
 async function request<T>(
   path: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
+  isRetry = false
 ): Promise<T> {
   const token = getToken();
   const headers: Record<string, string> = {
@@ -34,6 +80,16 @@ async function request<T>(
     ...options,
     headers,
   });
+
+  // On 401, attempt a token refresh and retry once.
+  if (res.status === 401 && !isRetry && path !== '/auth/refresh' && path !== '/auth/login') {
+    try {
+      await attemptTokenRefresh();
+      return request<T>(path, options, true);
+    } catch {
+      // Refresh failed — bubble up a 401 so the app redirects to login.
+    }
+  }
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({ message: res.statusText }));

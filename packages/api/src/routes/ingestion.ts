@@ -4,6 +4,7 @@ import {
   requireAdmin,
   authenticateApiKey,
 } from '../middleware/auth.js';
+import { apiKeyLimiter } from '../middleware/rate-limits.js';
 import { upload } from '../middleware/upload.js';
 import { query, queryOne } from '../db/client.js';
 import { AppError } from '../middleware/errors.js';
@@ -23,6 +24,7 @@ export const ingestionRouter = Router();
 ingestionRouter.post(
   '/calls',
   authenticateApiKey,
+  apiKeyLimiter,
   upload.single('audio'),
   async (req, res, next) => {
     try {
@@ -37,8 +39,9 @@ ingestionRouter.post(
       const agent_id = (req.body.agent_id as string | undefined) || null;
       const agent_email = (req.body.agent_email as string | undefined) || null;
       const agent_external_id = (req.body.agent_external_id as string | undefined) || null;
-      const customer_phone =
-        (req.body.customer_phone as string | undefined) || null;
+      const customer_phone = (req.body.customer_phone as string | undefined) || null;
+      const customer_name = (req.body.customer_name as string | undefined) || null;
+      const customer_external_crm_id = (req.body.customer_external_crm_id as string | undefined) || null;
       const call_date = (req.body.call_date as string | undefined) || null;
       const external_id = (req.body.external_id as string | undefined) || null;
       const scorecard_id = (req.body.scorecard_id as string | undefined) || null;
@@ -73,6 +76,8 @@ ingestionRouter.post(
         agentEmail: agent_email,
         agentExternalId: agent_external_id,
         customerPhone: customer_phone,
+        customerName: customer_name,
+        customerExternalCrmId: customer_external_crm_id,
         callDate: call_date,
         externalId: external_id,
         tags,
@@ -119,7 +124,7 @@ function pickField(body: Record<string, unknown>, keys: string[]): string | null
   return null;
 }
 
-ingestionRouter.post('/cloudtalk', authenticateApiKey, async (req, res, next) => {
+ingestionRouter.post('/cloudtalk', authenticateApiKey, apiKeyLimiter, async (req, res, next) => {
   try {
     const orgId = req.user!.organizationId;
     const body = (req.body || {}) as Record<string, unknown>;
@@ -184,6 +189,7 @@ ingestionRouter.post('/cloudtalk', authenticateApiKey, async (req, res, next) =>
 ingestionRouter.get(
   '/scorecards',
   authenticateApiKey,
+  apiKeyLimiter,
   async (req, res, next) => {
     try {
       const orgId = req.user!.organizationId;
@@ -216,12 +222,14 @@ ingestionRouter.get(
 //
 // While the call is still being processed, status is one of
 // 'uploaded' | 'transcribing' | 'transcribed' | 'scoring' and
-// `result` is null. Poll until status is 'scored' or 'failed'.
+// `result` is null. Poll until status is terminal: 'scored',
+// 'failed', or 'skipped' (call too short to score — result stays null).
 // ============================================================
 
 ingestionRouter.get(
   '/calls/:id/result',
   authenticateApiKey,
+  apiKeyLimiter,
   async (req, res, next) => {
     try {
       const orgId = req.user!.organizationId;
@@ -534,6 +542,15 @@ sftpRouter.post('/', async (req, res, next) => {
     // Trigger scheduler refresh
     await refreshSchedulerIfAvailable();
 
+    void recordAuditEvent({
+      organizationId: req.user!.organizationId,
+      userId: req.user!.userId,
+      actionType: 'sftp.create',
+      entityType: 'sftp_source',
+      entityId: rows[0].id,
+      metadata: { name: rows[0].name, host: rows[0].host },
+    });
+
     res.status(201).json(rows[0]);
   } catch (err) {
     next(err);
@@ -601,6 +618,13 @@ sftpRouter.put('/:id', async (req, res, next) => {
     );
 
     await refreshSchedulerIfAvailable();
+    void recordAuditEvent({
+      organizationId: req.user!.organizationId,
+      userId: req.user!.userId,
+      actionType: 'sftp.update',
+      entityType: 'sftp_source',
+      entityId: existing.id,
+    });
     res.json(rows[0]);
   } catch (err) {
     next(err);
@@ -615,6 +639,13 @@ sftpRouter.delete('/:id', async (req, res, next) => {
     );
     if (!result) throw new AppError(404, 'SFTP source not found');
     await refreshSchedulerIfAvailable();
+    void recordAuditEvent({
+      organizationId: req.user!.organizationId,
+      userId: req.user!.userId,
+      actionType: 'sftp.delete',
+      entityType: 'sftp_source',
+      entityId: req.params.id,
+    });
     res.json({ message: 'SFTP source deleted' });
   } catch (err) {
     next(err);

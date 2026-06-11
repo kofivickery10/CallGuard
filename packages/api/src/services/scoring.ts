@@ -1,4 +1,5 @@
 import { config } from '../config.js';
+import { CLAUDE_MODELS } from '@callguard/shared';
 import type { CallCoaching } from '@callguard/shared';
 
 interface ScorecardItemInput {
@@ -37,9 +38,9 @@ export interface LearningContext {
 function buildScoringPrompt(
   transcript: string,
   items: ScorecardItemInput[],
-  kbContext: string = '',
+  kbContext: string | null | undefined = '',
   withCoaching: boolean = false,
-  learning?: LearningContext
+  learning?: LearningContext | null
 ): string {
   const criteriaBlock = items
     .map((item, i) => {
@@ -68,7 +69,7 @@ function buildScoringPrompt(
     })
     .join('\n\n');
 
-  const kbBlock = kbContext.trim()
+  const kbBlock = kbContext?.trim()
     ? `\n\n## Business Knowledge Base\n\nThis is the business-specific context you should use when evaluating. Use this to understand the company's products, compliance requirements, expected call flow, and industry-specific language.\n\n${kbContext}\n`
     : '';
 
@@ -128,12 +129,15 @@ In addition to the scoring, produce a coaching brief for the agent:
 Coaching tone: supportive, specific, actionable. Avoid generic platitudes like "keep up the good work" - be concrete. If the call was a critical fail, focus coaching on the most impactful 2-3 things the agent must change, not a laundry list.` : ''}`;
 }
 
+const DEFAULT_SCORING_MODEL = CLAUDE_MODELS.HAIKU;
+
 export async function scoreTranscript(
   transcript: string,
   items: ScorecardItemInput[],
-  kbContext: string = '',
-  withCoaching: boolean = false,
-  learning?: LearningContext
+  modelOverride: string | null = null,
+  kbContext: string | null = null,
+  learning?: LearningContext | null,
+  withCoaching: boolean = false
 ): Promise<{ output: ScoringOutput; usage: { input_tokens: number; output_tokens: number }; model: string }> {
   if (!config.anthropic.apiKey) {
     throw new Error('ANTHROPIC_API_KEY is not set in .env - needed for scoring');
@@ -143,7 +147,7 @@ export async function scoreTranscript(
   const { default: Anthropic } = await import('@anthropic-ai/sdk');
   const client = new Anthropic({ apiKey: config.anthropic.apiKey });
 
-  const model = 'claude-sonnet-4-20250514';
+  const model = modelOverride ?? DEFAULT_SCORING_MODEL;
 
   const response = await client.messages.create({
     model,

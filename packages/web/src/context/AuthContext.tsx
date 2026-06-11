@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { api, setToken, clearToken } from '../api/client';
+import { api, setTokens, clearToken } from '../api/client';
 import type { AuthResponse } from '@callguard/shared';
 
 import type { Plan } from '@callguard/shared';
@@ -10,16 +10,15 @@ interface AuthUser {
   name: string;
   role: string;
   is_staff?: boolean;
-  organization_id: string;
+  organization_id: string | null;
   organization_name: string;
-  organization_plan: Plan;
+  organization_plan: Plan | null;
 }
 
 interface AuthContextValue {
   user: AuthUser | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string, name: string, organizationName: string) => Promise<void>;
   logout: () => void;
   refreshUser: () => Promise<void>;
 }
@@ -45,27 +44,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (email: string, password: string) => {
     const res = await api.post<AuthResponse>('/auth/login', { email, password });
-    setToken(res.token);
-    setUser(res.user);
-  };
-
-  const register = async (
-    email: string,
-    password: string,
-    name: string,
-    organizationName: string
-  ) => {
-    const res = await api.post<AuthResponse>('/auth/register', {
-      email,
-      password,
-      name,
-      organization_name: organizationName,
-    });
-    setToken(res.token);
+    setTokens(res.token, res.refresh_token);
     setUser(res.user);
   };
 
   const logout = () => {
+    const rt = localStorage.getItem('callguard_refresh_token');
+    if (rt) {
+      // Fire-and-forget — we clear locally regardless of server response.
+      api.post('/auth/logout', { refresh_token: rt }).catch(() => undefined);
+    }
     clearToken();
     setUser(null);
   };
@@ -76,7 +64,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout, refreshUser }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

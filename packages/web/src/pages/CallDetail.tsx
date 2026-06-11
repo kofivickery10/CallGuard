@@ -69,7 +69,8 @@ export function CallDetail() {
     queryFn: () => api.get<Call>(`/calls/${id}`),
     refetchInterval: (query) => {
       const status = query.state.data?.status;
-      return status === 'scored' || status === 'failed' ? false : 3000;
+      // Terminal states: stop polling. 'skipped' is terminal too.
+      return status === 'scored' || status === 'failed' || status === 'skipped' ? false : 3000;
     },
   });
 
@@ -173,6 +174,15 @@ export function CallDetail() {
         <div className="bg-fail-bg border-l-[3px] border-l-fail rounded-r-lg p-4 mb-6">
           <div className="text-table-cell font-semibold text-fail">Processing failed</div>
           {call.error_message && <div className="text-[12px] text-flag-text mt-1">{call.error_message}</div>}
+        </div>
+      )}
+
+      {call.status === 'skipped' && (
+        <div className="bg-table-header border-l-[3px] border-l-text-muted rounded-r-lg p-4 mb-6">
+          <div className="text-table-cell font-semibold text-text-secondary">Not scored — call too short</div>
+          <div className="text-[12px] text-text-muted mt-1">
+            {call.error_message || 'This call was too short to evaluate against a scorecard and was skipped.'}
+          </div>
         </div>
       )}
 

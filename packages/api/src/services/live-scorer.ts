@@ -1,4 +1,5 @@
 import { config } from '../config.js';
+import { CLAUDE_MODELS } from '@callguard/shared';
 
 interface ScorecardItem {
   id: string;
@@ -76,7 +77,7 @@ ${input.partialTranscript}
 Return only the criteria you are confident have already been breached.`;
 
   const response = await client.messages.create({
-    model: 'claude-sonnet-4-20250514',
+    model: CLAUDE_MODELS.SONNET,
     max_tokens: 1024,
     messages: [{ role: 'user', content: prompt }],
     tools: [

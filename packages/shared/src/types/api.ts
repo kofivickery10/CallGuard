@@ -19,14 +19,16 @@ export interface AuthLoginInput {
 
 export interface AuthResponse {
   token: string;
+  refresh_token: string;
   user: {
     id: string;
     email: string;
     name: string;
     role: string;
-    organization_id: string;
+    is_staff?: boolean;
+    organization_id: string | null;
     organization_name: string;
-    organization_plan: 'starter' | 'growth' | 'pro';
+    organization_plan: 'core' | 'professional' | 'enterprise' | null;
   };
 }
 
