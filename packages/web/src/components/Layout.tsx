@@ -123,11 +123,28 @@ const NAV_SECTIONS: NavSection[] = [
 export function Layout({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth();
   const location = useLocation();
+  const [navOpen, setNavOpen] = useState(false);
+
+  // Close the mobile drawer whenever the route changes.
+  useEffect(() => { setNavOpen(false); }, [location.pathname]);
 
   return (
-    <div className="flex h-screen">
-      {/* Sidebar - white */}
-      <aside className="w-[220px] bg-white border-r border-sidebar-border flex flex-col fixed left-0 top-0 h-screen">
+    <div className="min-h-screen">
+      {/* Mobile drawer backdrop */}
+      {navOpen && (
+        <div
+          onClick={() => setNavOpen(false)}
+          className="fixed inset-0 bg-black/30 z-30 lg:hidden"
+          aria-hidden
+        />
+      )}
+
+      {/* Sidebar - white. Fixed on desktop; slides in as a drawer below lg. */}
+      <aside
+        className={`w-[220px] bg-white border-r border-sidebar-border flex flex-col fixed left-0 top-0 h-screen z-40 transform transition-transform duration-200 lg:translate-x-0 ${
+          navOpen ? 'translate-x-0' : '-translate-x-full'
+        }`}
+      >
         {/* Logo */}
         <div className="px-4 py-4 flex items-center gap-2.5 flex-shrink-0">
           <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center">
@@ -236,13 +253,31 @@ export function Layout({ children }: { children: ReactNode }) {
       </aside>
 
       {/* Main content */}
-      <main className="ml-[220px] flex-1 min-h-screen relative">
-        <AppBanners />
-        {/* Top bar with notification bell */}
-        <div className="absolute top-4 right-6 z-10">
+      <main className="lg:ml-[220px] min-h-screen relative">
+        {/* Mobile top bar: hamburger + logo + bell (below lg only) */}
+        <div className="lg:hidden sticky top-0 z-20 flex items-center justify-between h-14 px-4 bg-white border-b border-sidebar-border">
+          <button
+            onClick={() => setNavOpen(true)}
+            aria-label="Open menu"
+            className="w-10 h-10 -ml-2 rounded-btn hover:bg-sidebar-hover flex items-center justify-center"
+          >
+            <svg viewBox="0 0 24 24" className="w-6 h-6 stroke-text-secondary" fill="none" strokeWidth="1.8" strokeLinecap="round">
+              <path d="M3 6h18M3 12h18M3 18h18" />
+            </svg>
+          </button>
+          <span className="text-[15px] font-bold text-text-primary tracking-tight">CallGuard <span className="text-primary">AI</span></span>
           <NotificationBell />
         </div>
-        <div className="py-6 px-7 max-w-[1280px]">{children}</div>
+
+        <AppBanners />
+
+        {/* Desktop notification bell (lg+ only) */}
+        <div className="hidden lg:block absolute top-4 right-6 z-10">
+          <NotificationBell />
+        </div>
+
+        {/* Content: fills the viewport width, gently capped only on ultra-wide. */}
+        <div className="py-6 px-4 sm:px-6 lg:px-8 w-full max-w-[1760px] mx-auto">{children}</div>
       </main>
 
       {/* Tenant-facing support chat (self-hides for staff) */}

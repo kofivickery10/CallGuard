@@ -71,8 +71,8 @@ export default function Customers() {
         />
       </div>
 
-      <div className="bg-white rounded-card border border-border overflow-hidden">
-        <table className="w-full">
+      <div className="bg-white rounded-card border border-border overflow-x-auto">
+        <table className="w-full min-w-[680px]">
           <thead className="bg-table-header border-b border-border">
             <tr>
               {['Customer', 'Phone', 'CRM ID', 'Calls', 'Avg score', 'Last seen'].map((h) => (

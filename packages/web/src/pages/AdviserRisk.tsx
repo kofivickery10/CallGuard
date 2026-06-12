@@ -74,7 +74,7 @@ export function AdviserRiskPage() {
 
       {/* Summary bar */}
       {counts && (
-        <div className="grid grid-cols-5 gap-3 mb-6">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
           {RISK_LEVELS.map((level) => (
             <div key={level} className="bg-white border border-border rounded-card p-4">
               <div className="text-[11px] uppercase tracking-wider text-text-muted font-semibold">
@@ -89,8 +89,8 @@ export function AdviserRiskPage() {
       )}
 
       {/* Table */}
-      <div className="bg-white border border-border rounded-card overflow-hidden">
-        <table className="w-full">
+      <div className="bg-white border border-border rounded-card overflow-x-auto">
+        <table className="w-full min-w-[720px]">
           <thead>
             <tr>
               {['Agent', 'Calls', 'Critical', 'High', 'Medium', 'Risk Level', 'Recommended Action'].map((h) => (

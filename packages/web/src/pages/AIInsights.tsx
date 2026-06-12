@@ -219,7 +219,7 @@ function DigestView({ digest }: { digest: InsightDigest }) {
         </div>
 
         {/* Metrics strip */}
-        <div className="grid grid-cols-4 border-b border-border-light">
+        <div className="grid grid-cols-2 sm:grid-cols-4 border-b border-border-light">
           <MetricCell label="Calls" value={metrics.total_calls ?? '—'} />
           <MetricCell
             label="Avg score"
