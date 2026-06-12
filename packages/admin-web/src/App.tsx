@@ -57,7 +57,7 @@ function AppLayout() {
       {/* Sidebar */}
       <aside className="w-52 bg-white border-r border-sidebar-border flex flex-col shrink-0">
         <div className="px-4 py-4">
-          <img src="/callguard-logo-primary.svg" alt="CallGuard AI — Smarter calls. Safer business." className="w-[172px] h-auto" />
+          <img src="/callguard-logo-horizontal.svg" alt="CallGuard AI" className="h-7 w-auto" />
           <span className="block mt-1.5 text-[10px] font-semibold uppercase tracking-wider text-text-muted">Superadmin</span>
         </div>
         <div className="px-3 pt-2.5 pb-2">
