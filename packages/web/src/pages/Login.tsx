@@ -32,7 +32,7 @@ export function Login() {
     <div className="min-h-screen flex items-center justify-center bg-page">
       <div className="w-full max-w-md px-4">
         <div className="text-center mb-8">
-          <img src="/callguard-logo-primary.svg" alt="CallGuard AI — Smarter calls. Safer business." className="w-[300px] h-auto mx-auto mb-3" />
+          <img src="/callguard-logo-primary.svg" alt="CallGuard AI — Smarter calls. Safer business." className="w-full max-w-[340px] h-auto mx-auto mb-3" />
           <p className="text-page-sub text-text-subtle mt-1">AI compliance scoring for sales conversations</p>
         </div>
 

@@ -26,9 +26,9 @@ export default function Login() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-page">
-      <div className="w-full max-w-sm bg-white rounded-card shadow-md p-8">
+      <div className="w-full max-w-md bg-white rounded-card shadow-md p-8">
         <div className="mb-8 text-center">
-          <img src="/callguard-logo-primary.svg" alt="CallGuard AI — Smarter calls. Safer business." className="w-[280px] h-auto mx-auto mb-3" />
+          <img src="/callguard-logo-primary.svg" alt="CallGuard AI — Smarter calls. Safer business." className="w-full max-w-[340px] h-auto mx-auto mb-3" />
           <p className="text-page-sub text-text-subtle mt-1">Superadmin console</p>
         </div>
         <form onSubmit={handleSubmit} className="space-y-4">
