@@ -30,7 +30,13 @@ export type AuditActionType =
   | 'user.delete'
   | 'plan.change'
   | 'scorecard.deactivate'
-  | 'org.data_improvement_optin';
+  | 'org.data_improvement_optin'
+  // Superadmin (cross-tenant) actions, logged against the target org.
+  | 'tenant.create'
+  | 'tenant.status_change'
+  | 'tenant.seat_price'
+  | 'tenant.feature_override'
+  | 'tenant.impersonate';
 
 export type AuditEntityType =
   | 'call'

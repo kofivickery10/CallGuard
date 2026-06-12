@@ -33,12 +33,13 @@ streamRouter.post('/sessions/mint-token', authenticateApiKey, apiKeyLimiter, asy
     const apiKeyId = req.user!.userId;
     const orgId = req.user!.organizationId;
 
-    // Verify the organisation is on a plan that includes live streaming.
-    const org = await queryOne<{ plan: string }>(
-      `SELECT plan FROM organizations WHERE id = $1`,
+    // Verify the organisation is on a plan that includes live streaming
+    // (or has a superadmin feature override granting it).
+    const org = await queryOne<{ plan: string; feature_overrides: Record<string, boolean> }>(
+      `SELECT plan, feature_overrides FROM organizations WHERE id = $1`,
       [orgId]
     );
-    if (!hasFeature(org?.plan as any, 'live_streaming')) {
+    if (!hasFeature(org?.plan as any, 'live_streaming', org?.feature_overrides)) {
       throw new AppError(403, 'Live streaming requires a Professional or Enterprise plan');
     }
 
@@ -181,8 +182,9 @@ export async function verifyApiKeyForStreaming(apiKey: string): Promise<{
     organization_id: string;
     allow_streaming: boolean;
     org_plan: string;
+    feature_overrides: Record<string, boolean>;
   }>(
-    `SELECT ak.id, ak.organization_id, ak.allow_streaming, o.plan AS org_plan
+    `SELECT ak.id, ak.organization_id, ak.allow_streaming, o.plan AS org_plan, o.feature_overrides
        FROM api_keys ak
        JOIN organizations o ON o.id = ak.organization_id
       WHERE ak.key_hash = $1 AND ak.revoked_at IS NULL`,
@@ -190,7 +192,7 @@ export async function verifyApiKeyForStreaming(apiKey: string): Promise<{
   );
   if (!record) throw new AppError(401, 'Invalid or revoked API key');
   if (!record.allow_streaming) throw new AppError(403, 'API key not authorised for streaming');
-  if (!hasFeature(record.org_plan as any, 'live_streaming')) {
+  if (!hasFeature(record.org_plan as any, 'live_streaming', record.feature_overrides)) {
     throw new AppError(403, 'Live streaming requires a Professional or Enterprise plan');
   }
   return { api_key_id: record.id, organization_id: record.organization_id };

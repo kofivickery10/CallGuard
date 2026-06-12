@@ -13,6 +13,8 @@ interface AuthUser {
   organization_id: string | null;
   organization_name: string;
   organization_plan: Plan | null;
+  // True when a superadmin is impersonating this user for support.
+  impersonated?: boolean;
 }
 
 interface AuthContextValue {

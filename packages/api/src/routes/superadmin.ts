@@ -5,9 +5,16 @@ import { authenticate, requireSuperadmin, AuthPayload } from '../middleware/auth
 import { query, queryOne } from '../db/client.js';
 import { AppError } from '../middleware/errors.js';
 import { config } from '../config.js';
-import { PLANS, SEAT_PRICING, effectivePlan } from '@callguard/shared';
+import { PLANS, SEAT_PRICING, effectivePlan, FEATURES } from '@callguard/shared';
 import type { Plan } from '@callguard/shared';
 import { CLAUDE_PRICING, DEEPGRAM_PRICING } from '@callguard/shared';
+import { recordAuditEvent } from '../services/audit.js';
+import {
+  getTranscriptionQueue,
+  getScoringQueue,
+  getIngestionQueue,
+  getAlertsQueue,
+} from '../jobs/queue.js';
 
 export const superadminRouter = Router();
 
@@ -118,6 +125,16 @@ superadminRouter.post('/tenants', async (req, res, next) => {
       [orgId, admin_email, admin_name, passwordHash]
     );
 
+    await recordAuditEvent({
+      organizationId: orgId,
+      userId: req.user!.userId,
+      actionType: 'tenant.create',
+      entityType: 'organization',
+      entityId: orgId,
+      summary: `Created tenant "${org_name}" (${plan || 'core'}) with admin ${admin_email}`,
+      req,
+    });
+
     res.status(201).json({
       org_id: orgId,
       admin_user_id: userRows[0].id,
@@ -141,8 +158,10 @@ superadminRouter.get('/tenants/:id', async (req, res, next) => {
       suspended_at: string | null;
       subscription_notes: string | null;
       seat_price_override: string | null;
+      feature_overrides: Record<string, boolean>;
     }>(
-      `SELECT id, name, plan, status, created_at, suspended_at, subscription_notes, seat_price_override
+      `SELECT id, name, plan, status, created_at, suspended_at, subscription_notes,
+              seat_price_override, feature_overrides
        FROM organizations WHERE id = $1`,
       [req.params.id]
     );
@@ -205,6 +224,15 @@ superadminRouter.put('/tenants/:id/plan', async (req, res, next) => {
       [plan, subscription_notes || null, req.params.id]
     );
     if (!rows.length) throw new AppError(404, 'Tenant not found');
+    await recordAuditEvent({
+      organizationId: req.params.id,
+      userId: req.user!.userId,
+      actionType: 'plan.change',
+      entityType: 'organization',
+      entityId: req.params.id,
+      summary: `Plan changed to ${plan}`,
+      req,
+    });
     res.json(rows[0]);
   } catch (err) {
     next(err);
@@ -226,6 +254,17 @@ superadminRouter.put('/tenants/:id/seat-price', async (req, res, next) => {
       [seat_price_override ?? null, req.params.id]
     );
     if (!rows.length) throw new AppError(404, 'Tenant not found');
+    await recordAuditEvent({
+      organizationId: req.params.id,
+      userId: req.user!.userId,
+      actionType: 'tenant.seat_price',
+      entityType: 'organization',
+      entityId: req.params.id,
+      summary: seat_price_override == null
+        ? 'Seat price override cleared (reverted to tier default)'
+        : `Seat price override set to £${seat_price_override}/seat`,
+      req,
+    });
     res.json(rows[0]);
   } catch (err) {
     next(err);
@@ -250,6 +289,15 @@ superadminRouter.put('/tenants/:id/status', async (req, res, next) => {
       [status, req.params.id]
     );
     if (!rows.length) throw new AppError(404, 'Tenant not found');
+    await recordAuditEvent({
+      organizationId: req.params.id,
+      userId: req.user!.userId,
+      actionType: 'tenant.status_change',
+      entityType: 'organization',
+      entityId: req.params.id,
+      summary: `Status changed to ${status}`,
+      req,
+    });
     res.json(rows[0]);
   } catch (err) {
     next(err);
@@ -273,8 +321,21 @@ superadminRouter.post('/tenants/:id/impersonate', async (req, res, next) => {
       userId: admin.id,
       organizationId: admin.organization_id,
       role: admin.role,
+      imp: true,
+      impBy: req.user!.userId,
     };
     const token = jwt.sign(payload, config.jwt.secret, { expiresIn: '1h' });
+
+    await recordAuditEvent({
+      organizationId: admin.organization_id,
+      userId: req.user!.userId,
+      actionType: 'tenant.impersonate',
+      entityType: 'user',
+      entityId: admin.id,
+      summary: 'Superadmin started a 1-hour impersonation session as the tenant admin',
+      req,
+    });
+
     res.json({ token, note: 'Impersonation token — expires in 1 hour' });
   } catch (err) {
     next(err);
@@ -500,11 +561,13 @@ superadminRouter.get('/billing/:orgId', async (req, res, next) => {
     const monthRows = await query<{
       month: string;
       active_seats: string;
+      calls: string;
       total_duration_seconds: string;
     }>(
       `SELECT
          to_char(date_trunc('month', c.created_at), 'YYYY-MM') AS month,
          COUNT(DISTINCT c.agent_id)::text                       AS active_seats,
+         COUNT(*)::text                                         AS calls,
          COALESCE(SUM(c.duration_seconds), 0)::text             AS total_duration_seconds
        FROM calls c
        WHERE c.organization_id = $1
@@ -555,6 +618,7 @@ superadminRouter.get('/billing/:orgId', async (req, res, next) => {
       return {
         month:                  r.month,
         active_seats:           Number(r.active_seats),
+        calls:                  Number(r.calls),
         claude_cost_estimate:   parseFloat(claudeCost.toFixed(4)),
         deepgram_cost_estimate: parseFloat(deepgramCost.toFixed(4)),
       };
@@ -597,6 +661,315 @@ superadminRouter.put('/tenants/:id/users/:userId/tier', async (req, res, next) =
       user_id:       rows[0].id,
       plan_override: rows[0].plan_override,
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── Per-tenant feature overrides ──────────────────────────────────────────────
+// Grant or deny a plan-gated feature for one tenant, beyond their plan tier.
+// Body: { feature: <flag>, value: true | false | null }. null removes the override.
+
+superadminRouter.put('/tenants/:id/features', async (req, res, next) => {
+  try {
+    const { feature, value } = req.body as { feature?: string; value?: boolean | null };
+    const validFeatures = Object.keys(FEATURES);
+    if (!feature || !validFeatures.includes(feature)) {
+      throw new AppError(400, `feature must be one of: ${validFeatures.join(', ')}`);
+    }
+    if (value !== null && value !== undefined && typeof value !== 'boolean') {
+      throw new AppError(400, 'value must be true, false or null');
+    }
+
+    // Merge in SQL so concurrent edits to different keys don't clobber each other.
+    // value null removes the key; otherwise set it to the boolean.
+    const sql = value == null
+      ? `UPDATE organizations SET feature_overrides = feature_overrides - $1
+         WHERE id = $2 RETURNING feature_overrides`
+      : `UPDATE organizations
+           SET feature_overrides = feature_overrides || jsonb_build_object($1::text, $2::boolean)
+         WHERE id = $3 RETURNING feature_overrides`;
+    const params = value == null ? [feature, req.params.id] : [feature, value, req.params.id];
+
+    const rows = await query<{ feature_overrides: Record<string, boolean> }>(sql, params);
+    if (!rows.length) throw new AppError(404, 'Tenant not found');
+
+    await recordAuditEvent({
+      organizationId: req.params.id,
+      userId: req.user!.userId,
+      actionType: 'tenant.feature_override',
+      entityType: 'organization',
+      entityId: req.params.id,
+      summary: value == null
+        ? `Feature override removed for "${feature}"`
+        : `Feature "${feature}" ${value ? 'granted' : 'denied'} by override`,
+      req,
+    });
+
+    res.json({ feature_overrides: rows[0].feature_overrides });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── Failed / stuck calls for one tenant ───────────────────────────────────────
+// Calls that failed, or have sat in a processing state for over 15 minutes
+// (a sign the worker died or a job is wedged). Newest first.
+
+superadminRouter.get('/tenants/:id/failed-calls', async (req, res, next) => {
+  try {
+    const rows = await query<{
+      id: string;
+      status: string;
+      file_name: string | null;
+      external_id: string | null;
+      agent_name: string | null;
+      customer_phone: string | null;
+      error_message: string | null;
+      created_at: string;
+      updated_at: string;
+      stuck: boolean;
+    }>(
+      `SELECT id, status, file_name, external_id, agent_name, customer_phone,
+              error_message, created_at, updated_at,
+              (status IN ('uploaded','transcribing','transcribed','scoring')
+               AND updated_at < now() - interval '15 minutes') AS stuck
+       FROM calls
+       WHERE organization_id = $1
+         AND (status = 'failed'
+              OR (status IN ('uploaded','transcribing','transcribed','scoring')
+                  AND updated_at < now() - interval '15 minutes'))
+       ORDER BY updated_at DESC
+       LIMIT 100`,
+      [req.params.id]
+    );
+    res.json({ calls: rows });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── Platform-wide audit log ───────────────────────────────────────────────────
+// Read-only, paged, time-ordered across all tenants. Filters: org_id,
+// action_type, from/to (ISO date). Joins org name and actor email.
+
+superadminRouter.get('/audit', async (req, res, next) => {
+  try {
+    const limit  = Math.min(Number(req.query.limit) || 100, 500);
+    const offset = Math.max(Number(req.query.offset) || 0, 0);
+
+    const conditions: string[] = [];
+    const params: unknown[] = [];
+    const add = (clause: string, value: unknown) => {
+      params.push(value);
+      conditions.push(clause.replace('$?', `$${params.length}`));
+    };
+
+    if (req.query.org_id)      add('a.organization_id = $?', req.query.org_id);
+    if (req.query.action_type) add('a.action_type = $?', req.query.action_type);
+    if (req.query.from)        add('a.created_at >= $?', req.query.from);
+    if (req.query.to)          add('a.created_at <= $?', req.query.to);
+
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+    params.push(limit, offset);
+
+    const events = await query<{
+      id: string;
+      organization_id: string;
+      org_name: string | null;
+      user_email: string | null;
+      action_type: string;
+      entity_type: string;
+      entity_id: string | null;
+      summary: string | null;
+      ip_address: string | null;
+      created_at: string;
+    }>(
+      `SELECT a.id, a.organization_id, o.name AS org_name, u.email AS user_email,
+              a.action_type, a.entity_type, a.entity_id, a.summary,
+              a.ip_address, a.created_at
+       FROM audit_log a
+       LEFT JOIN organizations o ON o.id = a.organization_id
+       LEFT JOIN users u ON u.id = a.user_id
+       ${where}
+       ORDER BY a.created_at DESC
+       LIMIT $${params.length - 1} OFFSET $${params.length}`,
+      params
+    );
+
+    res.json({ events, limit, offset });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── System health ─────────────────────────────────────────────────────────────
+// Redis reachability, per-queue depth + last completed job, and stuck calls.
+// Used by the dashboard health strip — distinguishes "quiet" from "worker down".
+
+superadminRouter.get('/health', async (_req, res, next) => {
+  try {
+    const queues = [
+      { name: 'transcription', q: getTranscriptionQueue() },
+      { name: 'scoring',       q: getScoringQueue() },
+      { name: 'ingestion',     q: getIngestionQueue() },
+      { name: 'alerts',        q: getAlertsQueue() },
+    ];
+
+    let redisOk = true;
+    try {
+      // BullMQ's client type doesn't surface ping(), but the underlying ioredis
+      // client provides it; a successful PONG confirms Redis is reachable.
+      const client = await queues[0].q.client;
+      await (client as unknown as { ping: () => Promise<string> }).ping();
+    } catch {
+      redisOk = false;
+    }
+
+    const queueStats = await Promise.all(
+      queues.map(async ({ name, q }) => {
+        try {
+          const counts = await q.getJobCounts('waiting', 'active', 'delayed', 'failed');
+          const [lastCompleted] = await q.getJobs(['completed'], 0, 0);
+          return {
+            name,
+            waiting:  counts.waiting ?? 0,
+            active:   counts.active ?? 0,
+            delayed:  counts.delayed ?? 0,
+            failed:   counts.failed ?? 0,
+            last_completed_at: lastCompleted?.finishedOn
+              ? new Date(lastCompleted.finishedOn).toISOString()
+              : null,
+          };
+        } catch {
+          return { name, waiting: 0, active: 0, delayed: 0, failed: 0, last_completed_at: null, error: true };
+        }
+      })
+    );
+
+    const stuck = await queryOne<{ stuck_calls: string }>(
+      `SELECT COUNT(*)::text AS stuck_calls
+       FROM calls
+       WHERE status IN ('uploaded','transcribing','transcribed','scoring')
+         AND updated_at < now() - interval '15 minutes'`
+    );
+
+    res.json({
+      redis_ok: redisOk,
+      queues: queueStats,
+      stuck_calls: Number(stuck?.stuck_calls || 0),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── Global search ─────────────────────────────────────────────────────────────
+// Jump to any tenant, user, customer or call by name / email / phone / id.
+
+superadminRouter.get('/search', async (req, res, next) => {
+  try {
+    const q = (req.query.q as string || '').trim();
+    if (q.length < 2) return res.json({ tenants: [], users: [], customers: [], calls: [] });
+    const like = `%${q}%`;
+
+    const [tenants, users, customers, calls] = await Promise.all([
+      query<{ id: string; name: string; plan: string; status: string }>(
+        `SELECT id, name, plan, status FROM organizations
+         WHERE name ILIKE $1 ORDER BY name LIMIT 10`,
+        [like]
+      ),
+      query<{ id: string; name: string; email: string; role: string; organization_id: string; org_name: string | null }>(
+        `SELECT u.id, u.name, u.email, u.role, u.organization_id, o.name AS org_name
+         FROM users u LEFT JOIN organizations o ON o.id = u.organization_id
+         WHERE (u.email ILIKE $1 OR u.name ILIKE $1) AND u.role != 'superadmin'
+         ORDER BY u.email LIMIT 10`,
+        [like]
+      ),
+      query<{ id: string; name: string | null; phone_normalized: string; organization_id: string; org_name: string | null }>(
+        `SELECT c.id, c.name, c.phone_normalized, c.organization_id, o.name AS org_name
+         FROM customers c LEFT JOIN organizations o ON o.id = c.organization_id
+         WHERE c.phone_normalized ILIKE $1 OR c.name ILIKE $1
+         ORDER BY c.last_seen_at DESC LIMIT 10`,
+        [like]
+      ),
+      query<{ id: string; external_id: string | null; customer_phone: string | null; status: string; organization_id: string; org_name: string | null }>(
+        `SELECT cl.id, cl.external_id, cl.customer_phone, cl.status, cl.organization_id, o.name AS org_name
+         FROM calls cl LEFT JOIN organizations o ON o.id = cl.organization_id
+         WHERE cl.external_id ILIKE $1 OR cl.customer_phone ILIKE $1
+         ORDER BY cl.created_at DESC LIMIT 10`,
+        [like]
+      ),
+    ]);
+
+    res.json({ tenants, users, customers, calls });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── Platform announcements ────────────────────────────────────────────────────
+// Banners shown across every tenant app (maintenance, incidents).
+
+superadminRouter.get('/announcements', async (_req, res, next) => {
+  try {
+    const announcements = await query(
+      `SELECT a.id, a.title, a.body, a.level, a.active, a.starts_at, a.ends_at,
+              a.created_at, a.updated_at, u.email AS created_by_email
+       FROM announcements a
+       LEFT JOIN users u ON u.id = a.created_by
+       ORDER BY a.created_at DESC`
+    );
+    res.json({ announcements });
+  } catch (err) {
+    next(err);
+  }
+});
+
+superadminRouter.post('/announcements', async (req, res, next) => {
+  try {
+    const { title, body, level, active, starts_at, ends_at } = req.body as {
+      title?: string; body?: string; level?: string;
+      active?: boolean; starts_at?: string | null; ends_at?: string | null;
+    };
+    if (!title || !body) throw new AppError(400, 'title and body are required');
+    if (level && !['info', 'warning', 'critical'].includes(level)) {
+      throw new AppError(400, 'level must be info, warning or critical');
+    }
+    const rows = await query<{ id: string }>(
+      `INSERT INTO announcements (title, body, level, active, starts_at, ends_at, created_by)
+       VALUES ($1, $2, $3, COALESCE($4, true), $5, $6, $7) RETURNING id`,
+      [title, body, level || 'info', active ?? true, starts_at || null, ends_at || null, req.user!.userId]
+    );
+    res.status(201).json({ id: rows[0].id });
+  } catch (err) {
+    next(err);
+  }
+});
+
+superadminRouter.put('/announcements/:id', async (req, res, next) => {
+  try {
+    const { title, body, level, active, starts_at, ends_at } = req.body as {
+      title?: string; body?: string; level?: string;
+      active?: boolean; starts_at?: string | null; ends_at?: string | null;
+    };
+    if (level && !['info', 'warning', 'critical'].includes(level)) {
+      throw new AppError(400, 'level must be info, warning or critical');
+    }
+    const rows = await query<{ id: string }>(
+      `UPDATE announcements SET
+         title      = COALESCE($1, title),
+         body       = COALESCE($2, body),
+         level      = COALESCE($3, level),
+         active     = COALESCE($4, active),
+         starts_at  = $5,
+         ends_at    = $6,
+         updated_at = now()
+       WHERE id = $7 RETURNING id`,
+      [title ?? null, body ?? null, level ?? null, active ?? null, starts_at || null, ends_at || null, req.params.id]
+    );
+    if (!rows.length) throw new AppError(404, 'Announcement not found');
+    res.json({ id: rows[0].id });
   } catch (err) {
     next(err);
   }

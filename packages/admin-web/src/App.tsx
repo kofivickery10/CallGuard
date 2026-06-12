@@ -1,10 +1,14 @@
-import { BrowserRouter, Routes, Route, NavLink, Navigate } from 'react-router-dom';
+import { useState } from 'react';
+import { BrowserRouter, Routes, Route, NavLink, Navigate, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import TenantList from './pages/TenantList';
 import TenantDetail from './pages/TenantDetail';
 import Billing from './pages/Billing';
+import Audit from './pages/Audit';
+import Announcements from './pages/Announcements';
+import Search from './pages/Search';
 
 function NavItem({ to, label }: { to: string; label: string }) {
   return (
@@ -21,6 +25,24 @@ function NavItem({ to, label }: { to: string; label: string }) {
     >
       {label}
     </NavLink>
+  );
+}
+
+function SidebarSearch() {
+  const [q, setQ] = useState('');
+  const navigate = useNavigate();
+  return (
+    <form
+      onSubmit={(e) => { e.preventDefault(); if (q.trim()) navigate(`/search?q=${encodeURIComponent(q.trim())}`); }}
+    >
+      <input
+        type="text"
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+        placeholder="Search…"
+        className="w-full border border-border rounded-btn px-3 py-1.5 text-sm bg-page focus:outline-none focus:ring-2 focus:ring-primary/40"
+      />
+    </form>
   );
 }
 
@@ -48,13 +70,18 @@ function AppLayout() {
             <span className="block text-[10px] font-semibold uppercase tracking-wider text-text-muted">Superadmin</span>
           </div>
         </div>
-        <div className="px-4 pt-2.5 pb-1">
+        <div className="px-3 pt-2.5 pb-2">
+          <SidebarSearch />
+        </div>
+        <div className="px-4 pt-1 pb-1">
           <span className="text-nav-label uppercase text-text-muted">Menu</span>
         </div>
         <nav className="px-3 space-y-0.5 flex-1">
           <NavItem to="/" label="Dashboard" />
           <NavItem to="/tenants" label="Tenants" />
           <NavItem to="/billing" label="Billing" />
+          <NavItem to="/audit" label="Audit log" />
+          <NavItem to="/announcements" label="Announcements" />
         </nav>
         <div className="p-3 border-t border-sidebar-border">
           <p className="text-xs text-text-muted truncate mb-2">{user.email}</p>
@@ -74,6 +101,9 @@ function AppLayout() {
           <Route path="/tenants"       element={<TenantList />} />
           <Route path="/tenants/:id"   element={<TenantDetail />} />
           <Route path="/billing"       element={<Billing />} />
+          <Route path="/audit"         element={<Audit />} />
+          <Route path="/announcements" element={<Announcements />} />
+          <Route path="/search"        element={<Search />} />
           <Route path="*"              element={<Navigate to="/" replace />} />
         </Routes>
       </main>

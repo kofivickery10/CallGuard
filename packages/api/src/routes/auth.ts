@@ -218,6 +218,8 @@ authRouter.get('/me', authenticate, async (req, res, next) => {
         ...user,
         organization_name: org?.name || '',
         organization_plan,
+        // True when the caller is a superadmin impersonating this user.
+        impersonated: req.user?.imp === true,
       },
     });
   } catch (err) {

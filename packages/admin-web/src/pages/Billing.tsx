@@ -71,34 +71,56 @@ export default function Billing() {
         <table className="w-full text-sm">
           <thead className="bg-gray-50 border-b border-border">
             <tr>
-              {['Organisation', 'Plan', 'Active seats', 'Monthly income', 'Claude est.', 'Deepgram est.', ''].map((h) => (
+              {['Organisation', 'Plan', 'Active seats', 'Monthly income', 'Running cost', 'Margin', ''].map((h) => (
                 <th key={h} className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-text-muted">{h}</th>
               ))}
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
-            {rows.map((r) => (
-              <tr key={r.org_id} className="hover:bg-gray-50">
-                <td className="px-4 py-3 font-medium text-text-primary">{r.org_name}</td>
-                <td className="px-4 py-3 capitalize text-text-secondary">{r.plan}</td>
-                <td className="px-4 py-3 text-text-secondary">{r.active_seats}</td>
-                <td className="px-4 py-3 font-semibold text-text-primary">
-                  £{r.monthly_income.toFixed(2)}
-                  {r.seat_price_override != null && (
-                    <span className="ml-1.5 text-[10px] font-semibold uppercase tracking-wider text-primary bg-primary/10 px-1.5 py-0.5 rounded">
-                      £{r.seat_price_override.toFixed(0)}/seat
-                    </span>
-                  )}
-                </td>
-                <td className="px-4 py-3 text-text-secondary">£{r.claude_cost_estimate.toFixed(2)}</td>
-                <td className="px-4 py-3 text-text-secondary">£{r.deepgram_cost_estimate.toFixed(2)}</td>
-                <td className="px-4 py-3">
-                  <Link to={`/tenants/${r.org_id}`} className="text-primary hover:underline text-xs font-medium">
-                    Detail
-                  </Link>
-                </td>
-              </tr>
-            ))}
+            {rows.map((r) => {
+              const cost = r.claude_cost_estimate + r.deepgram_cost_estimate;
+              const margin = r.monthly_income - cost;
+              // Flag tenants whose processing cost has eaten most of their seat
+              // revenue (or who run cost with no income at all).
+              const loss = margin < 0;
+              const thin = !loss && r.monthly_income > 0 && cost / r.monthly_income > 0.5;
+              const noIncome = r.monthly_income === 0 && cost > 0;
+              const alert = loss || noIncome;
+              return (
+                <tr key={r.org_id} className={`hover:bg-gray-50 ${alert ? 'bg-fail-bg/40' : ''}`}>
+                  <td className="px-4 py-3 font-medium text-text-primary">{r.org_name}</td>
+                  <td className="px-4 py-3 capitalize text-text-secondary">{r.plan}</td>
+                  <td className="px-4 py-3 text-text-secondary">{r.active_seats}</td>
+                  <td className="px-4 py-3 font-semibold text-text-primary">
+                    £{r.monthly_income.toFixed(2)}
+                    {r.seat_price_override != null && (
+                      <span className="ml-1.5 text-[10px] font-semibold uppercase tracking-wider text-primary bg-primary/10 px-1.5 py-0.5 rounded">
+                        £{r.seat_price_override.toFixed(0)}/seat
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-text-secondary" title={`Claude £${r.claude_cost_estimate.toFixed(2)} · Deepgram £${r.deepgram_cost_estimate.toFixed(2)}`}>
+                    £{cost.toFixed(2)}
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className={`font-semibold ${loss ? 'text-fail' : thin ? 'text-review' : 'text-pass'}`}>£{margin.toFixed(2)}</span>
+                    {alert && (
+                      <span className="ml-1.5 text-[10px] font-semibold uppercase tracking-wider text-fail bg-fail-bg px-1.5 py-0.5 rounded">
+                        {noIncome ? 'cost, no income' : 'loss'}
+                      </span>
+                    )}
+                    {thin && (
+                      <span className="ml-1.5 text-[10px] font-semibold uppercase tracking-wider text-review bg-review-bg px-1.5 py-0.5 rounded">thin</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    <Link to={`/tenants/${r.org_id}`} className="text-primary hover:underline text-xs font-medium">
+                      Detail
+                    </Link>
+                  </td>
+                </tr>
+              );
+            })}
             {rows.length === 0 && (
               <tr>
                 <td colSpan={7} className="px-4 py-8 text-center text-text-muted">
