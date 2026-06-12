@@ -11,6 +11,32 @@ interface DashboardData {
   platform_mrr: number;
 }
 
+interface QueueStat {
+  name: string;
+  waiting: number;
+  active: number;
+  delayed: number;
+  failed: number;
+  last_completed_at: string | null;
+  error?: boolean;
+}
+interface HealthData {
+  redis_ok: boolean;
+  queues: QueueStat[];
+  stuck_calls: number;
+}
+
+// A queue is unhealthy if Redis is down, the queue errored, jobs are stuck,
+// or work is waiting but nothing has completed in the last 10 minutes.
+function queueWarning(redisOk: boolean, q: QueueStat): boolean {
+  if (!redisOk || q.error) return true;
+  if (q.failed > 0) return true;
+  if (q.waiting > 0 && q.last_completed_at) {
+    return Date.now() - new Date(q.last_completed_at).getTime() > 10 * 60 * 1000;
+  }
+  return q.waiting > 0 && !q.last_completed_at;
+}
+
 function StatCard({ label, value, sub }: { label: string; value: string | number; sub?: string }) {
   return (
     <div className="bg-white rounded-card p-5 shadow-sm border border-border">
@@ -23,12 +49,16 @@ function StatCard({ label, value, sub }: { label: string; value: string | number
 
 export default function Dashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
+  const [health, setHealth] = useState<HealthData | null>(null);
   const [error, setError] = useState('');
 
   const load = useCallback(() => {
     api.get<DashboardData>('/superadmin/dashboard')
       .then(setData)
       .catch((e: Error) => setError(e.message));
+    api.get<HealthData>('/superadmin/health')
+      .then(setHealth)
+      .catch(() => setHealth(null));
   }, []);
 
   useEffect(() => {
@@ -77,6 +107,43 @@ export default function Dashboard() {
           sub="Estimated from call duration"
         />
       </div>
+
+      {/* System health */}
+      {health && (
+        <div className="bg-white rounded-card border border-border p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-semibold text-text-primary">System health</h2>
+            <div className="flex items-center gap-4 text-xs">
+              <span className="flex items-center gap-1.5">
+                <span className={`w-2 h-2 rounded-full ${health.redis_ok ? 'bg-pass' : 'bg-fail'}`} />
+                Redis {health.redis_ok ? 'up' : 'down'}
+              </span>
+              {health.stuck_calls > 0 && (
+                <span className="text-fail font-semibold">{health.stuck_calls} call{health.stuck_calls === 1 ? '' : 's'} stuck &gt;15 min</span>
+              )}
+            </div>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {health.queues.map((q) => {
+              const warn = queueWarning(health.redis_ok, q);
+              return (
+                <div key={q.name} className={`rounded-btn p-3 border ${warn ? 'border-fail bg-fail-bg' : 'border-border-light bg-page'}`}>
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <span className={`w-2 h-2 rounded-full ${warn ? 'bg-fail' : 'bg-pass'}`} />
+                    <span className="text-xs font-semibold capitalize text-text-primary">{q.name}</span>
+                  </div>
+                  <p className="text-xs text-text-muted">
+                    {q.active} active · {q.waiting} waiting{q.failed > 0 && <span className="text-fail font-semibold"> · {q.failed} failed</span>}
+                  </p>
+                  <p className="text-[11px] text-text-muted mt-0.5">
+                    {q.last_completed_at ? `last done ${new Date(q.last_completed_at).toLocaleTimeString('en-GB')}` : 'no completed jobs'}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

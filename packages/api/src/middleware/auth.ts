@@ -10,6 +10,11 @@ export interface AuthPayload {
   // Empty string for superadmin users (no org context).
   organizationId: string;
   role: string;
+  // Set on impersonation tokens minted by a superadmin for support. `imp` flags
+  // the session so the tenant app can show a banner; `impBy` is the superadmin's
+  // user id for the audit trail.
+  imp?: boolean;
+  impBy?: string;
 }
 
 declare global {

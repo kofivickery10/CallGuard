@@ -1,8 +1,20 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { api } from '../api/client';
-import { PLANS, PLAN_LABELS, SEAT_PRICING } from '@callguard/shared';
+import { PLANS, PLAN_LABELS, SEAT_PRICING, FEATURES } from '@callguard/shared';
 import type { Plan } from '@callguard/shared';
+
+// Only features that actually gate by plan are worth overriding; ones available
+// on every tier are derived here so the UI stays in step with the shared map.
+const GATED_FEATURES = (Object.keys(FEATURES) as (keyof typeof FEATURES)[])
+  .filter((f) => FEATURES[f].length < PLANS.length);
+
+const FEATURE_LABELS: Record<string, string> = {
+  live_streaming: 'Live streaming',
+  live_coaching: 'Live coaching',
+  dedicated_support: 'Dedicated support',
+  white_label: 'White-label',
+};
 
 interface OrgDetail {
   id: string;
@@ -13,6 +25,26 @@ interface OrgDetail {
   suspended_at: string | null;
   subscription_notes: string | null;
   seat_price_override: string | null;
+  feature_overrides: Record<string, boolean>;
+}
+interface MonthBreakdown {
+  month: string;
+  active_seats: number;
+  calls: number;
+  claude_cost_estimate: number;
+  deepgram_cost_estimate: number;
+}
+interface FailedCall {
+  id: string;
+  status: string;
+  file_name: string | null;
+  external_id: string | null;
+  agent_name: string | null;
+  customer_phone: string | null;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
+  stuck: boolean;
 }
 interface User {
   id: string;
@@ -42,6 +74,8 @@ interface TenantDetailData {
 export default function TenantDetail() {
   const { id } = useParams<{ id: string }>();
   const [data, setData] = useState<TenantDetailData | null>(null);
+  const [trend, setTrend] = useState<MonthBreakdown[]>([]);
+  const [failed, setFailed] = useState<FailedCall[]>([]);
   const [error, setError] = useState('');
   const [planValue, setPlanValue] = useState('');
   const [statusValue, setStatusValue] = useState('');
@@ -50,6 +84,7 @@ export default function TenantDetail() {
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
   const [tierSaving, setTierSaving] = useState<string | null>(null);
+  const [featSaving, setFeatSaving] = useState<string | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -62,7 +97,28 @@ export default function TenantDetail() {
         setPriceOverride(d.org.seat_price_override ?? '');
       })
       .catch((e: Error) => setError(e.message));
+    api.get<{ breakdown: MonthBreakdown[] }>(`/superadmin/billing/${id}`)
+      .then((r) => setTrend(r.breakdown))
+      .catch(() => setTrend([]));
+    api.get<{ calls: FailedCall[] }>(`/superadmin/tenants/${id}/failed-calls`)
+      .then((r) => setFailed(r.calls))
+      .catch(() => setFailed([]));
   }, [id]);
+
+  const setFeature = async (feature: string, value: boolean | null) => {
+    if (!id) return;
+    setFeatSaving(feature);
+    try {
+      const r = await api.put<{ feature_overrides: Record<string, boolean> }>(
+        `/superadmin/tenants/${id}/features`, { feature, value }
+      );
+      setData((prev) => prev ? { ...prev, org: { ...prev.org, feature_overrides: r.feature_overrides } } : prev);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Failed to set feature');
+    } finally {
+      setFeatSaving(null);
+    }
+  };
 
   const saveSeatPrice = async () => {
     if (!id) return;
@@ -181,6 +237,37 @@ export default function TenantDetail() {
         </div>
       )}
 
+      {/* Usage & cost trend (last 12 months) */}
+      {trend.length > 0 && (
+        <div className="bg-white rounded-card border border-border p-4">
+          <h2 className="text-sm font-semibold text-text-primary mb-3">Usage &amp; cost trend</h2>
+          {(() => {
+            const maxCalls = Math.max(...trend.map((m) => m.calls), 1);
+            const maxCost = Math.max(...trend.map((m) => m.claude_cost_estimate + m.deepgram_cost_estimate), 0.0001);
+            return (
+              <div className="flex items-end gap-3 overflow-x-auto pb-1">
+                {trend.map((m) => {
+                  const cost = m.claude_cost_estimate + m.deepgram_cost_estimate;
+                  return (
+                    <div key={m.month} className="flex flex-col items-center gap-1 shrink-0 w-12" title={`${m.calls} calls · £${cost.toFixed(2)} cost · ${m.active_seats} seats`}>
+                      <div className="flex items-end gap-0.5 h-24">
+                        <div className="w-3 bg-primary rounded-t" style={{ height: `${Math.max((m.calls / maxCalls) * 96, 2)}px` }} />
+                        <div className="w-3 bg-chart-secondary rounded-t" style={{ height: `${Math.max((cost / maxCost) * 96, 2)}px` }} />
+                      </div>
+                      <span className="text-[10px] text-text-muted">{m.month.slice(2)}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
+          <div className="flex gap-4 mt-2 text-xs text-text-muted">
+            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 bg-primary rounded-sm" /> Calls</span>
+            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 bg-chart-secondary rounded-sm" /> Running cost</span>
+          </div>
+        </div>
+      )}
+
       {/* Controls */}
       <div className="bg-white rounded-card border border-border p-4 space-y-4">
         <h2 className="text-sm font-semibold text-text-primary">Subscription</h2>
@@ -251,6 +338,76 @@ export default function TenantDetail() {
         </div>
         {saveMsg && <p className="text-sm text-pass">{saveMsg}</p>}
       </div>
+
+      {/* Feature overrides */}
+      <div className="bg-white rounded-card border border-border p-4">
+        <h2 className="text-sm font-semibold text-text-primary">Feature overrides</h2>
+        <p className="text-xs text-text-muted mt-0.5 mb-3">
+          Grant or deny a plan-gated feature for this tenant, beyond their plan. Leave on “Plan default” to follow the tier.
+        </p>
+        <div className="space-y-2">
+          {GATED_FEATURES.map((f) => {
+            const ov = org.feature_overrides ?? {};
+            const current = Object.prototype.hasOwnProperty.call(ov, f) ? (ov[f] ? 'grant' : 'deny') : 'default';
+            const onTier = (FEATURES[f] as readonly string[]).includes(org.plan);
+            return (
+              <div key={f} className="flex items-center justify-between gap-3">
+                <div>
+                  <span className="text-sm text-text-primary">{FEATURE_LABELS[f] ?? f}</span>
+                  <span className="ml-2 text-xs text-text-muted">{onTier ? 'on this plan' : 'not on this plan'}</span>
+                </div>
+                <select
+                  value={current}
+                  disabled={featSaving === f}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setFeature(f, v === 'default' ? null : v === 'grant');
+                  }}
+                  className="border border-border rounded px-2 py-1 text-xs disabled:opacity-60"
+                >
+                  <option value="default">Plan default</option>
+                  <option value="grant">Grant</option>
+                  <option value="deny">Deny</option>
+                </select>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Failed / stuck calls */}
+      {failed.length > 0 && (
+        <div className="bg-white rounded-card border border-border overflow-hidden">
+          <div className="px-4 py-3 border-b border-border">
+            <h2 className="text-sm font-semibold text-text-primary">Failed &amp; stuck calls ({failed.length})</h2>
+            <p className="text-xs text-text-muted mt-0.5">Calls that failed or have sat in a processing state over 15 minutes.</p>
+          </div>
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 border-b border-border">
+              <tr>
+                {['Call', 'Status', 'Agent', 'Error', 'Last update'].map((h) => (
+                  <th key={h} className="text-left px-4 py-2 text-xs font-semibold uppercase tracking-wider text-text-muted">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {failed.map((c) => (
+                <tr key={c.id} className="align-top">
+                  <td className="px-4 py-2 font-mono text-xs text-text-secondary">{c.external_id || c.file_name || c.id.slice(0, 8)}</td>
+                  <td className="px-4 py-2">
+                    <span className={`text-[11px] font-semibold uppercase px-2 py-0.5 rounded ${c.status === 'failed' ? 'bg-fail-bg text-fail' : 'bg-review-bg text-review'}`}>
+                      {c.stuck ? 'stuck' : c.status}
+                    </span>
+                  </td>
+                  <td className="px-4 py-2 text-text-secondary">{c.agent_name ?? '—'}</td>
+                  <td className="px-4 py-2 text-text-muted max-w-xs truncate" title={c.error_message ?? ''}>{c.error_message ?? '—'}</td>
+                  <td className="px-4 py-2 text-text-muted whitespace-nowrap">{new Date(c.updated_at).toLocaleString('en-GB')}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {/* Users */}
       <div className="bg-white rounded-card border border-border overflow-hidden">

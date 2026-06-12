@@ -57,7 +57,16 @@ export const FEATURES: Record<FeatureFlag, Plan[]> = {
   white_label:       ['enterprise'],
 };
 
-export function hasFeature(plan: Plan | null | undefined, feature: FeatureFlag): boolean {
+export function hasFeature(
+  plan: Plan | null | undefined,
+  feature: FeatureFlag,
+  // Per-tenant overrides set by a superadmin: true grants, false denies,
+  // absent falls back to the plan tier.
+  overrides?: Record<string, boolean> | null
+): boolean {
+  if (overrides && Object.prototype.hasOwnProperty.call(overrides, feature)) {
+    return overrides[feature] === true;
+  }
   if (!plan) return false;
   return FEATURES[feature].includes(plan);
 }

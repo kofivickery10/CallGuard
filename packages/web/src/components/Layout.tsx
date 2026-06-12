@@ -1,8 +1,67 @@
-import { ReactNode } from 'react';
+import { ReactNode, useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { api } from '../api/client';
 import { NotificationBell } from './NotificationBell';
 import { SupportWidget } from './SupportWidget';
+
+interface Announcement {
+  id: string;
+  title: string;
+  body: string;
+  level: 'info' | 'warning' | 'critical';
+}
+
+const ANNOUNCEMENT_STYLES: Record<string, string> = {
+  info:     'bg-processing-bg text-processing border-processing/30',
+  warning:  'bg-review-bg text-review border-review/30',
+  critical: 'bg-fail-bg text-fail border-fail/30',
+};
+
+// Impersonation notice + active platform announcements, stacked at the top of
+// the app. Announcements can be dismissed for the session.
+function AppBanners() {
+  const { user } = useAuth();
+  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  const [dismissed, setDismissed] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    api.get<{ announcements: Announcement[] }>('/announcements')
+      .then((r) => setAnnouncements(r.announcements))
+      .catch(() => setAnnouncements([]));
+  }, []);
+
+  const visible = announcements.filter((a) => !dismissed.has(a.id));
+  if (!user?.impersonated && visible.length === 0) return null;
+
+  return (
+    <div className="space-y-px">
+      {user?.impersonated && (
+        <div className="bg-review text-white px-7 py-2 text-sm font-semibold flex items-center gap-2">
+          <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" />
+          </svg>
+          Viewing as {user.organization_name} — superadmin impersonation session
+        </div>
+      )}
+      {visible.map((a) => (
+        <div key={a.id} className={`px-7 py-2 text-sm border-b flex items-start justify-between gap-3 ${ANNOUNCEMENT_STYLES[a.level]}`}>
+          <div>
+            <span className="font-semibold">{a.title}</span>
+            <span className="ml-2">{a.body}</span>
+          </div>
+          <button
+            onClick={() => setDismissed((prev) => new Set(prev).add(a.id))}
+            className="opacity-70 hover:opacity-100 font-bold shrink-0"
+            aria-label="Dismiss"
+          >
+            ×
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 interface NavItem {
   path: string;
@@ -178,6 +237,7 @@ export function Layout({ children }: { children: ReactNode }) {
 
       {/* Main content */}
       <main className="ml-[220px] flex-1 min-h-screen relative">
+        <AppBanners />
         {/* Top bar with notification bell */}
         <div className="absolute top-4 right-6 z-10">
           <NotificationBell />

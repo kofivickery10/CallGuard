@@ -22,6 +22,7 @@ import { auditRouter } from './routes/audit.js';
 import { supportRouter } from './routes/support.js';
 import { streamRouter } from './routes/stream.js';
 import { superadminRouter } from './routes/superadmin.js';
+import { announcementsRouter } from './routes/announcements.js';
 import { customersRouter } from './routes/customers.js';
 import { usersRouter } from './routes/users.js';
 
@@ -134,6 +135,7 @@ app.use('/api/support', supportRouter);
 app.use('/api/superadmin', superadminRouter);
 app.use('/api/customers', customersRouter);
 app.use('/api/users', usersRouter);
+app.use('/api/announcements', announcementsRouter);
 app.use('/v1', streamRouter);
 
 // Serve React static build in production
