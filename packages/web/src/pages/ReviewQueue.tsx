@@ -42,8 +42,8 @@ export function ReviewQueue() {
         </div>
       </div>
 
-      <div className="bg-white border border-border rounded-card overflow-hidden">
-        <table className="w-full">
+      <div className="bg-white border border-border rounded-card overflow-x-auto">
+        <table className="w-full min-w-[720px]">
           <thead>
             <tr>
               <th className="text-left px-5 py-2.5 text-table-header uppercase text-text-muted bg-table-header border-b border-border w-[80px]">Rank</th>

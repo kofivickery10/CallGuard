@@ -46,8 +46,8 @@ export function Team() {
           </button>
         </div>
       ) : (
-        <div className="bg-white border border-border rounded-card overflow-hidden">
-          <table className="w-full">
+        <div className="bg-white border border-border rounded-card overflow-x-auto">
+          <table className="w-full min-w-[640px]">
             <thead>
               <tr>
                 {['Agent', 'Calls', 'Scored', 'Avg Score', 'Pass Rate'].map((h) => (

@@ -99,7 +99,7 @@ export function Breaches() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-7">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-7">
         <div>
           <h2 className="text-page-title text-text-primary">Breach Register</h2>
           <p className="text-page-sub text-text-subtle mt-1">
@@ -123,7 +123,7 @@ export function Breaches() {
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <SummaryCard label="Open Breaches" value={summary?.total_open ?? '-'} color="text-text-primary" />
         <SummaryCard label="Critical" value={summary?.by_severity.critical ?? '-'} color="text-fail" />
         <SummaryCard label="High" value={summary?.by_severity.high ?? '-'} color="text-fail" />
@@ -131,7 +131,7 @@ export function Breaches() {
       </div>
 
       {/* Filters */}
-      <div className="bg-white border border-border rounded-card p-4 mb-4 grid grid-cols-6 gap-3">
+      <div className="bg-white border border-border rounded-card p-4 mb-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         <select
           value={filters.severity}
           onChange={(e) => { setFilters({ ...filters, severity: e.target.value as BreachSeverity | '' }); setPage(1); }}
@@ -185,8 +185,8 @@ export function Breaches() {
       </div>
 
       {/* Table */}
-      <div className="bg-white border border-border rounded-card overflow-hidden">
-        <table className="w-full">
+      <div className="bg-white border border-border rounded-card overflow-x-auto">
+        <table className="w-full min-w-[760px]">
           <thead>
             <tr>
               {['Date', 'Call', 'Agent', 'Breach Type', 'Severity', 'Score', 'Status', 'Assigned'].map((h) => (

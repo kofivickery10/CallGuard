@@ -74,8 +74,8 @@ export function Alerts() {
           </button>
         </div>
       ) : (
-        <div className="bg-white border border-border rounded-card overflow-hidden">
-          <table className="w-full">
+        <div className="bg-white border border-border rounded-card overflow-x-auto">
+          <table className="w-full min-w-[640px]">
             <thead>
               <tr>
                 {['Name', 'Trigger', 'Channels', 'Status', ''].map((h) => (

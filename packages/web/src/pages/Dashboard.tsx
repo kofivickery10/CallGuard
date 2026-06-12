@@ -165,7 +165,8 @@ export function Dashboard() {
             <h3 className="text-[15px] font-semibold text-text-primary">Agent Leaderboard</h3>
             <Link to="/team" className="text-table-cell text-primary font-medium hover:underline">View team</Link>
           </div>
-          <table className="w-full">
+          <div className="overflow-x-auto">
+          <table className="w-full min-w-[520px]">
             <thead>
               <tr>
                 <th className="text-left px-5 py-2.5 text-table-header uppercase text-text-muted bg-table-header border-b border-border">Agent</th>
@@ -191,6 +192,7 @@ export function Dashboard() {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 
@@ -200,7 +202,8 @@ export function Dashboard() {
           <h3 className="text-[15px] font-semibold text-text-primary">Recent Calls</h3>
           <Link to="/calls" className="text-table-cell text-primary font-medium hover:underline">View all</Link>
         </div>
-        <table className="w-full">
+        <div className="overflow-x-auto">
+        <table className="w-full min-w-[640px]">
           <thead>
             <tr>
               <th className="text-left px-5 py-2.5 text-table-header uppercase text-text-muted bg-table-header border-b border-border">Call</th>
@@ -259,6 +262,7 @@ export function Dashboard() {
             )}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   );

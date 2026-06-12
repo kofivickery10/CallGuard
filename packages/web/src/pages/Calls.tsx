@@ -30,7 +30,7 @@ export function Calls() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-7">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-7">
         <div>
           <h2 className="text-page-title text-text-primary">Calls</h2>
           <p className="text-page-sub text-text-subtle mt-1">
@@ -50,8 +50,8 @@ export function Calls() {
         </div>
       </div>
 
-      <div className="bg-white border border-border rounded-card overflow-hidden">
-        <table className="w-full">
+      <div className="bg-white border border-border rounded-card overflow-x-auto">
+        <table className="w-full min-w-[680px]">
           <thead>
             <tr>
               {['Call', 'Agent', 'Duration', 'Score', 'Status', 'Date'].map((h) => (
