@@ -32,15 +32,7 @@ export function Login() {
     <div className="min-h-screen flex items-center justify-center bg-page">
       <div className="w-full max-w-md px-4">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-12 h-12 bg-primary rounded-full mb-4">
-            <svg viewBox="0 0 24 24" className="w-6 h-6" fill="none" stroke="none">
-              <rect x="4.5"  y="14"   width="2.4" height="4"  rx="1.1" fill="white"/>
-              <rect x="9"    y="11"   width="2.4" height="7"  rx="1.1" fill="white"/>
-              <rect x="13.5" y="8"    width="2.4" height="10" rx="1.1" fill="white"/>
-              <circle cx="19" cy="6"  r="1.6" fill="white"/>
-            </svg>
-          </div>
-          <h1 className="text-[22px] font-bold text-text-primary tracking-tight">CallGuard <span className="text-primary">AI</span></h1>
+          <img src="/callguard-logo-stacked.svg" alt="CallGuard AI" className="h-28 w-auto mx-auto mb-3" />
           <p className="text-page-sub text-text-subtle mt-1">AI compliance scoring for sales conversations</p>
         </div>
 

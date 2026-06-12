@@ -146,16 +146,8 @@ export function Layout({ children }: { children: ReactNode }) {
         }`}
       >
         {/* Logo */}
-        <div className="px-4 py-4 flex items-center gap-2.5 flex-shrink-0">
-          <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center">
-            <svg viewBox="0 0 24 24" className="w-[18px] h-[18px]" fill="none" stroke="none">
-              <rect x="4.5"  y="14"   width="2.4" height="4"  rx="1.1" fill="white"/>
-              <rect x="9"    y="11"   width="2.4" height="7"  rx="1.1" fill="white"/>
-              <rect x="13.5" y="8"    width="2.4" height="10" rx="1.1" fill="white"/>
-              <circle cx="19" cy="6"  r="1.6" fill="white"/>
-            </svg>
-          </div>
-          <span className="text-[17px] font-bold text-text-primary tracking-tight">CallGuard <span className="text-primary">AI</span></span>
+        <div className="px-4 py-4 flex-shrink-0">
+          <img src="/callguard-logo-horizontal.svg" alt="CallGuard AI" className="h-7 w-auto" />
         </div>
 
         {/* Nav (scrolls independently when items exceed viewport height) */}
@@ -265,7 +257,7 @@ export function Layout({ children }: { children: ReactNode }) {
               <path d="M3 6h18M3 12h18M3 18h18" />
             </svg>
           </button>
-          <span className="text-[15px] font-bold text-text-primary tracking-tight">CallGuard <span className="text-primary">AI</span></span>
+          <img src="/callguard-logo-horizontal.svg" alt="CallGuard AI" className="h-6 w-auto" />
           <NotificationBell />
         </div>
 
