@@ -72,7 +72,7 @@ export function AIInsights() {
             trends, patterns worth attention, and specific coaching recommendations.
           </p>
           <Link
-            to="/settings"
+            to="/settings/organization"
             className="inline-block px-4 py-2 bg-primary hover:bg-primary-hover text-white rounded-btn text-[13px] font-semibold transition-colors"
           >
             Upgrade to Pro
