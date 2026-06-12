@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { api } from '../api/client';
-import { PLANS, PLAN_LABELS } from '@callguard/shared';
+import { PLANS, PLAN_LABELS, SEAT_PRICING } from '@callguard/shared';
+import type { Plan } from '@callguard/shared';
 
 interface OrgDetail {
   id: string;
@@ -11,6 +12,7 @@ interface OrgDetail {
   created_at: string;
   suspended_at: string | null;
   subscription_notes: string | null;
+  seat_price_override: string | null;
 }
 interface User {
   id: string;
@@ -44,6 +46,7 @@ export default function TenantDetail() {
   const [planValue, setPlanValue] = useState('');
   const [statusValue, setStatusValue] = useState('');
   const [notes, setNotes] = useState('');
+  const [priceOverride, setPriceOverride] = useState('');
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
   const [tierSaving, setTierSaving] = useState<string | null>(null);
@@ -56,9 +59,24 @@ export default function TenantDetail() {
         setPlanValue(d.org.plan);
         setStatusValue(d.org.status);
         setNotes(d.org.subscription_notes ?? '');
+        setPriceOverride(d.org.seat_price_override ?? '');
       })
       .catch((e: Error) => setError(e.message));
   }, [id]);
+
+  const saveSeatPrice = async () => {
+    if (!id) return;
+    setSaving(true); setSaveMsg('');
+    try {
+      const value = priceOverride.trim() === '' ? null : Number(priceOverride);
+      await api.put(`/superadmin/tenants/${id}/seat-price`, { seat_price_override: value });
+      setSaveMsg(value == null ? 'Seat price reset to tier default' : `Seat price set to £${value}/seat`);
+    } catch (e) {
+      setSaveMsg(e instanceof Error ? e.message : 'Failed');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const savePlan = async () => {
     if (!id) return;
@@ -210,6 +228,26 @@ export default function TenantDetail() {
           <button onClick={impersonate} className="border border-border text-text-secondary px-4 py-2 rounded-btn text-sm hover:bg-gray-50">
             Impersonate admin
           </button>
+        </div>
+        <div className="flex gap-3 items-end pt-2 border-t border-border">
+          <div>
+            <label className="block text-xs font-medium text-text-muted mb-1">Seat price override (£/seat/mo)</label>
+            <input
+              type="number"
+              min="0"
+              step="1"
+              value={priceOverride}
+              onChange={(e) => setPriceOverride(e.target.value)}
+              placeholder={`Default £${SEAT_PRICING[org.plan as Plan] ?? '—'}`}
+              className="border border-border rounded-btn px-3 py-2 text-sm w-48"
+            />
+          </div>
+          <button onClick={saveSeatPrice} disabled={saving} className="bg-primary text-white px-4 py-2 rounded-btn text-sm font-semibold hover:bg-primary-hover disabled:opacity-60">
+            Save price
+          </button>
+          <p className="text-xs text-text-muted pb-2">
+            Blank = the {PLAN_LABELS[org.plan as Plan] ?? org.plan} default (£{SEAT_PRICING[org.plan as Plan] ?? '—'}/seat). Set a value to give this tenant a negotiated rate.
+          </p>
         </div>
         {saveMsg && <p className="text-sm text-pass">{saveMsg}</p>}
       </div>

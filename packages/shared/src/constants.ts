@@ -1,3 +1,5 @@
+import type { Plan } from './types/coaching.js';
+
 export const CALL_STATUSES = [
   'uploaded',
   'transcribing',
@@ -64,3 +66,13 @@ export const CLAUDE_PRICING: Record<string, { input_per_1m: number; output_per_1
 
 // Deepgram nova-3 standard tier (per minute of audio)
 export const DEEPGRAM_PRICING = { per_minute: 0.0043 };
+
+// Monthly revenue per active seat by tier (GBP). A "seat" is an adviser with at
+// least one scored call in the month. A tenant can override this with a
+// negotiated rate (organizations.seat_price_override); when set, all that
+// tenant's seats bill at the override regardless of tier.
+export const SEAT_PRICING: Record<Plan, number> = {
+  core: 199,
+  professional: 299,
+  enterprise: 399,
+};
