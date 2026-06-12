@@ -31,7 +31,7 @@ export function CoachingPanel({ coaching, plan, callStatus, isAdmin, priorCoachi
           </p>
           {isAdmin ? (
             <Link
-              to="/settings"
+              to="/settings/organization"
               className="inline-block bg-primary text-white px-4 py-2 rounded-btn text-table-cell font-semibold hover:bg-primary-hover transition-colors"
             >
               Upgrade your plan

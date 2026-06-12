@@ -31,6 +31,7 @@ const Customers = lazy(() => import('./pages/Customers'));
 const CustomerProfile = lazy(() => import('./pages/CustomerProfile'));
 const Account = lazy(() => import('./pages/Account'));
 const BillingOverview = lazy(() => import('./pages/BillingOverview'));
+const Settings = lazy(() => import('./pages/Settings'));
 
 function PageLoader() {
   return (
@@ -75,7 +76,8 @@ export function App() {
                   <Route path="/breaches" element={<Breaches />} />
                   <Route path="/adviser-risk" element={<AdviserRiskPage />} />
                   <Route path="/compliance-docs" element={<ComplianceDocs />} />
-                  <Route path="/settings" element={<OrganizationSettings />} />
+                  <Route path="/settings" element={<Settings />} />
+                  <Route path="/settings/organization" element={<OrganizationSettings />} />
                   <Route path="/insights" element={<AIInsights />} />
                   <Route path="/review-queue" element={<ReviewQueue />} />
                   <Route path="/audit-log" element={<AuditLog />} />

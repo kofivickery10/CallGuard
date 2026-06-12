@@ -11,6 +11,7 @@ import type { Call, PaginatedResponse } from '@callguard/shared';
 export function Calls() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
+  const canUpload = ['admin', 'supervisor', 'adviser'].includes(user?.role ?? '');
   const [page, setPage] = useState(1);
   const [agentFilter, setAgentFilter] = useState<string | null>(null);
 
@@ -38,12 +39,14 @@ export function Calls() {
         </div>
         <div className="flex items-center gap-3">
           {isAdmin && <AgentFilter value={agentFilter} onChange={(v) => { setAgentFilter(v); setPage(1); }} />}
-          <Link
-            to="/calls/upload"
-            className="inline-flex items-center gap-2 bg-primary text-white px-[18px] py-[9px] rounded-btn text-table-cell font-semibold hover:bg-primary-hover transition-colors"
-          >
-            Upload Call
-          </Link>
+          {canUpload && (
+            <Link
+              to="/calls/upload"
+              className="inline-flex items-center gap-2 bg-primary text-white px-[18px] py-[9px] rounded-btn text-table-cell font-semibold hover:bg-primary-hover transition-colors"
+            >
+              Upload Call
+            </Link>
+          )}
         </div>
       </div>
 

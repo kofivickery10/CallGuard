@@ -45,7 +45,7 @@ export default function Customers() {
         <div className="bg-white border border-border rounded-card p-8 text-center max-w-md mx-auto">
           <p className="text-text-subtle text-table-cell mb-2">Customer journey tracking is available on the Core plan and above.</p>
           {user?.role === 'admin' && (
-            <Link to="/settings" className="text-primary font-medium hover:underline text-table-cell">Upgrade plan</Link>
+            <Link to="/settings/organization" className="text-primary font-medium hover:underline text-table-cell">Upgrade plan</Link>
           )}
         </div>
       </div>
