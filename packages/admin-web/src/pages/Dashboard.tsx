@@ -54,7 +54,17 @@ export default function Dashboard() {
 
   const load = useCallback(() => {
     api.get<DashboardData>('/superadmin/dashboard')
-      .then(setData)
+      // Default every numeric field so an older/partial API response degrades to
+      // zeros rather than throwing on .toFixed() and blanking the page.
+      .then((d) => setData({
+        active_users_15min:         d.active_users_15min ?? 0,
+        calls_in_queue:             d.calls_in_queue ?? 0,
+        calls_processed_today:      d.calls_processed_today ?? 0,
+        active_live_sessions:       d.active_live_sessions ?? 0,
+        platform_claude_cost_mtd:   d.platform_claude_cost_mtd ?? 0,
+        platform_deepgram_cost_mtd: d.platform_deepgram_cost_mtd ?? 0,
+        platform_mrr:               d.platform_mrr ?? 0,
+      }))
       .catch((e: Error) => setError(e.message));
     api.get<HealthData>('/superadmin/health')
       .then(setHealth)
