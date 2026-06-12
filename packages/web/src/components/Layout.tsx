@@ -147,7 +147,7 @@ export function Layout({ children }: { children: ReactNode }) {
       >
         {/* Logo */}
         <div className="px-4 py-4 flex-shrink-0">
-          <img src="/callguard-logo-horizontal.svg" alt="CallGuard AI" className="h-7 w-auto" />
+          <img src="/callguard-logo-primary.svg" alt="CallGuard AI — Smarter calls. Safer business." className="w-[184px] h-auto" />
         </div>
 
         {/* Nav (scrolls independently when items exceed viewport height) */}
@@ -257,7 +257,7 @@ export function Layout({ children }: { children: ReactNode }) {
               <path d="M3 6h18M3 12h18M3 18h18" />
             </svg>
           </button>
-          <img src="/callguard-logo-horizontal.svg" alt="CallGuard AI" className="h-6 w-auto" />
+          <img src="/callguard-logo-primary.svg" alt="CallGuard AI" className="w-[150px] h-auto" />
           <NotificationBell />
         </div>
 

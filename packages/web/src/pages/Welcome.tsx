@@ -8,7 +8,7 @@ export function Welcome() {
       <header className="bg-white border-b border-border">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center">
-            <img src="/callguard-logo-horizontal.svg" alt="CallGuard AI" className="h-8 w-auto" />
+            <img src="/callguard-logo-primary.svg" alt="CallGuard AI — Smarter calls. Safer business." className="w-[210px] h-auto" />
           </div>
           <nav className="flex items-center gap-6 text-table-cell">
             <a href="#features" className="text-text-secondary hover:text-text-primary">Features</a>

@@ -46,7 +46,7 @@ export function PublicCallView() {
       {/* Header */}
       <header className="bg-white border-b border-border py-4 px-6">
         <div className="max-w-3xl mx-auto flex items-center">
-          <img src="/callguard-logo-horizontal.svg" alt="CallGuard AI" className="h-7 w-auto" />
+          <img src="/callguard-logo-primary.svg" alt="CallGuard AI — Smarter calls. Safer business." className="w-[200px] h-auto" />
         </div>
       </header>
 
