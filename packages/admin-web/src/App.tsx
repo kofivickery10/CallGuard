@@ -10,11 +10,12 @@ function NavItem({ to, label }: { to: string; label: string }) {
   return (
     <NavLink
       to={to}
+      end={to === '/'}
       className={({ isActive }) =>
-        `block px-3 py-2 rounded-btn text-sm font-medium transition-colors ${
+        `block px-3 py-[9px] rounded-btn text-nav-item transition-all ${
           isActive
-            ? 'bg-primary/10 text-primary'
-            : 'text-text-secondary hover:bg-gray-100'
+            ? 'bg-sidebar-active text-pass font-semibold'
+            : 'text-text-secondary hover:bg-sidebar-hover hover:text-text-primary'
         }`
       }
     >
@@ -32,17 +33,30 @@ function AppLayout() {
   return (
     <div className="flex min-h-screen">
       {/* Sidebar */}
-      <aside className="w-52 bg-white border-r border-border flex flex-col shrink-0">
-        <div className="px-4 py-5 border-b border-border">
-          <p className="text-sm font-bold text-text-primary">CallGuard</p>
-          <p className="text-xs text-text-muted">Admin Portal</p>
+      <aside className="w-52 bg-white border-r border-sidebar-border flex flex-col shrink-0">
+        <div className="px-4 py-4 flex items-center gap-2.5">
+          <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center">
+            <svg viewBox="0 0 24 24" className="w-[18px] h-[18px]" fill="none" stroke="none">
+              <rect x="4.5"  y="14"   width="2.4" height="4"  rx="1.1" fill="white"/>
+              <rect x="9"    y="11"   width="2.4" height="7"  rx="1.1" fill="white"/>
+              <rect x="13.5" y="8"    width="2.4" height="10" rx="1.1" fill="white"/>
+              <circle cx="19" cy="6"  r="1.6" fill="white"/>
+            </svg>
+          </div>
+          <div className="leading-tight">
+            <span className="block text-[15px] font-bold text-text-primary tracking-tight">CallGuard <span className="text-primary">AI</span></span>
+            <span className="block text-[10px] font-semibold uppercase tracking-wider text-text-muted">Superadmin</span>
+          </div>
         </div>
-        <nav className="p-3 space-y-1 flex-1">
+        <div className="px-4 pt-2.5 pb-1">
+          <span className="text-nav-label uppercase text-text-muted">Menu</span>
+        </div>
+        <nav className="px-3 space-y-0.5 flex-1">
           <NavItem to="/" label="Dashboard" />
           <NavItem to="/tenants" label="Tenants" />
           <NavItem to="/billing" label="Billing" />
         </nav>
-        <div className="p-3 border-t border-border">
+        <div className="p-3 border-t border-sidebar-border">
           <p className="text-xs text-text-muted truncate mb-2">{user.email}</p>
           <button
             onClick={logout}
