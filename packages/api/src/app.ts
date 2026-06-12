@@ -74,12 +74,18 @@ const PROD_ORIGINS = [
 ];
 const DEV_ORIGINS = ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:3001'];
 
+const isProd = process.env.NODE_ENV === 'production';
+
 const rawOrigins = process.env.ALLOWED_ORIGINS;
 const allowedOrigins: string[] = rawOrigins
   ? rawOrigins.split(',').map((o) => o.trim()).filter(Boolean)
-  : process.env.NODE_ENV === 'production'
+  : isProd
     ? PROD_ORIGINS
     : DEV_ORIGINS;
+
+// In dev the Vite servers may land on any localhost port (5173/5174/5175…),
+// so accept any localhost/127.0.0.1 origin. Production stays on the allowlist.
+const devLocalhost = /^http:\/\/(localhost|127\.0\.0\.1):\d+$/;
 
 app.use(
   cors({
@@ -87,6 +93,7 @@ app.use(
       // Allow requests with no Origin (server-to-server, curl, health checks)
       if (!origin) return callback(null, true);
       if (allowedOrigins.includes(origin)) return callback(null, true);
+      if (!isProd && devLocalhost.test(origin)) return callback(null, true);
       callback(new Error(`CORS: origin '${origin}' not allowed`));
     },
     credentials: true,

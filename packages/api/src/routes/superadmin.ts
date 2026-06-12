@@ -5,12 +5,22 @@ import { authenticate, requireSuperadmin, AuthPayload } from '../middleware/auth
 import { query, queryOne } from '../db/client.js';
 import { AppError } from '../middleware/errors.js';
 import { config } from '../config.js';
-import { PLANS } from '@callguard/shared';
+import { PLANS, SEAT_PRICING, effectivePlan } from '@callguard/shared';
+import type { Plan } from '@callguard/shared';
 import { CLAUDE_PRICING, DEEPGRAM_PRICING } from '@callguard/shared';
 
 export const superadminRouter = Router();
 
 superadminRouter.use(authenticate, requireSuperadmin);
+
+// Monthly revenue for one active seat. If the tenant has a negotiated override,
+// every seat bills at that flat rate; otherwise the seat's effective tier
+// (org plan, bumped by any per-user override) sets the price.
+function seatIncome(orgPlan: string, override: number | null, planOverride: string | null): number {
+  if (override != null) return Number(override);
+  const tier = effectivePlan(orgPlan as Plan, (planOverride ?? null) as Plan | null);
+  return SEAT_PRICING[tier] ?? 0;
+}
 
 // Sum Claude cost across per-model token rows, pricing each model at its own
 // rate (Haiku is ~4x cheaper than Sonnet, so a single blended rate is wrong).
@@ -130,8 +140,9 @@ superadminRouter.get('/tenants/:id', async (req, res, next) => {
       created_at: string;
       suspended_at: string | null;
       subscription_notes: string | null;
+      seat_price_override: string | null;
     }>(
-      `SELECT id, name, plan, status, created_at, suspended_at, subscription_notes
+      `SELECT id, name, plan, status, created_at, suspended_at, subscription_notes, seat_price_override
        FROM organizations WHERE id = $1`,
       [req.params.id]
     );
@@ -192,6 +203,27 @@ superadminRouter.put('/tenants/:id/plan', async (req, res, next) => {
        WHERE id = $3
        RETURNING id, plan`,
       [plan, subscription_notes || null, req.params.id]
+    );
+    if (!rows.length) throw new AppError(404, 'Tenant not found');
+    res.json(rows[0]);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── Set per-tenant seat price override (negotiated/discounted rate) ───────────
+// Pass null to clear and fall back to the default tier price.
+
+superadminRouter.put('/tenants/:id/seat-price', async (req, res, next) => {
+  try {
+    const { seat_price_override } = req.body as { seat_price_override?: number | null };
+    if (seat_price_override != null && (typeof seat_price_override !== 'number' || seat_price_override < 0)) {
+      throw new AppError(400, 'seat_price_override must be a non-negative number or null');
+    }
+    const rows = await query<{ id: string; seat_price_override: string | null }>(
+      `UPDATE organizations SET seat_price_override = $1
+       WHERE id = $2 RETURNING id, seat_price_override`,
+      [seat_price_override ?? null, req.params.id]
     );
     if (!rows.length) throw new AppError(404, 'Tenant not found');
     res.json(rows[0]);
@@ -301,6 +333,23 @@ superadminRouter.get('/dashboard', async (_req, res, next) => {
     );
     const deepgramCostMtd = Number(durationRow?.total_minutes || 0) * DEEPGRAM_PRICING.per_minute;
 
+    // Platform MRR: each active seat this month priced by the tenant's override
+    // or the seat's effective tier (one row per active org+agent pair).
+    const mrrRows = await query<{ org_plan: string; seat_price_override: string | null; plan_override: string | null }>(
+      `SELECT o.plan AS org_plan, o.seat_price_override, u.plan_override
+         FROM organizations o
+         JOIN calls c ON c.organization_id = o.id
+           AND c.status = 'scored'
+           AND c.created_at >= date_trunc('month', now())
+         JOIN users u ON u.id = c.agent_id
+        WHERE o.status = 'active'
+        GROUP BY o.id, o.plan, o.seat_price_override, u.id, u.plan_override`
+    );
+    let platformMrr = 0;
+    for (const r of mrrRows) {
+      platformMrr += seatIncome(r.org_plan, r.seat_price_override == null ? null : Number(r.seat_price_override), r.plan_override);
+    }
+
     res.json({
       active_users_15min:    Number(activity?.active_users_15min || 0),
       calls_in_queue:        Number(queue?.calls_in_queue || 0),
@@ -308,6 +357,7 @@ superadminRouter.get('/dashboard', async (_req, res, next) => {
       active_live_sessions:  Number(liveSessions?.active_live_sessions || 0),
       platform_claude_cost_mtd:   parseFloat(claudeCostMtd.toFixed(4)),
       platform_deepgram_cost_mtd: parseFloat(deepgramCostMtd.toFixed(4)),
+      platform_mrr:               parseFloat(platformMrr.toFixed(2)),
     });
   } catch (err) {
     next(err);
@@ -330,6 +380,7 @@ superadminRouter.get('/billing', async (req, res, next) => {
       org_id: string;
       org_name: string;
       plan: string;
+      seat_price_override: string | null;
       active_seats: string;
       total_duration_seconds: string;
     }>(
@@ -337,6 +388,7 @@ superadminRouter.get('/billing', async (req, res, next) => {
          o.id                                       AS org_id,
          o.name                                     AS org_name,
          o.plan,
+         o.seat_price_override,
          COUNT(DISTINCT c.agent_id)::text           AS active_seats,
          COALESCE(SUM(c.duration_seconds), 0)::text AS total_duration_seconds
        FROM organizations o
@@ -350,6 +402,31 @@ superadminRouter.get('/billing', async (req, res, next) => {
        ORDER BY o.name`,
       [monthStart]
     );
+
+    // Per-(org, active agent) rows so income can price each seat by the tenant
+    // override or the seat's effective tier (per-user bumps included).
+    const seatRows = await query<{
+      org_id: string;
+      org_plan: string;
+      seat_price_override: string | null;
+      plan_override: string | null;
+    }>(
+      `SELECT o.id AS org_id, o.plan AS org_plan, o.seat_price_override, u.plan_override
+         FROM organizations o
+         JOIN calls c ON c.organization_id = o.id
+           AND c.status = 'scored'
+           AND c.created_at >= $1::date
+           AND c.created_at <  $1::date + interval '1 month'
+         JOIN users u ON u.id = c.agent_id
+        WHERE o.status = 'active'
+        GROUP BY o.id, o.plan, o.seat_price_override, u.id, u.plan_override`,
+      [monthStart]
+    );
+    const incomeByOrg = new Map<string, number>();
+    for (const r of seatRows) {
+      const inc = seatIncome(r.org_plan, r.seat_price_override == null ? null : Number(r.seat_price_override), r.plan_override);
+      incomeByOrg.set(r.org_id, (incomeByOrg.get(r.org_id) ?? 0) + inc);
+    }
 
     // Per-(org, model) token sums from each call's latest score, so cost is
     // priced at the model the org actually ran on (Haiku vs Sonnet differ ~4x).
@@ -396,6 +473,8 @@ superadminRouter.get('/billing', async (req, res, next) => {
         plan:                  r.plan,
         month,
         active_seats:          Number(r.active_seats),
+        seat_price_override:   r.seat_price_override == null ? null : Number(r.seat_price_override),
+        monthly_income:        parseFloat((incomeByOrg.get(r.org_id) ?? 0).toFixed(2)),
         claude_cost_estimate:  parseFloat(claudeCost.toFixed(4)),
         deepgram_cost_estimate: parseFloat(deepgramCost.toFixed(4)),
       };

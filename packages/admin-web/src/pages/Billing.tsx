@@ -8,6 +8,8 @@ interface BillingRow {
   plan: string;
   month: string;
   active_seats: number;
+  seat_price_override: number | null;
+  monthly_income: number;
   claude_cost_estimate: number;
   deepgram_cost_estimate: number;
 }
@@ -28,8 +30,10 @@ export default function Billing() {
   }, [month]);
 
   const totalSeats = rows.reduce((a, r) => a + r.active_seats, 0);
+  const totalIncome = rows.reduce((a, r) => a + r.monthly_income, 0);
   const totalClaude = rows.reduce((a, r) => a + r.claude_cost_estimate, 0);
   const totalDeepgram = rows.reduce((a, r) => a + r.deepgram_cost_estimate, 0);
+  const grossMargin = totalIncome - totalClaude - totalDeepgram;
 
   return (
     <div className="p-6 space-y-4">
@@ -49,15 +53,16 @@ export default function Billing() {
       {error && <p className="text-fail text-sm">{error}</p>}
 
       {/* Summary */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
-          { label: 'Total active seats',    value: totalSeats },
-          { label: 'Claude cost estimate',  value: `£${totalClaude.toFixed(2)}` },
-          { label: 'Deepgram cost estimate', value: `£${totalDeepgram.toFixed(2)}` },
-        ].map(({ label, value }) => (
-          <div key={label} className="bg-white rounded-card p-4 border border-border">
+          { label: 'Monthly income',        value: `£${totalIncome.toFixed(2)}`, accent: true },
+          { label: 'Total active seats',    value: String(totalSeats) },
+          { label: 'AI/transcription cost', value: `£${(totalClaude + totalDeepgram).toFixed(2)}` },
+          { label: 'Gross margin',          value: `£${grossMargin.toFixed(2)}` },
+        ].map(({ label, value, accent }) => (
+          <div key={label} className={`bg-white rounded-card p-4 border ${accent ? 'border-primary' : 'border-border'}`}>
             <p className="text-xs font-semibold uppercase tracking-wider text-text-muted mb-1">{label}</p>
-            <p className="text-2xl font-bold text-text-primary">{value}</p>
+            <p className={`text-2xl font-bold ${accent ? 'text-primary' : 'text-text-primary'}`}>{value}</p>
           </div>
         ))}
       </div>
@@ -66,7 +71,7 @@ export default function Billing() {
         <table className="w-full text-sm">
           <thead className="bg-gray-50 border-b border-border">
             <tr>
-              {['Organisation', 'Plan', 'Active seats', 'Claude est.', 'Deepgram est.', 'Total est.', ''].map((h) => (
+              {['Organisation', 'Plan', 'Active seats', 'Monthly income', 'Claude est.', 'Deepgram est.', ''].map((h) => (
                 <th key={h} className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-text-muted">{h}</th>
               ))}
             </tr>
@@ -77,11 +82,16 @@ export default function Billing() {
                 <td className="px-4 py-3 font-medium text-text-primary">{r.org_name}</td>
                 <td className="px-4 py-3 capitalize text-text-secondary">{r.plan}</td>
                 <td className="px-4 py-3 text-text-secondary">{r.active_seats}</td>
+                <td className="px-4 py-3 font-semibold text-text-primary">
+                  £{r.monthly_income.toFixed(2)}
+                  {r.seat_price_override != null && (
+                    <span className="ml-1.5 text-[10px] font-semibold uppercase tracking-wider text-primary bg-primary/10 px-1.5 py-0.5 rounded">
+                      £{r.seat_price_override.toFixed(0)}/seat
+                    </span>
+                  )}
+                </td>
                 <td className="px-4 py-3 text-text-secondary">£{r.claude_cost_estimate.toFixed(2)}</td>
                 <td className="px-4 py-3 text-text-secondary">£{r.deepgram_cost_estimate.toFixed(2)}</td>
-                <td className="px-4 py-3 font-medium text-text-primary">
-                  £{(r.claude_cost_estimate + r.deepgram_cost_estimate).toFixed(2)}
-                </td>
                 <td className="px-4 py-3">
                   <Link to={`/tenants/${r.org_id}`} className="text-primary hover:underline text-xs font-medium">
                     Detail
