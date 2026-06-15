@@ -7,16 +7,8 @@ export function Welcome() {
       {/* Top nav */}
       <header className="bg-white border-b border-border">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-primary rounded-full flex items-center justify-center">
-              <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="none">
-                <rect x="4.5"  y="14"   width="2.4" height="4"  rx="1.1" fill="white"/>
-                <rect x="9"    y="11"   width="2.4" height="7"  rx="1.1" fill="white"/>
-                <rect x="13.5" y="8"    width="2.4" height="10" rx="1.1" fill="white"/>
-                <circle cx="19" cy="6"  r="1.6" fill="white"/>
-              </svg>
-            </div>
-            <span className="text-[20px] font-bold text-text-primary tracking-tight">CallGuard <span className="text-primary">AI</span></span>
+          <div className="flex items-center">
+            <img src="/callguard-logo-horizontal.svg" alt="CallGuard AI" className="h-9 w-auto" />
           </div>
           <nav className="flex items-center gap-6 text-table-cell">
             <a href="#features" className="text-text-secondary hover:text-text-primary">Features</a>

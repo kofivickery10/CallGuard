@@ -56,19 +56,9 @@ function AppLayout() {
     <div className="flex min-h-screen">
       {/* Sidebar */}
       <aside className="w-52 bg-white border-r border-sidebar-border flex flex-col shrink-0">
-        <div className="px-4 py-4 flex items-center gap-2.5">
-          <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center">
-            <svg viewBox="0 0 24 24" className="w-[18px] h-[18px]" fill="none" stroke="none">
-              <rect x="4.5"  y="14"   width="2.4" height="4"  rx="1.1" fill="white"/>
-              <rect x="9"    y="11"   width="2.4" height="7"  rx="1.1" fill="white"/>
-              <rect x="13.5" y="8"    width="2.4" height="10" rx="1.1" fill="white"/>
-              <circle cx="19" cy="6"  r="1.6" fill="white"/>
-            </svg>
-          </div>
-          <div className="leading-tight">
-            <span className="block text-[15px] font-bold text-text-primary tracking-tight">CallGuard <span className="text-primary">AI</span></span>
-            <span className="block text-[10px] font-semibold uppercase tracking-wider text-text-muted">Superadmin</span>
-          </div>
+        <div className="px-4 py-4">
+          <img src="/callguard-logo-horizontal.svg" alt="CallGuard AI" className="h-7 w-auto" />
+          <span className="block mt-1.5 text-[10px] font-semibold uppercase tracking-wider text-text-muted">Superadmin</span>
         </div>
         <div className="px-3 pt-2.5 pb-2">
           <SidebarSearch />

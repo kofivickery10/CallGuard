@@ -45,16 +45,8 @@ export function PublicCallView() {
     <div className="min-h-screen bg-page flex flex-col">
       {/* Header */}
       <header className="bg-white border-b border-border py-4 px-6">
-        <div className="max-w-3xl mx-auto flex items-center gap-3">
-          <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center">
-            <svg viewBox="0 0 24 24" className="w-[18px] h-[18px]" fill="none" stroke="none">
-              <rect x="4.5"  y="14"   width="2.4" height="4"  rx="1.1" fill="white"/>
-              <rect x="9"    y="11"   width="2.4" height="7"  rx="1.1" fill="white"/>
-              <rect x="13.5" y="8"    width="2.4" height="10" rx="1.1" fill="white"/>
-              <circle cx="19" cy="6"  r="1.6" fill="white"/>
-            </svg>
-          </div>
-          <span className="text-[17px] font-bold text-text-primary tracking-tight">CallGuard <span className="text-primary">AI</span></span>
+        <div className="max-w-3xl mx-auto flex items-center">
+          <img src="/callguard-logo-horizontal.svg" alt="CallGuard AI" className="h-8 w-auto" />
         </div>
       </header>
 
