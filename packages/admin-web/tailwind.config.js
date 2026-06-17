@@ -1,68 +1,73 @@
 /** @type {import('tailwindcss').Config} */
 // Mirrors packages/web/tailwind.config.js so the superadmin console shares the
-// exact CallGuard brand tokens (colours, type scale, radii, shadows).
+// exact CallGuard brand tokens (colours, type scale, radii, shadows) and the
+// same CSS-variable-driven light/dark theming (see src/index.css).
+const v = (name) => `rgb(var(${name}) / <alpha-value>)`;
+
 export default {
+  darkMode: 'class',
   content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
   theme: {
     extend: {
       colors: {
         primary: {
-          DEFAULT: '#4a9e6e',
-          hover: '#3d8a5e',
-          light: '#e8f0e8',
-          'light-hover': '#f0f5f0',
+          DEFAULT: v('--cg-primary'),
+          hover: v('--cg-primary-hover'),
+          light: v('--cg-primary-light'),
+          'light-hover': v('--cg-primary-light-hover'),
         },
-        page: '#f8faf8',
-        card: '#ffffff',
-        border: '#e2e8e2',
-        'border-light': '#f0f5f0',
+        page: v('--cg-page'),
+        card: v('--cg-card'),
+        border: v('--cg-border'),
+        'border-light': v('--cg-border-light'),
         text: {
-          primary: '#1a2e1a',
-          secondary: '#5a6e5a',
-          muted: '#8a9e8a',
-          subtle: '#6a7e6a',
-          cell: '#3a4e3a',
+          primary: v('--cg-text-primary'),
+          secondary: v('--cg-text-secondary'),
+          muted: v('--cg-text-muted'),
+          subtle: v('--cg-text-subtle'),
+          cell: v('--cg-text-cell'),
         },
         icon: {
-          muted: '#aabdaa',
+          muted: v('--cg-icon-muted'),
         },
         pass: {
-          DEFAULT: '#2d6e4a',
-          bg: '#e8f5e8',
+          DEFAULT: v('--cg-pass'),
+          bg: v('--cg-pass-bg'),
         },
         fail: {
-          DEFAULT: '#c0392b',
-          bg: '#fde8e8',
+          DEFAULT: v('--cg-fail'),
+          bg: v('--cg-fail-bg'),
         },
         review: {
-          DEFAULT: '#b8860b',
-          bg: '#fef3e0',
+          DEFAULT: v('--cg-review'),
+          bg: v('--cg-review-bg'),
         },
         processing: {
-          DEFAULT: '#2d5a9e',
-          bg: '#e8f0fa',
+          DEFAULT: v('--cg-processing'),
+          bg: v('--cg-processing-bg'),
         },
         chart: {
-          secondary: '#7ec49e',
+          secondary: v('--cg-chart-secondary'),
         },
         speaker: {
-          agent: '#2d6e4a',
-          customer: '#5a5a8a',
+          agent: v('--cg-speaker-agent'),
+          customer: v('--cg-speaker-customer'),
         },
         flag: {
-          bg: '#fef2f2',
-          border: '#c0392b',
-          text: '#9e3a3a',
+          bg: v('--cg-flag-bg'),
+          border: v('--cg-flag-border'),
+          text: v('--cg-flag-text'),
         },
         table: {
-          header: '#fafcfa',
-          border: '#f0f5f0',
+          header: v('--cg-table-header'),
+          border: v('--cg-table-border'),
         },
         sidebar: {
-          border: '#e2e8e2',
-          hover: '#f0f5f0',
-          active: '#e8f0e8',
+          border: v('--cg-sidebar-border'),
+          hover: v('--cg-sidebar-hover'),
+          active: v('--cg-sidebar-active'),
         },
+        surface: v('--cg-card'),
       },
       fontFamily: {
         sans: ['Inter', '-apple-system', 'sans-serif'],

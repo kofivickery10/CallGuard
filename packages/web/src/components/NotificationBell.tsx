@@ -57,7 +57,7 @@ export function NotificationBell() {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-12 w-80 bg-white border border-border rounded-card shadow-lg z-50">
+        <div className="absolute right-0 top-12 w-80 bg-card border border-border rounded-card shadow-lg z-50">
           <div className="px-4 py-3 border-b border-border flex items-center justify-between">
             <span className="text-[13px] font-semibold text-text-primary">Notifications</span>
             <Link to="/notifications" onClick={() => setOpen(false)} className="text-[12px] text-primary font-medium hover:underline">

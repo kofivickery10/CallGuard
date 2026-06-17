@@ -306,7 +306,7 @@ export function ScorecardEditor() {
       )}
 
       <form onSubmit={handleSubmit} className="space-y-5">
-        <div className="bg-white border border-border rounded-card p-5 space-y-4">
+        <div className="bg-card border border-border rounded-card p-5 space-y-4">
           <div>
             <label className="block text-table-cell font-medium text-text-secondary mb-1">Scorecard Name</label>
             <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Customer Service QA" className="w-full border border-border rounded-btn px-3 py-2 text-table-cell text-text-primary placeholder:text-text-muted focus:outline-none focus:border-primary transition-colors" required />
@@ -336,7 +336,7 @@ export function ScorecardEditor() {
 
           <div className="space-y-2.5">
             {items.map((item, index) => (
-              <div key={index} className="bg-white border border-border rounded-card p-5">
+              <div key={index} className="bg-card border border-border rounded-card p-5">
                 <div className="flex items-start gap-3">
                   <div className="flex-1 space-y-3">
                     <div>

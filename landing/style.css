@@ -53,6 +53,57 @@
   --radius-btn:     8px;
   --shadow-card:    0 1px 3px rgba(26, 46, 26, 0.04), 0 1px 2px rgba(26, 46, 26, 0.06);
   --shadow-card-hover: 0 4px 12px rgba(26, 46, 26, 0.08), 0 2px 4px rgba(26, 46, 26, 0.06);
+
+  /* Translucent sticky-nav backdrop (sits over the blurred page) */
+  --nav-bg:         rgba(248, 250, 248, 0.85);
+
+  color-scheme: light;
+}
+
+/* ============================================================
+   Dark theme. Overrides the brand/neutral tokens above; everything
+   downstream reads the variables so no other rule needs changing.
+   Activated by data-theme="dark" on <html>, set before first paint
+   by the inline script in each page's <head>. The theme switch in
+   the nav persists the choice in localStorage (key: cg-theme).
+   ============================================================ */
+:root[data-theme="dark"] {
+  /* Brand */
+  --primary:        #57ab7a;
+  --primary-hover:  #6abb8a;
+  --primary-dark:   #8fd3a8;        /* lighter so it reads on dark surfaces */
+  --primary-light:  #1f2e24;
+  --primary-50:     #16201a;
+
+  /* Semantic */
+  --pass:           #5cc08a;
+  --pass-bg:        #16301f;
+  --fail:           #f0726a;
+  --fail-bg:        #3a1d1b;
+  --review:         #d6a838;
+
+  /* Neutrals */
+  --page-bg:        #0f1512;
+  --section-alt:    #141c17;
+  --card-bg:        #18211b;
+  --border:         #2b3630;
+  --border-light:   #222b25;
+
+  --text-primary:   #e6efe8;
+  --text-secondary: #b3c2b6;
+  --text-cell:      #c4d2c7;
+  --text-muted:     #8a9c8d;
+
+  /* Dark accent (footer / CTA band) — pushed slightly below page level */
+  --dark-bg:        #0b110d;
+  --dark-bg-2:      #16241a;
+
+  --shadow-card:        0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-card-hover:  0 6px 16px rgba(0, 0, 0, 0.5), 0 2px 4px rgba(0, 0, 0, 0.4);
+
+  --nav-bg:         rgba(15, 21, 18, 0.82);
+
+  color-scheme: dark;
 }
 
 /* Reset */
@@ -98,7 +149,7 @@ h1, h2, h3, h4, h5 { color: var(--text-primary); font-weight: 700; line-height: 
   position: sticky;
   top: 0;
   z-index: 50;
-  background: rgba(248, 250, 248, 0.85);
+  background: var(--nav-bg);
   backdrop-filter: saturate(180%) blur(12px);
   -webkit-backdrop-filter: saturate(180%) blur(12px);
   border-bottom: 1px solid var(--border-light);
@@ -200,7 +251,7 @@ h1, h2, h3, h4, h5 { color: var(--text-primary); font-weight: 700; line-height: 
   background: var(--primary-50);
 }
 .btn-light {
-  background: white;
+  background: var(--card-bg);
   color: var(--text-primary);
 }
 .btn-light:hover {
@@ -267,7 +318,7 @@ h1, h2, h3, h4, h5 { color: var(--text-primary); font-weight: 700; line-height: 
   justify-content: center;
   gap: 12px;
   padding: 14px 22px;
-  background: white;
+  background: var(--card-bg);
   border: 1px solid var(--border);
   border-radius: 999px;
   box-shadow: var(--shadow-card);
@@ -992,13 +1043,12 @@ h1, h2, h3, h4, h5 { color: var(--text-primary); font-weight: 700; line-height: 
   padding: 60px 0 100px;
 }
 .cta-card {
-  background: white;
   border: 1px solid var(--border);
   border-radius: 18px;
   padding: 60px 48px;
   text-align: center;
   box-shadow: 0 8px 30px rgba(26, 46, 26, 0.06);
-  background: linear-gradient(180deg, white 0%, var(--primary-50) 100%);
+  background: linear-gradient(180deg, var(--card-bg) 0%, var(--primary-50) 100%);
 }
 .cta-headline {
   font-size: clamp(28px, 4vw, 40px);
@@ -1093,10 +1143,10 @@ h1, h2, h3, h4, h5 { color: var(--text-primary); font-weight: 700; line-height: 
    Legal pages (privacy, terms, dpa, sub-processors)
    ============================================================ */
 .legal-page {
-  background: white;
+  background: var(--card-bg);
 }
 .legal-hero {
-  background: linear-gradient(180deg, var(--primary-50) 0%, white 100%);
+  background: linear-gradient(180deg, var(--primary-50) 0%, var(--card-bg) 100%);
   border-bottom: 1px solid var(--border-light);
   padding: 60px 0 40px;
 }
@@ -1266,6 +1316,29 @@ h1, h2, h3, h4, h5 { color: var(--text-primary); font-weight: 700; line-height: 
 .nav-toggle:hover { border-color: var(--primary); color: var(--primary); }
 .nav-toggle svg { width: 22px; height: 22px; display: block; }
 .nav-toggle .icon-close { display: none; }
+
+/* Light/dark switch — visible on every breakpoint, sits just left of the
+   hamburger on mobile. Shows the icon for the theme you'd switch *to*. */
+.theme-switch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  flex: none;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0;
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: color .15s ease, border-color .15s ease;
+}
+.theme-switch:hover { border-color: var(--primary); color: var(--primary); }
+.theme-switch svg { width: 20px; height: 20px; display: block; }
+.theme-switch .icon-sun { display: none; }
+:root[data-theme="dark"] .theme-switch .icon-moon { display: none; }
+:root[data-theme="dark"] .theme-switch .icon-sun { display: block; }
 .nav-toggle[aria-expanded="true"] .icon-open { display: none; }
 .nav-toggle[aria-expanded="true"] .icon-close { display: block; }
 

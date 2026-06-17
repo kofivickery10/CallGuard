@@ -1,6 +1,7 @@
 import { useState, FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { Logo } from '../components/Logo';
 
 export default function Login() {
   const { login } = useAuth();
@@ -26,9 +27,9 @@ export default function Login() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-page">
-      <div className="w-full max-w-sm bg-white rounded-card shadow-md p-8">
+      <div className="w-full max-w-sm bg-card rounded-card shadow-md p-8">
         <div className="mb-8 text-center">
-          <img src="/callguard-logo-stacked.svg" alt="CallGuard AI — Smarter calls. Safer business." className="w-[240px] h-auto mx-auto mb-3" />
+          <Logo variant="stacked" alt="CallGuard AI — Smarter calls. Safer business." className="w-[240px] h-auto mx-auto mb-3" />
           <p className="text-page-sub text-text-subtle mt-1">Superadmin console</p>
         </div>
         <form onSubmit={handleSubmit} className="space-y-4">

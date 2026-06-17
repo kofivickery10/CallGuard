@@ -79,14 +79,14 @@ function ApiKeysSection() {
       </div>
 
       {!data?.data.length ? (
-        <div className="bg-white border border-dashed border-border rounded-card p-8 text-center">
+        <div className="bg-card border border-dashed border-border rounded-card p-8 text-center">
           <p className="text-text-secondary font-semibold mb-1">No API keys yet</p>
           <p className="text-table-cell text-text-muted">
             Generate a key to let external systems POST calls to <code className="font-mono text-[12px] bg-table-header px-1.5 py-0.5 rounded">/api/ingestion/calls</code>
           </p>
         </div>
       ) : (
-        <div className="bg-white border border-border rounded-card overflow-hidden">
+        <div className="bg-card border border-border rounded-card overflow-hidden">
           <table className="w-full">
             <thead>
               <tr>
@@ -133,7 +133,7 @@ function ApiKeysSection() {
       )}
 
       {/* Documentation */}
-      <details className="mt-4 bg-white border border-border rounded-card p-5">
+      <details className="mt-4 bg-card border border-border rounded-card p-5">
         <summary className="cursor-pointer text-table-cell font-semibold text-text-primary">
           API Usage Examples
         </summary>
@@ -167,8 +167,8 @@ function ApiKeysSection() {
       {/* Create modal */}
       {createOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-text-primary/30" onClick={handleCloseModal} />
-          <div className="relative bg-white border border-border rounded-card w-full max-w-lg p-6 shadow-lg">
+          <div className="absolute inset-0 bg-black/40" onClick={handleCloseModal} />
+          <div className="relative bg-card border border-border rounded-card w-full max-w-lg p-6 shadow-lg">
             {newKey ? (
               <div>
                 <h3 className="text-[15px] font-semibold text-text-primary mb-1">API Key Created</h3>
@@ -294,14 +294,14 @@ function SFTPSourcesSection() {
       </div>
 
       {!data?.data.length ? (
-        <div className="bg-white border border-dashed border-border rounded-card p-8 text-center">
+        <div className="bg-card border border-dashed border-border rounded-card p-8 text-center">
           <p className="text-text-secondary font-semibold mb-1">No SFTP sources yet</p>
           <p className="text-table-cell text-text-muted">
             Add your dialler/recording system's SFTP server and we'll poll it for new recordings automatically.
           </p>
         </div>
       ) : (
-        <div className="bg-white border border-border rounded-card overflow-hidden">
+        <div className="bg-card border border-border rounded-card overflow-hidden">
           <table className="w-full">
             <thead>
               <tr>
@@ -431,8 +431,8 @@ function SFTPSourceModal({ initial, onClose }: { initial: SFTPFormState; onClose
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto py-8">
-      <div className="absolute inset-0 bg-text-primary/30" onClick={onClose} />
-      <div className="relative bg-white border border-border rounded-card w-full max-w-2xl p-6 shadow-lg my-auto">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative bg-card border border-border rounded-card w-full max-w-2xl p-6 shadow-lg my-auto">
         <h3 className="text-[15px] font-semibold text-text-primary mb-4">
           {isEdit ? 'Edit SFTP Source' : 'Add SFTP Source'}
         </h3>
@@ -520,8 +520,8 @@ function SFTPLogsModal({ sourceId, onClose }: { sourceId: string; onClose: () =>
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-text-primary/30" onClick={onClose} />
-      <div className="relative bg-white border border-border rounded-card w-full max-w-2xl p-6 shadow-lg max-h-[80vh] overflow-y-auto">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative bg-card border border-border rounded-card w-full max-w-2xl p-6 shadow-lg max-h-[80vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-[15px] font-semibold text-text-primary">Poll Logs</h3>
           <button onClick={onClose} className="text-text-muted hover:text-text-primary">Close</button>

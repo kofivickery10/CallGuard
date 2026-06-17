@@ -64,7 +64,7 @@ export function Alerts() {
       {isLoading ? (
         <div className="text-text-muted text-table-cell">Loading...</div>
       ) : !data?.data.length ? (
-        <div className="bg-white border border-dashed border-border rounded-card p-12 text-center">
+        <div className="bg-card border border-dashed border-border rounded-card p-12 text-center">
           <p className="text-text-secondary font-semibold mb-1">No alert rules yet</p>
           <p className="text-table-cell text-text-muted mb-4">
             Create rules to get notified when calls fail critical checks
@@ -74,7 +74,7 @@ export function Alerts() {
           </button>
         </div>
       ) : (
-        <div className="bg-white border border-border rounded-card overflow-x-auto">
+        <div className="bg-card border border-border rounded-card overflow-x-auto">
           <table className="w-full min-w-[640px]">
             <thead>
               <tr>

@@ -28,7 +28,7 @@ function SkeletonRow({ cols }: { cols: number }) {
             className="h-4 rounded bg-[length:800px_100%] animate-skeleton-shimmer"
             style={{
               backgroundImage:
-                'linear-gradient(90deg, #f0f5f0 0%, #e2e8e2 50%, #f0f5f0 100%)',
+                'linear-gradient(90deg, rgb(var(--cg-border-light)) 0%, rgb(var(--cg-border)) 50%, rgb(var(--cg-border-light)) 100%)',
               width: i === 0 ? '60%' : '40%',
             }}
           />
@@ -137,7 +137,7 @@ export function Dashboard() {
               ? 'text-review'
               : 'text-primary';
           return (
-            <div key={stat.label} className="bg-white border border-border rounded-card p-5">
+            <div key={stat.label} className="bg-card border border-border rounded-card p-5">
               <div className="flex justify-between items-center">
                 <span className="text-card-label uppercase text-text-muted">{stat.label}</span>
                 {!isExtra && (
@@ -160,7 +160,7 @@ export function Dashboard() {
 
       {/* Agent leaderboard (admin only) */}
       {isAdmin && leaderboard?.data && leaderboard.data.length > 0 && !agentFilter && (
-        <div className="bg-white border border-border rounded-card overflow-hidden mb-5">
+        <div className="bg-card border border-border rounded-card overflow-hidden mb-5">
           <div className="px-5 py-4 border-b border-border flex justify-between items-center">
             <h3 className="text-[15px] font-semibold text-text-primary">Agent Leaderboard</h3>
             <Link to="/team" className="text-table-cell text-primary font-medium hover:underline">View team</Link>
@@ -197,7 +197,7 @@ export function Dashboard() {
       )}
 
       {/* Recent calls */}
-      <div className="bg-white border border-border rounded-card overflow-hidden">
+      <div className="bg-card border border-border rounded-card overflow-hidden">
         <div className="px-5 py-4 border-b border-border flex justify-between items-center">
           <h3 className="text-[15px] font-semibold text-text-primary">Recent Calls</h3>
           <Link to="/calls" className="text-table-cell text-primary font-medium hover:underline">View all</Link>

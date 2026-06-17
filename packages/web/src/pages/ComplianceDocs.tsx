@@ -101,7 +101,7 @@ hr { border: none; border-top: 1px solid #e2e8e2; margin: 24px 0; }
           <button
             key={doc.id}
             onClick={() => setSelected(doc)}
-            className="bg-white border border-border rounded-card p-5 text-left hover:border-primary hover:shadow-md transition-all"
+            className="bg-card border border-border rounded-card p-5 text-left hover:border-primary hover:shadow-md transition-all"
           >
             <h3 className="text-[15px] font-semibold text-text-primary mb-2">{doc.title}</h3>
             <p className="text-table-cell text-text-subtle leading-relaxed">{doc.description}</p>
@@ -114,8 +114,8 @@ hr { border: none; border-top: 1px solid #e2e8e2; margin: 24px 0; }
 
       {selected && (
         <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto py-8">
-          <div className="absolute inset-0 bg-text-primary/30" onClick={handleClose} />
-          <div className="relative bg-white border border-border rounded-card w-full max-w-2xl p-6 shadow-lg my-auto">
+          <div className="absolute inset-0 bg-black/40" onClick={handleClose} />
+          <div className="relative bg-card border border-border rounded-card w-full max-w-2xl p-6 shadow-lg my-auto">
             <h3 className="text-[15px] font-semibold text-text-primary mb-1">{selected.title}</h3>
             <p className="text-table-cell text-text-subtle mb-5">{selected.description}</p>
 

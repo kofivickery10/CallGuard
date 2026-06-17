@@ -130,14 +130,14 @@ export function Upload() {
       )}
 
       {isAdmin && (
-        <div className="bg-white border border-border rounded-card p-5 mb-5">
+        <div className="bg-card border border-border rounded-card p-5 mb-5">
           <label className="block text-table-cell font-medium text-text-secondary mb-1.5">
             Assign to Agent <span className="text-text-muted font-normal">(optional)</span>
           </label>
           <select
             value={agentId}
             onChange={(e) => { setAgentId(e.target.value); if (e.target.value) setAgentName(''); }}
-            className="w-full border border-border rounded-btn px-3 py-2 text-table-cell text-text-primary focus:outline-none focus:border-primary transition-colors bg-white mb-2.5"
+            className="w-full border border-border rounded-btn px-3 py-2 text-table-cell text-text-primary focus:outline-none focus:border-primary transition-colors bg-card mb-2.5"
           >
             <option value="">Select an agent or type below</option>
             {agents?.data.map((agent) => (
@@ -162,7 +162,7 @@ export function Upload() {
               <select
                 value={scorecardId}
                 onChange={(e) => setScorecardId(e.target.value)}
-                className="w-full border border-border rounded-btn px-3 py-2 text-table-cell text-text-primary focus:outline-none focus:border-primary transition-colors bg-white"
+                className="w-full border border-border rounded-btn px-3 py-2 text-table-cell text-text-primary focus:outline-none focus:border-primary transition-colors bg-card"
               >
                 <option value="">Use the active scorecard</option>
                 {scorecards.data.map((s) => (
@@ -188,7 +188,7 @@ export function Upload() {
       <FileDropzone onFileSelected={handleFileSelected} disabled={uploading} />
 
       {uploading && (
-        <div className="mt-6 bg-white border border-border rounded-xl p-10 text-center">
+        <div className="mt-6 bg-card border border-border rounded-xl p-10 text-center">
           <div className="w-10 h-10 border-[3px] border-border border-t-primary rounded-full animate-spin mx-auto mb-4" />
           <div className="text-[16px] font-semibold text-text-primary">Processing your call...</div>
           <div className="text-table-cell text-text-muted mt-1">Uploading and preparing for analysis</div>
@@ -196,7 +196,7 @@ export function Upload() {
       )}
 
       {isAdmin && (
-        <div className="mt-8 bg-white border border-border rounded-card overflow-hidden">
+        <div className="mt-8 bg-card border border-border rounded-card overflow-hidden">
           <button
             onClick={() => setBulkOpen((v) => !v)}
             className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-table-header transition-colors"

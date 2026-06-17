@@ -62,14 +62,14 @@ export function Notifications() {
       {isLoading ? (
         <div className="text-text-muted text-table-cell">Loading...</div>
       ) : !data?.data.length ? (
-        <div className="bg-white border border-dashed border-border rounded-card p-12 text-center">
+        <div className="bg-card border border-dashed border-border rounded-card p-12 text-center">
           <p className="text-text-secondary font-semibold mb-1">No notifications</p>
           <p className="text-table-cell text-text-muted">
             You'll see alerts here when rules match or your calls need attention
           </p>
         </div>
       ) : (
-        <div className="bg-white border border-border rounded-card overflow-hidden">
+        <div className="bg-card border border-border rounded-card overflow-hidden">
           {data.data.map((n) => (
             <div
               key={n.id}

@@ -131,7 +131,7 @@ export function Breaches() {
       </div>
 
       {/* Filters */}
-      <div className="bg-white border border-border rounded-card p-4 mb-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div className="bg-card border border-border rounded-card p-4 mb-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         <select
           value={filters.severity}
           onChange={(e) => { setFilters({ ...filters, severity: e.target.value as BreachSeverity | '' }); setPage(1); }}
@@ -185,7 +185,7 @@ export function Breaches() {
       </div>
 
       {/* Table */}
-      <div className="bg-white border border-border rounded-card overflow-x-auto">
+      <div className="bg-card border border-border rounded-card overflow-x-auto">
         <table className="w-full min-w-[760px]">
           <thead>
             <tr>
@@ -253,11 +253,11 @@ export function Breaches() {
   );
 }
 
-const filterCls = "border border-border rounded-btn px-3 py-[7px] text-table-cell text-text-primary focus:outline-none focus:border-primary transition-colors bg-white";
+const filterCls = "border border-border rounded-btn px-3 py-[7px] text-table-cell text-text-primary focus:outline-none focus:border-primary transition-colors bg-card";
 
 function SummaryCard({ label, value, color }: { label: string; value: string | number; color: string }) {
   return (
-    <div className="bg-white border border-border rounded-card p-5">
+    <div className="bg-card border border-border rounded-card p-5">
       <div className="text-card-label uppercase text-text-muted">{label}</div>
       <div className={`text-card-value mt-2.5 ${color} font-mono`}>{value}</div>
     </div>

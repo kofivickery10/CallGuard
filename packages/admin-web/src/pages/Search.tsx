@@ -99,7 +99,7 @@ export default function Search() {
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="bg-white rounded-card border border-border overflow-hidden">
+    <div className="bg-card rounded-card border border-border overflow-hidden">
       <div className="px-4 py-2 bg-table-header border-b border-border text-table-header uppercase text-text-muted">{title}</div>
       <div className="divide-y divide-border">{children}</div>
     </div>

@@ -55,7 +55,7 @@ export function AdviserRiskPage() {
             Compliance risk per adviser, with recommended coaching actions
           </p>
         </div>
-        <div className="flex gap-1 bg-white border border-border rounded-btn p-1">
+        <div className="flex gap-1 bg-card border border-border rounded-btn p-1">
           {(['7', '30', '90', '0'] as Window[]).map((w) => (
             <button
               key={w}
@@ -76,7 +76,7 @@ export function AdviserRiskPage() {
       {counts && (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
           {RISK_LEVELS.map((level) => (
-            <div key={level} className="bg-white border border-border rounded-card p-4">
+            <div key={level} className="bg-card border border-border rounded-card p-4">
               <div className="text-[11px] uppercase tracking-wider text-text-muted font-semibold">
                 {RISK_LEVEL_LABELS[level]}
               </div>
@@ -89,7 +89,7 @@ export function AdviserRiskPage() {
       )}
 
       {/* Table */}
-      <div className="bg-white border border-border rounded-card overflow-x-auto">
+      <div className="bg-card border border-border rounded-card overflow-x-auto">
         <table className="w-full min-w-[720px]">
           <thead>
             <tr>

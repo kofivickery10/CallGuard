@@ -42,7 +42,7 @@ export default function Customers() {
   if (!enabled) {
     return (
       <div className="p-6">
-        <div className="bg-white border border-border rounded-card p-8 text-center max-w-md mx-auto">
+        <div className="bg-card border border-border rounded-card p-8 text-center max-w-md mx-auto">
           <p className="text-text-subtle text-table-cell mb-2">Customer journey tracking is available on the Core plan and above.</p>
           {user?.role === 'admin' && (
             <Link to="/settings/organization" className="text-primary font-medium hover:underline text-table-cell">Upgrade plan</Link>
@@ -71,7 +71,7 @@ export default function Customers() {
         />
       </div>
 
-      <div className="bg-white rounded-card border border-border overflow-x-auto">
+      <div className="bg-card rounded-card border border-border overflow-x-auto">
         <table className="w-full min-w-[680px]">
           <thead className="bg-table-header border-b border-border">
             <tr>
@@ -91,7 +91,7 @@ export default function Customers() {
               const score = c.avg_score ? parseFloat(c.avg_score) : null;
               const scoreClass = score === null ? 'text-text-muted' : score >= 70 ? 'text-pass font-semibold' : 'text-fail font-semibold';
               return (
-                <tr key={c.id} className="hover:bg-gray-50">
+                <tr key={c.id} className="hover:bg-page">
                   <td className="px-4 py-3">
                     <Link to={`/customers/${c.id}`} className="text-primary font-medium hover:underline text-table-cell">
                       {c.name || 'Unknown'}

@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
+import { ensureNotifyPermission, pingOnIncrease } from '../lib/browserPing';
 
 interface SupportMessage {
   id: string;
@@ -25,6 +26,39 @@ export function SupportWidget() {
     refetchInterval: open ? 5000 : false,
   });
 
+  // Unread staff replies — polled even while the widget is closed so the bubble
+  // shows a red count when support replies. Cleared once the thread is opened
+  // (fetching /support/messages marks it read server-side).
+  const { data: unread } = useQuery({
+    queryKey: ['support-unread'],
+    queryFn: () => api.get<{ count: number }>('/support/unread-count'),
+    enabled: !!user && !user.is_staff,
+    refetchInterval: open ? false : 20000,
+  });
+  const unreadCount = open ? 0 : unread?.count ?? 0;
+
+  // Clear the badge as soon as the open thread loads (server marked it read).
+  useEffect(() => {
+    if (open && data) queryClient.invalidateQueries({ queryKey: ['support-unread'] });
+  }, [open, data, queryClient]);
+
+  // Ask to enable desktop pings the first time the user opens support.
+  useEffect(() => {
+    if (open) void ensureNotifyPermission();
+  }, [open]);
+
+  // Desktop ping when a new staff reply arrives while the tab isn't focused.
+  const prevUnreadRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (unread === undefined) return;
+    prevUnreadRef.current = pingOnIncrease(
+      prevUnreadRef.current,
+      unread.count,
+      'CallGuard support',
+      'You have a new reply from support.'
+    );
+  }, [unread?.count, unread]);
+
   const send = useMutation({
     mutationFn: (body: string) => api.post('/support/messages', { body }),
     onSuccess: () => {
@@ -44,7 +78,7 @@ export function SupportWidget() {
   return (
     <>
       {open && (
-        <div className="fixed bottom-24 right-6 z-40 w-[340px] max-w-[calc(100vw-3rem)] bg-white border border-border rounded-card shadow-lg flex flex-col" style={{ height: '440px' }}>
+        <div className="fixed bottom-24 right-6 z-40 w-[340px] max-w-[calc(100vw-3rem)] bg-card border border-border rounded-card shadow-lg flex flex-col" style={{ height: '440px' }}>
           <div className="px-4 py-3 border-b border-border flex items-center justify-between">
             <div>
               <div className="text-table-cell font-semibold text-text-primary">CallGuard support</div>
@@ -103,11 +137,16 @@ export function SupportWidget() {
         onClick={() => setOpen((v) => !v)}
         className="fixed bottom-6 right-6 z-40 w-14 h-14 rounded-full bg-primary text-white shadow-lg flex items-center justify-center hover:bg-primary-hover transition-colors"
         title="Support"
-        aria-label="Support chat"
+        aria-label={unreadCount > 0 ? `Support chat, ${unreadCount} new replies` : 'Support chat'}
       >
         <svg viewBox="0 0 24 24" className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
         </svg>
+        {unreadCount > 0 && (
+          <span className="absolute -top-1 -right-1 min-w-[20px] h-5 px-1 rounded-full bg-fail text-white text-[11px] font-bold flex items-center justify-center border-2 border-page">
+            {unreadCount > 99 ? '99+' : unreadCount}
+          </span>
+        )}
       </button>
     </>
   );

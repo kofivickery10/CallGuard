@@ -51,7 +51,7 @@ export function ShareLinksPanel({ callId }: Props) {
   const revokedLinks = data?.data.filter((l) => l.revoked_at) || [];
 
   return (
-    <div className="bg-white border border-border rounded-card overflow-hidden">
+    <div className="bg-card border border-border rounded-card overflow-hidden">
       <div className="px-5 py-4 border-b border-border">
         <h3 className="text-[15px] font-semibold text-text-primary">Share with Client</h3>
         <p className="text-[12px] text-text-muted mt-0.5">
@@ -67,7 +67,7 @@ export function ShareLinksPanel({ callId }: Props) {
               <input
                 readOnly
                 value={justCreated.url}
-                className="flex-1 border border-border rounded-btn px-2 py-1.5 text-[11px] font-mono text-text-cell bg-white"
+                className="flex-1 border border-border rounded-btn px-2 py-1.5 text-[11px] font-mono text-text-cell bg-card"
                 onClick={(e) => (e.target as HTMLInputElement).select()}
               />
               <button
@@ -90,7 +90,7 @@ export function ShareLinksPanel({ callId }: Props) {
             <select
               value={expiresInDays}
               onChange={(e) => setExpiresInDays(parseInt(e.target.value))}
-              className="border border-border rounded-btn px-2 py-1.5 text-table-cell text-text-primary bg-white focus:outline-none focus:border-primary"
+              className="border border-border rounded-btn px-2 py-1.5 text-table-cell text-text-primary bg-card focus:outline-none focus:border-primary"
             >
               <option value={1}>1 day</option>
               <option value={7}>7 days</option>

@@ -41,8 +41,8 @@ export function InviteAgentModal({ open, onClose }: InviteAgentModalProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-text-primary/30" onClick={handleClose} />
-      <div className="relative bg-white border border-border rounded-card w-full max-w-md p-6 shadow-lg">
+      <div className="absolute inset-0 bg-black/40" onClick={handleClose} />
+      <div className="relative bg-card border border-border rounded-card w-full max-w-md p-6 shadow-lg">
         {created ? (
           <div>
             <h3 className="text-[15px] font-semibold text-text-primary mb-2">Agent Created</h3>
@@ -73,7 +73,7 @@ export function InviteAgentModal({ open, onClose }: InviteAgentModalProps) {
               </div>
               <div>
                 <label className="block text-table-cell font-medium text-text-secondary mb-1">Role</label>
-                <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} className="w-full border border-border rounded-btn px-3 py-2 text-table-cell text-text-primary focus:outline-none focus:border-primary transition-colors bg-white">
+                <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} className="w-full border border-border rounded-btn px-3 py-2 text-table-cell text-text-primary focus:outline-none focus:border-primary transition-colors bg-card">
                   <option value="adviser">Adviser — sees only their own calls</option>
                   <option value="supervisor">Supervisor — sees & actions all calls</option>
                   <option value="viewer">Viewer — read-only across the org</option>

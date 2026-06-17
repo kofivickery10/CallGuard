@@ -17,7 +17,7 @@ export function AgentFilter({ value, onChange }: AgentFilterProps) {
     <select
       value={value || ''}
       onChange={(e) => onChange(e.target.value || null)}
-      className="border border-border rounded-btn px-3 py-[9px] text-table-cell text-text-primary focus:outline-none focus:border-primary transition-colors bg-white"
+      className="border border-border rounded-btn px-3 py-[9px] text-table-cell text-text-primary focus:outline-none focus:border-primary transition-colors bg-card"
     >
       <option value="">All Agents</option>
       {data?.data.map((agent) => (

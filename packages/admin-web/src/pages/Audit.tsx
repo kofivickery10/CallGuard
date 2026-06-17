@@ -59,7 +59,7 @@ export default function Audit() {
       <h1 className="text-xl font-bold text-text-primary">Audit Log</h1>
       <p className="text-page-sub text-text-subtle">Every recorded action across all tenants, newest first.</p>
 
-      <div className="flex flex-wrap gap-3 items-end bg-white border border-border rounded-card p-4">
+      <div className="flex flex-wrap gap-3 items-end bg-card border border-border rounded-card p-4">
         <div>
           <label className="block text-xs font-medium text-text-muted mb-1">Action</label>
           <input
@@ -85,7 +85,7 @@ export default function Audit() {
 
       {error && <p className="text-fail text-sm">{error}</p>}
 
-      <div className="bg-white rounded-card border border-border overflow-hidden">
+      <div className="bg-card rounded-card border border-border overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-table-header border-b border-border">
             <tr>

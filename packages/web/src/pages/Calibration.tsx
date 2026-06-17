@@ -64,7 +64,7 @@ export function Calibration() {
       {data && (
         <>
           {data.total_corrections === 0 && data.total_reviewed_items === 0 ? (
-            <div className="bg-white border border-border rounded-card p-6 text-table-cell text-text-secondary">
+            <div className="bg-card border border-border rounded-card p-6 text-table-cell text-text-secondary">
               No reviewed calls yet. As supervisors mark calls reviewed and correct the odd score, the
               AI learns your interpretation — and this page shows its agreement with your team climbing
               over time. Open a call and use <strong>Mark reviewed</strong> to start.
@@ -73,7 +73,7 @@ export function Calibration() {
             <>
               {/* Agreement headline (the real moat metric) */}
               {data.current_agreement_pct != null && (
-                <div className="bg-white border border-border rounded-card p-5 mb-5">
+                <div className="bg-card border border-border rounded-card p-5 mb-5">
                   <h3 className="text-[13px] uppercase tracking-wider text-text-muted font-semibold mb-1">
                     AI ↔ reviewer agreement
                   </h3>
@@ -105,7 +105,7 @@ export function Calibration() {
               )}
 
               {/* Override rate */}
-              <div className="bg-white border border-border rounded-card p-5 mb-5">
+              <div className="bg-card border border-border rounded-card p-5 mb-5">
                 <h3 className="text-[13px] uppercase tracking-wider text-text-muted font-semibold mb-1">
                   Reviewer override rate
                 </h3>
@@ -134,7 +134,7 @@ export function Calibration() {
               </div>
 
               {/* Trend */}
-              <div className="bg-white border border-border rounded-card p-5 mb-5">
+              <div className="bg-card border border-border rounded-card p-5 mb-5">
                 <h3 className="text-[13px] uppercase tracking-wider text-text-muted font-semibold mb-3">
                   Trend (last 6 months)
                 </h3>
@@ -161,7 +161,7 @@ export function Calibration() {
 
               {/* Where it disagrees most */}
               {data.top_items.length > 0 && (
-                <div className="bg-white border border-border rounded-card p-5">
+                <div className="bg-card border border-border rounded-card p-5">
                   <h3 className="text-[13px] uppercase tracking-wider text-text-muted font-semibold mb-1">
                     Items needing the most calibration
                   </h3>

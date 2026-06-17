@@ -26,7 +26,7 @@ export function Scorecards() {
             <Link
               key={scorecard.id}
               to={`/scorecards/${scorecard.id}/edit`}
-              className="bg-white border border-border rounded-card p-5 cursor-pointer transition-all hover:border-primary hover:shadow-md group"
+              className="bg-card border border-border rounded-card p-5 cursor-pointer transition-all hover:border-primary hover:shadow-md group"
             >
               <h4 className="text-[14px] font-semibold text-text-primary mb-1.5">
                 {scorecard.name}

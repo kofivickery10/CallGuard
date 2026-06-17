@@ -1,9 +1,13 @@
-import { ReactNode, useEffect, useState } from 'react';
+import { ReactNode, useEffect, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../api/client';
+import { pingOnIncrease } from '../lib/browserPing';
 import { NotificationBell } from './NotificationBell';
 import { SupportWidget } from './SupportWidget';
+import { ThemeToggle } from './ThemeToggle';
+import { Logo } from './Logo';
 
 interface Announcement {
   id: string;
@@ -22,14 +26,16 @@ const ANNOUNCEMENT_STYLES: Record<string, string> = {
 // the app. Announcements can be dismissed for the session.
 function AppBanners() {
   const { user } = useAuth();
-  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
 
-  useEffect(() => {
-    api.get<{ announcements: Announcement[] }>('/announcements')
-      .then((r) => setAnnouncements(r.announcements))
-      .catch(() => setAnnouncements([]));
-  }, []);
+  // Poll so announcements published in the superadmin console appear here, and
+  // deactivated/expired ones disappear, without the tenant refreshing the page.
+  const { data } = useQuery({
+    queryKey: ['announcements'],
+    queryFn: () => api.get<{ announcements: Announcement[] }>('/announcements'),
+    refetchInterval: 30_000,
+  });
+  const announcements = data?.announcements ?? [];
 
   const visible = announcements.filter((a) => !dismissed.has(a.id));
   if (!user?.impersonated && visible.length === 0) return null;
@@ -125,6 +131,27 @@ export function Layout({ children }: { children: ReactNode }) {
   const location = useLocation();
   const [navOpen, setNavOpen] = useState(false);
 
+  // Staff: unread customer messages across all orgs, for the Support nav badge.
+  const { data: supportUnread } = useQuery({
+    queryKey: ['support-unread-staff'],
+    queryFn: () => api.get<{ count: number }>('/support/unread-count'),
+    enabled: !!user?.is_staff,
+    refetchInterval: 20000,
+  });
+  const supportUnreadCount = supportUnread?.count ?? 0;
+
+  // Desktop ping for staff when a customer message arrives and the tab isn't focused.
+  const prevSupportUnreadRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (supportUnread === undefined) return;
+    prevSupportUnreadRef.current = pingOnIncrease(
+      prevSupportUnreadRef.current,
+      supportUnread.count,
+      'CallGuard support',
+      'A customer sent a new support message.'
+    );
+  }, [supportUnread?.count, supportUnread]);
+
   // Close the mobile drawer whenever the route changes.
   useEffect(() => { setNavOpen(false); }, [location.pathname]);
 
@@ -139,15 +166,15 @@ export function Layout({ children }: { children: ReactNode }) {
         />
       )}
 
-      {/* Sidebar - white. Fixed on desktop; slides in as a drawer below lg. */}
+      {/* Sidebar surface. Fixed on desktop; slides in as a drawer below lg. */}
       <aside
-        className={`w-[220px] bg-white border-r border-sidebar-border flex flex-col fixed left-0 top-0 h-screen z-40 transform transition-transform duration-200 lg:translate-x-0 ${
+        className={`w-[220px] bg-card border-r border-sidebar-border flex flex-col fixed left-0 top-0 h-screen z-40 transform transition-transform duration-200 lg:translate-x-0 ${
           navOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
         {/* Logo */}
         <div className="px-4 py-4 flex-shrink-0">
-          <img src="/callguard-logo-horizontal.svg" alt="CallGuard AI" className="h-8 w-auto" />
+          <Logo className="h-8 w-auto" />
         </div>
 
         {/* Nav (scrolls independently when items exceed viewport height) */}
@@ -193,6 +220,11 @@ export function Layout({ children }: { children: ReactNode }) {
                         <path d={item.icon} />
                       </svg>
                       <span>{item.label}</span>
+                      {item.path === '/support-inbox' && supportUnreadCount > 0 && (
+                        <span className="ml-auto min-w-[18px] h-[18px] px-1 rounded-full bg-fail text-white text-[11px] font-bold flex items-center justify-center">
+                          {supportUnreadCount > 99 ? '99+' : supportUnreadCount}
+                        </span>
+                      )}
                     </Link>
                   );
                 })}
@@ -241,13 +273,14 @@ export function Layout({ children }: { children: ReactNode }) {
             </svg>
             Sign out
           </button>
+          <ThemeToggle className="mt-1" />
         </div>
       </aside>
 
       {/* Main content */}
       <main className="lg:ml-[220px] min-h-screen relative">
         {/* Mobile top bar: hamburger + logo + bell (below lg only) */}
-        <div className="lg:hidden sticky top-0 z-20 flex items-center justify-between h-14 px-4 bg-white border-b border-sidebar-border">
+        <div className="lg:hidden sticky top-0 z-20 flex items-center justify-between h-14 px-4 bg-card border-b border-sidebar-border">
           <button
             onClick={() => setNavOpen(true)}
             aria-label="Open menu"
@@ -257,7 +290,7 @@ export function Layout({ children }: { children: ReactNode }) {
               <path d="M3 6h18M3 12h18M3 18h18" />
             </svg>
           </button>
-          <img src="/callguard-logo-horizontal.svg" alt="CallGuard AI" className="h-6 w-auto" />
+          <Logo className="h-6 w-auto" />
           <NotificationBell />
         </div>
 

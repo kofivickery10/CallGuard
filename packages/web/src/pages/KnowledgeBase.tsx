@@ -106,7 +106,7 @@ function SectionCard({
   const files: KBFile[] = section?.files || [];
 
   return (
-    <div className="bg-white border border-border rounded-card p-5">
+    <div className="bg-card border border-border rounded-card p-5">
       <div className="mb-3">
         <h3 className="text-[15px] font-semibold text-text-primary">
           {KB_SECTION_LABELS[sectionType]}

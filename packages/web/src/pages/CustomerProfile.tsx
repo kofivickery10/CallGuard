@@ -5,6 +5,7 @@ import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { PASS_THRESHOLD } from '@callguard/shared';
+import { useTheme } from '../lib/theme';
 
 interface Customer {
   id: string;
@@ -59,6 +60,8 @@ export default function CustomerProfile() {
 
   const customer = customerData?.customer;
   const calls = journeyData?.calls ?? [];
+  const { theme } = useTheme();
+  const chartTick = theme === 'dark' ? '#8a9c8d' : '#8a9e8a';
 
   if (!customer) {
     return <div className="p-6 text-text-muted text-table-cell">Loading…</div>;
@@ -148,13 +151,15 @@ export default function CustomerProfile() {
 
       {/* Score trend chart */}
       {chartData.length > 1 && (
-        <div className="bg-white rounded-card border border-border p-5">
+        <div className="bg-card rounded-card border border-border p-5">
           <h2 className="text-[15px] font-semibold text-text-primary mb-4">Score trend</h2>
           <ResponsiveContainer width="100%" height={160}>
             <LineChart data={chartData}>
-              <XAxis dataKey="call" tick={{ fontSize: 11 }} />
-              <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} />
+              <XAxis dataKey="call" tick={{ fontSize: 11, fill: chartTick }} />
+              <YAxis domain={[0, 100]} tick={{ fontSize: 11, fill: chartTick }} />
               <Tooltip
+                contentStyle={{ background: 'rgb(var(--cg-card))', border: '1px solid rgb(var(--cg-border))', borderRadius: 6, fontSize: 12 }}
+                labelStyle={{ color: 'rgb(var(--cg-text-primary))' }}
                 formatter={(v) => [`${Number(v).toFixed(1)}%`, 'Score']}
                 labelFormatter={(l) => `Call ${l}`}
               />
@@ -167,7 +172,7 @@ export default function CustomerProfile() {
 
       {/* Journey timeline (supervisors/admins only) */}
       {user?.role !== 'adviser' && (
-        <div className="bg-white rounded-card border border-border overflow-hidden">
+        <div className="bg-card rounded-card border border-border overflow-hidden">
           <div className="px-5 py-4 border-b border-border">
             <h2 className="text-[15px] font-semibold text-text-primary">Call journey ({calls.length})</h2>
           </div>
@@ -187,7 +192,7 @@ export default function CustomerProfile() {
                   const date = new Date(c.call_date || c.created_at).toLocaleDateString('en-GB');
                   const resultClass = c.pass === null ? '' : c.pass ? 'text-pass font-semibold' : 'text-fail font-semibold';
                   return (
-                    <tr key={c.id} className="hover:bg-gray-50">
+                    <tr key={c.id} className="hover:bg-page">
                       <td className="px-4 py-3 text-table-cell text-text-secondary">{date}</td>
                       <td className="px-4 py-3 text-table-cell text-text-primary">{c.agent_name || '—'}</td>
                       <td className="px-4 py-3 text-table-cell font-medium">

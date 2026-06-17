@@ -39,7 +39,7 @@ export default function BillingOverview() {
       </div>
 
       {/* Plan */}
-      <div className="bg-white rounded-card border border-border p-5 space-y-1">
+      <div className="bg-card rounded-card border border-border p-5 space-y-1">
         <p className="text-table-cell text-text-muted font-semibold uppercase tracking-wider text-xs">Current plan</p>
         <p className="text-xl font-bold text-text-primary">{planLabel}</p>
         <p className="text-table-cell text-text-muted text-xs mt-1">To change your plan, contact CallGuard support.</p>
@@ -47,14 +47,14 @@ export default function BillingOverview() {
 
       {/* Seat summary */}
       <div className="grid grid-cols-2 gap-4">
-        <div className="bg-white rounded-card border border-border p-5">
+        <div className="bg-card rounded-card border border-border p-5">
           <p className="text-xs font-semibold uppercase tracking-wider text-text-muted mb-1">
             Active seats — {seatsData?.current_month ?? '—'}
           </p>
           <p className="text-3xl font-bold text-text-primary">{seatsData?.current_active_seats ?? '—'}</p>
           <p className="text-xs text-text-muted mt-1">Billable this month</p>
         </div>
-        <div className="bg-white rounded-card border border-border p-5">
+        <div className="bg-card rounded-card border border-border p-5">
           <p className="text-xs font-semibold uppercase tracking-wider text-text-muted mb-1">
             Active seats — {seatsData?.previous_month ?? '—'}
           </p>
@@ -65,7 +65,7 @@ export default function BillingOverview() {
 
       {/* Active advisers this month */}
       {seatsData && seatsData.current_advisers.length > 0 && (
-        <div className="bg-white rounded-card border border-border overflow-hidden">
+        <div className="bg-card rounded-card border border-border overflow-hidden">
           <div className="px-5 py-3 border-b border-border">
             <h2 className="text-[15px] font-semibold text-text-primary">
               Active advisers this month ({seatsData.current_advisers.length})
@@ -88,7 +88,7 @@ export default function BillingOverview() {
                 const tierLabel = adviserPlan ? PLAN_LABELS[adviserPlan] : '—';
                 const hasOverride = !!a.plan_override && orgPlan && a.plan_override !== orgPlan;
                 return (
-                  <tr key={a.id} className="hover:bg-gray-50">
+                  <tr key={a.id} className="hover:bg-page">
                     <td className="px-4 py-3 text-table-cell text-text-primary">{a.name}</td>
                     <td className="px-4 py-3 text-table-cell text-text-secondary">
                       {tierLabel}
@@ -113,7 +113,7 @@ export default function BillingOverview() {
       )}
 
       {seatsData && seatsData.current_advisers.length === 0 && (
-        <div className="bg-white rounded-card border border-border p-8 text-center text-text-muted text-table-cell">
+        <div className="bg-card rounded-card border border-border p-8 text-center text-text-muted text-table-cell">
           No scored calls this month — no billable seats yet.
         </div>
       )}

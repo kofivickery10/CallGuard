@@ -60,16 +60,16 @@ export default function Billing() {
           { label: 'AI/transcription cost', value: `£${(totalClaude + totalDeepgram).toFixed(2)}` },
           { label: 'Gross margin',          value: `£${grossMargin.toFixed(2)}` },
         ].map(({ label, value, accent }) => (
-          <div key={label} className={`bg-white rounded-card p-4 border ${accent ? 'border-primary' : 'border-border'}`}>
+          <div key={label} className={`bg-card rounded-card p-4 border ${accent ? 'border-primary' : 'border-border'}`}>
             <p className="text-xs font-semibold uppercase tracking-wider text-text-muted mb-1">{label}</p>
             <p className={`text-2xl font-bold ${accent ? 'text-primary' : 'text-text-primary'}`}>{value}</p>
           </div>
         ))}
       </div>
 
-      <div className="bg-white rounded-card border border-border overflow-hidden">
+      <div className="bg-card rounded-card border border-border overflow-hidden">
         <table className="w-full text-sm">
-          <thead className="bg-gray-50 border-b border-border">
+          <thead className="bg-table-header border-b border-border">
             <tr>
               {['Organisation', 'Plan', 'Active seats', 'Monthly income', 'Running cost', 'Margin', ''].map((h) => (
                 <th key={h} className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-text-muted">{h}</th>
@@ -87,7 +87,7 @@ export default function Billing() {
               const noIncome = r.monthly_income === 0 && cost > 0;
               const alert = loss || noIncome;
               return (
-                <tr key={r.org_id} className={`hover:bg-gray-50 ${alert ? 'bg-fail-bg/40' : ''}`}>
+                <tr key={r.org_id} className={`hover:bg-sidebar-hover ${alert ? 'bg-fail-bg/40' : ''}`}>
                   <td className="px-4 py-3 font-medium text-text-primary">{r.org_name}</td>
                   <td className="px-4 py-3 capitalize text-text-secondary">{r.plan}</td>
                   <td className="px-4 py-3 text-text-secondary">{r.active_seats}</td>

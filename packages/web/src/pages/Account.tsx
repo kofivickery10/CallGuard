@@ -93,7 +93,7 @@ export default function Account() {
       <h1 className="text-page-title">My Account</h1>
 
       {/* Profile */}
-      <div className="bg-white rounded-card border border-border p-5 space-y-4">
+      <div className="bg-card rounded-card border border-border p-5 space-y-4">
         <h2 className="text-[15px] font-semibold text-text-primary">Profile</h2>
         <div className="space-y-2">
           <div className="flex items-center justify-between">
@@ -129,7 +129,7 @@ export default function Account() {
       </div>
 
       {/* Change password */}
-      <div className="bg-white rounded-card border border-border p-5 space-y-4">
+      <div className="bg-card rounded-card border border-border p-5 space-y-4">
         <h2 className="text-[15px] font-semibold text-text-primary">Change Password</h2>
         <form onSubmit={handlePwSubmit} className="space-y-3">
           {[

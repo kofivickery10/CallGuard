@@ -75,14 +75,14 @@ export function BreachDetailDrawer({ breachId, onClose }: BreachDetailDrawerProp
 
   return (
     <div className="fixed inset-0 z-50 flex">
-      <div className="flex-1 bg-text-primary/30" onClick={onClose} />
-      <div className="w-[560px] bg-white border-l border-border shadow-xl overflow-y-auto">
+      <div className="flex-1 bg-black/40" onClick={onClose} />
+      <div className="w-[560px] bg-card border-l border-border shadow-xl overflow-y-auto">
         {!breach ? (
           <div className="p-8 text-text-muted">Loading...</div>
         ) : (
           <div>
             {/* Header */}
-            <div className="sticky top-0 bg-white border-b border-border px-6 py-4 flex items-start justify-between">
+            <div className="sticky top-0 bg-card border-b border-border px-6 py-4 flex items-start justify-between">
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-1">
                   <SeverityBadge severity={breach.severity} />

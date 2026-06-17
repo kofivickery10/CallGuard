@@ -87,5 +87,10 @@ DirectoryIndex index.html
   Require all denied
 </FilesMatch>
 
-# ─── Custom error pages (optional) ───────────────────────────────────────
-ErrorDocument 404 /index.html
+# ─── Custom error pages ──────────────────────────────────────────────────
+# Serve a real 404 page that returns a 404 status. Pointing this at a static
+# file (not index.html) means Apache responds with the correct 404 code, which
+# avoids "soft 404" warnings in Search Console and keeps dead URLs out of the
+# index. The pretty-URL rule above must not rewrite a missing path to .html,
+# so exclude /404 itself is unnecessary — the file exists and is served directly.
+ErrorDocument 404 /404.html

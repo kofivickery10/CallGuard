@@ -9,6 +9,17 @@
     <meta name="theme-color" content="#4A9E6E" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>CallGuard AI — Compliance scoring for sales conversations</title>
+    <!-- Apply the saved/system theme before first paint to avoid a flash. -->
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem('cg-theme');
+          var dark = stored ? stored === 'dark'
+            : window.matchMedia('(prefers-color-scheme: dark)').matches;
+          document.documentElement.classList.toggle('dark', dark);
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
