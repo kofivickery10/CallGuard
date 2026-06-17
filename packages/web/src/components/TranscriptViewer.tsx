@@ -6,7 +6,7 @@ export function TranscriptViewer({ transcript }: TranscriptViewerProps) {
   const lines = transcript.split('\n').filter((line) => line.trim());
 
   return (
-    <div className="overflow-y-auto max-h-[430px] px-5 py-4">
+    <div className="overflow-y-auto flex-1 min-h-0 max-h-[75vh] lg:max-h-none px-5 py-4">
       {lines.map((line, i) => {
         const isAgent = line.startsWith('Agent:');
         const isCustomer = line.startsWith('Customer:');

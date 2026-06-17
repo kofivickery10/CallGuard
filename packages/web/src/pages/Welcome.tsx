@@ -1,14 +1,15 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { Logo } from '../components/Logo';
 
 export function Welcome() {
   return (
     <div className="min-h-screen bg-page">
       {/* Top nav */}
-      <header className="bg-white border-b border-border">
+      <header className="bg-card border-b border-border">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center">
-            <img src="/callguard-logo-horizontal.svg" alt="CallGuard AI" className="h-9 w-auto" />
+            <Logo className="h-9 w-auto" />
           </div>
           <nav className="flex items-center gap-6 text-table-cell">
             <a href="#features" className="text-text-secondary hover:text-text-primary">Features</a>
@@ -45,7 +46,7 @@ export function Welcome() {
           </a>
           <Link
             to="/login"
-            className="px-6 py-3 rounded-btn border border-border text-text-cell text-[15px] font-semibold hover:bg-white transition-colors"
+            className="px-6 py-3 rounded-btn border border-border text-text-cell text-[15px] font-semibold hover:bg-card transition-colors"
           >
             Sign In
           </Link>
@@ -76,7 +77,7 @@ export function Welcome() {
       </section>
 
       {/* How it works */}
-      <section className="bg-white py-20 border-y border-border">
+      <section className="bg-card py-20 border-y border-border">
         <div className="max-w-5xl mx-auto px-6">
           <h2 className="text-[28px] font-bold text-text-primary text-center mb-2">How CallGuard changes that</h2>
           <p className="text-page-sub text-text-subtle text-center mb-10">From call to compliance insight in minutes</p>
@@ -104,7 +105,7 @@ export function Welcome() {
       </section>
 
       {/* Pricing */}
-      <section id="pricing" className="bg-white py-20 border-y border-border">
+      <section id="pricing" className="bg-card py-20 border-y border-border">
         <div className="max-w-5xl mx-auto px-6">
           <h2 className="text-[28px] font-bold text-text-primary text-center mb-2">Simple pricing</h2>
           <p className="text-page-sub text-text-subtle text-center mb-10">All plans include custom scorecard build, onboarding, and Consumer Duty reporting</p>
@@ -142,7 +143,7 @@ export function Welcome() {
       </section>
 
       {/* Footer */}
-      <footer className="bg-white border-t border-border py-8">
+      <footer className="bg-card border-t border-border py-8">
         <div className="max-w-6xl mx-auto px-6 flex flex-col md:flex-row justify-between items-center gap-4 text-[12px] text-text-muted">
           <div>
             &copy; {new Date().getFullYear()} CallGuard. UK-based. UK data residency. AES-256 encryption at rest.
@@ -159,7 +160,7 @@ export function Welcome() {
 
 function ProblemCard({ value, label, detail }: { value: string; label: string; detail: string }) {
   return (
-    <div className="bg-white border border-border rounded-card p-6">
+    <div className="bg-card border border-border rounded-card p-6">
       <div className="text-[36px] font-bold text-fail font-mono">{value}</div>
       <div className="text-[13px] font-semibold text-text-primary mt-1">{label}</div>
       <div className="text-table-cell text-text-subtle mt-2 leading-relaxed">{detail}</div>
@@ -181,7 +182,7 @@ function StepCard({ n, title, body }: { n: string; title: string; body: string }
 
 function FeatureCard({ title, body }: { title: string; body: string }) {
   return (
-    <div className="bg-white border border-border rounded-card p-6 hover:border-primary hover:shadow-md transition-all">
+    <div className="bg-card border border-border rounded-card p-6 hover:border-primary hover:shadow-md transition-all">
       <h3 className="text-[15px] font-semibold text-text-primary">{title}</h3>
       <p className="text-table-cell text-text-subtle mt-2 leading-relaxed">{body}</p>
     </div>
@@ -204,7 +205,7 @@ function PricingCard({
   return (
     <div
       className={`rounded-card p-6 border ${
-        featured ? 'border-primary shadow-lg bg-white ring-2 ring-primary/20' : 'border-border bg-white'
+        featured ? 'border-primary shadow-lg bg-card ring-2 ring-primary/20' : 'border-border bg-card'
       }`}
     >
       {featured && (
@@ -292,7 +293,7 @@ function DemoForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="bg-white border border-border rounded-card p-6 space-y-4">
+    <form onSubmit={handleSubmit} className="bg-card border border-border rounded-card p-6 space-y-4">
       {error && (
         <div className="bg-fail-bg text-fail px-3 py-2 rounded-btn text-table-cell">{error}</div>
       )}
@@ -360,7 +361,7 @@ function DemoForm() {
 }
 
 const inputCls =
-  'w-full border border-border rounded-btn px-3 py-2 text-table-cell text-text-primary placeholder:text-text-muted focus:outline-none focus:border-primary bg-white';
+  'w-full border border-border rounded-btn px-3 py-2 text-table-cell text-text-primary placeholder:text-text-muted focus:outline-none focus:border-primary bg-card';
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (

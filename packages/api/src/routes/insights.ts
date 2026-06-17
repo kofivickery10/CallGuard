@@ -32,20 +32,6 @@ insightsRouter.get('/', async (req, res, next) => {
   }
 });
 
-insightsRouter.get('/:id', async (req, res, next) => {
-  try {
-    await requirePlan(req.user!.organizationId);
-    const digest = await queryOne<InsightDigest>(
-      'SELECT * FROM insight_digests WHERE id = $1 AND organization_id = $2',
-      [req.params.id, req.user!.organizationId]
-    );
-    if (!digest) throw new AppError(404, 'Digest not found');
-    res.json(digest);
-  } catch (err) {
-    next(err);
-  }
-});
-
 insightsRouter.post('/generate', requireActioner, async (req, res, next) => {
   try {
     await requirePlan(req.user!.organizationId);
@@ -172,6 +158,22 @@ insightsRouter.get('/calibration', async (req, res, next) => {
         too_harsh: parseInt(t.too_harsh, 10),
       })),
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Must stay LAST: this catch-all param route would otherwise swallow static
+// paths like /calibration and /generate, casting the literal segment to a uuid.
+insightsRouter.get('/:id', async (req, res, next) => {
+  try {
+    await requirePlan(req.user!.organizationId);
+    const digest = await queryOne<InsightDigest>(
+      'SELECT * FROM insight_digests WHERE id = $1 AND organization_id = $2',
+      [req.params.id, req.user!.organizationId]
+    );
+    if (!digest) throw new AppError(404, 'Digest not found');
+    res.json(digest);
   } catch (err) {
     next(err);
   }

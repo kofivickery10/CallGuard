@@ -39,7 +39,7 @@ function queueWarning(redisOk: boolean, q: QueueStat): boolean {
 
 function StatCard({ label, value, sub }: { label: string; value: string | number; sub?: string }) {
   return (
-    <div className="bg-white rounded-card p-5 shadow-sm border border-border">
+    <div className="bg-card rounded-card p-5 shadow-sm border border-border">
       <p className="text-xs font-semibold uppercase tracking-wider text-text-muted mb-1">{label}</p>
       <p className="text-3xl font-bold text-text-primary">{value}</p>
       {sub && <p className="text-xs text-text-muted mt-1">{sub}</p>}
@@ -92,7 +92,7 @@ export default function Dashboard() {
 
       {/* Revenue headline */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-white rounded-card p-5 border border-primary">
+        <div className="bg-card rounded-card p-5 border border-primary">
           <p className="text-xs font-semibold uppercase tracking-wider text-text-muted mb-1">Monthly recurring revenue</p>
           <p className="text-3xl font-bold text-primary">£{data.platform_mrr.toFixed(2)}</p>
           <p className="text-xs text-text-muted mt-1">Active seats × tier/override price</p>
@@ -120,7 +120,7 @@ export default function Dashboard() {
 
       {/* System health */}
       {health && (
-        <div className="bg-white rounded-card border border-border p-5">
+        <div className="bg-card rounded-card border border-border p-5">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-semibold text-text-primary">System health</h2>
             <div className="flex items-center gap-4 text-xs">

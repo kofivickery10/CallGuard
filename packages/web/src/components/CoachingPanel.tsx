@@ -16,7 +16,7 @@ export function CoachingPanel({ coaching, plan, callStatus, isAdmin, priorCoachi
   // Not on a paid plan - show soft upgrade prompt
   if (!coachingEnabled) {
     return (
-      <div className="bg-white border border-border rounded-card overflow-hidden">
+      <div className="bg-card border border-border rounded-card overflow-hidden">
         <div className="px-5 py-4 border-b border-border flex items-center justify-between">
           <h3 className="text-[15px] font-semibold text-text-primary flex items-center gap-2">
             Coaching
@@ -49,7 +49,7 @@ export function CoachingPanel({ coaching, plan, callStatus, isAdmin, priorCoachi
   // Coaching enabled but not yet generated
   if (!coaching) {
     return (
-      <div className="bg-white border border-border rounded-card overflow-hidden">
+      <div className="bg-card border border-border rounded-card overflow-hidden">
         <div className="px-5 py-4 border-b border-border">
           <h3 className="text-[15px] font-semibold text-text-primary">Coaching</h3>
         </div>
@@ -63,7 +63,7 @@ export function CoachingPanel({ coaching, plan, callStatus, isAdmin, priorCoachi
   }
 
   return (
-    <div className="bg-white border border-border rounded-card overflow-hidden">
+    <div className="bg-card border border-border rounded-card overflow-hidden">
       <div className="px-5 py-4 border-b border-border flex items-center justify-between">
         <h3 className="text-[15px] font-semibold text-text-primary flex items-center gap-2">
           Coaching

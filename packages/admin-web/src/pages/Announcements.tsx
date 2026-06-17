@@ -100,7 +100,7 @@ export default function Announcements() {
       {error && <p className="text-fail text-sm">{error}</p>}
 
       {/* Editor */}
-      <div className="bg-white rounded-card border border-border p-4 space-y-3 max-w-2xl">
+      <div className="bg-card rounded-card border border-border p-4 space-y-3 max-w-2xl">
         <h2 className="text-sm font-semibold text-text-primary">{editingId ? 'Edit announcement' : 'New announcement'}</h2>
         <input
           type="text"
@@ -149,7 +149,7 @@ export default function Announcements() {
       {/* List */}
       <div className="space-y-2">
         {list.map((a) => (
-          <div key={a.id} className="bg-white rounded-card border border-border p-4 flex items-start justify-between gap-4">
+          <div key={a.id} className="bg-card rounded-card border border-border p-4 flex items-start justify-between gap-4">
             <div className="min-w-0">
               <div className="flex items-center gap-2 mb-1">
                 <span className={`text-badge px-2 py-0.5 rounded uppercase ${LEVEL_STYLES[a.level]}`}>{a.level}</span>

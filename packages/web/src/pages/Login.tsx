@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { Logo } from '../components/Logo';
 
 export function Login() {
   const { login } = useAuth();
@@ -32,11 +33,11 @@ export function Login() {
     <div className="min-h-screen flex items-center justify-center bg-page">
       <div className="w-full max-w-md px-4">
         <div className="text-center mb-8">
-          <img src="/callguard-logo-stacked.svg" alt="CallGuard AI — Smarter calls. Safer business." className="w-[240px] h-auto mx-auto mb-3" />
+          <Logo variant="stacked" alt="CallGuard AI — Smarter calls. Safer business." className="w-[240px] h-auto mx-auto mb-3" />
           <p className="text-page-sub text-text-subtle mt-1">AI compliance scoring for sales conversations</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="bg-white border border-border rounded-card p-8 space-y-5">
+        <form onSubmit={handleSubmit} className="bg-card border border-border rounded-card p-8 space-y-5">
           <h2 className="text-[18px] font-semibold text-text-primary">Welcome back</h2>
 
           {error && (

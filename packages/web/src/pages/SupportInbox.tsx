@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
+import { ensureNotifyPermission } from '../lib/browserPing';
 
 interface Thread {
   organization_id: string;
@@ -9,6 +10,7 @@ interface Thread {
   last_message_at: string;
   last_body: string;
   awaiting_reply: boolean;
+  unread_count: number;
 }
 interface SupportMessage {
   id: string;
@@ -22,6 +24,9 @@ export function SupportInbox() {
   const queryClient = useQueryClient();
   const [activeOrg, setActiveOrg] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
+
+  // Enable desktop pings for new customer messages.
+  useEffect(() => { void ensureNotifyPermission(); }, []);
 
   const { data: threadsData } = useQuery({
     queryKey: ['support-threads'],
@@ -58,7 +63,7 @@ export function SupportInbox() {
 
       <div className="flex gap-4 h-[600px]">
         {/* Threads */}
-        <div className="w-[280px] flex-shrink-0 bg-white border border-border rounded-card overflow-y-auto">
+        <div className="w-[280px] flex-shrink-0 bg-card border border-border rounded-card overflow-y-auto">
           {threads.length === 0 && (
             <p className="text-[12px] text-text-muted p-4">No conversations yet.</p>
           )}
@@ -70,9 +75,15 @@ export function SupportInbox() {
                 activeOrg === t.organization_id ? 'bg-sidebar-active' : ''
               }`}
             >
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-2">
                 <span className="text-table-cell font-semibold text-text-primary truncate">{t.organization_name}</span>
-                {t.awaiting_reply && <span className="w-2 h-2 rounded-full bg-fail flex-shrink-0 ml-2" title="Awaiting your reply" />}
+                {t.unread_count > 0 ? (
+                  <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-fail text-white text-[11px] font-bold flex items-center justify-center flex-shrink-0" title={`${t.unread_count} unread`}>
+                    {t.unread_count > 99 ? '99+' : t.unread_count}
+                  </span>
+                ) : t.awaiting_reply ? (
+                  <span className="w-2 h-2 rounded-full bg-fail flex-shrink-0" title="Awaiting your reply" />
+                ) : null}
               </div>
               <div className="text-[12px] text-text-muted truncate mt-0.5">{t.last_body}</div>
             </button>
@@ -80,7 +91,7 @@ export function SupportInbox() {
         </div>
 
         {/* Thread */}
-        <div className="flex-1 bg-white border border-border rounded-card flex flex-col">
+        <div className="flex-1 bg-card border border-border rounded-card flex flex-col">
           {!activeOrg ? (
             <div className="flex-1 flex items-center justify-center text-text-muted text-table-cell">
               Select a conversation

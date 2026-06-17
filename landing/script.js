@@ -22,6 +22,31 @@
     mq.addEventListener('change', function (e) { if (e.matches) setOpen(false); });
   }
 
+  // ─── Theme switch (light / dark) ─────────────────────────────────────
+  // The initial theme is set before paint by an inline <head> script; here we
+  // just wire the nav button and keep following the OS until the visitor picks.
+  var root = document.documentElement;
+  var themeBtn = document.querySelector('.theme-switch');
+  var readStored = function () {
+    try { return localStorage.getItem('cg-theme'); } catch (e) { return null; }
+  };
+  var setTheme = function (t, persist) {
+    root.setAttribute('data-theme', t);
+    if (themeBtn) themeBtn.setAttribute('aria-pressed', t === 'dark' ? 'true' : 'false');
+    if (persist) { try { localStorage.setItem('cg-theme', t); } catch (e) {} }
+  };
+  setTheme(root.getAttribute('data-theme') === 'dark' ? 'dark' : 'light', false);
+  if (themeBtn) {
+    themeBtn.addEventListener('click', function () {
+      setTheme(root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark', true);
+    });
+  }
+  try {
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function (e) {
+      if (!readStored()) setTheme(e.matches ? 'dark' : 'light', false);
+    });
+  } catch (e) {}
+
   // Bail out of all animations if the user prefers reduced motion
   if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
     document.querySelectorAll('.reveal').forEach(function (el) {

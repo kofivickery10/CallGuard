@@ -36,17 +36,17 @@ export default function CreateTenantModal({ onClose, onCreated }: Props) {
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-      <div className="bg-white rounded-card w-full max-w-md p-6 shadow-xl">
+      <div className="bg-card rounded-card w-full max-w-md p-6 shadow-xl">
         <h2 className="text-lg font-bold text-text-primary mb-4">Create tenant</h2>
 
         {result ? (
           <div className="space-y-3">
             <p className="text-sm text-pass font-medium">Tenant created successfully.</p>
-            <div className="bg-gray-50 rounded p-3 text-sm space-y-1">
+            <div className="bg-page rounded p-3 text-sm space-y-1">
               <p><span className="font-medium">Org ID:</span> {result.org_id}</p>
               <p><span className="font-medium">Admin user ID:</span> {result.admin_user_id}</p>
               <p><span className="font-medium">Temporary password:</span>
-                <code className="ml-1 bg-gray-100 px-1 rounded">{result.temp_password}</code>
+                <code className="ml-1 bg-border-light px-1 rounded">{result.temp_password}</code>
               </p>
             </div>
             <p className="text-xs text-text-muted">Share these credentials securely. The admin should change their password on first login.</p>
@@ -86,7 +86,7 @@ export default function CreateTenantModal({ onClose, onCreated }: Props) {
             </div>
             {error && <p className="text-fail text-sm">{error}</p>}
             <div className="flex gap-2 pt-1">
-              <button type="button" onClick={onClose} className="flex-1 border border-border text-text-secondary py-2 rounded-btn text-sm hover:bg-gray-50">
+              <button type="button" onClick={onClose} className="flex-1 border border-border text-text-secondary py-2 rounded-btn text-sm hover:bg-sidebar-hover">
                 Cancel
               </button>
               <button type="submit" disabled={loading} className="flex-1 bg-primary text-white py-2 rounded-btn text-sm font-semibold hover:bg-primary-hover disabled:opacity-60">

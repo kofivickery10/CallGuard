@@ -173,8 +173,8 @@ export function AlertRuleModal({ open, initial, onClose }: AlertRuleModalProps) 
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto py-8">
-      <div className="absolute inset-0 bg-text-primary/30" onClick={onClose} />
-      <div className="relative bg-white border border-border rounded-card w-full max-w-2xl p-6 shadow-lg my-auto">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative bg-card border border-border rounded-card w-full max-w-2xl p-6 shadow-lg my-auto">
         <h3 className="text-[15px] font-semibold text-text-primary mb-4">
           {initial ? 'Edit Alert Rule' : 'Create Alert Rule'}
         </h3>

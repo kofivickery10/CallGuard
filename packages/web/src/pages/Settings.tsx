@@ -79,7 +79,7 @@ export default function Settings() {
       </div>
 
       {cards.length === 0 ? (
-        <div className="bg-white border border-border rounded-card p-8 text-center text-text-muted text-table-cell">
+        <div className="bg-card border border-border rounded-card p-8 text-center text-text-muted text-table-cell">
           You don't have access to any settings. Contact your administrator.
         </div>
       ) : (
@@ -88,7 +88,7 @@ export default function Settings() {
             <Link
               key={card.path}
               to={card.path}
-              className="group bg-white border border-border rounded-card p-5 hover:border-primary hover:shadow-sm transition-all"
+              className="group bg-card border border-border rounded-card p-5 hover:border-primary hover:shadow-sm transition-all"
             >
               <div className="flex items-center gap-3 mb-2">
                 <div className="w-9 h-9 rounded-btn bg-primary-light flex items-center justify-center flex-shrink-0">

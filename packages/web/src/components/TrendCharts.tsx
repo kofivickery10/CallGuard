@@ -12,6 +12,7 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { api } from '../api/client';
+import { useTheme } from '../lib/theme';
 import type {
   CallsPerDayPoint,
   ScoreTrendPoint,
@@ -32,10 +33,20 @@ interface TrendChartsProps {
   agentFilter: string | null;
 }
 
+// Recharts paints grid/axis ticks as SVG attributes, which don't resolve CSS
+// var(), so we pick concrete colours from the active theme. Series colours stay
+// fixed (they read fine on both themes); only the neutral grid/ticks switch.
+function useChartColors() {
+  const { theme } = useTheme();
+  return theme === 'dark'
+    ? { grid: '#2b3630', tick: '#8a9c8d' }
+    : { grid: COLORS.neutral, tick: COLORS.neutralDark };
+}
+
 export function TrendCharts({ agentFilter }: TrendChartsProps) {
   return (
     <div className="mb-10">
-      <h3 className="font-heading text-heading-md text-neutral-900 mb-4">Trends</h3>
+      <h3 className="font-heading text-heading-md text-text-primary mb-4">Trends</h3>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
         <CallsPerDayChart agentFilter={agentFilter} />
@@ -64,7 +75,7 @@ function ChartCard({
   children: React.ReactNode;
 }) {
   return (
-    <div className="bg-white border border-border rounded-card p-5">
+    <div className="bg-card border border-border rounded-card p-5">
       <div className="mb-4">
         <h4 className="text-[15px] font-semibold text-text-primary">{title}</h4>
         {subtitle && <p className="text-[12px] text-text-muted mt-0.5">{subtitle}</p>}
@@ -94,6 +105,7 @@ function CallsPerDayChart({ agentFilter }: { agentFilter: string | null }) {
   });
 
   const hasData = data?.data.some((d) => d.total > 0);
+  const { grid, tick } = useChartColors();
 
   return (
     <ChartCard title="Calls Per Day" subtitle="Last 30 days">
@@ -102,16 +114,17 @@ function CallsPerDayChart({ agentFilter }: { agentFilter: string | null }) {
       ) : (
         <ResponsiveContainer width="100%" height={220}>
           <BarChart data={data?.data} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke={COLORS.neutral} vertical={false} />
+            <CartesianGrid strokeDasharray="3 3" stroke={grid} vertical={false} />
             <XAxis
               dataKey="date"
-              tick={{ fontSize: 11, fill: COLORS.neutralDark }}
+              tick={{ fontSize: 11, fill: tick }}
               tickFormatter={(v) => new Date(v).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}
               interval={Math.ceil((data?.data.length || 0) / 10)}
             />
-            <YAxis tick={{ fontSize: 11, fill: COLORS.neutralDark }} allowDecimals={false} />
+            <YAxis tick={{ fontSize: 11, fill: tick }} allowDecimals={false} />
             <Tooltip
-              contentStyle={{ background: '#fff', border: '1px solid #e2e8e2', borderRadius: 6, fontSize: 12 }}
+              contentStyle={{ background: 'rgb(var(--cg-card))', border: '1px solid rgb(var(--cg-border))', borderRadius: 6, fontSize: 12 }}
+              labelStyle={{ color: 'rgb(var(--cg-text-primary))' }}
               labelFormatter={(v) => new Date(v).toLocaleDateString('en-GB')}
             />
             <Bar dataKey="scored" stackId="a" fill={COLORS.primary} name="Scored" />
@@ -134,6 +147,8 @@ function ScoresOverTimeChart({ agentFilter }: { agentFilter: string | null }) {
     queryFn: () => api.get<{ data: ScoreTrendPoint[] }>(`/dashboard/trends/scores-over-time${qs}`),
   });
 
+  const { grid, tick } = useChartColors();
+
   return (
     <ChartCard title="Scores Over Time" subtitle="Weekly avg score & pass rate (last 12 weeks)">
       {!data?.data.length ? (
@@ -141,19 +156,20 @@ function ScoresOverTimeChart({ agentFilter }: { agentFilter: string | null }) {
       ) : (
         <ResponsiveContainer width="100%" height={220}>
           <LineChart data={data.data} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke={COLORS.neutral} vertical={false} />
+            <CartesianGrid strokeDasharray="3 3" stroke={grid} vertical={false} />
             <XAxis
               dataKey="week_start"
-              tick={{ fontSize: 11, fill: COLORS.neutralDark }}
+              tick={{ fontSize: 11, fill: tick }}
               tickFormatter={(v) => new Date(v).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}
             />
             <YAxis
-              tick={{ fontSize: 11, fill: COLORS.neutralDark }}
+              tick={{ fontSize: 11, fill: tick }}
               domain={[0, 100]}
               tickFormatter={(v) => `${v}%`}
             />
             <Tooltip
-              contentStyle={{ background: '#fff', border: '1px solid #e2e8e2', borderRadius: 6, fontSize: 12 }}
+              contentStyle={{ background: 'rgb(var(--cg-card))', border: '1px solid rgb(var(--cg-border))', borderRadius: 6, fontSize: 12 }}
+              labelStyle={{ color: 'rgb(var(--cg-text-primary))' }}
               labelFormatter={(v) => `Week of ${new Date(v).toLocaleDateString('en-GB')}`}
               formatter={(val) => `${Math.round(Number(val))}%`}
             />
@@ -266,6 +282,8 @@ function BreachSeverityChart({ agentFilter }: { agentFilter: string | null }) {
     (d) => d.critical + d.high + d.medium + d.low > 0
   );
 
+  const { grid, tick } = useChartColors();
+
   return (
     <ChartCard title="Breach Severity" subtitle="Weekly breach counts by severity (last 12 weeks)">
       {!hasData ? (
@@ -273,15 +291,16 @@ function BreachSeverityChart({ agentFilter }: { agentFilter: string | null }) {
       ) : (
         <ResponsiveContainer width="100%" height={220}>
           <BarChart data={data?.data} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke={COLORS.neutral} vertical={false} />
+            <CartesianGrid strokeDasharray="3 3" stroke={grid} vertical={false} />
             <XAxis
               dataKey="week_start"
-              tick={{ fontSize: 11, fill: COLORS.neutralDark }}
+              tick={{ fontSize: 11, fill: tick }}
               tickFormatter={(v) => new Date(v).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}
             />
-            <YAxis tick={{ fontSize: 11, fill: COLORS.neutralDark }} allowDecimals={false} />
+            <YAxis tick={{ fontSize: 11, fill: tick }} allowDecimals={false} />
             <Tooltip
-              contentStyle={{ background: '#fff', border: '1px solid #e2e8e2', borderRadius: 6, fontSize: 12 }}
+              contentStyle={{ background: 'rgb(var(--cg-card))', border: '1px solid rgb(var(--cg-border))', borderRadius: 6, fontSize: 12 }}
+              labelStyle={{ color: 'rgb(var(--cg-text-primary))' }}
               labelFormatter={(v) => `Week of ${new Date(v).toLocaleDateString('en-GB')}`}
             />
             <Legend wrapperStyle={{ fontSize: 12 }} />

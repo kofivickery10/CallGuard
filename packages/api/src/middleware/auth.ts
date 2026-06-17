@@ -127,6 +127,28 @@ export async function requireStaff(
   }
 }
 
+// Support-inbox access: platform superadmins (the admin app) OR is_staff operators
+// (the staff view in the tenant app). Superadmin comes from the token; is_staff is
+// looked up live, so it never depends on a stale token claim.
+export async function requireSuperadminOrStaff(
+  req: Request,
+  _res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    if (!req.user) throw new AppError(401, 'Not authenticated');
+    if (req.user.role === 'superadmin') return next();
+    const row = await queryOne<{ is_staff: boolean }>(
+      'SELECT is_staff FROM users WHERE id = $1',
+      [req.user.userId]
+    );
+    if (!row?.is_staff) throw new AppError(403, 'Support access required');
+    next();
+  } catch (err) {
+    next(err);
+  }
+}
+
 export async function authenticateApiKey(
   req: Request,
   _res: Response,

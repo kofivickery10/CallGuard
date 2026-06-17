@@ -50,7 +50,7 @@ export function Calls() {
         </div>
       </div>
 
-      <div className="bg-white border border-border rounded-card overflow-x-auto">
+      <div className="bg-card border border-border rounded-card overflow-x-auto">
         <table className="w-full min-w-[680px]">
           <thead>
             <tr>
@@ -71,7 +71,7 @@ export function Calls() {
                         className="h-4 rounded bg-[length:800px_100%] animate-skeleton-shimmer"
                         style={{
                           backgroundImage:
-                            'linear-gradient(90deg, #f0f5f0 0%, #e2e8e2 50%, #f0f5f0 100%)',
+                            'linear-gradient(90deg, rgb(var(--cg-border-light)) 0%, rgb(var(--cg-border)) 50%, rgb(var(--cg-border-light)) 100%)',
                           width: j === 0 ? '70%' : j === 3 ? '60%' : '40%',
                         }}
                       />

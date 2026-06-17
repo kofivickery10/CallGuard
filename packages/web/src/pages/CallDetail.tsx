@@ -159,7 +159,7 @@ export function CallDetail() {
 
       {/* Processing state */}
       {(call.status === 'uploaded' || call.status === 'transcribing' || call.status === 'scoring') && (
-        <div className="bg-white border border-border rounded-xl p-10 text-center mb-6">
+        <div className="bg-card border border-border rounded-xl p-10 text-center mb-6">
           <div className="w-10 h-10 border-[3px] border-border border-t-primary rounded-full animate-spin mx-auto mb-4" />
           <div className="text-[16px] font-semibold text-text-primary mb-1">
             {call.status === 'uploaded' && 'Queued for processing'}
@@ -190,7 +190,7 @@ export function CallDetail() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Scorecard panel */}
         {primaryScore && (
-          <div className="bg-white border border-border rounded-card overflow-hidden">
+          <div className="bg-card border border-border rounded-card overflow-hidden">
             <div className="px-5 py-4 border-b border-border flex justify-between items-center">
               <h3 className="text-[15px] font-semibold text-text-primary">Compliance Scorecard</h3>
               {primaryScore.overall_score != null && (
@@ -221,9 +221,10 @@ export function CallDetail() {
           </div>
         )}
 
-        {/* Transcript panel */}
+        {/* Transcript panel — flex column so the viewer fills the card height,
+            which the grid stretches to match the scorecard column. */}
         {call.transcript_text && (
-          <div className="bg-white border border-border rounded-card overflow-hidden">
+          <div className="bg-card border border-border rounded-card overflow-hidden flex flex-col">
             <div className="px-5 py-4 border-b border-border">
               <h3 className="text-[15px] font-semibold text-text-primary">Transcript</h3>
             </div>

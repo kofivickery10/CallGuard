@@ -110,7 +110,7 @@ export function OrganizationSettings() {
         </p>
       </div>
 
-      <div className="bg-white border border-border rounded-card p-5 mb-5">
+      <div className="bg-card border border-border rounded-card p-5 mb-5">
         <h3 className="text-[13px] uppercase tracking-wider text-text-muted font-semibold mb-2">
           Organisation
         </h3>
@@ -118,7 +118,7 @@ export function OrganizationSettings() {
       </div>
 
       {isAdmin && seats && (
-        <div className="bg-white border border-border rounded-card p-5 mb-5">
+        <div className="bg-card border border-border rounded-card p-5 mb-5">
           <h3 className="text-[13px] uppercase tracking-wider text-text-muted font-semibold mb-1">
             Active seats
           </h3>
@@ -153,7 +153,7 @@ export function OrganizationSettings() {
         </div>
       )}
 
-      <div className="bg-white border border-border rounded-card p-5 mb-5">
+      <div className="bg-card border border-border rounded-card p-5 mb-5">
         <h3 className="text-[13px] uppercase tracking-wider text-text-muted font-semibold mb-1">
           Call recording
         </h3>
@@ -194,7 +194,7 @@ export function OrganizationSettings() {
         )}
       </div>
 
-      <div className="bg-white border border-border rounded-card p-5 mb-5">
+      <div className="bg-card border border-border rounded-card p-5 mb-5">
         <div className="flex items-start justify-between gap-4">
           <div>
             <h3 className="text-[13px] uppercase tracking-wider text-text-muted font-semibold mb-1">
@@ -233,7 +233,7 @@ export function OrganizationSettings() {
             } ${!isAdmin ? 'cursor-default' : 'cursor-pointer'}`}
           >
             <span
-              className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+              className={`inline-block h-5 w-5 transform rounded-full bg-card shadow transition-transform ${
                 dataOptIn ? 'translate-x-5' : 'translate-x-0.5'
               }`}
             />
@@ -264,7 +264,7 @@ export function OrganizationSettings() {
           return (
             <div
               key={p}
-              className={`bg-white rounded-card p-5 border transition-all ${
+              className={`bg-card rounded-card p-5 border transition-all ${
                 isCurrent ? 'border-primary ring-2 ring-primary/20' : 'border-border'
               }`}
             >

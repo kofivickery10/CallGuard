@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import type { PublicCallView as PublicCallViewData } from '@callguard/shared';
+import { Logo } from '../components/Logo';
 
 export function PublicCallView() {
   const { token } = useParams<{ token: string }>();
@@ -44,9 +45,9 @@ export function PublicCallView() {
   return (
     <div className="min-h-screen bg-page flex flex-col">
       {/* Header */}
-      <header className="bg-white border-b border-border py-4 px-6">
+      <header className="bg-card border-b border-border py-4 px-6">
         <div className="max-w-3xl mx-auto flex items-center">
-          <img src="/callguard-logo-horizontal.svg" alt="CallGuard AI" className="h-8 w-auto" />
+          <Logo className="h-8 w-auto" />
         </div>
       </header>
 
@@ -63,7 +64,7 @@ export function PublicCallView() {
         </div>
 
         {/* Score card */}
-        <div className="bg-white border border-border rounded-card p-6 mb-6 flex items-center justify-between">
+        <div className="bg-card border border-border rounded-card p-6 mb-6 flex items-center justify-between">
           <div>
             <div className="text-[12px] uppercase tracking-wider text-text-muted mb-1">Overall Score</div>
             <div className="flex items-baseline gap-3">
@@ -87,7 +88,7 @@ export function PublicCallView() {
 
         {/* Scorecard items */}
         {data.items.length > 0 && (
-          <div className="bg-white border border-border rounded-card overflow-hidden mb-6">
+          <div className="bg-card border border-border rounded-card overflow-hidden mb-6">
             <div className="px-5 py-3 border-b border-border">
               <h3 className="text-[15px] font-semibold text-text-primary">Quality Criteria</h3>
             </div>
@@ -156,7 +157,7 @@ function FeedbackForm({ token, onSubmitted }: { token: string; onSubmitted: () =
   };
 
   return (
-    <div className="bg-white border border-border rounded-card p-5">
+    <div className="bg-card border border-border rounded-card p-5">
       <h3 className="text-[15px] font-semibold text-text-primary mb-1">Your Feedback (optional)</h3>
       <p className="text-table-cell text-text-subtle mb-4">
         How satisfied were you with your call? Your feedback helps improve our service.

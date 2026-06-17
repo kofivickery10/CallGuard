@@ -52,9 +52,9 @@ export default function TenantList() {
 
       {error && <p className="text-fail text-sm">{error}</p>}
 
-      <div className="bg-white rounded-card border border-border overflow-hidden">
+      <div className="bg-card rounded-card border border-border overflow-hidden">
         <table className="w-full text-sm">
-          <thead className="bg-gray-50 border-b border-border">
+          <thead className="bg-table-header border-b border-border">
             <tr>
               {['Organisation', 'Plan', 'Status', 'Users', 'Active seats (MTD)', 'Created', ''].map((h) => (
                 <th key={h} className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-text-muted">
@@ -65,7 +65,7 @@ export default function TenantList() {
           </thead>
           <tbody className="divide-y divide-border">
             {tenants.map((t) => (
-              <tr key={t.id} className="hover:bg-gray-50">
+              <tr key={t.id} className="hover:bg-sidebar-hover">
                 <td className="px-4 py-3 font-medium text-text-primary">{t.name}</td>
                 <td className="px-4 py-3">
                   <span className={`px-2 py-0.5 rounded text-xs font-semibold capitalize ${planColour[t.plan] ?? ''}`}>

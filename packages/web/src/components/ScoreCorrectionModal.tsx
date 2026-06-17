@@ -48,8 +48,8 @@ export function ScoreCorrectionModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-text-primary/30" onClick={onClose} />
-      <div className="relative bg-white border border-border rounded-card w-full max-w-lg p-6 shadow-lg">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative bg-card border border-border rounded-card w-full max-w-lg p-6 shadow-lg">
         <h3 className="text-[15px] font-semibold text-text-primary mb-1">Correct Score</h3>
         <p className="text-table-cell text-text-subtle mb-4">
           Your correction is saved and becomes a calibration example in future scoring prompts.

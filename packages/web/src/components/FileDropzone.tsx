@@ -31,12 +31,12 @@ export function FileDropzone({ onFileSelected, disabled }: FileDropzoneProps) {
   return (
     <div
       {...getRootProps()}
-      className={`border-2 border-dashed rounded-xl py-[60px] px-10 text-center cursor-pointer transition-all bg-white ${
+      className={`border-2 border-dashed rounded-xl py-[60px] px-10 text-center cursor-pointer transition-all bg-card ${
         isDragActive
           ? 'border-primary bg-page'
           : disabled
             ? 'border-border bg-page cursor-not-allowed opacity-60'
-            : 'border-[#c8d8c8] hover:border-primary hover:bg-page'
+            : 'border-border hover:border-primary hover:bg-page'
       }`}
     >
       <input {...getInputProps()} />

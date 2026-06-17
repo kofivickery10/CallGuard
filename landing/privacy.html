@@ -10,18 +10,27 @@
 <link rel="canonical" href="https://callguardai.co.uk/privacy" />
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 <link rel="preload" as="font" type="font/woff2" href="/fonts/InterVariable.woff2" crossorigin>
-<link rel="stylesheet" href="style.css?v=9" />
+<link rel="stylesheet" href="style.css?v=10" />
 <meta property="og:type" content="article" />
 <meta property="og:site_name" content="CallGuard AI" />
 <meta property="og:locale" content="en_GB" />
 <meta property="og:url" content="https://callguardai.co.uk/privacy" />
 <meta property="og:title" content="Privacy Policy | CallGuard AI" />
 <meta property="og:description" content="How CallGuard AI handles personal data under UK GDPR. Sub-processors, retention periods, and your rights as a data subject." />
-<meta property="og:image" content="https://callguardai.co.uk/og-image.png" />
+<meta property="og:image" content="https://callguardai.co.uk/og-image.jpg" />
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="Privacy Policy | CallGuard AI" />
 <meta name="twitter:description" content="How CallGuard AI handles personal data under UK GDPR." />
-<meta name="twitter:image" content="https://callguardai.co.uk/og-image.png" />
+<meta name="twitter:image" content="https://callguardai.co.uk/og-image.jpg" />
+<script>
+  (function () {
+    try {
+      var s = localStorage.getItem('cg-theme');
+      var d = s ? s === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+      document.documentElement.setAttribute('data-theme', d ? 'dark' : 'light');
+    } catch (e) {}
+  })();
+</script>
 </head>
 <body class="legal-page">
 
@@ -38,6 +47,10 @@
       </span>
       <span class="brand-text">CallGuard <span class="brand-text-ai">AI</span></span>
     </a>
+    <button class="theme-switch" type="button" aria-label="Toggle dark mode" aria-pressed="false">
+      <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+    </button>
     <a href="https://app.callguardai.co.uk/" class="nav-login">Log in</a>
     <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20demo%20request" class="btn btn-primary nav-cta">Book a demo</a>
   </div>
@@ -76,7 +89,7 @@
   </div>
 
   <h2 id="who">1. Who we are</h2>
-  <p>CallGuard AI is an AI compliance scoring platform for sales conversations, operated from the United Kingdom. You can contact us at <a href="mailto:privacy@callguardai.co.uk">privacy@callguardai.co.uk</a> for any privacy-related question.</p>
+  <p>CallGuard AI is an AI compliance scoring platform for customer conversations, operated from the United Kingdom. You can contact us at <a href="mailto:privacy@callguardai.co.uk">privacy@callguardai.co.uk</a> for any privacy-related question.</p>
   <p>We are registered with the UK Information Commissioner's Office (ICO) as a data controller. If you are not satisfied with how we handle your data, you have the right to complain to the ICO at <a href="https://ico.org.uk/make-a-complaint/" target="_blank" rel="noopener">ico.org.uk/make-a-complaint</a>.</p>
 
   <h2 id="what">2. What data we collect</h2>
@@ -229,5 +242,6 @@
 </footer>
 
 <script defer src="/analytics.js?v=1"></script>
+<script src="/script.js?v=3" defer></script>
 </body>
 </html>

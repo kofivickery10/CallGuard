@@ -72,7 +72,7 @@ export function AuditLog() {
         </div>
         <button
           onClick={handleExport}
-          className="inline-flex items-center gap-2 bg-white border border-border text-text-primary px-[18px] py-[9px] rounded-btn text-table-cell font-semibold hover:border-primary hover:text-primary transition-colors"
+          className="inline-flex items-center gap-2 bg-card border border-border text-text-primary px-[18px] py-[9px] rounded-btn text-table-cell font-semibold hover:border-primary hover:text-primary transition-colors"
         >
           Export CSV
         </button>
@@ -82,7 +82,7 @@ export function AuditLog() {
         <select
           value={actionFilter}
           onChange={(e) => { setActionFilter(e.target.value); setPage(0); }}
-          className="bg-white border border-border rounded-btn px-3 py-2 text-table-cell text-text-primary"
+          className="bg-card border border-border rounded-btn px-3 py-2 text-table-cell text-text-primary"
         >
           <option value="">All actions</option>
           {ACTION_TYPES.map((a) => (
@@ -96,7 +96,7 @@ export function AuditLog() {
         )}
       </div>
 
-      <div className="bg-white border border-border rounded-card overflow-x-auto">
+      <div className="bg-card border border-border rounded-card overflow-x-auto">
         <table className="w-full min-w-[760px]">
           <thead>
             <tr>
@@ -116,7 +116,7 @@ export function AuditLog() {
                       <div
                         className="h-3.5 rounded bg-[length:800px_100%] animate-skeleton-shimmer"
                         style={{
-                          backgroundImage: 'linear-gradient(90deg, #f0f5f0 0%, #e2e8e2 50%, #f0f5f0 100%)',
+                          backgroundImage: 'linear-gradient(90deg, rgb(var(--cg-border-light)) 0%, rgb(var(--cg-border)) 50%, rgb(var(--cg-border-light)) 100%)',
                           width: j === 3 ? '70%' : '50%',
                         }}
                       />

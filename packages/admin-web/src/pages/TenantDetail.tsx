@@ -215,7 +215,7 @@ export default function TenantDetail() {
           { label: 'Failed calls',   value: stats.failed_calls },
           { label: 'Audio (minutes)', value: durationMins },
         ].map(({ label, value }) => (
-          <div key={label} className="bg-white rounded-card p-4 border border-border">
+          <div key={label} className="bg-card rounded-card p-4 border border-border">
             <p className="text-xs font-semibold uppercase tracking-wider text-text-muted mb-1">{label}</p>
             <p className="text-2xl font-bold text-text-primary">{value}</p>
           </div>
@@ -224,7 +224,7 @@ export default function TenantDetail() {
 
       {/* Seat history */}
       {seat_history.length > 0 && (
-        <div className="bg-white rounded-card border border-border p-4">
+        <div className="bg-card rounded-card border border-border p-4">
           <h2 className="text-sm font-semibold text-text-primary mb-3">Active seats per month</h2>
           <div className="flex gap-3 flex-wrap">
             {seat_history.map((m) => (
@@ -239,7 +239,7 @@ export default function TenantDetail() {
 
       {/* Usage & cost trend (last 12 months) */}
       {trend.length > 0 && (
-        <div className="bg-white rounded-card border border-border p-4">
+        <div className="bg-card rounded-card border border-border p-4">
           <h2 className="text-sm font-semibold text-text-primary mb-3">Usage &amp; cost trend</h2>
           {(() => {
             const maxCalls = Math.max(...trend.map((m) => m.calls), 1);
@@ -269,7 +269,7 @@ export default function TenantDetail() {
       )}
 
       {/* Controls */}
-      <div className="bg-white rounded-card border border-border p-4 space-y-4">
+      <div className="bg-card rounded-card border border-border p-4 space-y-4">
         <h2 className="text-sm font-semibold text-text-primary">Subscription</h2>
         <div className="flex flex-wrap gap-3 items-end">
           <div>
@@ -312,7 +312,7 @@ export default function TenantDetail() {
           <button onClick={saveStatus} disabled={saving} className="bg-primary text-white px-4 py-2 rounded-btn text-sm font-semibold hover:bg-primary-hover disabled:opacity-60">
             Save status
           </button>
-          <button onClick={impersonate} className="border border-border text-text-secondary px-4 py-2 rounded-btn text-sm hover:bg-gray-50">
+          <button onClick={impersonate} className="border border-border text-text-secondary px-4 py-2 rounded-btn text-sm hover:bg-sidebar-hover">
             Impersonate admin
           </button>
         </div>
@@ -340,7 +340,7 @@ export default function TenantDetail() {
       </div>
 
       {/* Feature overrides */}
-      <div className="bg-white rounded-card border border-border p-4">
+      <div className="bg-card rounded-card border border-border p-4">
         <h2 className="text-sm font-semibold text-text-primary">Feature overrides</h2>
         <p className="text-xs text-text-muted mt-0.5 mb-3">
           Grant or deny a plan-gated feature for this tenant, beyond their plan. Leave on “Plan default” to follow the tier.
@@ -377,13 +377,13 @@ export default function TenantDetail() {
 
       {/* Failed / stuck calls */}
       {failed.length > 0 && (
-        <div className="bg-white rounded-card border border-border overflow-hidden">
+        <div className="bg-card rounded-card border border-border overflow-hidden">
           <div className="px-4 py-3 border-b border-border">
             <h2 className="text-sm font-semibold text-text-primary">Failed &amp; stuck calls ({failed.length})</h2>
             <p className="text-xs text-text-muted mt-0.5">Calls that failed or have sat in a processing state over 15 minutes.</p>
           </div>
           <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b border-border">
+            <thead className="bg-table-header border-b border-border">
               <tr>
                 {['Call', 'Status', 'Agent', 'Error', 'Last update'].map((h) => (
                   <th key={h} className="text-left px-4 py-2 text-xs font-semibold uppercase tracking-wider text-text-muted">{h}</th>
@@ -410,7 +410,7 @@ export default function TenantDetail() {
       )}
 
       {/* Users */}
-      <div className="bg-white rounded-card border border-border overflow-hidden">
+      <div className="bg-card rounded-card border border-border overflow-hidden">
         <div className="px-4 py-3 border-b border-border">
           <h2 className="text-sm font-semibold text-text-primary">Users ({users.length})</h2>
           <p className="text-xs text-text-muted mt-0.5">
@@ -418,7 +418,7 @@ export default function TenantDetail() {
           </p>
         </div>
         <table className="w-full text-sm">
-          <thead className="bg-gray-50 border-b border-border">
+          <thead className="bg-table-header border-b border-border">
             <tr>
               {['Name', 'Email', 'Role', 'Last active', 'Tier override'].map((h) => (
                 <th key={h} className="text-left px-4 py-2 text-xs font-semibold uppercase tracking-wider text-text-muted">{h}</th>
