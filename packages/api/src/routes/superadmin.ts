@@ -7,7 +7,7 @@ import { AppError } from '../middleware/errors.js';
 import { config } from '../config.js';
 import { PLANS, SEAT_PRICING, effectivePlan, FEATURES } from '@callguard/shared';
 import type { Plan } from '@callguard/shared';
-import { CLAUDE_PRICING, DEEPGRAM_PRICING } from '@callguard/shared';
+import { CLAUDE_PRICING, DEEPGRAM_PRICING, DEFAULT_USD_TO_GBP } from '@callguard/shared';
 import { recordAuditEvent } from '../services/audit.js';
 import {
   getTranscriptionQueue,
@@ -31,6 +31,10 @@ function seatIncome(orgPlan: string, override: number | null, planOverride: stri
 
 // Sum Claude cost across per-model token rows, pricing each model at its own
 // rate (Haiku is ~4x cheaper than Sonnet, so a single blended rate is wrong).
+// Provider pricing is in USD; the business reports in GBP. Convert for display.
+const USD_TO_GBP = Number(process.env.USD_TO_GBP) || DEFAULT_USD_TO_GBP;
+const toGbp = (usd: number) => usd * USD_TO_GBP;
+
 // Unknown/null model ids can't be priced and are skipped.
 function claudeCostFromModelRows(
   rows: Array<{ model_id: string | null; prompt_tokens: string; completion_tokens: string }>
@@ -342,6 +346,89 @@ superadminRouter.post('/tenants/:id/impersonate', async (req, res, next) => {
   }
 });
 
+// ── Usage & cost ledger ───────────────────────────────────────────────────────
+// Actual per-operation cost from usage_events (written live by every processor).
+// Window defaults to 30 days, clamped to 1..365.
+superadminRouter.get('/usage', async (req, res, next) => {
+  try {
+    const days = Math.min(365, Math.max(1, parseInt(String(req.query.days ?? '30'), 10) || 30));
+    const n = (v: unknown) => Number(v ?? 0);
+    const since = `now() - make_interval(0, 0, 0, $1)`;
+
+    const [byProvider, byOperation, byModel, daily, topTenants, scored, totals] = await Promise.all([
+      query<{ provider: string; events: string; cost_usd: string }>(
+        `SELECT provider, COUNT(*)::text AS events, COALESCE(SUM(est_cost_usd),0)::text AS cost_usd
+           FROM usage_events WHERE created_at >= ${since} GROUP BY provider ORDER BY 3 DESC`, [days]),
+      query<{ operation: string; events: string; input_tokens: string; output_tokens: string; cache_read_tokens: string; cache_creation_tokens: string; cost_usd: string }>(
+        `SELECT operation, COUNT(*)::text AS events,
+                COALESCE(SUM(input_tokens),0)::text AS input_tokens,
+                COALESCE(SUM(output_tokens),0)::text AS output_tokens,
+                COALESCE(SUM(cache_read_tokens),0)::text AS cache_read_tokens,
+                COALESCE(SUM(cache_creation_tokens),0)::text AS cache_creation_tokens,
+                COALESCE(SUM(est_cost_usd),0)::text AS cost_usd
+           FROM usage_events WHERE created_at >= ${since} GROUP BY operation ORDER BY 7 DESC`, [days]),
+      query<{ model_id: string | null; events: string; input_tokens: string; output_tokens: string; cost_usd: string }>(
+        `SELECT model_id, COUNT(*)::text AS events,
+                COALESCE(SUM(input_tokens),0)::text AS input_tokens,
+                COALESCE(SUM(output_tokens),0)::text AS output_tokens,
+                COALESCE(SUM(est_cost_usd),0)::text AS cost_usd
+           FROM usage_events WHERE created_at >= ${since} GROUP BY model_id ORDER BY 5 DESC`, [days]),
+      query<{ day: string; cost_usd: string }>(
+        `SELECT to_char(date_trunc('day', created_at), 'YYYY-MM-DD') AS day,
+                COALESCE(SUM(est_cost_usd),0)::text AS cost_usd
+           FROM usage_events WHERE created_at >= ${since} GROUP BY 1 ORDER BY 1`, [days]),
+      query<{ organization_id: string | null; name: string | null; cost_usd: string; events: string }>(
+        `SELECT ue.organization_id, o.name,
+                COALESCE(SUM(ue.est_cost_usd),0)::text AS cost_usd, COUNT(*)::text AS events
+           FROM usage_events ue LEFT JOIN organizations o ON o.id = ue.organization_id
+          WHERE ue.created_at >= ${since} GROUP BY ue.organization_id, o.name ORDER BY 3 DESC LIMIT 20`, [days]),
+      queryOne<{ scored_calls: string }>(
+        `SELECT COUNT(*)::text AS scored_calls FROM calls
+          WHERE status = 'scored' AND created_at >= ${since}`, [days]),
+      queryOne<{ cost_usd: string; events: string; cache_read: string; uncached_input: string }>(
+        `SELECT COALESCE(SUM(est_cost_usd),0)::text AS cost_usd, COUNT(*)::text AS events,
+                COALESCE(SUM(cache_read_tokens),0)::text AS cache_read,
+                COALESCE(SUM(input_tokens),0)::text AS uncached_input
+           FROM usage_events WHERE created_at >= ${since}`, [days]),
+    ]);
+
+    const totalCostGbp = toGbp(n(totals?.cost_usd));
+    const scoredCalls = n(scored?.scored_calls);
+    const cacheRead = n(totals?.cache_read);
+    const uncachedInput = n(totals?.uncached_input);
+
+    res.json({
+      period_days: days,
+      currency: 'GBP',
+      totals: {
+        cost_gbp: totalCostGbp,
+        events: n(totals?.events),
+        scored_calls: scoredCalls,
+        cost_per_call: scoredCalls > 0 ? totalCostGbp / scoredCalls : 0,
+        cache_hit_ratio: cacheRead + uncachedInput > 0 ? cacheRead / (cacheRead + uncachedInput) : 0,
+      },
+      by_provider: byProvider.map((r) => ({ provider: r.provider, events: n(r.events), cost_gbp: toGbp(n(r.cost_usd)) })),
+      by_operation: byOperation.map((r) => ({
+        operation: r.operation, events: n(r.events),
+        input_tokens: n(r.input_tokens), output_tokens: n(r.output_tokens),
+        cache_read_tokens: n(r.cache_read_tokens), cache_creation_tokens: n(r.cache_creation_tokens),
+        cost_gbp: toGbp(n(r.cost_usd)),
+      })),
+      by_model: byModel.map((r) => ({
+        model_id: r.model_id ?? '(none)', events: n(r.events),
+        input_tokens: n(r.input_tokens), output_tokens: n(r.output_tokens), cost_gbp: toGbp(n(r.cost_usd)),
+      })),
+      daily: daily.map((r) => ({ day: r.day, cost_gbp: toGbp(n(r.cost_usd)) })),
+      top_tenants: topTenants.map((r) => ({
+        organization_id: r.organization_id, name: r.name ?? '(platform)',
+        cost_gbp: toGbp(n(r.cost_usd)), events: n(r.events),
+      })),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ── Live dashboard ────────────────────────────────────────────────────────────
 
 superadminRouter.get('/dashboard', async (_req, res, next) => {
@@ -416,8 +503,8 @@ superadminRouter.get('/dashboard', async (_req, res, next) => {
       calls_in_queue:        Number(queue?.calls_in_queue || 0),
       calls_processed_today: Number(scored?.calls_processed_today || 0),
       active_live_sessions:  Number(liveSessions?.active_live_sessions || 0),
-      platform_claude_cost_mtd:   parseFloat(claudeCostMtd.toFixed(4)),
-      platform_deepgram_cost_mtd: parseFloat(deepgramCostMtd.toFixed(4)),
+      platform_claude_cost_mtd:   parseFloat(toGbp(claudeCostMtd).toFixed(4)),
+      platform_deepgram_cost_mtd: parseFloat(toGbp(deepgramCostMtd).toFixed(4)),
       platform_mrr:               parseFloat(platformMrr.toFixed(2)),
     });
   } catch (err) {
@@ -536,8 +623,8 @@ superadminRouter.get('/billing', async (req, res, next) => {
         active_seats:          Number(r.active_seats),
         seat_price_override:   r.seat_price_override == null ? null : Number(r.seat_price_override),
         monthly_income:        parseFloat((incomeByOrg.get(r.org_id) ?? 0).toFixed(2)),
-        claude_cost_estimate:  parseFloat(claudeCost.toFixed(4)),
-        deepgram_cost_estimate: parseFloat(deepgramCost.toFixed(4)),
+        claude_cost_estimate:  parseFloat(toGbp(claudeCost).toFixed(4)),
+        deepgram_cost_estimate: parseFloat(toGbp(deepgramCost).toFixed(4)),
       };
     });
 
@@ -619,8 +706,8 @@ superadminRouter.get('/billing/:orgId', async (req, res, next) => {
         month:                  r.month,
         active_seats:           Number(r.active_seats),
         calls:                  Number(r.calls),
-        claude_cost_estimate:   parseFloat(claudeCost.toFixed(4)),
-        deepgram_cost_estimate: parseFloat(deepgramCost.toFixed(4)),
+        claude_cost_estimate:   parseFloat(toGbp(claudeCost).toFixed(4)),
+        deepgram_cost_estimate: parseFloat(toGbp(deepgramCost).toFixed(4)),
       };
     });
 

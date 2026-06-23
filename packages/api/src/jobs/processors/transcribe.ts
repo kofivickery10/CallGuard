@@ -4,6 +4,7 @@ import { transcribeCall } from '../../services/transcription.js';
 import { cleanupTranscript } from '../../services/transcript-cleanup.js';
 import { getKBContext } from '../../services/kb.js';
 import { evaluateAlertsForCall } from '../../services/alert-evaluator.js';
+import { recordUsage } from '../../services/usage.js';
 import { scoringQueue } from '../queue.js';
 import type { Call } from '@callguard/shared';
 
@@ -48,10 +49,20 @@ export async function processTranscription(job: Job<{ callId: string }>) {
       orgRow?.adviser_channel ?? null
     );
 
+    // Record Deepgram usage (billed per minute of audio).
+    await recordUsage({
+      organizationId: call.organization_id,
+      callId,
+      provider: 'deepgram',
+      operation: 'transcribe',
+      modelId: 'nova-3',
+      audioSeconds: result.duration_seconds,
+    });
+
     // Clean up transcript with LLM (pass org ID + KB context so Claude knows business details)
     console.log(`[Transcription] Cleaning up transcript for call ${callId}`);
     const kbContext = await getKBContext(call.organization_id);
-    const cleanedText = await cleanupTranscript(result.text, call.organization_id, kbContext);
+    const cleanedText = await cleanupTranscript(result.text, call.organization_id, kbContext, callId);
 
     // Store transcript
     await query(

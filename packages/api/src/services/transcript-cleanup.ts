@@ -1,11 +1,13 @@
 import { config } from '../config.js';
-import { query } from '../db/client.js';
+import { query, queryOne } from '../db/client.js';
 import { CLAUDE_MODELS } from '@callguard/shared';
+import { recordUsage } from './usage.js';
 
 export async function cleanupTranscript(
   rawTranscript: string,
   organizationId?: string,
-  kbContext: string = ''
+  kbContext: string = '',
+  callId?: string
 ): Promise<string> {
   if (!config.anthropic.apiKey) {
     return rawTranscript;
@@ -21,6 +23,22 @@ export async function cleanupTranscript(
     agentNames = agents.map((a) => a.name).filter(Boolean);
   }
 
+  // The org's industry frames the cleanup in the right vocabulary (e.g. protection
+  // insurance vs broadband) instead of a hardcoded telecom assumption. The
+  // knowledge base supplies the firm-specific product/brand terms.
+  let industry: string | null = null;
+  if (organizationId) {
+    const orgRow = await queryOne<{ industry: string | null }>(
+      'SELECT industry FROM organizations WHERE id = $1',
+      [organizationId]
+    );
+    industry = orgRow?.industry ?? null;
+  }
+  const domain = industry?.trim();
+  const callDescriptor = domain
+    ? `a UK ${domain} call`
+    : 'a UK sales or customer-service call';
+
   const agentNamesBlock = agentNames.length > 0
     ? `\n\n**Known agent names in this organization (may appear in the call):**\n${agentNames.map((n) => `- ${n}`).join('\n')}`
     : '';
@@ -33,38 +51,24 @@ export async function cleanupTranscript(
   const client = new Anthropic({ apiKey: config.anthropic.apiKey });
 
   const response = await client.messages.create({
-    model: CLAUDE_MODELS.SONNET,
+    model: CLAUDE_MODELS.HAIKU,
     max_tokens: 8192,
     messages: [
       {
         role: 'user',
-        content: `You are cleaning up an auto-generated transcript of a UK telecom/broadband/utilities sales call between an Agent and a Customer. The speech-to-text was done on low quality 8kHz mono telephony audio, so there are transcription errors.
+        content: `You are cleaning up an auto-generated transcript of ${callDescriptor} between an Agent/Adviser and a Customer. The speech-to-text ran on low-quality 8kHz mono telephony audio, so there are transcription errors.
 
 ## Domain context
 
-- UK sales calls for broadband, mobile, energy, and utility services
-- Common products and brands: **KOA** (product name), **Utility Warehouse**, **Telecare**
-- UK providers: BT, Sky, Virgin Media, TalkTalk, Vodafone, EE, O2, Three
-- Common call elements: DPA (Data Protection Act) verification, compliance statements, cooling-off period, T&Cs, one-touch switch, cashback card, energy hotkey transfer
-- Customers typically provide: name, address, postcode, bill payer status, phone number, bank/payment details${agentNamesBlock}${kbBlock}
+Use the business context below to correctly identify product names, brand names, and industry jargon, and to correct words that were clearly misheard in this domain. Customers typically provide details such as name, address, postcode, phone number and bank/payment details.${agentNamesBlock}${kbBlock}
 
-## Common transcription errors to fix
+## Common transcription errors to fix (UK telephony)
 
-Apply context to correct words that were clearly misheard. Examples of typical mishearings in this domain:
-
-- "care", "coa", "koala", "cola" → likely **KOA** (when discussing broadband packages)
-- "health care" / "health care association" → likely a company/product name from context
-- "iLove Savings" / "I love saving" → likely the actual brand name
-- "tell a care" / "tele care" → **Telecare**
-- "bill pair" / "bill pay" → **bill payer**
-- "one touch swish" / "one touch swift" → **one touch switch**
-- "cash back" vs "cashback" → use **cashback** (one word)
-- "cooling of" → **cooling off**
-- "DPI" / "DPR" / "GPA" → likely **DPA** (Data Protection Act)
-- "BT" may be transcribed as "B T" or "beatee" → restore as **BT**
-- "EE" as "E E" or "easy" → **EE**
-- UK postcodes get mangled (e.g. "S O twenty three" → **SO23**) - restore standard UK postcode format
+- UK postcodes get mangled (e.g. "S O twenty three" → **SO23**) — restore standard UK postcode format
 - UK phone numbers: restore space-free 11-digit format (e.g. "0 7 4 7 3..." → **07473...**)
+- Spelled-out acronyms/brands (e.g. "B T" → **BT**, "E E" → **EE**, "D P A" → **DPA**) — restore as written
+- "cooling of" → **cooling off**; "cash back" → **cashback**; prices with pound signs (**£19.99**)
+- Misheard product/brand names → correct them using the Business Context above
 
 ## Your task
 
@@ -88,6 +92,16 @@ ${rawTranscript}
 Return ONLY the cleaned transcript, nothing else. No preamble, no explanation, no markdown code blocks.`,
       },
     ],
+  });
+
+  await recordUsage({
+    organizationId: organizationId ?? null,
+    callId: callId ?? null,
+    provider: 'anthropic',
+    operation: 'cleanup',
+    modelId: CLAUDE_MODELS.HAIKU,
+    inputTokens: response.usage.input_tokens,
+    outputTokens: response.usage.output_tokens,
   });
 
   const textBlock = response.content.find((b) => b.type === 'text');

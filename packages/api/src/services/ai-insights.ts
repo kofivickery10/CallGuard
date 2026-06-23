@@ -1,6 +1,7 @@
 import { config } from '../config.js';
 import { query, queryOne } from '../db/client.js';
 import { CLAUDE_MODELS } from '@callguard/shared';
+import { recordUsage } from './usage.js';
 import type { InsightRecommendation, InsightDigest } from '@callguard/shared';
 
 interface InsightsMetrics {
@@ -221,6 +222,15 @@ export async function generateInsights(
       },
     ],
     tool_choice: { type: 'tool', name: 'submit_insights' },
+  });
+
+  await recordUsage({
+    organizationId,
+    provider: 'anthropic',
+    operation: 'insights',
+    modelId: model,
+    inputTokens: response.usage.input_tokens,
+    outputTokens: response.usage.output_tokens,
   });
 
   const toolUse = response.content.find((b) => b.type === 'tool_use');
