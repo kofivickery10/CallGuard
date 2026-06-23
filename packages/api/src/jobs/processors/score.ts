@@ -87,8 +87,8 @@ export async function processScoring(job: Job<{ callId: string }>) {
     }
 
     // Check org's plan for coaching feature gate
-    const org = await queryOne<{ plan: Plan }>(
-      'SELECT plan FROM organizations WHERE id = $1',
+    const org = await queryOne<{ plan: Plan; industry: string | null }>(
+      'SELECT plan, industry FROM organizations WHERE id = $1',
       [call.organization_id]
     );
     const coachingEnabled = org ? hasFeature(org.plan, 'coaching') : false;
@@ -115,7 +115,8 @@ export async function processScoring(job: Job<{ callId: string }>) {
       null,       // use default model
       kbContext,
       learning,
-      coachingEnabled
+      coachingEnabled,
+      org?.industry ?? null
     );
 
     // Create call_score record (with coaching if generated)

@@ -12,7 +12,7 @@ organizationRouter.use(authenticate);
 organizationRouter.get('/', async (req, res, next) => {
   try {
     const org = await queryOne<OrganizationInfo>(
-      `SELECT id, name, plan, adviser_channel,
+      `SELECT id, name, plan, industry, adviser_channel,
               data_improvement_opt_in, data_improvement_opt_in_at
          FROM organizations WHERE id = $1`,
       [req.user!.organizationId]
@@ -67,6 +67,39 @@ organizationRouter.put('/adviser-channel', requireAdmin, async (req, res, next) 
         WHERE id = $2 RETURNING id, name, plan, adviser_channel`,
       [adviser_channel, req.user!.organizationId]
     );
+    res.json(rows[0]);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Admins set the organisation's industry / advice domain. This frames the AI
+// scoring prompt so calls are judged in the right regulatory/commercial context
+// (e.g. "FCA-regulated protection insurance advice"). Empty/null clears it.
+organizationRouter.put('/industry', requireAdmin, async (req, res, next) => {
+  try {
+    const { industry } = req.body as { industry: unknown };
+    if (industry !== null && typeof industry !== 'string') {
+      throw new AppError(400, 'industry must be a string or null');
+    }
+    const trimmed = typeof industry === 'string' ? industry.trim() : null;
+    if (trimmed && trimmed.length > 200) {
+      throw new AppError(400, 'industry must be 200 characters or fewer');
+    }
+    const rows = await query<OrganizationInfo>(
+      `UPDATE organizations SET industry = $1, updated_at = now()
+        WHERE id = $2
+        RETURNING id, name, plan, industry, adviser_channel`,
+      [trimmed || null, req.user!.organizationId]
+    );
+    void recordAuditEvent({
+      organizationId: req.user!.organizationId,
+      userId: req.user!.userId,
+      actionType: 'org.industry.change',
+      entityType: 'organization',
+      entityId: req.user!.organizationId,
+      metadata: { industry: trimmed || null },
+    });
     res.json(rows[0]);
   } catch (err) {
     next(err);

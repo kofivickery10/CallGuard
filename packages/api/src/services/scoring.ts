@@ -40,7 +40,8 @@ function buildScoringPrompt(
   items: ScorecardItemInput[],
   kbContext: string | null | undefined = '',
   withCoaching: boolean = false,
-  learning?: LearningContext | null
+  learning?: LearningContext | null,
+  industry?: string | null
 ): string {
   const criteriaBlock = items
     .map((item, i) => {
@@ -88,11 +89,19 @@ function buildScoringPrompt(
         .join('\n\n')}\n`
     : '';
 
-  return `You are a call center quality analyst evaluating a UK telecom/broadband sales call. You will evaluate the transcript against specific scoring criteria.
+  const domain = industry?.trim();
+  const callHeadline = domain
+    ? `a UK ${domain} call`
+    : 'a UK sales or customer-service call';
+  const domainContextLine = domain
+    ? `- This is ${callHeadline} between an agent/adviser and the customer. Evaluate it against the standards, disclosures and regulatory expectations of that sector, using the Business Knowledge Base below for the firm's specifics.`
+    : '- This is a sales or customer-service call between an agent and a customer. Use the Business Knowledge Base below to understand the products, expected call flow, and context.';
+
+  return `You are a call quality and compliance analyst evaluating ${callHeadline}. You will evaluate the transcript against specific scoring criteria.
 
 ## Important Context
 
-- This is a call between a sales agent and a customer about broadband, mobile, energy, or utility services.
+${domainContextLine}
 - Speaker labels ("Agent" / "Customer") are auto-generated and may occasionally be swapped. Use context to determine who is actually the agent vs customer. The agent is the one asking verification questions, presenting products, reading disclaimers, and guiding the call flow. The customer is asking questions, confirming details, and making decisions.
 - The audio quality may be low, so some words may be transcribed incorrectly. Consider near-homophones and phonetic similarities when evaluating.${kbBlock}${exemplarBlock}${priorCoachingBlock}
 
@@ -137,7 +146,8 @@ export async function scoreTranscript(
   modelOverride: string | null = null,
   kbContext: string | null = null,
   learning?: LearningContext | null,
-  withCoaching: boolean = false
+  withCoaching: boolean = false,
+  industry: string | null = null
 ): Promise<{ output: ScoringOutput; usage: { input_tokens: number; output_tokens: number }; model: string }> {
   if (!config.anthropic.apiKey) {
     throw new Error('ANTHROPIC_API_KEY is not set in .env - needed for scoring');
@@ -155,7 +165,7 @@ export async function scoreTranscript(
     messages: [
       {
         role: 'user',
-        content: buildScoringPrompt(transcript, items, kbContext, withCoaching, learning),
+        content: buildScoringPrompt(transcript, items, kbContext, withCoaching, learning, industry),
       },
     ],
     tools: [

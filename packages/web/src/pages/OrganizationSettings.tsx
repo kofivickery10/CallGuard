@@ -35,6 +35,11 @@ export function OrganizationSettings() {
   const [dataOptInAt, setDataOptInAt] = useState<string | null>(null);
   const [savingOptIn, setSavingOptIn] = useState(false);
 
+  // Industry / advice domain (frames AI scoring). undefined = loading.
+  const [industry, setIndustry] = useState<string | undefined>(undefined);
+  const [industryDraft, setIndustryDraft] = useState('');
+  const [savingIndustry, setSavingIndustry] = useState(false);
+
   // Active-seat usage (admin only)
   const [seats, setSeats] = useState<ActiveSeats | null>(null);
 
@@ -45,10 +50,13 @@ export function OrganizationSettings() {
         setAdviserChannel(org.adviser_channel ?? null);
         setDataOptIn(org.data_improvement_opt_in ?? false);
         setDataOptInAt(org.data_improvement_opt_in_at ?? null);
+        setIndustry(org.industry ?? '');
+        setIndustryDraft(org.industry ?? '');
       })
       .catch(() => {
         setAdviserChannel(null);
         setDataOptIn(false);
+        setIndustry('');
       });
   }, []);
 
@@ -69,6 +77,23 @@ export function OrganizationSettings() {
       setError((err as Error).message);
     } finally {
       setSavingChannel(false);
+    }
+  };
+
+  const handleIndustrySave = async () => {
+    setSavingIndustry(true);
+    setError('');
+    try {
+      const updated = await api.put<OrganizationInfo>('/organization/industry', {
+        industry: industryDraft.trim() || null,
+      });
+      const next = updated.industry ?? '';
+      setIndustry(next);
+      setIndustryDraft(next);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSavingIndustry(false);
     }
   };
 
@@ -115,6 +140,43 @@ export function OrganizationSettings() {
           Organisation
         </h3>
         <p className="text-table-cell text-text-primary font-semibold">{user?.organization_name}</p>
+      </div>
+
+      <div className="bg-card border border-border rounded-card p-5 mb-5">
+        <h3 className="text-[13px] uppercase tracking-wider text-text-muted font-semibold mb-1">
+          Industry / advice domain
+        </h3>
+        <p className="text-[12px] text-text-subtle mb-3">
+          Describe what this organisation does (e.g. “FCA-regulated protection insurance advice”). The
+          AI uses this to score calls in the right regulatory and commercial context.
+        </p>
+        {industry === undefined ? (
+          <p className="text-[12px] text-text-muted">Loading…</p>
+        ) : (
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              type="text"
+              value={industryDraft}
+              onChange={(e) => setIndustryDraft(e.target.value)}
+              disabled={!isAdmin || savingIndustry}
+              maxLength={200}
+              placeholder="e.g. FCA-regulated protection insurance advice"
+              className="flex-1 min-w-[260px] px-3 py-2 rounded-btn border border-border bg-card text-table-cell text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none disabled:opacity-60"
+            />
+            {isAdmin && (
+              <button
+                onClick={handleIndustrySave}
+                disabled={savingIndustry || industryDraft.trim() === (industry ?? '').trim()}
+                className="px-3 py-2 rounded-btn text-table-cell border border-primary bg-primary text-white font-semibold hover:bg-primary-hover disabled:opacity-50 transition-colors"
+              >
+                {savingIndustry ? 'Saving…' : 'Save'}
+              </button>
+            )}
+          </div>
+        )}
+        {!isAdmin && (
+          <p className="text-[11px] text-text-muted mt-2">Ask your admin to change this.</p>
+        )}
       </div>
 
       {isAdmin && seats && (
