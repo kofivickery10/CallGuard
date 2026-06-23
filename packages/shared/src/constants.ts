@@ -49,23 +49,36 @@ export const KB_ALLOWED_MIME_TYPES = [
 // Named model IDs — use these constants in code rather than hardcoded strings
 // so that model changes and pricing lookups can never drift apart.
 export const CLAUDE_MODELS = {
-  HAIKU:      'claude-haiku-4-5-20251001',
-  SONNET:     'claude-sonnet-4-20250514',
-  SONNET_46:  'claude-sonnet-4-6',
-  OPUS:       'claude-opus-4-8',
+  HAIKU:   'claude-haiku-4-5-20251001',
+  SONNET:  'claude-sonnet-4-6',
+  OPUS:    'claude-opus-4-8',
 } as const;
 
-// Pricing constants used for cost estimates in superadmin billing/dashboard.
+// Pricing constants used for cost estimates in superadmin billing/dashboard,
+// keyed by the model_id stored on each call. Values are per 1M tokens, from the
+// current Anthropic model catalog. Retired IDs are retained so historical
+// call_scores rows still price correctly.
 // Update these when model or provider pricing changes.
 export const CLAUDE_PRICING: Record<string, { input_per_1m: number; output_per_1m: number }> = {
-  [CLAUDE_MODELS.HAIKU]:     { input_per_1m: 0.80,  output_per_1m: 4.00  },
-  [CLAUDE_MODELS.SONNET]:    { input_per_1m: 3.00,  output_per_1m: 15.00 },
-  [CLAUDE_MODELS.SONNET_46]: { input_per_1m: 3.00,  output_per_1m: 15.00 },
-  [CLAUDE_MODELS.OPUS]:      { input_per_1m: 15.00, output_per_1m: 75.00 },
+  // Current models
+  'claude-haiku-4-5-20251001': { input_per_1m: 1.00,  output_per_1m: 5.00  },
+  'claude-haiku-4-5':          { input_per_1m: 1.00,  output_per_1m: 5.00  },
+  'claude-sonnet-4-6':         { input_per_1m: 3.00,  output_per_1m: 15.00 },
+  'claude-opus-4-8':           { input_per_1m: 5.00,  output_per_1m: 25.00 },
+  // Retired / legacy IDs — kept for historical billing rows
+  'claude-sonnet-4-20250514':  { input_per_1m: 3.00,  output_per_1m: 15.00 },
+  'claude-opus-4-20250514':    { input_per_1m: 15.00, output_per_1m: 75.00 },
 };
 
-// Deepgram nova-3 standard tier (per minute of audio)
-export const DEEPGRAM_PRICING = { per_minute: 0.0043 };
+// Provider pricing (Anthropic, Deepgram) is in USD; the business reports in GBP.
+// Approximate FX rate used to convert provider costs for display. Override at
+// runtime with the USD_TO_GBP env var; update this default periodically.
+export const DEFAULT_USD_TO_GBP = 0.79;
+
+// Deepgram nova-3 (per minute of audio). We transcribe with `multichannel: true`
+// (split-stereo adviser/customer), which bills at the multichannel rate; mono
+// recordings come back single-channel at ~0.0043/min.
+export const DEEPGRAM_PRICING = { per_minute: 0.0052 };
 
 // Monthly revenue per active seat by tier (GBP). A "seat" is an adviser with at
 // least one scored call in the month. A tenant can override this with a

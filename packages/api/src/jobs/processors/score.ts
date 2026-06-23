@@ -1,9 +1,10 @@
 import { Job } from 'bullmq';
 import { query, queryOne } from '../../db/client.js';
-import { scoreTranscript, normalizeScore } from '../../services/scoring.js';
+import { scoreTranscript, verifyItems, normalizeScore } from '../../services/scoring.js';
 import { getKBContext } from '../../services/kb.js';
 import { evaluateAlertsForCall } from '../../services/alert-evaluator.js';
 import { getLearningContext } from '../../services/learning-context.js';
+import { recordUsage } from '../../services/usage.js';
 import { deliverCallScored } from '../../services/webhook-delivery.js';
 import { hasFeature, isItemPass, deriveSeverity, callPasses, MIN_SCOREABLE_WORDS, MIN_SCOREABLE_DURATION_SECONDS } from '@callguard/shared';
 import type { Call, ScorecardItem, Plan } from '@callguard/shared';
@@ -118,6 +119,68 @@ export async function processScoring(job: Job<{ callId: string }>) {
       coachingEnabled,
       org?.industry ?? null
     );
+
+    // Record the scoring call's usage (Haiku first pass, incl. prompt-cache tokens).
+    await recordUsage({
+      organizationId: call.organization_id,
+      callId,
+      provider: 'anthropic',
+      operation: 'score',
+      modelId: model,
+      inputTokens: usage.input_tokens,
+      outputTokens: usage.output_tokens,
+      cacheReadTokens: usage.cache_read_input_tokens,
+      cacheCreationTokens: usage.cache_creation_input_tokens,
+    });
+
+    // Second opinion: re-check the failed critical/high-severity items on a
+    // stronger model before they become breaches. This catches first-pass false
+    // positives in the compliance register without paying for the bigger model
+    // on every item. Best-effort: a verify failure falls back to first-pass scores.
+    try {
+      const flagged = output.items.flatMap((it) => {
+        const item = items.find((i) => i.id === it.scorecard_item_id);
+        if (!item) return [];
+        if (isItemPass(normalizeScore(it.score, item.score_type))) return [];
+        const severity = deriveSeverity(Number(item.weight), (item as { severity?: string }).severity);
+        if (severity !== 'critical' && severity !== 'high') return [];
+        return [{
+          id: item.id,
+          label: item.label,
+          description: item.description,
+          score_type: item.score_type,
+          firstPass: { score: it.score, evidence: it.evidence, reasoning: it.reasoning },
+        }];
+      });
+
+      if (flagged.length > 0) {
+        const verified = await verifyItems(
+          call.transcript_text,
+          flagged,
+          kbContext,
+          org?.industry ?? null
+        );
+        const byId = new Map(verified.items.map((v) => [v.scorecard_item_id, v]));
+        output.items = output.items.map((it) => byId.get(it.scorecard_item_id) ?? it);
+        await recordUsage({
+          organizationId: call.organization_id,
+          callId,
+          provider: 'anthropic',
+          operation: 'verify',
+          modelId: verified.model,
+          inputTokens: verified.usage.input_tokens,
+          outputTokens: verified.usage.output_tokens,
+        });
+        console.log(
+          `[Scoring] Verified ${flagged.length} flagged item(s) for call ${callId} on ${verified.model}`
+        );
+      }
+    } catch (verifyErr) {
+      console.error(
+        `[Scoring] Verify pass failed for call ${callId}, using first-pass scores:`,
+        (verifyErr as Error).message
+      );
+    }
 
     // Create call_score record (with coaching if generated)
     const priorCoachingCount = learning?.priorCoaching?.length ?? 0;
