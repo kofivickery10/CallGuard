@@ -10,6 +10,7 @@ import Dashboard from './pages/Dashboard';
 import TenantList from './pages/TenantList';
 import TenantDetail from './pages/TenantDetail';
 import Billing from './pages/Billing';
+import Usage from './pages/Usage';
 import Audit from './pages/Audit';
 import Announcements from './pages/Announcements';
 import Search from './pages/Search';
@@ -103,6 +104,7 @@ function AppLayout() {
           <NavItem to="/" label="Dashboard" />
           <NavItem to="/tenants" label="Tenants" />
           <NavItem to="/billing" label="Billing" />
+          <NavItem to="/usage" label="Usage & costs" />
           <NavItem to="/audit" label="Audit log" />
           <NavItem to="/announcements" label="Announcements" />
           <NavItem to="/support" label="Support" badge={supportUnread} />
@@ -128,6 +130,7 @@ function AppLayout() {
           <Route path="/tenants"       element={<TenantList />} />
           <Route path="/tenants/:id"   element={<TenantDetail />} />
           <Route path="/billing"       element={<Billing />} />
+          <Route path="/usage"         element={<Usage />} />
           <Route path="/audit"         element={<Audit />} />
           <Route path="/announcements" element={<Announcements />} />
           <Route path="/support"       element={<Support />} />

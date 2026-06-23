@@ -3,6 +3,7 @@ import { v4 as uuid } from 'uuid';
 import { query, queryOne } from '../db/client.js';
 import { DeepgramStream } from './deepgram-stream.js';
 import { detectLiveBreaches } from './live-scorer.js';
+import { recordUsage } from './usage.js';
 import { deliverWebhook } from './webhook-delivery.js';
 import { getKBContext } from './kb.js';
 import { scoringQueue } from '../jobs/queue.js';
@@ -169,11 +170,20 @@ export class StreamWorker {
 
       const kbContext = await this.getKBContext();
 
-      const breaches = await detectLiveBreaches({
+      const { breaches, usage, model } = await detectLiveBreaches({
         partialTranscript: transcript,
         scorecardItems: items,
         alreadyEmittedItemIds: this.emittedItemIds,
         kbContext,
+      });
+
+      void recordUsage({
+        organizationId: this.init.organizationId,
+        provider: 'anthropic',
+        operation: 'live_score',
+        modelId: model,
+        inputTokens: usage.input_tokens,
+        outputTokens: usage.output_tokens,
       });
 
       for (const b of breaches) {

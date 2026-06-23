@@ -34,17 +34,23 @@ const PASS_THRESHOLD_NORMALIZED = 70;
  * score" - we want low false-positive rate so we don't spam the agent
  * with bogus alerts mid-call.
  */
-export async function detectLiveBreaches(input: LiveScoringInput): Promise<LiveBreach[]> {
+export async function detectLiveBreaches(input: LiveScoringInput): Promise<{
+  breaches: LiveBreach[];
+  usage: { input_tokens: number; output_tokens: number };
+  model: string;
+}> {
+  const model = CLAUDE_MODELS.SONNET;
+  const empty = { breaches: [] as LiveBreach[], usage: { input_tokens: 0, output_tokens: 0 }, model };
   if (!config.anthropic.apiKey) {
     throw new Error('ANTHROPIC_API_KEY not set - required for live scoring');
   }
   if (input.partialTranscript.trim().length < 80) {
     // Too little content - skip to avoid false positives on tiny transcripts
-    return [];
+    return empty;
   }
 
   const remaining = input.scorecardItems.filter((i) => !input.alreadyEmittedItemIds.has(i.id));
-  if (remaining.length === 0) return [];
+  if (remaining.length === 0) return empty;
 
   const { default: Anthropic } = await import('@anthropic-ai/sdk');
   const client = new Anthropic({ apiKey: config.anthropic.apiKey });
@@ -77,7 +83,7 @@ ${input.partialTranscript}
 Return only the criteria you are confident have already been breached.`;
 
   const response = await client.messages.create({
-    model: CLAUDE_MODELS.SONNET,
+    model,
     max_tokens: 1024,
     messages: [{ role: 'user', content: prompt }],
     tools: [
@@ -107,8 +113,10 @@ Return only the criteria you are confident have already been breached.`;
     tool_choice: { type: 'tool', name: 'report_live_breaches' },
   });
 
+  const usage = { input_tokens: response.usage.input_tokens, output_tokens: response.usage.output_tokens };
+
   const toolUse = response.content.find((b) => b.type === 'tool_use');
-  if (!toolUse || toolUse.type !== 'tool_use') return [];
+  if (!toolUse || toolUse.type !== 'tool_use') return { ...empty, usage };
 
   const out = toolUse.input as {
     breaches: Array<{ scorecard_item_id: string; evidence: string; confidence: number }>;
@@ -130,7 +138,7 @@ Return only the criteria you are confident have already been breached.`;
       confidence: b.confidence,
     });
   }
-  return breaches;
+  return { breaches, usage, model };
 }
 
 function deriveSeverity(s: ScorecardItem['severity']): 'critical' | 'high' | 'medium' | 'low' {
