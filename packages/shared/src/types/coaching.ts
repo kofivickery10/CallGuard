@@ -25,6 +25,9 @@ export interface OrganizationInfo {
   id: string;
   name: string;
   plan: Plan;
+  // Free-text industry / advice domain (e.g. "FCA-regulated protection insurance
+  // advice"). Frames the AI scoring prompt. null = generic sales/service framing.
+  industry?: string | null;
   // Stereo channel the adviser is recorded on: 0 = left, 1 = right, null = auto-detect.
   adviser_channel?: number | null;
   // Opt-in (default false) to let CallGuard use anonymised, customer-derived

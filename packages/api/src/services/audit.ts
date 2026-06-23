@@ -31,6 +31,7 @@ export type AuditActionType =
   | 'plan.change'
   | 'scorecard.deactivate'
   | 'org.data_improvement_optin'
+  | 'org.industry.change'
   // Superadmin (cross-tenant) actions, logged against the target org.
   | 'tenant.create'
   | 'tenant.status_change'
