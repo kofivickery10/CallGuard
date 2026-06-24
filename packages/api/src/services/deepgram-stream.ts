@@ -33,10 +33,14 @@ export class DeepgramStream {
       throw new Error('DEEPGRAM_API_KEY not set - required for live streaming');
     }
 
-    const client = createClient(config.deepgram.apiKey);
+    const client = createClient(config.deepgram.apiKey, {
+      global: { url: config.deepgram.baseUrl },
+    });
 
     this.connection = client.listen.live({
       model: 'nova-3',
+      // Opt out of Deepgram's Model Improvement Program (no training on call audio).
+      mip_opt_out: true,
       language: 'en-GB',
       smart_format: true,
       punctuate: true,

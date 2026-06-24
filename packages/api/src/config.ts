@@ -39,6 +39,9 @@ export const config = {
 
   deepgram: {
     apiKey: process.env.DEEPGRAM_API_KEY || '',
+    // EU-hosted endpoint by default (UK/EU data residency — voice data stays in
+    // the EU, no cross-border transfer). Override with DEEPGRAM_URL if needed.
+    baseUrl: process.env.DEEPGRAM_URL || 'https://api.eu.deepgram.com',
   },
 
   anthropic: {

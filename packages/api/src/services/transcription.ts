@@ -109,7 +109,9 @@ export async function transcribeCall(
   }
 
   const { createClient } = await import('@deepgram/sdk');
-  const deepgram = createClient(config.deepgram.apiKey);
+  const deepgram = createClient(config.deepgram.apiKey, {
+    global: { url: config.deepgram.baseUrl },
+  });
 
   const audioBuffer = await readFile(fileKey, encryptedAtRest);
 
@@ -124,6 +126,10 @@ export async function transcribeCall(
     audioBuffer,
     {
       model: 'nova-3',
+      // Opt out of Deepgram's Model Improvement Program: call audio (containing
+      // customers' financial/health disclosures) is not retained or used to
+      // train their models — required for FCA/DPA compliance.
+      mip_opt_out: true,
       smart_format: true,
       // Transcribe each channel separately. Split-stereo call recordings put the
       // adviser and customer on separate channels, so per-channel attribution is
