@@ -144,7 +144,13 @@ export async function transcribeCall(
       // postcodes, number and spelling conventions.
       language: 'en-GB',
       profanity_filter: false,
-      redact: false,
+      // Redact PII/PCI/PHI at source so customers' personal identifiers, payment
+      // details and health disclosures never enter our stored transcripts, the
+      // Haiku cleanup pass, or the Claude scoring pass. Deepgram replaces each
+      // entity with a typed tag (e.g. [CREDIT_CARD_1], [PHONE_NUMBER_1]), so the
+      // scorer can still confirm an item was collected without seeing its value.
+      // Prices/durations/percentages are left intact for disclosure scoring.
+      redact: ['pci', 'pii', 'phi'],
       numerals: true,
       keyterm: keyterms,
     }

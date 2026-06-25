@@ -108,7 +108,8 @@ function buildScoringPrompt(
 
 ${domainContextLine}
 - Speaker labels ("Agent" / "Customer") are auto-generated and may occasionally be swapped. Use context to determine who is actually the agent vs customer. The agent is the one asking verification questions, presenting products, reading disclaimers, and guiding the call flow. The customer is asking questions, confirming details, and making decisions.
-- The audio quality may be low, so some words may be transcribed incorrectly. Consider near-homophones and phonetic similarities when evaluating.${kbBlock}${exemplarBlock}
+- The audio quality may be low, so some words may be transcribed incorrectly. Consider near-homophones and phonetic similarities when evaluating.
+- Personal/sensitive data is redacted to typed tags like [PII_NAME_1], [LOCATION_1], [PHONE_NUMBER_1], [CREDIT_CARD_1] or [PHI_...]. A tag is positive evidence that the customer DID provide (and/or the agent DID collect) that piece of information - treat it as the information being present, and quote the tag as evidence. Do NOT mark a criterion unmet merely because the value is redacted. The one limit: when a criterion requires the agent to read a value back and confirm it MATCHES what the customer gave, you cannot verify the values are identical (each redacted instance is numbered independently) - score that on whether the read-back/confirmation step occurred, and note the limitation in your reasoning.${kbBlock}${exemplarBlock}
 
 ## Scoring Criteria
 
@@ -319,7 +320,9 @@ export async function verifyItems(
 
   const prompt = `You are a senior compliance QA reviewer providing an independent second opinion on ${headline}. A faster first-pass model marked the criteria below as FAILED (a breach). Re-evaluate each one strictly and independently against the transcript, then either CONFIRM the failure or OVERTURN it if the first pass got it wrong.
 
-Be rigorous in both directions: a wrong breach in a regulated firm's compliance register is costly, and so is a missed one. Only score a criterion as met (passed) if the transcript clearly shows it was satisfied; only confirm a failure if the transcript clearly shows it was not.${kbBlock}
+Be rigorous in both directions: a wrong breach in a regulated firm's compliance register is costly, and so is a missed one. Only score a criterion as met (passed) if the transcript clearly shows it was satisfied; only confirm a failure if the transcript clearly shows it was not.
+
+Personal/sensitive data is redacted to typed tags like [PII_NAME_1], [PHONE_NUMBER_1] or [CREDIT_CARD_1]. A tag is positive evidence the information was provided/collected - do NOT confirm a failure simply because a value is redacted. Only where a criterion needs the agent to confirm a read-back value MATCHES the customer's, treat the match as unverifiable and judge on whether the confirmation step occurred.${kbBlock}
 
 ## Criteria to re-check
 
