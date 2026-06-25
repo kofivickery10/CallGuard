@@ -10,11 +10,30 @@ export interface AuthPayload {
   // Empty string for superadmin users (no org context).
   organizationId: string;
   role: string;
+  // Token kind. Access tokens omit this (treated as 'access'); short-lived 2FA
+  // login-challenge tokens set 'mfa' and are rejected by `authenticate`.
+  typ?: 'access' | 'mfa';
+  // True once the second factor is satisfied (enrolled + verified). Derived from
+  // the user's totp_enabled state at token-issue time. Access tokens without it
+  // are gated out of the app until the user enrols — see the MFA gate below.
+  mfa?: boolean;
   // Set on impersonation tokens minted by a superadmin for support. `imp` flags
   // the session so the tenant app can show a banner; `impBy` is the superadmin's
   // user id for the audit trail.
   imp?: boolean;
   impBy?: string;
+}
+
+// Authenticated paths an unenrolled user may still reach so they can complete
+// (or be told to complete) 2FA enrolment. Everything else is gated until the
+// access token carries `mfa: true`. Matched against req.originalUrl.
+const MFA_EXEMPT_PREFIXES = ['/api/auth/2fa', '/api/auth/me', '/api/auth/logout'];
+
+function isMfaExempt(originalUrl: string): boolean {
+  const path = originalUrl.split('?')[0] ?? originalUrl;
+  // Exact match or a sub-path (so /api/auth/2fa covers /api/auth/2fa/setup, but
+  // /api/auth/me does NOT loosely match a hypothetical /api/auth/members).
+  return MFA_EXEMPT_PREFIXES.some((p) => path === p || path.startsWith(p + '/'));
 }
 
 declare global {
@@ -57,14 +76,29 @@ export function authenticate(
   }
 
   const token = header.slice(7);
+  let payload: AuthPayload;
   try {
-    const payload = jwt.verify(token, config.jwt.secret) as AuthPayload;
-    req.user = payload;
-    touchLastActive(payload.userId);
-    next();
+    payload = jwt.verify(token, config.jwt.secret) as AuthPayload;
   } catch {
     throw new AppError(401, 'Invalid or expired token');
   }
+
+  // 2FA login-challenge tokens are not valid for API access — they only unlock
+  // the /api/auth/2fa/login/* endpoints, which verify them out of the body.
+  if (payload.typ === 'mfa') {
+    throw new AppError(401, 'Invalid or expired token');
+  }
+
+  // MFA enrolment gate. 2FA is mandatory: any access token that has not satisfied
+  // the second factor (mfa !== true) is blocked from every route except the
+  // enrolment endpoints. API-key sessions are exempt (machine-to-machine).
+  if (payload.mfa !== true && payload.role !== 'api' && !isMfaExempt(req.originalUrl)) {
+    throw new AppError(403, 'Two-factor enrolment required', 'MFA_ENROLMENT_REQUIRED');
+  }
+
+  req.user = payload;
+  touchLastActive(payload.userId);
+  next();
 }
 
 export function requireRole(...roles: string[]) {

@@ -6,6 +6,7 @@ import { pingOnIncrease } from './lib/browserPing';
 import { ThemeToggle } from './components/ThemeToggle';
 import { Logo } from './components/Logo';
 import Login from './pages/Login';
+import TwoFactorEnroll from './pages/TwoFactorEnroll';
 import Dashboard from './pages/Dashboard';
 import TenantList from './pages/TenantList';
 import TenantDetail from './pages/TenantDetail';
@@ -85,6 +86,8 @@ function AppLayout() {
 
   if (loading) return <div className="flex items-center justify-center min-h-screen text-text-muted text-sm">Loading…</div>;
   if (!user) return <Navigate to="/login" replace />;
+  // 2FA is mandatory — bounce unenrolled superadmins into enrolment first.
+  if (user.totp_enabled === false) return <Navigate to="/enroll-2fa" replace />;
 
   return (
     <div className="flex min-h-screen">
@@ -148,6 +151,7 @@ export default function App() {
       <AuthProvider>
         <Routes>
           <Route path="/login" element={<LoginGuard />} />
+          <Route path="/enroll-2fa" element={<EnrolGuard />} />
           <Route path="/*"    element={<AppLayout />} />
         </Routes>
       </AuthProvider>
@@ -160,4 +164,12 @@ function LoginGuard() {
   if (loading) return null;
   if (user)    return <Navigate to="/" replace />;
   return <Login />;
+}
+
+// Enrolment screen: requires a session but is reachable while still unenrolled.
+function EnrolGuard() {
+  const { user, loading } = useAuth();
+  if (loading) return null;
+  if (!user) return <Navigate to="/login" replace />;
+  return <TwoFactorEnroll />;
 }

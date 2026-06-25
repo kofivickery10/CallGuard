@@ -3,7 +3,10 @@ import { Request, Response, NextFunction } from 'express';
 export class AppError extends Error {
   constructor(
     public statusCode: number,
-    message: string
+    message: string,
+    // Optional machine-readable code so clients can branch on a specific error
+    // (e.g. MFA_ENROLMENT_REQUIRED) rather than parsing the human message.
+    public code?: string
   ) {
     super(message);
     this.name = 'AppError';
@@ -22,6 +25,7 @@ export function errorHandler(
     res.status(err.statusCode).json({
       error: err.name,
       message: err.message,
+      ...(err.code ? { code: err.code } : {}),
     });
     return;
   }

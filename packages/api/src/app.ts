@@ -3,8 +3,15 @@ import cors from 'cors';
 import helmet from 'helmet';
 import path from 'path';
 import { errorHandler } from './middleware/errors.js';
-import { globalLimiter, authLimiter, publicFormLimiter } from './middleware/rate-limits.js';
+import {
+  globalLimiter,
+  authLimiter,
+  publicFormLimiter,
+  twoFactorLimiter,
+  emailCodeLimiter,
+} from './middleware/rate-limits.js';
 import { authRouter } from './routes/auth.js';
+import { twoFactorRouter } from './routes/two-factor.js';
 import { scorecardRouter } from './routes/scorecards.js';
 import { callRouter } from './routes/calls.js';
 import { dashboardRouter } from './routes/dashboard.js';
@@ -113,8 +120,13 @@ app.get('/api/health', (_req, res) => {
 
 // Strict limits must be registered before the routers they protect.
 app.use('/api/auth/login', authLimiter);
+app.use('/api/auth/2fa/login/email-code', emailCodeLimiter);
+app.use('/api/auth/2fa/login/verify', twoFactorLimiter);
 app.use('/api/public/demo-requests', publicFormLimiter);
 
+// 2FA routes mount under /api/auth/2fa — registered before the catch-all auth
+// router so its paths take precedence.
+app.use('/api/auth/2fa', twoFactorRouter);
 app.use('/api/auth', authRouter);
 app.use('/api/scorecards', scorecardRouter);
 app.use('/api/calls', callRouter);

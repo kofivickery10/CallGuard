@@ -4,6 +4,12 @@ import { query } from '../db/client.js';
 export type AuditActionType =
   | 'auth.login'
   | 'auth.logout'
+  | 'auth.2fa.enrolled'
+  | 'auth.2fa.verified'
+  | 'auth.2fa.failed'
+  | 'auth.2fa.backup_used'
+  | 'auth.2fa.backup_regenerated'
+  | 'auth.2fa.reset'
   | 'call.delete'
   | 'call.upload'
   | 'call.bulk_import'

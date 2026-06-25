@@ -6,6 +6,7 @@ import { config } from '../config.js';
 import { query, queryOne } from '../db/client.js';
 import { AppError } from '../middleware/errors.js';
 import { authenticate, AuthPayload } from '../middleware/auth.js';
+import { countUnusedBackupCodes, maskEmail } from '../services/two-factor.js';
 import { effectivePlan } from '@callguard/shared';
 import type { Plan } from '@callguard/shared';
 
@@ -13,11 +14,11 @@ export const authRouter = Router();
 
 // ── Refresh token helpers ─────────────────────────────────────────────────────
 
-function hashToken(raw: string): string {
+export function hashToken(raw: string): string {
   return crypto.createHash('sha256').update(raw).digest('hex');
 }
 
-async function createRefreshToken(userId: string): Promise<string> {
+export async function createRefreshToken(userId: string): Promise<string> {
   const raw = crypto.randomBytes(48).toString('base64url');
   const hash = hashToken(raw);
   const expiresAt = new Date();
@@ -38,6 +39,89 @@ async function revokeRefreshToken(raw: string): Promise<void> {
   );
 }
 
+// ── Session issuance ──────────────────────────────────────────────────────────
+
+export interface SessionResponse {
+  token: string;
+  refresh_token: string;
+  user: {
+    id: string;
+    email: string;
+    name: string;
+    role: string;
+    is_staff: boolean;
+    organization_id: string | null;
+    organization_name: string;
+    organization_plan: Plan | null;
+    totp_enabled: boolean;
+  };
+}
+
+// Mint a full access + refresh session for a user. `mfa` records on the access
+// token whether the second factor is satisfied — the auth middleware gates any
+// token where it isn't true. Used by login (unenrolled), 2FA login verify, and
+// enrolment completion.
+export async function issueSession(userId: string, mfa: boolean): Promise<SessionResponse> {
+  const user = await queryOne<{
+    id: string;
+    email: string;
+    name: string;
+    role: string;
+    is_staff: boolean;
+    organization_id: string | null;
+    plan_override: string | null;
+    totp_enabled: boolean;
+  }>(
+    `SELECT id, email, name, role, is_staff, organization_id, plan_override, totp_enabled
+       FROM users WHERE id = $1`,
+    [userId]
+  );
+  if (!user) throw new AppError(401, 'User not found');
+
+  const org = user.organization_id
+    ? await queryOne<{ name: string; plan: string }>(
+        'SELECT name, plan FROM organizations WHERE id = $1',
+        [user.organization_id]
+      )
+    : null;
+
+  const payload: AuthPayload = {
+    userId: user.id,
+    organizationId: user.organization_id ?? '',
+    role: user.role,
+    mfa,
+  };
+  const token = jwt.sign(payload, config.jwt.secret, { expiresIn: config.jwt.expiresIn });
+  const refresh_token = await createRefreshToken(user.id);
+
+  const orgPlan = org?.plan as Plan | undefined;
+  const organization_plan = orgPlan
+    ? effectivePlan(orgPlan, user.plan_override as Plan | null)
+    : null;
+
+  return {
+    token,
+    refresh_token,
+    user: {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      is_staff: user.is_staff,
+      organization_id: user.organization_id,
+      organization_name: org?.name || '',
+      organization_plan,
+      totp_enabled: user.totp_enabled,
+    },
+  };
+}
+
+// Sign a short-lived (5 min) challenge token that unlocks only the 2FA login
+// verification endpoints. Rejected by `authenticate` for normal API access.
+export function signChallengeToken(userId: string): string {
+  return jwt.sign({ userId, typ: 'mfa' } as AuthPayload, config.jwt.secret, { expiresIn: '5m' });
+}
+
 // NOTE: Public registration is intentionally removed. Tenants are provisioned
 // by superadmin via POST /superadmin/tenants.
 
@@ -52,15 +136,10 @@ authRouter.post('/login', async (req, res, next) => {
     const user = await queryOne<{
       id: string;
       email: string;
-      name: string;
-      role: string;
-      is_staff: boolean;
       password_hash: string;
-      organization_id: string | null;
-      plan_override: string | null;
+      totp_enabled: boolean;
     }>(
-      `SELECT u.id, u.email, u.name, u.role, u.is_staff, u.password_hash,
-              u.organization_id, u.plan_override
+      `SELECT u.id, u.email, u.password_hash, u.totp_enabled
        FROM users u WHERE u.email = $1`,
       [email]
     );
@@ -74,44 +153,24 @@ authRouter.post('/login', async (req, res, next) => {
       throw new AppError(401, 'Invalid email or password');
     }
 
-    const org = user.organization_id
-      ? await queryOne<{ name: string; plan: string }>(
-          'SELECT name, plan FROM organizations WHERE id = $1',
-          [user.organization_id]
-        )
-      : null;
+    // 2FA is mandatory. If the user has enrolled, the password is only the first
+    // factor — hand back a short-lived challenge token and stop here. The client
+    // completes the second factor at /auth/2fa/login/verify.
+    if (user.totp_enabled) {
+      const backupCodes = await countUnusedBackupCodes(user.id);
+      res.json({
+        two_factor_required: true,
+        challenge_token: signChallengeToken(user.id),
+        methods: ['totp', 'email', ...(backupCodes > 0 ? ['backup'] : [])],
+        email_hint: maskEmail(user.email),
+      });
+      return;
+    }
 
-    const payload: AuthPayload = {
-      userId: user.id,
-      // Superadmin has no org — store empty string as sentinel so the type stays string.
-      organizationId: user.organization_id ?? '',
-      role: user.role,
-    };
-
-    const token = jwt.sign(payload, config.jwt.secret, {
-      expiresIn: config.jwt.expiresIn,
-    });
-    const refresh_token = await createRefreshToken(user.id);
-
-    const orgPlan = org?.plan as Plan | undefined;
-    const organization_plan = orgPlan
-      ? effectivePlan(orgPlan, user.plan_override as Plan | null)
-      : null;
-
-    res.json({
-      token,
-      refresh_token,
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-        is_staff: user.is_staff,
-        organization_id: user.organization_id,
-        organization_name: org?.name || '',
-        organization_plan,
-      },
-    });
+    // Not yet enrolled. Issue a session, but without mfa satisfied — the auth gate
+    // confines this token to the enrolment endpoints until the user sets up TOTP.
+    const session = await issueSession(user.id, false);
+    res.json({ ...session, mfa_enrolment_required: true });
   } catch (err) {
     next(err);
   }
@@ -152,8 +211,13 @@ authRouter.post('/refresh', async (req, res, next) => {
       () => undefined
     );
 
-    const user = await queryOne<{ id: string; organization_id: string | null; role: string }>(
-      'SELECT id, organization_id, role FROM users WHERE id = $1',
+    const user = await queryOne<{
+      id: string;
+      organization_id: string | null;
+      role: string;
+      totp_enabled: boolean;
+    }>(
+      'SELECT id, organization_id, role, totp_enabled FROM users WHERE id = $1',
       [record.user_id]
     );
     if (!user) throw new AppError(401, 'User not found');
@@ -162,6 +226,9 @@ authRouter.post('/refresh', async (req, res, next) => {
       userId: user.id,
       organizationId: user.organization_id ?? '',
       role: user.role,
+      // Re-derive the second-factor state from the DB on every refresh so the gate
+      // stays correct without a re-login (enrolment grants mfa; a reset revokes it).
+      mfa: user.totp_enabled,
     };
     const token = jwt.sign(payload, config.jwt.secret, { expiresIn: config.jwt.expiresIn });
 
@@ -194,8 +261,9 @@ authRouter.get('/me', authenticate, async (req, res, next) => {
       is_staff: boolean;
       organization_id: string;
       plan_override: string | null;
+      totp_enabled: boolean;
     }>(
-      'SELECT id, email, name, role, is_staff, organization_id, plan_override FROM users WHERE id = $1',
+      'SELECT id, email, name, role, is_staff, organization_id, plan_override, totp_enabled FROM users WHERE id = $1',
       [req.user!.userId]
     );
 
