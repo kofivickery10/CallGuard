@@ -3,6 +3,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import { Layout } from './components/Layout';
 import { Login } from './pages/Login';
+import { TwoFactorEnroll } from './pages/TwoFactorEnroll';
 import { Dashboard } from './pages/Dashboard';
 import { Calls } from './pages/Calls';
 import { CallDetail } from './pages/CallDetail';
@@ -45,6 +46,17 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   if (loading) return <div className="flex items-center justify-center h-screen">Loading...</div>;
   if (!user) return <Navigate to="/login" />;
+  // 2FA is mandatory — unenrolled users are sent to enrolment before any page.
+  if (user.totp_enabled === false) return <Navigate to="/enroll-2fa" />;
+  return <>{children}</>;
+}
+
+// Gate for the enrolment screen: requires a session, but is reachable while the
+// user is still unenrolled (PrivateRoute would otherwise bounce them here forever).
+function EnrolRoute({ children }: { children: React.ReactNode }) {
+  const { user, loading } = useAuth();
+  if (loading) return <div className="flex items-center justify-center h-screen">Loading...</div>;
+  if (!user) return <Navigate to="/login" />;
   return <>{children}</>;
 }
 
@@ -52,6 +64,7 @@ export function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/enroll-2fa" element={<EnrolRoute><TwoFactorEnroll /></EnrolRoute>} />
       <Route path="/welcome" element={<Welcome />} />
       <Route path="/shared/:token" element={<PublicCallView />} />
       <Route

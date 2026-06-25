@@ -93,6 +93,13 @@ async function request<T>(
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({ message: res.statusText }));
+    // 2FA is mandatory: a gated session hitting a protected route is bounced into
+    // enrolment. Covers active sessions that predate the user enrolling.
+    if (res.status === 403 && body.code === 'MFA_ENROLMENT_REQUIRED') {
+      if (window.location.pathname !== '/enroll-2fa') {
+        window.location.assign('/enroll-2fa');
+      }
+    }
     throw new Error(body.message || `Request failed: ${res.status}`);
   }
 

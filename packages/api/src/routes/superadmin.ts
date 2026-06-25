@@ -325,6 +325,9 @@ superadminRouter.post('/tenants/:id/impersonate', async (req, res, next) => {
       userId: admin.id,
       organizationId: admin.organization_id,
       role: admin.role,
+      // The superadmin already authenticated (with their own 2FA), so the
+      // impersonated session bypasses the tenant user's enrolment gate.
+      mfa: true,
       imp: true,
       impBy: req.user!.userId,
     };
@@ -341,6 +344,51 @@ superadminRouter.post('/tenants/:id/impersonate', async (req, res, next) => {
     });
 
     res.json({ token, note: 'Impersonation token — expires in 1 hour' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── Reset a user's 2FA ────────────────────────────────────────────────────────
+// Support escape hatch for a user locked out of their authenticator and backup
+// codes. Clears their enrolment, drops pending codes, and revokes active refresh
+// tokens so they must re-authenticate and re-enrol (2FA is mandatory).
+
+superadminRouter.post('/users/:id/reset-2fa', async (req, res, next) => {
+  try {
+    const target = await queryOne<{ id: string; email: string; organization_id: string | null }>(
+      'SELECT id, email, organization_id FROM users WHERE id = $1',
+      [req.params.id]
+    );
+    if (!target) throw new AppError(404, 'User not found');
+
+    await query(
+      `UPDATE users
+          SET totp_secret = NULL, totp_enabled = false, two_factor_enrolled_at = NULL
+        WHERE id = $1`,
+      [target.id]
+    );
+    await query('DELETE FROM two_factor_backup_codes WHERE user_id = $1', [target.id]);
+    await query('DELETE FROM two_factor_email_codes WHERE user_id = $1', [target.id]);
+    // Force a fresh login (and re-enrolment) by revoking active refresh tokens.
+    await query(
+      'UPDATE refresh_tokens SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL',
+      [target.id]
+    );
+
+    if (target.organization_id) {
+      await recordAuditEvent({
+        organizationId: target.organization_id,
+        userId: req.user!.userId,
+        actionType: 'auth.2fa.reset',
+        entityType: 'user',
+        entityId: target.id,
+        summary: `Superadmin reset 2FA for ${target.email}`,
+        req,
+      });
+    }
+
+    res.json({ ok: true, note: 'User must log in again and re-enrol in 2FA' });
   } catch (err) {
     next(err);
   }

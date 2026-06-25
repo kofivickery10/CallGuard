@@ -20,6 +20,9 @@ export interface AuthLoginInput {
 export interface AuthResponse {
   token: string;
   refresh_token: string;
+  // Present (true) when the user logged in but has not yet enrolled in 2FA, which
+  // is mandatory — the client must route them straight into enrolment.
+  mfa_enrolment_required?: boolean;
   user: {
     id: string;
     email: string;
@@ -29,7 +32,24 @@ export interface AuthResponse {
     organization_id: string | null;
     organization_name: string;
     organization_plan: 'core' | 'professional' | 'enterprise' | null;
+    totp_enabled?: boolean;
   };
+}
+
+// Returned by POST /auth/login when the user has 2FA enabled: the password was
+// correct but a second factor is still required. No session is issued yet.
+export interface TwoFactorChallengeResponse {
+  two_factor_required: true;
+  challenge_token: string;
+  methods: Array<'totp' | 'email' | 'backup'>;
+  email_hint: string;
+}
+
+// Returned by POST /auth/2fa/setup — the enrolment QR + manual key.
+export interface TwoFactorSetupResponse {
+  otpauth_url: string;
+  qr_data_url: string;
+  secret: string;
 }
 
 export interface DashboardSummary {
