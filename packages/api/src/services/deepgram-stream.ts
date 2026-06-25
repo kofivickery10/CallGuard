@@ -46,6 +46,12 @@ export class DeepgramStream {
       punctuate: true,
       interim_results: true,
       diarize: true,
+      // Redact PII/PCI/PHI at source (streaming redaction is English-only, which
+      // matches en-GB). Customers' personal/payment/health data is replaced with
+      // typed tags before any transcript reaches our store or the LLM scorer.
+      // Note: we deliberately do not set no_delay, which would trade redaction
+      // accuracy for latency.
+      redact: ['pci', 'pii', 'phi'],
       encoding: this.opts.encoding,
       sample_rate: this.opts.sampleRate,
       channels: this.opts.channels ?? 1,

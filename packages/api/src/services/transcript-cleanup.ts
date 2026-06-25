@@ -82,6 +82,7 @@ Fix the transcript while following these rules STRICTLY:
 6. **Preserve UK English** spelling (e.g. "organise", "colour", "centre")
 7. **Format numbers properly** - postcodes uppercase with correct spacing, phone numbers without spaces, prices with pound signs (£19.99)
 8. **If genuinely unclear, leave it alone** - don't guess wildly; only correct when context makes the correct word obvious
+9. **Preserve redaction tags exactly** - sensitive details (names, addresses, phone numbers, card/bank details, dates of birth, health information) have been redacted to typed tags like [PII_NAME_1], [PHONE_NUMBER_1] or [CREDIT_CARD_1]. Keep these tags verbatim - never expand, "restore", guess at, merge or remove them. They mark where personal data was spoken.
 
 ## Transcript to clean up
 
