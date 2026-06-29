@@ -31,6 +31,9 @@ export type AuditActionType =
   | 'sftp.create'
   | 'sftp.update'
   | 'sftp.delete'
+  | 'zoho.connect'
+  | 'zoho.update'
+  | 'zoho.disconnect'
   | 'user.invite'
   | 'user.role_change'
   | 'user.delete'
@@ -53,6 +56,7 @@ export type AuditEntityType =
   | 'kb_file'
   | 'api_key'
   | 'sftp_source'
+  | 'zoho_connection'
   | 'user'
   | 'session'
   | 'organization';

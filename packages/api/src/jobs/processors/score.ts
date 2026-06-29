@@ -6,8 +6,9 @@ import { evaluateAlertsForCall } from '../../services/alert-evaluator.js';
 import { getLearningContext } from '../../services/learning-context.js';
 import { recordUsage } from '../../services/usage.js';
 import { deliverCallScored } from '../../services/webhook-delivery.js';
+import { pushCallScored } from '../../services/zoho.js';
 import { hasFeature, isItemPass, deriveSeverity, callPasses, MIN_SCOREABLE_WORDS, MIN_SCOREABLE_DURATION_SECONDS } from '@callguard/shared';
-import type { Call, ScorecardItem, Plan } from '@callguard/shared';
+import type { Call, ScorecardItem, Plan, WebhookCallScoredPayload } from '@callguard/shared';
 
 export async function processScoring(job: Job<{ callId: string }>) {
   const { callId } = job.data;
@@ -329,7 +330,7 @@ export async function processScoring(job: Job<{ callId: string }>) {
       customerExternalCrmId = cust?.external_crm_id ?? null;
     }
 
-    deliverCallScored(call.organization_id, {
+    const scoredPayload: WebhookCallScoredPayload = {
       event: 'call.scored',
       call_id: callId,
       external_id: callRow.external_id ?? null,
@@ -342,8 +343,16 @@ export async function processScoring(job: Job<{ callId: string }>) {
       customer_phone: callRow.customer_phone ?? null,
       customer_external_crm_id: customerExternalCrmId,
       breaches: failures,
-    }).catch((err) => {
+    };
+
+    deliverCallScored(call.organization_id, scoredPayload).catch((err) => {
       console.error(`[Scoring] call.scored webhook failed for ${callId}:`, (err as Error).message);
+    });
+
+    // Native Zoho CRM write-back (no-op unless the org has an active connection).
+    // Best-effort and self-contained — never blocks or fails scoring.
+    pushCallScored(call.organization_id, scoredPayload).catch((err) => {
+      console.error(`[Scoring] Zoho write-back failed for ${callId}:`, (err as Error).message);
     });
 
     // Evaluate alert rules after scoring completes

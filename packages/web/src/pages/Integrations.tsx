@@ -1,7 +1,15 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
-import type { ApiKey, ApiKeyWithPlaintext, SFTPSource, SFTPPollLog } from '@callguard/shared';
+import type {
+  ApiKey,
+  ApiKeyWithPlaintext,
+  SFTPSource,
+  SFTPPollLog,
+  ZohoConnection,
+  ZohoModule,
+  ZohoRegion,
+} from '@callguard/shared';
 
 export function Integrations() {
   return (
@@ -9,13 +17,15 @@ export function Integrations() {
       <div className="mb-7">
         <h2 className="text-page-title text-text-primary">Integrations</h2>
         <p className="text-page-sub text-text-subtle mt-1">
-          Connect external systems via API or SFTP
+          Connect external systems via API, SFTP or CRM
         </p>
       </div>
 
       <ApiKeysSection />
       <div className="h-8" />
       <SFTPSourcesSection />
+      <div className="h-8" />
+      <ZohoSection />
     </div>
   );
 }
@@ -550,6 +560,227 @@ function SFTPLogsModal({ sourceId, onClose }: { sourceId: string; onClose: () =>
             </tbody>
           </table>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// Zoho CRM Section
+// ============================================================
+
+const ZOHO_REGIONS: { value: ZohoRegion; label: string }[] = [
+  { value: 'eu', label: 'EU (zoho.eu)' },
+  { value: 'com', label: 'US (zoho.com)' },
+  { value: 'in', label: 'India (zoho.in)' },
+  { value: 'com.au', label: 'Australia (zoho.com.au)' },
+  { value: 'jp', label: 'Japan (zoho.jp)' },
+  { value: 'ca', label: 'Canada (zohocloud.ca)' },
+];
+
+function ZohoSection() {
+  const queryClient = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [banner, setBanner] = useState<{ ok: boolean; message: string } | null>(null);
+  const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
+
+  const { data } = useQuery({
+    queryKey: ['zoho-connection'],
+    queryFn: () => api.get<{ data: ZohoConnection | null }>('/integrations/zoho'),
+  });
+  const conn = data?.data ?? null;
+
+  // Surface the result of the OAuth round-trip (Zoho redirects back with ?zoho=…).
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const status = params.get('zoho');
+    if (!status) return;
+    if (status === 'connected') setBanner({ ok: true, message: 'Zoho CRM connected.' });
+    else if (status === 'error') {
+      setBanner({ ok: false, message: params.get('message') || 'Zoho connection failed.' });
+    }
+    queryClient.invalidateQueries({ queryKey: ['zoho-connection'] });
+    window.history.replaceState({}, '', window.location.pathname);
+  }, [queryClient]);
+
+  const handleReconnect = async () => {
+    const { authorize_url } = await api.get<{ authorize_url: string }>('/integrations/zoho/authorize');
+    window.location.assign(authorize_url);
+  };
+
+  const handleTest = async () => {
+    setTestResult(null);
+    const result = await api.post<{ ok: boolean; message: string }>('/integrations/zoho/test');
+    setTestResult(result);
+  };
+
+  const handleDisconnect = async () => {
+    if (!confirm('Disconnect Zoho CRM? Scored calls will stop syncing to Zoho.')) return;
+    await api.delete('/integrations/zoho');
+    queryClient.invalidateQueries({ queryKey: ['zoho-connection'] });
+  };
+
+  const statusBadge = !conn ? null : conn.status === 'active' ? (
+    <span className="px-2.5 py-[3px] rounded-[20px] text-badge font-semibold bg-pass-bg text-pass">Active</span>
+  ) : conn.status === 'pending' ? (
+    <span className="px-2.5 py-[3px] rounded-[20px] text-badge font-semibold bg-review-bg text-review">Awaiting authorization</span>
+  ) : (
+    <span className="px-2.5 py-[3px] rounded-[20px] text-badge font-semibold bg-table-header text-text-muted">Disabled</span>
+  );
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-[15px] font-semibold text-text-primary">Zoho CRM</h3>
+        {!conn && (
+          <button
+            onClick={() => setEditing(true)}
+            className="bg-primary text-white px-[18px] py-[9px] rounded-btn text-table-cell font-semibold hover:bg-primary-hover transition-colors"
+          >
+            Connect Zoho
+          </button>
+        )}
+      </div>
+
+      {banner && (
+        <div className={`mb-4 rounded-btn px-3 py-2 text-table-cell ${banner.ok ? 'bg-pass-bg text-pass' : 'bg-fail-bg text-fail'}`}>
+          {banner.message}
+        </div>
+      )}
+
+      {!conn ? (
+        <div className="bg-card border border-dashed border-border rounded-card p-8 text-center">
+          <p className="text-text-secondary font-semibold mb-1">Zoho CRM not connected</p>
+          <p className="text-table-cell text-text-muted">
+            Push compliance scores and breach tasks onto the matching Lead/Contact after every call is scored.
+          </p>
+        </div>
+      ) : (
+        <div className="bg-card border border-border rounded-card p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              {statusBadge}
+              <span className="text-table-cell text-text-cell">
+                Module <span className="font-medium text-text-primary">{conn.module}</span> · Region <span className="font-mono">{conn.dc_region}</span>
+              </span>
+            </div>
+            <div className="flex items-center gap-3 text-[12px]">
+              {conn.status === 'active' && (
+                <button onClick={handleTest} className="text-text-muted hover:text-text-primary">Test</button>
+              )}
+              <button onClick={handleReconnect} className="text-text-muted hover:text-text-primary">Reconnect</button>
+              <button onClick={() => setEditing(true)} className="text-text-muted hover:text-text-primary">Edit</button>
+              <button onClick={handleDisconnect} className="text-text-muted hover:text-fail">Disconnect</button>
+            </div>
+          </div>
+
+          <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-table-cell">
+            <div className="flex justify-between border-b border-border-light py-1">
+              <dt className="text-text-muted">Last synced</dt>
+              <dd className="text-text-cell">{conn.last_synced_at ? new Date(conn.last_synced_at).toLocaleString() : 'Never'}</dd>
+            </div>
+            <div className="flex justify-between border-b border-border-light py-1">
+              <dt className="text-text-muted">Last error</dt>
+              <dd className={conn.last_error ? 'text-fail' : 'text-text-cell'} title={conn.last_error || ''}>
+                {conn.last_error ? conn.last_error.slice(0, 40) + (conn.last_error.length > 40 ? '…' : '') : 'None'}
+              </dd>
+            </div>
+          </dl>
+
+          {conn.status === 'pending' && (
+            <div className="mt-4 bg-review-bg border border-review/20 text-review px-3 py-2 rounded-btn text-table-cell">
+              Credentials saved. Click <strong>Reconnect</strong> to authorize CallGuard in Zoho and activate the connection.
+            </div>
+          )}
+
+          {testResult && (
+            <div className={`mt-4 rounded-btn px-3 py-2 text-table-cell ${testResult.ok ? 'bg-pass-bg text-pass' : 'bg-fail-bg text-fail'}`}>
+              {testResult.message}
+            </div>
+          )}
+        </div>
+      )}
+
+      {editing && (
+        <ZohoConnectModal
+          initial={conn}
+          onClose={() => setEditing(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+function ZohoConnectModal({ initial, onClose }: { initial: ZohoConnection | null; onClose: () => void }) {
+  const [dcRegion, setDcRegion] = useState<ZohoRegion>(initial?.dc_region ?? 'eu');
+  const [module, setModule] = useState<ZohoModule>(initial?.module ?? 'Leads');
+  const [clientId, setClientId] = useState(initial?.client_id ?? '');
+  const [clientSecret, setClientSecret] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    setError('');
+    try {
+      const { authorize_url } = await api.post<{ authorize_url: string }>('/integrations/zoho', {
+        dc_region: dcRegion,
+        module,
+        client_id: clientId,
+        client_secret: clientSecret,
+      });
+      // Hand off to Zoho's consent screen; it redirects back to /integrations.
+      window.location.assign(authorize_url);
+    } catch (err) {
+      setError((err as Error).message);
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto py-8">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative bg-card border border-border rounded-card w-full max-w-lg p-6 shadow-lg my-auto">
+        <h3 className="text-[15px] font-semibold text-text-primary mb-1">
+          {initial ? 'Edit Zoho Connection' : 'Connect Zoho CRM'}
+        </h3>
+        <p className="text-table-cell text-text-subtle mb-4">
+          Paste the Client ID and Secret from your Zoho API console. You'll be sent to Zoho to approve access.
+        </p>
+
+        {error && <div className="bg-fail-bg text-fail px-3 py-2 rounded-btn text-table-cell mb-3">{error}</div>}
+
+        <form onSubmit={handleSubmit} className="grid grid-cols-2 gap-3">
+          <Field label="Data centre">
+            <select value={dcRegion} onChange={(e) => setDcRegion(e.target.value as ZohoRegion)} className={inputCls}>
+              {ZOHO_REGIONS.map((r) => (
+                <option key={r.value} value={r.value}>{r.label}</option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Module">
+            <select value={module} onChange={(e) => setModule(e.target.value as ZohoModule)} className={inputCls}>
+              <option value="Leads">Leads</option>
+              <option value="Contacts">Contacts</option>
+            </select>
+          </Field>
+          <Field label="Client ID" full>
+            <input type="text" value={clientId} onChange={(e) => setClientId(e.target.value)} required className={inputCls} placeholder="1000.XXXXXXXX" />
+          </Field>
+          <Field label="Client Secret" full hint="Stored encrypted. Re-enter when reconnecting.">
+            <input type="password" value={clientSecret} onChange={(e) => setClientSecret(e.target.value)} required className={inputCls} />
+          </Field>
+
+          <div className="col-span-2 flex gap-2 mt-2">
+            <button type="button" onClick={onClose} className="flex-1 px-[18px] py-[9px] rounded-btn border border-border text-text-cell font-semibold text-table-cell hover:bg-sidebar-hover transition-colors">
+              Cancel
+            </button>
+            <button type="submit" disabled={saving} className="flex-1 bg-primary text-white px-[18px] py-[9px] rounded-btn font-semibold text-table-cell hover:bg-primary-hover disabled:opacity-50 transition-colors">
+              {saving ? 'Redirecting…' : 'Save & Authorize'}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );

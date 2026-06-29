@@ -4,6 +4,7 @@ export * from './types/call.js';
 export * from './types/api.js';
 export * from './types/knowledge-base.js';
 export * from './types/ingestion.js';
+export * from './types/zoho.js';
 export * from './types/alerts.js';
 export * from './types/breaches.js';
 export * from './types/trends.js';

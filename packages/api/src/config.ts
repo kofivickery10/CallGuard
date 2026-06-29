@@ -54,4 +54,15 @@ export const config = {
   },
 
   appUrl: optional('APP_URL', 'http://localhost:5173'),
+
+  zoho: {
+    // Where Zoho redirects the browser after the user approves access. Must be
+    // registered verbatim as the Authorized Redirect URI in the Zoho API console
+    // and must resolve to this API server. Defaults to APP_URL (prod serves the
+    // API and web on the same host); override in dev where they differ.
+    redirectUri: optional(
+      'ZOHO_REDIRECT_URI',
+      `${optional('APP_URL', 'http://localhost:5173')}/api/integrations/zoho/callback`
+    ),
+  },
 } as const;
