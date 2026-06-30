@@ -164,25 +164,12 @@ h1, h2, h3, h4, h5 { color: var(--text-primary); font-weight: 700; line-height: 
 .brand {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
-  font-weight: 700;
-  font-size: 17px;
-  letter-spacing: -0.3px;
-  color: var(--text-primary);
 }
-.brand-mark {
-  width: 32px;
-  height: 32px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-.brand-mark svg { width: 100%; height: 100%; display: block; }
-.brand-text-ai {
-  color: var(--primary-dark);    /* AA contrast on white nav */
-  font-weight: 800;
-  margin-left: 2px;
-}
+/* Lockup logo (icon + outlined wordmark). Colour on light theme, white on dark. */
+.brand-logo { height: 30px; width: auto; display: block; }
+.brand-logo--dark { display: none; }
+:root[data-theme="dark"] .brand-logo--light { display: none; }
+:root[data-theme="dark"] .brand-logo--dark { display: block; }
 
 .nav-links {
   display: flex;
@@ -1094,12 +1081,7 @@ h1, h2, h3, h4, h5 { color: var(--text-primary); font-weight: 700; line-height: 
   padding-bottom: 40px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
-.footer-brand .brand {
-  color: white;
-}
-.brand-footer .brand-text-ai {
-  color: var(--primary);
-}
+.brand-footer .brand-logo--footer { height: 34px; }
 .footer-tag {
   margin: 12px 0 0;
   font-size: 14px;
@@ -1431,9 +1413,8 @@ body.no-scroll { overflow: hidden; }
 @media (max-width: 480px) {
   :root { --container-pad: 16px; }
   .nav-inner { gap: 8px; }
-  .brand { font-size: 16px; gap: 8px; }
-  .brand-mark { width: 28px; height: 28px; }
-  .brand-mark svg { width: 100%; height: 100%; }
+  .brand-logo { height: 26px; }
+  .brand-footer .brand-logo--footer { height: 30px; }
 
   .hero { padding: 36px 0 52px; }
   .eyebrow { font-size: 10.5px; padding: 5px 10px; margin-bottom: 16px; letter-spacing: 0.3px; }
