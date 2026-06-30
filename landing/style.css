@@ -173,13 +173,11 @@ h1, h2, h3, h4, h5 { color: var(--text-primary); font-weight: 700; line-height: 
 .brand-mark {
   width: 32px;
   height: 32px;
-  border-radius: 50%;
-  background: var(--primary);
   display: inline-flex;
   align-items: center;
   justify-content: center;
 }
-.brand-mark svg { width: 18px; height: 18px; }
+.brand-mark svg { width: 100%; height: 100%; display: block; }
 .brand-text-ai {
   color: var(--primary-dark);    /* AA contrast on white nav */
   font-weight: 800;
@@ -1435,7 +1433,7 @@ body.no-scroll { overflow: hidden; }
   .nav-inner { gap: 8px; }
   .brand { font-size: 16px; gap: 8px; }
   .brand-mark { width: 28px; height: 28px; }
-  .brand-mark svg { width: 16px; height: 16px; }
+  .brand-mark svg { width: 100%; height: 100%; }
 
   .hero { padding: 36px 0 52px; }
   .eyebrow { font-size: 10.5px; padding: 5px 10px; margin-bottom: 16px; letter-spacing: 0.3px; }
@@ -1495,41 +1493,7 @@ body.no-scroll { overflow: hidden; }
 .reveal.reveal-delay-2 { transition-delay: 160ms; }
 .reveal.reveal-delay-3 { transition-delay: 240ms; }
 
-/* Hero brand-mark audio bars: subtle live pulse to imply "listening" */
-@keyframes audio-pulse-1 {
-  0%, 100% { transform: scaleY(1); }
-  50%      { transform: scaleY(1.35); }
-}
-@keyframes audio-pulse-2 {
-  0%, 100% { transform: scaleY(1); }
-  50%      { transform: scaleY(0.78); }
-}
-@keyframes audio-pulse-3 {
-  0%, 100% { transform: scaleY(1); }
-  50%      { transform: scaleY(1.18); }
-}
-.brand-mark svg rect {
-  transform-origin: center bottom;
-  transform-box: fill-box;
-}
-.nav .brand-mark svg rect:nth-of-type(1) {
-  animation: audio-pulse-1 1.6s ease-in-out infinite;
-}
-.nav .brand-mark svg rect:nth-of-type(2) {
-  animation: audio-pulse-2 1.6s ease-in-out infinite 0.18s;
-}
-.nav .brand-mark svg rect:nth-of-type(3) {
-  animation: audio-pulse-3 1.6s ease-in-out infinite 0.36s;
-}
-.nav .brand-mark svg circle {
-  transform-origin: center;
-  transform-box: fill-box;
-  animation: dot-pulse 2.4s ease-in-out infinite;
-}
-@keyframes dot-pulse {
-  0%, 100% { opacity: 1; }
-  50%      { opacity: 0.55; }
-}
+/* Brand mark is the static shield + pulse logo (see brand/logo-icon.svg) */
 
 /* Hero background ambient gradient drift */
 @keyframes hero-drift {
@@ -1563,8 +1527,6 @@ body.no-scroll { overflow: hidden; }
     transform: none;
     transition: none;
   }
-  .nav .brand-mark svg rect,
-  .nav .brand-mark svg circle,
   .hero::before {
     animation: none;
   }
