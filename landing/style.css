@@ -164,27 +164,12 @@ h1, h2, h3, h4, h5 { color: var(--text-primary); font-weight: 700; line-height: 
 .brand {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
-  font-weight: 700;
-  font-size: 17px;
-  letter-spacing: -0.3px;
-  color: var(--text-primary);
 }
-.brand-mark {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  background: var(--primary);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-.brand-mark svg { width: 18px; height: 18px; }
-.brand-text-ai {
-  color: var(--primary-dark);    /* AA contrast on white nav */
-  font-weight: 800;
-  margin-left: 2px;
-}
+/* Lockup logo (icon + outlined wordmark). Colour on light theme, white on dark. */
+.brand-logo { height: 30px; width: auto; display: block; }
+.brand-logo--dark { display: none; }
+:root[data-theme="dark"] .brand-logo--light { display: none; }
+:root[data-theme="dark"] .brand-logo--dark { display: block; }
 
 .nav-links {
   display: flex;
@@ -1096,12 +1081,7 @@ h1, h2, h3, h4, h5 { color: var(--text-primary); font-weight: 700; line-height: 
   padding-bottom: 40px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
-.footer-brand .brand {
-  color: white;
-}
-.brand-footer .brand-text-ai {
-  color: var(--primary);
-}
+.brand-footer .brand-logo--footer { height: 34px; }
 .footer-tag {
   margin: 12px 0 0;
   font-size: 14px;
@@ -1433,9 +1413,8 @@ body.no-scroll { overflow: hidden; }
 @media (max-width: 480px) {
   :root { --container-pad: 16px; }
   .nav-inner { gap: 8px; }
-  .brand { font-size: 16px; gap: 8px; }
-  .brand-mark { width: 28px; height: 28px; }
-  .brand-mark svg { width: 16px; height: 16px; }
+  .brand-logo { height: 26px; }
+  .brand-footer .brand-logo--footer { height: 30px; }
 
   .hero { padding: 36px 0 52px; }
   .eyebrow { font-size: 10.5px; padding: 5px 10px; margin-bottom: 16px; letter-spacing: 0.3px; }
@@ -1495,41 +1474,7 @@ body.no-scroll { overflow: hidden; }
 .reveal.reveal-delay-2 { transition-delay: 160ms; }
 .reveal.reveal-delay-3 { transition-delay: 240ms; }
 
-/* Hero brand-mark audio bars: subtle live pulse to imply "listening" */
-@keyframes audio-pulse-1 {
-  0%, 100% { transform: scaleY(1); }
-  50%      { transform: scaleY(1.35); }
-}
-@keyframes audio-pulse-2 {
-  0%, 100% { transform: scaleY(1); }
-  50%      { transform: scaleY(0.78); }
-}
-@keyframes audio-pulse-3 {
-  0%, 100% { transform: scaleY(1); }
-  50%      { transform: scaleY(1.18); }
-}
-.brand-mark svg rect {
-  transform-origin: center bottom;
-  transform-box: fill-box;
-}
-.nav .brand-mark svg rect:nth-of-type(1) {
-  animation: audio-pulse-1 1.6s ease-in-out infinite;
-}
-.nav .brand-mark svg rect:nth-of-type(2) {
-  animation: audio-pulse-2 1.6s ease-in-out infinite 0.18s;
-}
-.nav .brand-mark svg rect:nth-of-type(3) {
-  animation: audio-pulse-3 1.6s ease-in-out infinite 0.36s;
-}
-.nav .brand-mark svg circle {
-  transform-origin: center;
-  transform-box: fill-box;
-  animation: dot-pulse 2.4s ease-in-out infinite;
-}
-@keyframes dot-pulse {
-  0%, 100% { opacity: 1; }
-  50%      { opacity: 0.55; }
-}
+/* Brand mark is the static shield + pulse logo (see brand/logo-icon.svg) */
 
 /* Hero background ambient gradient drift */
 @keyframes hero-drift {
@@ -1563,8 +1508,6 @@ body.no-scroll { overflow: hidden; }
     transform: none;
     transition: none;
   }
-  .nav .brand-mark svg rect,
-  .nav .brand-mark svg circle,
   .hero::before {
     animation: none;
   }
