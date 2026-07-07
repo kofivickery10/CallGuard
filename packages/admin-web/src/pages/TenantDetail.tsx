@@ -84,6 +84,7 @@ export default function TenantDetail() {
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
   const [tierSaving, setTierSaving] = useState<string | null>(null);
+  const [resetting2fa, setResetting2fa] = useState<string | null>(null);
   const [featSaving, setFeatSaving] = useState<string | null>(null);
 
   useEffect(() => {
@@ -161,12 +162,28 @@ export default function TenantDetail() {
   };
 
   const impersonate = async () => {
-    if (!id || !confirm('Issue a 1-hour impersonation token?')) return;
+    if (!id || !confirm('Open a 1-hour impersonation session as this tenant\'s admin?')) return;
     try {
-      const r = await api.post<{ token: string; note: string }>(`/superadmin/tenants/${id}/impersonate`, {});
-      prompt('Copy this token (expires 1 hour):', r.token);
+      const r = await api.post<{ token: string; url: string; note: string }>(`/superadmin/tenants/${id}/impersonate`, {});
+      // Opens the tenant app directly with the session already established —
+      // previously this just showed the raw JWT in a prompt(), which ops then
+      // had to manually paste into devtools localStorage to use.
+      window.open(r.url, '_blank', 'noopener');
     } catch (e) {
       alert(e instanceof Error ? e.message : 'Failed');
+    }
+  };
+
+  const resetUserTwoFactor = async (userId: string, name: string) => {
+    if (!confirm(`Reset 2FA for ${name}? They will need to re-enrol on next login.`)) return;
+    setResetting2fa(userId);
+    try {
+      await api.post(`/superadmin/users/${userId}/reset-2fa`, {});
+      alert(`2FA reset for ${name}.`);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Failed to reset 2FA');
+    } finally {
+      setResetting2fa(null);
     }
   };
 
@@ -420,7 +437,7 @@ export default function TenantDetail() {
         <table className="w-full text-sm">
           <thead className="bg-table-header border-b border-border">
             <tr>
-              {['Name', 'Email', 'Role', 'Last active', 'Tier override'].map((h) => (
+              {['Name', 'Email', 'Role', 'Last active', 'Tier override', ''].map((h) => (
                 <th key={h} className="text-left px-4 py-2 text-xs font-semibold uppercase tracking-wider text-text-muted">{h}</th>
               ))}
             </tr>
@@ -446,6 +463,16 @@ export default function TenantDetail() {
                       <option key={p} value={p}>{PLAN_LABELS[p]}</option>
                     ))}
                   </select>
+                </td>
+                <td className="px-4 py-2">
+                  <button
+                    onClick={() => resetUserTwoFactor(u.id, u.name)}
+                    disabled={resetting2fa === u.id}
+                    className="text-xs text-primary hover:underline disabled:opacity-60"
+                    title="Reset 2FA — for a user locked out of their authenticator and backup codes"
+                  >
+                    {resetting2fa === u.id ? 'Resetting…' : 'Reset 2FA'}
+                  </button>
                 </td>
               </tr>
             ))}
