@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
-import { hasFeature } from '@callguard/shared';
+import { hasFeature, PLAN_LABELS } from '@callguard/shared';
 import type { InsightDigest, InsightPriority } from '@callguard/shared';
 
 const PERIOD_OPTIONS = [
@@ -32,7 +32,11 @@ export function AIInsights() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [days, setDays] = useState(7);
 
-  const hasInsights = user ? hasFeature(user.organization_plan, 'insights') : false;
+  // Insights ships on every plan (see FEATURES.insights in shared) — this
+  // only evaluates false for a genuinely invalid/unrecognised plan value, not
+  // for any real tier. Route guards above this component guarantee `user` is
+  // loaded by the time it renders.
+  const hasInsights = hasFeature(user?.organization_plan ?? null, 'insights');
 
   const { data: digestsData, isLoading } = useQuery({
     queryKey: ['insights'],
@@ -65,7 +69,7 @@ export function AIInsights() {
         <div className="bg-card border border-border rounded-card p-10 text-center">
           <div className="text-[32px] mb-2">✨</div>
           <h3 className="text-[18px] font-semibold text-text-primary mb-2">
-            AI Insights is a Pro feature
+            AI Insights isn't available on your plan
           </h3>
           <p className="text-table-cell text-text-muted max-w-md mx-auto mb-4">
             Get an AI chief-of-staff that turns your call data into a strategic brief every week:
@@ -75,7 +79,7 @@ export function AIInsights() {
             to="/settings/organization"
             className="inline-block px-4 py-2 bg-primary hover:bg-primary-hover text-white rounded-btn text-[13px] font-semibold transition-colors"
           >
-            Upgrade to Pro
+            Upgrade to {PLAN_LABELS.core}
           </Link>
         </div>
       </div>

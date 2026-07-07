@@ -48,6 +48,12 @@ export default {
           DEFAULT: v('--cg-processing'),
           bg: v('--cg-processing-bg'),
         },
+        // Accent for star ratings and premium/highlight chips (bg-secondary,
+        // text-secondary — used by PublicCallView, CoachingPanel, Layout).
+        secondary: {
+          DEFAULT: v('--cg-secondary'),
+          bg: v('--cg-secondary-bg'),
+        },
         chart: {
           secondary: v('--cg-chart-secondary'),
         },

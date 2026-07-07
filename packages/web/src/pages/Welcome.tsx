@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Logo } from '../components/Logo';
+import { PLAN_LABELS } from '@callguard/shared';
 
 export function Welcome() {
   return (
@@ -111,20 +112,20 @@ export function Welcome() {
           <p className="text-page-sub text-text-subtle text-center mb-10">All plans include custom scorecard build, onboarding, and Consumer Duty reporting</p>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
             <PricingCard
-              tier="Starter"
+              tier={PLAN_LABELS.core}
               price="£199"
               description="Sole-trader IFAs and small practices"
               features={['500 calls/month', 'Up to 10 advisers', '1 custom scorecard', 'Compliance dashboard', 'Breach register']}
             />
             <PricingCard
-              tier="Growth"
+              tier={PLAN_LABELS.professional}
               price="£499"
               description="10-50 adviser firms"
               featured
               features={['2,000 calls/month', 'Up to 50 advisers', '5 scorecards by advice type', 'CRM integrations', 'Custom alert rules', 'Intelliflo integration']}
             />
             <PricingCard
-              tier="Pro"
+              tier={PLAN_LABELS.enterprise}
               price="£999"
               description="Multi-site networks"
               features={['5,000 calls/month', 'Up to 200 advisers', 'Unlimited scorecards', 'T&C scheme integration', 'Dedicated specialist', '99.9% uptime SLA']}

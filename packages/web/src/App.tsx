@@ -10,6 +10,7 @@ import { CallDetail } from './pages/CallDetail';
 import { Upload } from './pages/Upload';
 import { PublicCallView } from './pages/PublicCallView';
 import { Welcome } from './pages/Welcome';
+import { Impersonate } from './pages/Impersonate';
 
 // Lazy-loaded admin-heavy pages (most users never visit)
 const Scorecards = lazy(() => import('./pages/Scorecards').then((m) => ({ default: m.Scorecards })));
@@ -64,6 +65,7 @@ export function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/impersonate" element={<Impersonate />} />
       <Route path="/enroll-2fa" element={<EnrolRoute><TwoFactorEnroll /></EnrolRoute>} />
       <Route path="/welcome" element={<Welcome />} />
       <Route path="/shared/:token" element={<PublicCallView />} />

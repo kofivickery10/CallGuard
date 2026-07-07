@@ -81,14 +81,25 @@ async function request<T>(
     headers,
   });
 
-  // On 401, attempt a token refresh and retry once.
-  if (res.status === 401 && !isRetry && path !== '/auth/refresh' && path !== '/auth/login') {
-    try {
-      await attemptTokenRefresh();
-      return request<T>(path, options, true);
-    } catch {
-      // Refresh failed — bubble up a 401 so the app redirects to login.
+  // On 401, attempt a token refresh and retry once. If the refresh itself
+  // fails (refresh token also expired/revoked), or the retried request is
+  // still rejected, the session is unrecoverable — clear it and send the user
+  // to login. Without this, every page just sits on whatever loading/error
+  // state it happened to be in (most have none) until a manual reload.
+  if (res.status === 401 && path !== '/auth/refresh' && path !== '/auth/login') {
+    if (!isRetry) {
+      try {
+        await attemptTokenRefresh();
+        return request<T>(path, options, true);
+      } catch {
+        // fall through to the session-expired handling below
+      }
     }
+    clearToken();
+    if (window.location.pathname !== '/login') {
+      window.location.assign('/login');
+    }
+    throw new Error('Session expired. Please log in again.');
   }
 
   if (!res.ok) {
