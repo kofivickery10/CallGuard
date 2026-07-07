@@ -1,5 +1,5 @@
 import { Job } from 'bullmq';
-import { query, queryOne } from '../../db/client.js';
+import { query, queryOne, withTransaction } from '../../db/client.js';
 import { scoreTranscript, verifyItems, normalizeScore } from '../../services/scoring.js';
 import { getKBContext } from '../../services/kb.js';
 import { evaluateAlertsForCall } from '../../services/alert-evaluator.js';
@@ -69,10 +69,23 @@ export async function processScoring(job: Job<{ callId: string }>) {
     }
 
     if (!scorecard) {
-      scorecard = await queryOne<{ id: string }>(
-        'SELECT id FROM scorecards WHERE organization_id = $1 AND is_active = true LIMIT 1',
+      // Deterministic fallback: the org's oldest active scorecard, not
+      // "whichever row Postgres happens to return first" (LIMIT with no
+      // ORDER BY). Orgs intentionally running several scorecards (BPOs
+      // scoring different campaigns differently) select one explicitly per
+      // call via scorecardId above; this path is only reached when they
+      // don't, so more than one active scorecard here is worth a log line —
+      // it means some calls are silently landing on an arbitrary one.
+      const activeScorecards = await query<{ id: string }>(
+        'SELECT id FROM scorecards WHERE organization_id = $1 AND is_active = true ORDER BY created_at ASC',
         [call.organization_id]
       );
+      if (activeScorecards.length > 1) {
+        console.warn(
+          `[Scoring] Org ${call.organization_id} has ${activeScorecards.length} active scorecards and call ${callId} specified none — defaulting to the oldest (${activeScorecards[0]!.id})`
+        );
+      }
+      scorecard = activeScorecards[0] ?? null;
     }
 
     if (!scorecard) {
@@ -80,7 +93,7 @@ export async function processScoring(job: Job<{ callId: string }>) {
     }
 
     const items = await query<ScorecardItem>(
-      'SELECT * FROM scorecard_items WHERE scorecard_id = $1 ORDER BY sort_order',
+      'SELECT * FROM scorecard_items WHERE scorecard_id = $1 AND archived_at IS NULL ORDER BY sort_order',
       [scorecard.id]
     );
 
@@ -183,63 +196,38 @@ export async function processScoring(job: Job<{ callId: string }>) {
       );
     }
 
-    // Create call_score record (with coaching if generated)
-    const priorCoachingCount = learning?.priorCoaching?.length ?? 0;
-    const callScoreRows = await query<{ id: string }>(
-      `INSERT INTO call_scores (call_id, scorecard_id, scored_at, model_id, prompt_tokens, completion_tokens, coaching, prior_coaching_count)
-       VALUES ($1, $2, now(), $3, $4, $5, $6, $7) RETURNING id`,
-      [
-        callId,
-        scorecard.id,
-        model,
-        usage.input_tokens,
-        usage.output_tokens,
-        output.coaching ? JSON.stringify(output.coaching) : null,
-        priorCoachingCount,
-      ]
-    );
-    const callScoreId = callScoreRows[0].id;
+    // The model must return exactly one score per scorecard item — no fewer
+    // (a silently-skipped item would understate the true failure count and
+    // compute the weighted average over a subset, a silent false-pass channel
+    // in a compliance product) and no more (a duplicate would trip the
+    // call_item_scores unique constraint below). Fail loudly and let BullMQ
+    // retry rather than persist a partial score.
+    const scoredIds = new Set(output.items.map((it) => it.scorecard_item_id));
+    const expectedIds = new Set(items.map((i) => i.id));
+    const missing = items.filter((i) => !scoredIds.has(i.id));
+    const duplicateCount = output.items.length - scoredIds.size;
+    const unknown = output.items.filter((it) => !expectedIds.has(it.scorecard_item_id));
+    if (missing.length > 0 || duplicateCount > 0 || unknown.length > 0) {
+      throw new Error(
+        `Scoring output does not cover the scorecard 1:1 (missing: ${missing.map((i) => i.label).join(', ') || 'none'}, ` +
+        `duplicates: ${duplicateCount}, unknown item ids: ${unknown.length})`
+      );
+    }
 
-    // Insert item scores and calculate weighted average
+    // Weighted average + breach detection, computed up front so the write
+    // below is a single all-or-nothing transaction.
     let totalWeightedScore = 0;
     let totalWeight = 0;
+    const itemWrites: Array<{
+      item: ScorecardItem;
+      itemScore: (typeof output.items)[number];
+      normalized: number;
+    }> = [];
 
     for (const itemScore of output.items) {
-      const item = items.find((i) => i.id === itemScore.scorecard_item_id);
-      if (!item) continue;
-
+      const item = items.find((i) => i.id === itemScore.scorecard_item_id)!;
       const normalized = normalizeScore(itemScore.score, item.score_type);
-
-      const insertedItemScore = await query<{ id: string }>(
-        `INSERT INTO call_item_scores (call_score_id, scorecard_item_id, score, normalized_score, confidence, evidence, reasoning)
-         VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-        [
-          callScoreId,
-          itemScore.scorecard_item_id,
-          itemScore.score,
-          normalized,
-          itemScore.confidence,
-          itemScore.evidence,
-          itemScore.reasoning,
-        ]
-      );
-      const itemScoreId = insertedItemScore[0]!.id;
-
-      // Auto-create a breach for failed items
-      if (!isItemPass(normalized)) {
-        const severity = deriveSeverity(
-          Number(item.weight),
-          (item as { severity?: string }).severity
-        );
-        await query(
-          `INSERT INTO breaches
-             (organization_id, call_id, call_item_score_id, scorecard_item_id, severity, detected_at)
-           VALUES ($1, $2, $3, $4, $5, now())
-           ON CONFLICT (call_item_score_id) DO NOTHING`,
-          [call.organization_id, callId, itemScoreId, item.id, severity]
-        );
-      }
-
+      itemWrites.push({ item, itemScore, normalized });
       const weight = Number(item.weight);
       totalWeightedScore += normalized * weight;
       totalWeight += weight;
@@ -251,37 +239,89 @@ export async function processScoring(job: Job<{ callId: string }>) {
     // check and the webhook payload. A critical-severity failure fails the call
     // regardless of overall score (callPasses), so a high % cannot mask a single
     // regulator-grade failure.
-    const failures = output.items.flatMap((it) => {
-      const item = items.find((i) => i.id === it.scorecard_item_id);
-      if (!item || isItemPass(normalizeScore(it.score, item.score_type))) return [];
-      return [{
+    const failures = itemWrites
+      .filter(({ normalized }) => !isItemPass(normalized))
+      .map(({ item, itemScore }) => ({
         scorecard_item_id: item.id,
         scorecard_item_label: item.label,
         severity: deriveSeverity(Number(item.weight), (item as { severity?: string }).severity),
-        evidence: it.evidence ?? '',
-      }];
-    });
+        evidence: itemScore.evidence ?? '',
+      }));
 
     const pass = callPasses(overallScore, failures.map((f) => f.severity));
-
-    // Update call_score with overall
-    await query(
-      'UPDATE call_scores SET overall_score = $1, pass = $2 WHERE id = $3',
-      [overallScore, pass, callScoreId]
-    );
-
-    // Update call status + auto-exemplar if 95%+ with zero failed items
     const shouldAutoExemplar = overallScore >= 95 && failures.length === 0;
+    const priorCoachingCount = learning?.priorCoaching?.length ?? 0;
 
-    await query(
-      `UPDATE calls SET
-         status = 'scored',
-         is_exemplar = CASE WHEN $2 = true AND is_exemplar = false THEN true ELSE is_exemplar END,
-         exemplar_reason = CASE WHEN $2 = true AND is_exemplar = false THEN $3 ELSE exemplar_reason END,
-         updated_at = now()
-       WHERE id = $1`,
-      [callId, shouldAutoExemplar, 'Auto: 95%+ with zero breaches']
-    );
+    // Write everything in one transaction. Re-scoring the same call against
+    // the same scorecard (manual re-run, or a retry after a mid-write crash on
+    // a prior attempt) would otherwise hit call_scores' UNIQUE(call_id,
+    // scorecard_id) and permanently flip an already-scored call to 'failed' —
+    // so any prior score for this (call, scorecard) pair is superseded here;
+    // its item scores and breaches cascade-delete with it.
+    await withTransaction(async (tx) => {
+      await tx.query('DELETE FROM call_scores WHERE call_id = $1 AND scorecard_id = $2', [
+        callId,
+        scorecard.id,
+      ]);
+
+      const callScoreRows = await tx.query<{ id: string }>(
+        `INSERT INTO call_scores (call_id, scorecard_id, scored_at, model_id, prompt_tokens, completion_tokens, coaching, prior_coaching_count, overall_score, pass)
+         VALUES ($1, $2, now(), $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+        [
+          callId,
+          scorecard.id,
+          model,
+          usage.input_tokens,
+          usage.output_tokens,
+          output.coaching ? JSON.stringify(output.coaching) : null,
+          priorCoachingCount,
+          overallScore,
+          pass,
+        ]
+      );
+      const callScoreId = callScoreRows[0]!.id;
+
+      for (const { item, itemScore, normalized } of itemWrites) {
+        const insertedItemScore = await tx.query<{ id: string }>(
+          `INSERT INTO call_item_scores (call_score_id, scorecard_item_id, score, normalized_score, confidence, evidence, reasoning)
+           VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+          [
+            callScoreId,
+            itemScore.scorecard_item_id,
+            itemScore.score,
+            normalized,
+            itemScore.confidence,
+            itemScore.evidence,
+            itemScore.reasoning,
+          ]
+        );
+        const itemScoreId = insertedItemScore[0]!.id;
+
+        if (!isItemPass(normalized)) {
+          const severity = deriveSeverity(
+            Number(item.weight),
+            (item as { severity?: string }).severity
+          );
+          await tx.query(
+            `INSERT INTO breaches
+               (organization_id, call_id, call_item_score_id, scorecard_item_id, severity, detected_at)
+             VALUES ($1, $2, $3, $4, $5, now())
+             ON CONFLICT (call_item_score_id) DO NOTHING`,
+            [call.organization_id, callId, itemScoreId, item.id, severity]
+          );
+        }
+      }
+
+      await tx.query(
+        `UPDATE calls SET
+           status = 'scored',
+           is_exemplar = CASE WHEN $2 = true AND is_exemplar = false THEN true ELSE is_exemplar END,
+           exemplar_reason = CASE WHEN $2 = true AND is_exemplar = false THEN $3 ELSE exemplar_reason END,
+           updated_at = now()
+         WHERE id = $1`,
+        [callId, shouldAutoExemplar, 'Auto: 95%+ with zero breaches']
+      );
+    });
 
     console.log(`[Scoring] Call ${callId} scored: ${overallScore.toFixed(1)} (${pass ? 'PASS' : 'FAIL'})${shouldAutoExemplar ? ' [auto-exemplar]' : ''}`);
 
@@ -360,13 +400,25 @@ export async function processScoring(job: Job<{ callId: string }>) {
       console.error(`[Scoring] Alert evaluation failed for call ${callId}:`, alertErr);
     });
   } catch (err) {
-    await query(
-      "UPDATE calls SET status = 'failed', error_message = $1, updated_at = now() WHERE id = $2",
-      [(err as Error).message, callId]
-    );
-    evaluateAlertsForCall(callId, 'failed').catch((alertErr) => {
-      console.error(`[Scoring] Failure alert evaluation failed:`, alertErr);
-    });
+    // Only surface 'failed' (and alert the tenant) once BullMQ's retries are
+    // exhausted — a transient Claude/DB blip on attempt 1 of 2 shouldn't flip
+    // an in-progress call to failed when the retry may well succeed.
+    const totalAttempts = job.opts.attempts ?? 1;
+    const isFinalAttempt = job.attemptsMade + 1 >= totalAttempts;
+    if (isFinalAttempt) {
+      await query(
+        "UPDATE calls SET status = 'failed', error_message = $1, updated_at = now() WHERE id = $2",
+        [(err as Error).message, callId]
+      );
+      evaluateAlertsForCall(callId, 'failed').catch((alertErr) => {
+        console.error(`[Scoring] Failure alert evaluation failed:`, alertErr);
+      });
+    } else {
+      console.warn(
+        `[Scoring] Call ${callId} failed on attempt ${job.attemptsMade + 1}/${totalAttempts}, will retry:`,
+        (err as Error).message
+      );
+    }
     throw err;
   }
 }

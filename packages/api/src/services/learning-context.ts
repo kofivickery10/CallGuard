@@ -49,12 +49,16 @@ export async function getLearningContext(
     }
   }
 
-  // Exemplars (random 2)
+  // Exemplars: most recently marked, deterministic. scoreTranscript splits a
+  // "stable, cacheable" prompt prefix that includes these — ORDER BY random()
+  // changed the prefix on every single call for any org with exemplars,
+  // defeating prompt caching (paying full cache-write price every time)
+  // rather than the intended cache-read discount on repeat scoring calls.
   const exemplarRows = await query<{ transcript_text: string | null; exemplar_reason: string | null }>(
     `SELECT transcript_text, exemplar_reason
        FROM calls
       WHERE organization_id = $1 AND is_exemplar = true AND transcript_text IS NOT NULL
-      ORDER BY random()
+      ORDER BY updated_at DESC
       LIMIT 2`,
     [organizationId]
   );

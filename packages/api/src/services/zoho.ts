@@ -199,13 +199,21 @@ async function ensureAccessToken(
   return { accessToken: token.access_token!, apiDomain };
 }
 
+const ZOHO_RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 504]);
+const ZOHO_MAX_RETRIES = 2;
+
+// Retries rate-limits/transient 5xxs with backoff (honouring Retry-After when
+// Zoho sends one). Without this, a 429 during a scoring burst just drops that
+// call's write-back forever — pushCallScored is fire-and-forget from score.ts
+// with no other retry mechanism.
 async function zohoApi(
   apiDomain: string,
   accessToken: string,
   path: string,
-  init: RequestInit = {}
+  init: RequestInit = {},
+  attempt = 0
 ): Promise<Response> {
-  return fetch(`${apiDomain}${path}`, {
+  const res = await fetch(`${apiDomain}${path}`, {
     ...init,
     headers: {
       Authorization: `Zoho-oauthtoken ${accessToken}`,
@@ -213,6 +221,38 @@ async function zohoApi(
       ...(init.headers as Record<string, string> | undefined),
     },
   });
+
+  if (ZOHO_RETRYABLE_STATUSES.has(res.status) && attempt < ZOHO_MAX_RETRIES) {
+    const retryAfter = Number(res.headers.get('Retry-After'));
+    const delayMs = Number.isFinite(retryAfter) && retryAfter > 0
+      ? retryAfter * 1000
+      : 500 * 2 ** attempt;
+    await new Promise((resolve) => setTimeout(resolve, Math.min(delayMs, 5000)));
+    return zohoApi(apiDomain, accessToken, path, init, attempt + 1);
+  }
+
+  return res;
+}
+
+// Zoho v6 write APIs return 2xx with per-record status inside the body — a
+// record-level failure (e.g. a field_map entry that isn't a real field on the
+// module) shows up as `data[0].status === 'error'`, not an HTTP error status.
+// Checking res.ok alone lets these fail silently ("succeeds", clears
+// last_error, nothing is actually written in Zoho).
+interface ZohoWriteResult {
+  status?: string;
+  code?: string;
+  message?: string;
+}
+
+async function checkZohoWriteResult(res: Response, action: string): Promise<void> {
+  const body = (await res.json().catch(() => null)) as { data?: ZohoWriteResult[] } | null;
+  const result = body?.data?.[0];
+  if (!res.ok || result?.status === 'error') {
+    throw new Error(
+      `${action} failed: ${res.status} ${result?.code ?? ''} ${result?.message ?? ''}`.trim()
+    );
+  }
 }
 
 // UK-aware phone variants so a +44… call still matches a Zoho record that stores
@@ -294,9 +334,7 @@ async function updateRecordScore(
     method: 'PUT',
     body: JSON.stringify({ data: [record] }),
   });
-  if (!res.ok) {
-    throw new Error(`Zoho update failed: ${res.status} ${(await res.text()).slice(0, 300)}`);
-  }
+  await checkZohoWriteResult(res, 'Zoho update');
 }
 
 async function createBreachTask(
@@ -334,9 +372,7 @@ async function createBreachTask(
     method: 'POST',
     body: JSON.stringify({ data: [task] }),
   });
-  if (!res.ok) {
-    throw new Error(`Zoho task create failed: ${res.status} ${(await res.text()).slice(0, 300)}`);
-  }
+  await checkZohoWriteResult(res, 'Zoho task create');
 }
 
 /**

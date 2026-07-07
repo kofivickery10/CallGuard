@@ -384,15 +384,22 @@ For each criterion return the corrected score, a direct quote from the transcrip
   };
 }
 
+// Clamped to [0, 100] — Claude's raw score is expected within the scale's
+// range (e.g. 1-5), but an out-of-range or malformed value (0, a negative
+// number, a hallucinated 6 on a 1-5 scale) would otherwise normalize outside
+// [0, 100] and skew the weighted average / auto-exemplar check silently.
 export function normalizeScore(score: number, scoreType: string): number {
-  switch (scoreType) {
-    case 'binary':
-      return score * 100;
-    case 'scale_1_5':
-      return ((score - 1) / 4) * 100;
-    case 'scale_1_10':
-      return ((score - 1) / 9) * 100;
-    default:
-      return score;
-  }
+  const normalized = (() => {
+    switch (scoreType) {
+      case 'binary':
+        return score * 100;
+      case 'scale_1_5':
+        return ((score - 1) / 4) * 100;
+      case 'scale_1_10':
+        return ((score - 1) / 9) * 100;
+      default:
+        return score;
+    }
+  })();
+  return Math.min(100, Math.max(0, normalized));
 }

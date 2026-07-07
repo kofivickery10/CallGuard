@@ -54,7 +54,7 @@ insightsRouter.get('/calibration', async (req, res, next) => {
     const orgId = req.user!.organizationId;
 
     const correctionsByMonth = await query<{ month: string; corrections: string }>(
-      `SELECT to_char(date_trunc('month', created_at), 'YYYY-MM') AS month,
+      `SELECT to_char(date_trunc('month', created_at AT TIME ZONE 'Europe/London'), 'YYYY-MM') AS month,
               COUNT(*)::text AS corrections
          FROM score_corrections
         WHERE organization_id = $1 AND created_at >= date_trunc('month', now()) - interval '5 months'
@@ -63,7 +63,7 @@ insightsRouter.get('/calibration', async (req, res, next) => {
     );
 
     const scoredByMonth = await query<{ month: string; scored_calls: string }>(
-      `SELECT to_char(date_trunc('month', cs.scored_at), 'YYYY-MM') AS month,
+      `SELECT to_char(date_trunc('month', cs.scored_at AT TIME ZONE 'Europe/London'), 'YYYY-MM') AS month,
               COUNT(*)::text AS scored_calls
          FROM call_scores cs
          JOIN calls c ON c.id = cs.call_id
@@ -82,7 +82,7 @@ insightsRouter.get('/calibration', async (req, res, next) => {
     // True agreement: over calls a reviewer marked reviewed, the item scores they
     // did NOT correct are agreements. agreement = (reviewed items - corrections) / reviewed items.
     const reviewedByMonth = await query<{ month: string; reviewed_items: string; disagreements: string }>(
-      `SELECT to_char(date_trunc('month', c.reviewed_at), 'YYYY-MM') AS month,
+      `SELECT to_char(date_trunc('month', c.reviewed_at AT TIME ZONE 'Europe/London'), 'YYYY-MM') AS month,
               COUNT(cis.id)::text AS reviewed_items,
               COUNT(sc.id)::text  AS disagreements
          FROM calls c

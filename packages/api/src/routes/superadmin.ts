@@ -1,8 +1,9 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 import { authenticate, requireSuperadmin, AuthPayload } from '../middleware/auth.js';
-import { query, queryOne } from '../db/client.js';
+import { query, queryOne, withTransaction } from '../db/client.js';
 import { AppError } from '../middleware/errors.js';
 import { config } from '../config.js';
 import { PLANS, SEAT_PRICING, effectivePlan, FEATURES } from '@callguard/shared';
@@ -105,6 +106,9 @@ superadminRouter.post('/tenants', async (req, res, next) => {
     if (!org_name || !admin_name || !admin_email) {
       throw new AppError(400, 'org_name, admin_name and admin_email are required');
     }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(admin_email)) {
+      throw new AppError(400, 'admin_email is not a valid email address');
+    }
     if (plan && !PLANS.includes(plan as any)) {
       throw new AppError(400, `Invalid plan. Must be one of: ${PLANS.join(', ')}`);
     }
@@ -112,22 +116,31 @@ superadminRouter.post('/tenants', async (req, res, next) => {
     const existing = await queryOne('SELECT id FROM users WHERE email = $1', [admin_email]);
     if (existing) throw new AppError(409, 'Email already registered');
 
-    // Generate a temporary password — returned in response for superadmin to share securely.
-    const tempPassword = Math.random().toString(36).slice(2, 10) + 'Cg1!';
+    // Generate a temporary password — returned in response for superadmin to
+    // share securely. crypto.randomBytes, not Math.random, since this is a
+    // real (if short-lived) account credential.
+    const tempPassword = crypto.randomBytes(9).toString('base64url') + 'Cg1!';
     const passwordHash = await bcrypt.hash(tempPassword, 12);
 
-    const orgRows = await query<{ id: string }>(
-      `INSERT INTO organizations (name, plan, subscription_notes)
-       VALUES ($1, $2, $3) RETURNING id`,
-      [org_name, plan || 'core', subscription_notes || null]
-    );
-    const orgId = orgRows[0].id;
+    // Org + admin-user creation must succeed or fail together — otherwise a
+    // failure on the user insert (e.g. a duplicate-email race past the
+    // pre-check above) leaves an orphan organisation with no admin.
+    const { orgId, userId } = await withTransaction(async (tx) => {
+      const orgRows = await tx.query<{ id: string }>(
+        `INSERT INTO organizations (name, plan, subscription_notes)
+         VALUES ($1, $2, $3) RETURNING id`,
+        [org_name, plan || 'core', subscription_notes || null]
+      );
+      const newOrgId = orgRows[0]!.id;
 
-    const userRows = await query<{ id: string }>(
-      `INSERT INTO users (organization_id, email, name, password_hash, role)
-       VALUES ($1, $2, $3, $4, 'admin') RETURNING id`,
-      [orgId, admin_email, admin_name, passwordHash]
-    );
+      const userRows = await tx.query<{ id: string }>(
+        `INSERT INTO users (organization_id, email, name, password_hash, role)
+         VALUES ($1, $2, $3, $4, 'admin') RETURNING id`,
+        [newOrgId, admin_email, admin_name, passwordHash]
+      );
+
+      return { orgId: newOrgId, userId: userRows[0]!.id };
+    });
 
     await recordAuditEvent({
       organizationId: orgId,
@@ -141,7 +154,7 @@ superadminRouter.post('/tenants', async (req, res, next) => {
 
     res.status(201).json({
       org_id: orgId,
-      admin_user_id: userRows[0].id,
+      admin_user_id: userId,
       temp_password: tempPassword,
     });
   } catch (err) {
@@ -193,7 +206,7 @@ superadminRouter.get('/tenants/:id', async (req, res, next) => {
       ),
       query<{ month: string; active_seats: string }>(
         `SELECT
-           to_char(date_trunc('month', c.created_at), 'YYYY-MM') AS month,
+           to_char(date_trunc('month', c.created_at AT TIME ZONE 'Europe/London'), 'YYYY-MM') AS month,
            COUNT(DISTINCT c.agent_id)::text                       AS active_seats
          FROM calls c
          WHERE c.organization_id = $1
@@ -343,7 +356,12 @@ superadminRouter.post('/tenants/:id/impersonate', async (req, res, next) => {
       req,
     });
 
-    res.json({ token, note: 'Impersonation token — expires in 1 hour' });
+    // The admin console doesn't know the tenant app's origin (it's a separate
+    // deployment); the API does (APP_URL), so build the ready-to-use link here
+    // rather than have the frontend guess it or make ops paste a raw JWT into
+    // devtools localStorage.
+    const url = `${config.appUrl}/impersonate#token=${encodeURIComponent(token)}`;
+    res.json({ token, url, note: 'Impersonation link — expires in 1 hour' });
   } catch (err) {
     next(err);
   }
@@ -422,7 +440,7 @@ superadminRouter.get('/usage', async (req, res, next) => {
                 COALESCE(SUM(est_cost_usd),0)::text AS cost_usd
            FROM usage_events WHERE created_at >= ${since} GROUP BY model_id ORDER BY 5 DESC`, [days]),
       query<{ day: string; cost_usd: string }>(
-        `SELECT to_char(date_trunc('day', created_at), 'YYYY-MM-DD') AS day,
+        `SELECT to_char(date_trunc('day', created_at AT TIME ZONE 'Europe/London'), 'YYYY-MM-DD') AS day,
                 COALESCE(SUM(est_cost_usd),0)::text AS cost_usd
            FROM usage_events WHERE created_at >= ${since} GROUP BY 1 ORDER BY 1`, [days]),
       query<{ organization_id: string | null; name: string | null; cost_usd: string; events: string }>(
@@ -700,7 +718,7 @@ superadminRouter.get('/billing/:orgId', async (req, res, next) => {
       total_duration_seconds: string;
     }>(
       `SELECT
-         to_char(date_trunc('month', c.created_at), 'YYYY-MM') AS month,
+         to_char(date_trunc('month', c.created_at AT TIME ZONE 'Europe/London'), 'YYYY-MM') AS month,
          COUNT(DISTINCT c.agent_id)::text                       AS active_seats,
          COUNT(*)::text                                         AS calls,
          COALESCE(SUM(c.duration_seconds), 0)::text             AS total_duration_seconds
@@ -721,7 +739,7 @@ superadminRouter.get('/billing/:orgId', async (req, res, next) => {
       completion_tokens: string;
     }>(
       `SELECT
-         to_char(date_trunc('month', c.created_at), 'YYYY-MM') AS month,
+         to_char(date_trunc('month', c.created_at AT TIME ZONE 'Europe/London'), 'YYYY-MM') AS month,
          cs.model_id,
          SUM(cs.prompt_tokens)::text     AS prompt_tokens,
          SUM(cs.completion_tokens)::text AS completion_tokens
@@ -903,7 +921,10 @@ superadminRouter.get('/audit', async (req, res, next) => {
     if (req.query.org_id)      add('a.organization_id = $?', req.query.org_id);
     if (req.query.action_type) add('a.action_type = $?', req.query.action_type);
     if (req.query.from)        add('a.created_at >= $?', req.query.from);
-    if (req.query.to)          add('a.created_at <= $?', req.query.to);
+    // `to` is a date-only value from a date picker. An inclusive `<=` casts
+    // to midnight on that date, excluding the rest of the day — an exclusive
+    // bound at the start of the following day includes the whole end date.
+    if (req.query.to)          add('a.created_at < ($?::date + interval \'1 day\')', req.query.to);
 
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
     params.push(limit, offset);

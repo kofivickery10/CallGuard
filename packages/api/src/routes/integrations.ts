@@ -128,6 +128,16 @@ zohoRouter.post('/', async (req, res, next) => {
     }
 
     const fieldMap: ZohoFieldMap = { ...DEFAULT_FIELD_MAP, ...(body.field_map ?? {}) };
+    // Zoho field API names are alphanumeric/underscore only. Catching an
+    // empty or malformed entry here — rather than letting it reach Zoho —
+    // turns a silent per-record write failure (a bad field_map key just
+    // "succeeds" with nothing written, see services/zoho.ts) into an
+    // immediate, actionable error at save time.
+    for (const [key, value] of Object.entries(fieldMap)) {
+      if (typeof value !== 'string' || !/^[A-Za-z][A-Za-z0-9_]*$/.test(value)) {
+        throw new AppError(400, `field_map.${key} must be a valid Zoho field API name`);
+      }
+    }
 
     await query(
       `INSERT INTO zoho_connections

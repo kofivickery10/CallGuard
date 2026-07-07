@@ -3,7 +3,7 @@ import { authenticate, requireAdmin, requireOrgView } from '../middleware/auth.j
 import { query, queryOne } from '../db/client.js';
 import { AppError } from '../middleware/errors.js';
 import { recordAuditEvent } from '../services/audit.js';
-import { PLANS, type Plan, type OrganizationInfo } from '@callguard/shared';
+import type { OrganizationInfo } from '@callguard/shared';
 
 export const organizationRouter = Router();
 organizationRouter.use(authenticate);
@@ -24,35 +24,10 @@ organizationRouter.get('/', async (req, res, next) => {
   }
 });
 
-// Admins can change the plan (no billing integration - demo/self-service for now)
-organizationRouter.put('/plan', requireAdmin, async (req, res, next) => {
-  try {
-    const { plan } = req.body;
-    if (!PLANS.includes(plan)) {
-      throw new AppError(400, `Invalid plan. Must be one of: ${PLANS.join(', ')}`);
-    }
-    const current = await queryOne<{ plan: string }>(
-      'SELECT plan FROM organizations WHERE id = $1',
-      [req.user!.organizationId]
-    );
-    const rows = await query<OrganizationInfo>(
-      `UPDATE organizations SET plan = $1, updated_at = now()
-        WHERE id = $2 RETURNING id, name, plan`,
-      [plan as Plan, req.user!.organizationId]
-    );
-    void recordAuditEvent({
-      organizationId: req.user!.organizationId,
-      userId: req.user!.userId,
-      actionType: 'plan.change',
-      entityType: 'organization',
-      entityId: req.user!.organizationId,
-      metadata: { from: current?.plan, to: plan },
-    });
-    res.json(rows[0]);
-  } catch (err) {
-    next(err);
-  }
-});
+// Plan changes are billing-relevant and superadmin-only — see
+// PUT /superadmin/tenants/:id/plan. A tenant-facing endpoint here would let
+// any org admin self-upgrade for free, so there is deliberately no PUT
+// /plan on this router.
 
 // Admins set which stereo channel the adviser is recorded on (split-stereo calls).
 // 0 = left, 1 = right, null = auto-detect (first speaker).

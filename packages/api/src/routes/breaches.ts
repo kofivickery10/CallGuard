@@ -70,8 +70,13 @@ function buildWhere(orgId: string, f: BreachFilters): { sql: string; params: unk
     parts.push(`b.detected_at >= $${params.length}`);
   }
   if (f.to) {
+    // f.to is a date-only value (e.g. "2026-07-02") from a date picker.
+    // Comparing detected_at <= '2026-07-02' casts to midnight on that date,
+    // excluding everything from 00:01 onward — an export "to today" would
+    // miss almost all of today. Use an exclusive bound at the start of the
+    // following day so the whole end date is included.
     params.push(f.to);
-    parts.push(`b.detected_at <= $${params.length}`);
+    parts.push(`b.detected_at < ($${params.length}::date + interval '1 day')`);
   }
   if (f.search) {
     params.push(`%${f.search}%`);

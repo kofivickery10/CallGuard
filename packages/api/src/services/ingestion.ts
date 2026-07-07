@@ -1,7 +1,11 @@
 import { v4 as uuid } from 'uuid';
+import path from 'path';
 import { query, queryOne } from '../db/client.js';
 import { uploadFile } from './storage.js';
 import { transcriptionQueue } from '../jobs/queue.js';
+import { AppError } from '../middleware/errors.js';
+import { assertSafeRemoteUrl } from './url-safety.js';
+import { MAX_FILE_SIZE_BYTES, MAX_FILE_SIZE_MB } from '@callguard/shared';
 import type { Call } from '@callguard/shared';
 
 export interface IngestCallParams {
@@ -152,37 +156,58 @@ export async function ingestCall(params: IngestCallParams): Promise<IngestedCall
   }
 
   const callId = uuid();
-  const fileKey = `calls/${params.organizationId}/${callId}/${params.fileName}`;
+  // path.basename strips any directory component a crafted/dialler-supplied
+  // filename (e.g. "../../../etc/x") would otherwise carry into the storage
+  // key — this is the shared entry point for API, CloudTalk and SFTP ingest.
+  const safeFileName = path.basename(params.fileName);
+  const fileKey = `calls/${params.organizationId}/${callId}/${safeFileName}`;
   await uploadFile(fileKey, params.buffer, params.mimeType);
 
-  const rows = await query<Call>(
-    `INSERT INTO calls (
-       id, organization_id, uploaded_by, file_name, file_key,
-       file_size_bytes, mime_type, agent_id, agent_name,
-       customer_phone, customer_id, call_date, tags, status,
-       external_id, ingestion_source, encrypted_at_rest, scorecard_id
-     )
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'uploaded', $15, $16, true, $17)
-     RETURNING *`,
-    [
-      callId,
-      params.organizationId,
-      params.uploadedBy ?? null,
-      params.fileName,
-      fileKey,
-      params.buffer.length,
-      params.mimeType,
-      agentId,
-      agentName,
-      params.customerPhone ?? null,
-      customerId,
-      params.callDate ?? null,
-      params.tags ?? [],
-      params.externalId ?? null,
-      params.ingestionSource,
-      scorecardId,
-    ]
-  );
+  let rows: Call[];
+  try {
+    rows = await query<Call>(
+      `INSERT INTO calls (
+         id, organization_id, uploaded_by, file_name, file_key,
+         file_size_bytes, mime_type, agent_id, agent_name,
+         customer_phone, customer_id, call_date, tags, status,
+         external_id, ingestion_source, encrypted_at_rest, scorecard_id
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'uploaded', $14, $15, true, $16)
+       RETURNING *`,
+      [
+        callId,
+        params.organizationId,
+        params.uploadedBy ?? null,
+        safeFileName,
+        fileKey,
+        params.buffer.length,
+        params.mimeType,
+        agentId,
+        agentName,
+        params.customerPhone ?? null,
+        customerId,
+        params.callDate ?? null,
+        params.tags ?? [],
+        params.externalId ?? null,
+        params.ingestionSource,
+        scorecardId,
+      ]
+    );
+  } catch (err) {
+    // Two concurrent deliveries of the same webhook both pass the
+    // idempotency SELECT above before either INSERTs (TOCTOU) — the second
+    // hits idx_calls_org_external_id instead of erroring out to the caller.
+    // Treat that race the same as the idempotency check: return the row the
+    // other request just created.
+    if (params.externalId && (err as { code?: string }).code === '23505') {
+      const existing = await queryOne<Call>(
+        'SELECT * FROM calls WHERE organization_id = $1 AND external_id = $2',
+        [params.organizationId, params.externalId]
+      );
+      if (existing) return { call: existing, isDuplicate: true };
+    }
+    throw err;
+  }
 
   await transcriptionQueue.add('transcribe', { callId }, { jobId: callId });
 
@@ -202,4 +227,70 @@ export function inferMimeType(fileName: string): string {
     default:
       return 'application/octet-stream';
   }
+}
+
+// Read a fetch Response body, aborting once it exceeds maxBytes. A
+// Content-Length check alone isn't enough — it can be absent or lie; this
+// enforces the cap against the actual bytes received.
+async function readWithLimit(res: Response, maxBytes: number): Promise<Buffer> {
+  const contentLength = Number(res.headers.get('content-length') ?? '0');
+  if (contentLength > maxBytes) {
+    throw new AppError(400, `Remote file exceeds the ${MAX_FILE_SIZE_MB}MB limit`);
+  }
+  if (!res.body) {
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (buf.length > maxBytes) {
+      throw new AppError(400, `Remote file exceeds the ${MAX_FILE_SIZE_MB}MB limit`);
+    }
+    return buf;
+  }
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel().catch(() => {});
+      throw new AppError(400, `Remote file exceeds the ${MAX_FILE_SIZE_MB}MB limit`);
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks);
+}
+
+/**
+ * Fetch a caller-supplied audio URL (API ingest, bulk-import, CloudTalk
+ * recording_url) safely: HTTPS + public-address only (see url-safety.ts), no
+ * redirect-following (an attacker-controlled 3xx could otherwise point at an
+ * internal address after the check already passed), and a hard size cap
+ * enforced against the actual stream, not just a trusted Content-Length.
+ */
+export async function fetchRemoteAudio(
+  rawUrl: string,
+  headers: Record<string, string> = {}
+): Promise<{ buffer: Buffer; fileName: string; mimeType: string }> {
+  const url = await assertSafeRemoteUrl(rawUrl);
+
+  const res = await fetch(url, {
+    ...(Object.keys(headers).length ? { headers } : {}),
+    redirect: 'manual',
+  });
+
+  if (res.status >= 300 && res.status < 400) {
+    throw new AppError(400, 'Redirects are not followed for remote audio URLs');
+  }
+  if (!res.ok) {
+    throw new AppError(400, `Failed to download audio from URL: ${res.status} ${res.statusText}`);
+  }
+
+  const buffer = await readWithLimit(res, MAX_FILE_SIZE_BYTES);
+
+  const pathParts = url.pathname.split('/');
+  const lastPart = pathParts[pathParts.length - 1] || 'call.mp3';
+  const fileName = lastPart.includes('.') ? lastPart : `${lastPart}.mp3`;
+  const mimeType = res.headers.get('content-type')?.split(';')[0]?.trim() || inferMimeType(fileName);
+
+  return { buffer, fileName, mimeType };
 }

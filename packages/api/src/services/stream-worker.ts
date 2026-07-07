@@ -369,7 +369,7 @@ async function loadScorecardItems(scorecardId: string) {
   }>(
     `SELECT id, label, description, score_type, severity
        FROM scorecard_items
-      WHERE scorecard_id = $1
+      WHERE scorecard_id = $1 AND archived_at IS NULL
       ORDER BY sort_order`,
     [scorecardId],
   );

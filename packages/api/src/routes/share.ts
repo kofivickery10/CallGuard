@@ -5,6 +5,7 @@ import { authenticate, requireAdmin } from '../middleware/auth.js';
 import { query, queryOne } from '../db/client.js';
 import { AppError } from '../middleware/errors.js';
 import { config } from '../config.js';
+import { isItemPass } from '@callguard/shared';
 import type {
   PublicCallView,
   PublicCallViewItem,
@@ -227,7 +228,7 @@ publicShareRouter.get('/:token', async (req, res, next) => {
       );
       items = raw.map((r) => {
         const ns = parseFloat(r.normalized_score);
-        return { label: r.label, normalized_score: ns, passed: ns >= 70 };
+        return { label: r.label, normalized_score: ns, passed: isItemPass(ns) };
       });
     }
 
