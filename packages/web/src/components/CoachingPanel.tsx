@@ -11,23 +11,26 @@ interface CoachingPanelProps {
 }
 
 export function CoachingPanel({ coaching, plan, callStatus, isAdmin, priorCoachingCount }: CoachingPanelProps) {
-  const coachingEnabled = hasFeature(plan, 'coaching');
+  // Coaching ships on every plan (see FEATURES.coaching in shared) — hasFeature
+  // only returns false here while `plan` hasn't loaded yet, never because a
+  // real plan lacks it. Show the upgrade prompt only for an actual gated
+  // plan; treat `plan` being unset as still-loading, not "not on your plan".
+  const coachingEnabled = plan ? hasFeature(plan, 'coaching') : true;
 
-  // Not on a paid plan - show soft upgrade prompt
-  if (!coachingEnabled) {
+  if (plan && !coachingEnabled) {
     return (
       <div className="bg-card border border-border rounded-card overflow-hidden">
         <div className="px-5 py-4 border-b border-border flex items-center justify-between">
           <h3 className="text-[15px] font-semibold text-text-primary flex items-center gap-2">
             Coaching
-            <span className="text-[10px] font-semibold uppercase tracking-wider bg-secondary/20 text-secondary-700 px-1.5 py-0.5 rounded">
+            <span className="text-[10px] font-semibold uppercase tracking-wider bg-secondary/20 text-secondary px-1.5 py-0.5 rounded">
               Premium
             </span>
           </h3>
         </div>
         <div className="p-6 text-center">
           <p className="text-table-cell text-text-subtle mb-3">
-            AI-generated coaching - strengths, improvements, and next actions for every call - is available on the Growth plan and above.
+            AI-generated coaching - strengths, improvements, and next actions for every call - is available on the {PLAN_LABELS.professional} plan and above.
           </p>
           {isAdmin ? (
             <Link
@@ -46,7 +49,7 @@ export function CoachingPanel({ coaching, plan, callStatus, isAdmin, priorCoachi
     );
   }
 
-  // Coaching enabled but not yet generated
+  // Coaching enabled but not yet generated (or plan still loading)
   if (!coaching) {
     return (
       <div className="bg-card border border-border rounded-card overflow-hidden">

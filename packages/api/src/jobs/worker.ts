@@ -36,12 +36,18 @@ transcriptionWorker.on('completed', (job) => {
 transcriptionWorker.on('failed', (job, err) => {
   console.error(`[Transcription] Job ${job?.id} failed:`, err.message);
 });
+transcriptionWorker.on('error', (err) => {
+  console.error('[Transcription] Worker error:', err);
+});
 
 scoringWorker.on('completed', (job) => {
   console.log(`[Scoring] Job ${job.id} completed`);
 });
 scoringWorker.on('failed', (job, err) => {
   console.error(`[Scoring] Job ${job?.id} failed:`, err.message);
+});
+scoringWorker.on('error', (err) => {
+  console.error('[Scoring] Worker error:', err);
 });
 
 ingestionWorker.on('completed', (job) => {
@@ -50,12 +56,27 @@ ingestionWorker.on('completed', (job) => {
 ingestionWorker.on('failed', (job, err) => {
   console.error(`[Ingestion] Job ${job?.id} failed:`, err.message);
 });
+ingestionWorker.on('error', (err) => {
+  console.error('[Ingestion] Worker error:', err);
+});
 
 alertsWorker.on('completed', (job) => {
   console.log(`[Alerts] Delivery ${job.id} completed`);
 });
 alertsWorker.on('failed', (job, err) => {
   console.error(`[Alerts] Delivery ${job?.id} failed:`, err.message);
+});
+alertsWorker.on('error', (err) => {
+  console.error('[Alerts] Worker error:', err);
+});
+
+// Backstop: BullMQ/Redis errors or a stray rejection in a processor would
+// otherwise crash the worker process and silently stop all call processing.
+process.on('unhandledRejection', (reason) => {
+  console.error('[worker] Unhandled rejection:', reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('[worker] Uncaught exception:', err);
 });
 
 console.log('CallGuard AI worker started - listening for transcription, scoring, ingestion, and alerts jobs');

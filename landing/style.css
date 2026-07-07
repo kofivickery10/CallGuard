@@ -24,11 +24,8 @@
   --primary-50:     #f1f7f2;
 
   /* Semantic */
-  --pass:           #2d6e4a;
-  --pass-bg:        #e8f5e8;
   --fail:           #c0392b;
   --fail-bg:        #fde8e8;
-  --review:         #b8860b;
 
   /* Neutrals */
   --page-bg:        #f8faf8;
@@ -76,11 +73,8 @@
   --primary-50:     #16201a;
 
   /* Semantic */
-  --pass:           #5cc08a;
-  --pass-bg:        #16301f;
   --fail:           #f0726a;
   --fail-bg:        #3a1d1b;
-  --review:         #d6a838;
 
   /* Neutrals */
   --page-bg:        #0f1512;
@@ -1474,7 +1468,7 @@ body.no-scroll { overflow: hidden; }
 .reveal.reveal-delay-2 { transition-delay: 160ms; }
 .reveal.reveal-delay-3 { transition-delay: 240ms; }
 
-/* Brand mark is the static shield + pulse logo (see brand/logo-icon.svg) */
+/* Brand mark is the static shield + pulse logo (see brand/svg/callguard-icon.svg) */
 
 /* Hero background ambient gradient drift */
 @keyframes hero-drift {

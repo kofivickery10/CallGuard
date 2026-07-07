@@ -50,10 +50,18 @@ export async function cleanupTranscript(
   const { default: Anthropic } = await import('@anthropic-ai/sdk');
   const client = new Anthropic({ apiKey: config.anthropic.apiKey });
 
-  const response = await client.messages.create({
-    model: CLAUDE_MODELS.HAIKU,
-    max_tokens: 8192,
-    messages: [
+  // Cleanup is an enhancement over the raw transcript, not a required step —
+  // if it errors (or truncates, see stop_reason check below), scoring against
+  // the original transcript is far better than either failing the whole call
+  // or silently scoring a cut-off "cleaned" transcript (which reads as if the
+  // call simply ended early — missed end-of-call disclosures become false
+  // breaches).
+  let response;
+  try {
+    response = await client.messages.create({
+      model: CLAUDE_MODELS.HAIKU,
+      max_tokens: 8192,
+      messages: [
       {
         role: 'user',
         content: `You are cleaning up an auto-generated transcript of ${callDescriptor} between an Agent/Adviser and a Customer. The speech-to-text ran on low-quality 8kHz mono telephony audio, so there are transcription errors.
@@ -92,8 +100,12 @@ ${rawTranscript}
 
 Return ONLY the cleaned transcript, nothing else. No preamble, no explanation, no markdown code blocks.`,
       },
-    ],
-  });
+      ],
+    });
+  } catch (err) {
+    console.error(`[TranscriptCleanup] Claude request failed for call ${callId ?? 'unknown'}, using raw transcript:`, (err as Error).message);
+    return rawTranscript;
+  }
 
   await recordUsage({
     organizationId: organizationId ?? null,
@@ -104,6 +116,14 @@ Return ONLY the cleaned transcript, nothing else. No preamble, no explanation, n
     inputTokens: response.usage.input_tokens,
     outputTokens: response.usage.output_tokens,
   });
+
+  // A truncated "cleaned" transcript (hit the output token cap) is worse than
+  // the untruncated raw one — it reads as if the call simply ended early, and
+  // scoring against it can miss end-of-call disclosures entirely.
+  if (response.stop_reason === 'max_tokens') {
+    console.error(`[TranscriptCleanup] Cleanup output truncated at max_tokens for call ${callId ?? 'unknown'}, using raw transcript`);
+    return rawTranscript;
+  }
 
   const textBlock = response.content.find((b) => b.type === 'text');
   if (!textBlock || textBlock.type !== 'text') {

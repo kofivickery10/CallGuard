@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import crypto from 'crypto';
 import {
   authenticate,
   requireAdmin,
@@ -10,9 +11,10 @@ import { query, queryOne } from '../db/client.js';
 import { AppError } from '../middleware/errors.js';
 import { generateApiKey } from '../services/api-keys.js';
 import { encrypt } from '../services/crypto.js';
-import { ingestCall, inferMimeType } from '../services/ingestion.js';
+import { ingestCall, fetchRemoteAudio } from '../services/ingestion.js';
 import { recordAuditEvent } from '../services/audit.js';
 import * as sftp from '../services/sftp.js';
+import { isItemPass } from '@callguard/shared';
 import type { ApiKey, SFTPSource, SFTPPollLog } from '@callguard/shared';
 
 export const ingestionRouter = Router();
@@ -53,7 +55,7 @@ ingestionRouter.post(
         mimeType = req.file.mimetype;
       } else if (req.body.audio_url) {
         const audioUrl = req.body.audio_url as string;
-        const downloaded = await downloadUrl(audioUrl);
+        const downloaded = await fetchRemoteAudio(audioUrl);
         buffer = downloaded.buffer;
         fileName = downloaded.fileName;
         mimeType = downloaded.mimeType;
@@ -132,7 +134,15 @@ ingestionRouter.post('/cloudtalk', authenticateApiKey, apiKeyLimiter, async (req
     const recordingUrl = pickField(body, [
       'recording_url', 'recording', 'call_recording_url', 'recording_link', 'audio_url', 'url',
     ]);
-    const externalId = pickField(body, ['call_uuid', 'uuid', 'call_id', 'id']);
+    // CloudTalk setups without a native call id in the payload would otherwise
+    // skip the idempotency check entirely (ingestCall only dedupes when
+    // externalId is present) — a webhook retry then re-ingests the same
+    // recording as a brand-new call, doubling transcription/scoring cost and
+    // breach counts. Fall back to hashing the recording URL, which is stable
+    // across retries of the same delivery.
+    const externalId =
+      pickField(body, ['call_uuid', 'uuid', 'call_id', 'id']) ??
+      (recordingUrl ? `cloudtalk:${crypto.createHash('sha256').update(recordingUrl).digest('hex')}` : null);
     const agentEmail = pickField(body, ['agent_email', 'agent_mail', 'internal_email']);
     const agentExternalId = pickField(body, ['agent_id', 'agent', 'internal_id']);
     const agentName = pickField(body, ['agent_name', 'internal_name']);
@@ -153,7 +163,7 @@ ingestionRouter.post('/cloudtalk', authenticateApiKey, apiKeyLimiter, async (req
       headers['Authorization'] = `Basic ${token}`;
     }
 
-    const downloaded = await downloadUrl(recordingUrl, headers);
+    const downloaded = await fetchRemoteAudio(recordingUrl, headers);
 
     const { call, isDuplicate } = await ingestCall({
       organizationId: orgId,
@@ -354,7 +364,7 @@ ingestionRouter.get(
               label: it.label,
               description: it.description,
               normalized_score: normalized,
-              pass: normalized == null ? null : normalized >= 70,
+              pass: normalized == null ? null : isItemPass(normalized),
               evidence: it.evidence,
               reasoning: it.reasoning,
             };
@@ -738,28 +748,6 @@ function parseTags(raw: unknown): string[] {
     }
   }
   return [];
-}
-
-async function downloadUrl(url: string, headers: Record<string, string> = {}): Promise<{
-  buffer: Buffer;
-  fileName: string;
-  mimeType: string;
-}> {
-  const res = await fetch(url, Object.keys(headers).length ? { headers } : undefined);
-  if (!res.ok) {
-    throw new AppError(400, `Failed to download audio from URL: ${res.status} ${res.statusText}`);
-  }
-  const arrayBuffer = await res.arrayBuffer();
-  const buffer = Buffer.from(arrayBuffer);
-
-  // Derive filename from URL path
-  const urlObj = new URL(url);
-  const pathParts = urlObj.pathname.split('/');
-  const lastPart = pathParts[pathParts.length - 1] || 'call.mp3';
-  const fileName = lastPart.includes('.') ? lastPart : `${lastPart}.mp3`;
-
-  const mimeType = res.headers.get('content-type')?.split(';')[0]?.trim() || inferMimeType(fileName);
-  return { buffer, fileName, mimeType };
 }
 
 async function refreshSchedulerIfAvailable(): Promise<void> {

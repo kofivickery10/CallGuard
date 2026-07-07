@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
-import { query, queryOne } from '../db/client.js';
+import { query, queryOne, withTransaction } from '../db/client.js';
 import { AppError } from '../middleware/errors.js';
 import { recordAuditEvent } from '../services/audit.js';
 import type { Scorecard, ScorecardItem } from '@callguard/shared';
@@ -31,7 +31,7 @@ scorecardRouter.get('/:id', async (req, res, next) => {
     if (!scorecard) throw new AppError(404, 'Scorecard not found');
 
     const items = await query<ScorecardItem>(
-      'SELECT * FROM scorecard_items WHERE scorecard_id = $1 ORDER BY sort_order',
+      'SELECT * FROM scorecard_items WHERE scorecard_id = $1 AND archived_at IS NULL ORDER BY sort_order',
       [scorecard.id]
     );
 
@@ -111,31 +111,82 @@ scorecardRouter.put('/:id', requireAdmin, async (req, res, next) => {
     );
 
     if (items && Array.isArray(items)) {
-      // Delete existing items and recreate
-      await query('DELETE FROM scorecard_items WHERE scorecard_id = $1', [scorecard.id]);
+      // Upsert by id rather than delete-all-and-recreate: scorecard_items can
+      // be referenced by historical call_item_scores/breaches (deliberately
+      // no ON DELETE there — a compliance record shouldn't vanish because the
+      // scorecard was edited later), so a blind DELETE would throw a foreign
+      // key violation on any scorecard that has ever been scored against.
+      // Items removed from the payload are archived (kept for history, hidden
+      // from future scoring) if they have prior scores, otherwise deleted.
+      const existingBefore = await query<ScorecardItem>(
+        'SELECT * FROM scorecard_items WHERE scorecard_id = $1',
+        [scorecard.id]
+      );
+      const existingById = new Map(existingBefore.map((i) => [i.id, i]));
+      const keptIds = new Set<string>();
 
-      const createdItems: ScorecardItem[] = [];
-      for (let i = 0; i < items.length; i++) {
-        const item = items[i];
-        const itemRows = await query<ScorecardItem>(
-          `INSERT INTO scorecard_items (scorecard_id, label, description, score_type, weight, sort_order)
-           VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-          [
-            scorecard.id,
-            item.label,
-            item.description || null,
-            item.score_type || 'binary',
-            item.weight ?? 1,
-            item.sort_order ?? i,
-          ]
-        );
-        createdItems.push(itemRows[0]);
-      }
+      const savedItems = await withTransaction(async (tx) => {
+        const result: ScorecardItem[] = [];
+        for (let i = 0; i < items.length; i++) {
+          const item = items[i];
+          const existing = item.id ? existingById.get(item.id) : undefined;
 
-      res.json({ ...updated, items: createdItems });
+          if (existing) {
+            keptIds.add(existing.id);
+            const rows = await tx.query<ScorecardItem>(
+              `UPDATE scorecard_items SET
+                 label = $2, description = $3, score_type = $4, weight = $5,
+                 sort_order = $6, archived_at = NULL
+               WHERE id = $1 RETURNING *`,
+              [
+                existing.id,
+                item.label,
+                item.description || null,
+                item.score_type || 'binary',
+                item.weight ?? 1,
+                item.sort_order ?? i,
+              ]
+            );
+            result.push(rows[0]!);
+          } else {
+            const rows = await tx.query<ScorecardItem>(
+              `INSERT INTO scorecard_items (scorecard_id, label, description, score_type, weight, sort_order)
+               VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+              [
+                scorecard.id,
+                item.label,
+                item.description || null,
+                item.score_type || 'binary',
+                item.weight ?? 1,
+                item.sort_order ?? i,
+              ]
+            );
+            result.push(rows[0]!);
+          }
+        }
+
+        // Items dropped from the payload: hard-delete if never scored,
+        // otherwise archive so history stays intact.
+        const removed = existingBefore.filter((i) => !keptIds.has(i.id));
+        for (const item of removed) {
+          const scored = await tx.queryOne<{ id: string }>(
+            'SELECT id FROM call_item_scores WHERE scorecard_item_id = $1 LIMIT 1',
+            [item.id]
+          );
+          if (scored) {
+            await tx.query('UPDATE scorecard_items SET archived_at = now() WHERE id = $1', [item.id]);
+          } else {
+            await tx.query('DELETE FROM scorecard_items WHERE id = $1', [item.id]);
+          }
+        }
+
+        return result;
+      });
+
+      res.json({ ...updated, items: savedItems });
     } else {
       const existingItems = await query<ScorecardItem>(
-        'SELECT * FROM scorecard_items WHERE scorecard_id = $1 ORDER BY sort_order',
+        'SELECT * FROM scorecard_items WHERE scorecard_id = $1 AND archived_at IS NULL ORDER BY sort_order',
         [scorecard.id]
       );
       res.json({ ...updated, items: existingItems });

@@ -5,10 +5,12 @@ import { requireAdmin } from '../middleware/auth.js';
 import { query, queryOne } from '../db/client.js';
 import { AppError } from '../middleware/errors.js';
 import { recordAuditEvent } from '../services/audit.js';
-import { USER_ROLES } from '@callguard/shared';
+import { TENANT_ASSIGNABLE_ROLES } from '@callguard/shared';
 
+// Tenant admins may only assign tenant-scoped roles — never 'superadmin',
+// which has no organization_id and grants cross-tenant platform access.
 const isValidRole = (r: unknown): r is string =>
-  typeof r === 'string' && (USER_ROLES as readonly string[]).includes(r);
+  typeof r === 'string' && (TENANT_ASSIGNABLE_ROLES as readonly string[]).includes(r);
 
 export const agentRouter = Router();
 agentRouter.use(authenticate);
@@ -17,6 +19,9 @@ agentRouter.use(requireAdmin);
 // List all agents with stats
 agentRouter.get('/', async (req, res, next) => {
   try {
+    // LATERAL join on the latest score per call — a plain join on call_id
+    // fans a call with 2+ call_scores rows out into multiple joined rows,
+    // double-counting it in total_calls/scored_calls/pass_rate.
     const agents = await query(
       `SELECT
         u.id, u.name, u.email, u.role, u.external_agent_id, u.created_at,
@@ -30,7 +35,12 @@ agentRouter.get('/', async (req, res, next) => {
         END as pass_rate
        FROM users u
        LEFT JOIN calls c ON c.agent_id = u.id
-       LEFT JOIN call_scores cs ON cs.call_id = c.id
+       LEFT JOIN LATERAL (
+         SELECT id, overall_score, pass FROM call_scores
+         WHERE call_id = c.id
+         ORDER BY scored_at DESC
+         LIMIT 1
+       ) cs ON true
        WHERE u.organization_id = $1
        GROUP BY u.id
        ORDER BY u.name`,

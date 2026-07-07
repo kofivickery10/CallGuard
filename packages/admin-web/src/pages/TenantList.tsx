@@ -103,7 +103,11 @@ export default function TenantList() {
       {showModal && (
         <CreateTenantModal
           onClose={() => setShowModal(false)}
-          onCreated={() => { setShowModal(false); load(); }}
+          // Refresh the list in the background, but leave the modal open so
+          // its credentials screen (org id, admin user id, temp password) can
+          // render — that screen is the only place the temp password is ever
+          // shown, and it never gets a chance to if the modal closes here too.
+          onCreated={load}
         />
       )}
     </div>

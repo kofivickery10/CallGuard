@@ -9,6 +9,11 @@ export interface ScorecardItem {
   weight: number;
   sort_order: number;
   created_at: string;
+  // Set when an edit removed this item from the scorecard after it had
+  // already been scored against — retired from future scoring runs but kept
+  // for historical call_item_scores/breaches, which reference it and cannot
+  // cascade-delete.
+  archived_at?: string | null;
 }
 
 export interface Scorecard {

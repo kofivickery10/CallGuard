@@ -19,6 +19,11 @@ export const SCORE_TYPES = ['binary', 'scale_1_5', 'scale_1_10'] as const;
 
 export const USER_ROLES = ['superadmin', 'admin', 'supervisor', 'viewer', 'adviser'] as const;
 
+// Roles a tenant admin may assign to their own users. Excludes 'superadmin' —
+// that role has no organization_id and grants cross-tenant platform access, so
+// it must never be settable from a tenant-scoped endpoint.
+export const TENANT_ASSIGNABLE_ROLES = ['admin', 'supervisor', 'viewer', 'adviser'] as const;
+
 export const PASS_THRESHOLD = 70;
 
 export const MAX_FILE_SIZE_MB = 100;

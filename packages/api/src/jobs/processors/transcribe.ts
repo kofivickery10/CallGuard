@@ -81,13 +81,26 @@ export async function processTranscription(job: Job<{ callId: string }>) {
     // Enqueue scoring
     await scoringQueue.add('score', { callId }, { jobId: `score-${callId}` });
   } catch (err) {
-    await query(
-      "UPDATE calls SET status = 'failed', error_message = $1, updated_at = now() WHERE id = $2",
-      [(err as Error).message, callId]
-    );
-    evaluateAlertsForCall(callId, 'failed').catch((alertErr) => {
-      console.error(`[Transcription] Failure alert evaluation failed:`, alertErr);
-    });
+    // BullMQ retries this job (see queue.ts). Only surface the call as
+    // 'failed' — and alert the tenant — once retries are exhausted; otherwise
+    // a single transient Deepgram/network blip fires a false failure alert
+    // and flips the dashboard red for a call that succeeds on the next try.
+    const totalAttempts = job.opts.attempts ?? 1;
+    const isFinalAttempt = job.attemptsMade + 1 >= totalAttempts;
+    if (isFinalAttempt) {
+      await query(
+        "UPDATE calls SET status = 'failed', error_message = $1, updated_at = now() WHERE id = $2",
+        [(err as Error).message, callId]
+      );
+      evaluateAlertsForCall(callId, 'failed').catch((alertErr) => {
+        console.error(`[Transcription] Failure alert evaluation failed:`, alertErr);
+      });
+    } else {
+      console.warn(
+        `[Transcription] Call ${callId} failed on attempt ${job.attemptsMade + 1}/${totalAttempts}, will retry:`,
+        (err as Error).message
+      );
+    }
     throw err;
   }
 }

@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import path from 'path';
 import { v4 as uuid } from 'uuid';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
 import { uploadKB } from '../middleware/upload.js';
@@ -120,9 +121,12 @@ kbRouter.post(
       // Parse file to text
       const extractedText = await parseFileToText(req.file.buffer, req.file.mimetype);
 
-      // Save to disk
+      // Save to disk. path.basename strips any directory component a crafted
+      // originalname (e.g. "../../../etc/x") would otherwise carry into the
+      // storage key.
       const fileId = uuid();
-      const fileKey = `kb/${req.user!.organizationId}/${section.id}/${fileId}/${req.file.originalname}`;
+      const safeFileName = path.basename(req.file.originalname);
+      const fileKey = `kb/${req.user!.organizationId}/${section.id}/${fileId}/${safeFileName}`;
       await uploadFile(fileKey, req.file.buffer, req.file.mimetype);
 
       // Insert DB record (always encrypted on new uploads)
@@ -134,7 +138,7 @@ kbRouter.post(
         [
           fileId,
           section.id,
-          req.file.originalname,
+          safeFileName,
           fileKey,
           req.file.mimetype,
           req.file.size,

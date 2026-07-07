@@ -12,8 +12,11 @@ export function parseFilename(filename: string, template: string | null): Parsed
   const placeholders = ['agent', 'phone', 'date'] as const;
   let regexPattern = template;
 
-  // Escape regex special chars except the placeholders
-  regexPattern = regexPattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&');
+  // Escape regex special chars except { } — those delimit the {agent}/{phone}/
+  // {date} placeholders substituted below, so escaping them first (turning
+  // "{agent}" into "\{agent\}") makes the substitution never find its target
+  // and every filename fails to match.
+  regexPattern = regexPattern.replace(/[.+?^$()|[\]\\]/g, '\\$&');
 
   // Replace placeholders with named capture groups (non-greedy)
   for (const name of placeholders) {

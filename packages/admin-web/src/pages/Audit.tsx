@@ -39,7 +39,10 @@ export default function Audit() {
     const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(nextOffset) });
     if (action) params.set('action_type', action);
     if (from) params.set('from', from);
-    if (to) params.set('to', `${to}T23:59:59`);
+    // Send the plain date — the API treats `to` as a whole inclusive day
+    // (exclusive bound at the next day's start), so no client-side time
+    // needs appending here.
+    if (to) params.set('to', to);
     setLoading(true);
     api.get<{ events: AuditEvent[] }>(`/superadmin/audit?${params.toString()}`)
       .then((r) => {

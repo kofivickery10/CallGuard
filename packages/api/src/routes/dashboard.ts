@@ -35,18 +35,25 @@ dashboardRouter.get('/summary', async (req, res, next) => {
       params
     );
 
+    // DISTINCT ON (call_id) picks the latest call_scores row per call — a
+    // plain join here counted every score a call ever had (e.g. after a
+    // rescore) rather than one, inflating total_scored/pass_count/avg_score.
     const scoreStats = await queryOne<{
       avg_score: string | null;
       pass_count: string;
       total_scored: string;
     }>(
       `SELECT
-        AVG(cs.overall_score) as avg_score,
-        COUNT(*) FILTER (WHERE cs.pass = true) as pass_count,
+        AVG(latest.overall_score) as avg_score,
+        COUNT(*) FILTER (WHERE latest.pass = true) as pass_count,
         COUNT(*) as total_scored
-       FROM call_scores cs
-       JOIN calls c ON c.id = cs.call_id
-       ${callWhere}`,
+       FROM (
+         SELECT DISTINCT ON (cs.call_id) cs.overall_score, cs.pass
+         FROM call_scores cs
+         JOIN calls c ON c.id = cs.call_id
+         ${callWhere}
+         ORDER BY cs.call_id, cs.scored_at DESC
+       ) latest`,
       params
     );
 
@@ -82,10 +89,17 @@ dashboardRouter.get('/recent', async (req, res, next) => {
       callWhere += ` AND c.agent_id = $${params.length}`;
     }
 
+    // See routes/calls.ts for why this is a LATERAL join on the latest score
+    // rather than a plain join on call_id (fan-out duplicates the call).
     const calls = await query(
       `SELECT c.*, cs.overall_score, cs.pass, u.name as resolved_agent_name
        FROM calls c
-       LEFT JOIN call_scores cs ON cs.call_id = c.id
+       LEFT JOIN LATERAL (
+         SELECT overall_score, pass FROM call_scores
+         WHERE call_id = c.id
+         ORDER BY scored_at DESC
+         LIMIT 1
+       ) cs ON true
        LEFT JOIN users u ON u.id = c.agent_id
        ${callWhere}
        ORDER BY c.created_at DESC
@@ -120,9 +134,11 @@ dashboardRouter.get('/trends/calls-per-day', requireOrgView, async (req, res, ne
     const agentId = req.query.agent_id as string | undefined;
     const { where, params } = buildTrendWhere(req.user!.organizationId, agentId);
 
+    // Truncate in Europe/London, not the DB session's UTC — otherwise a call
+    // logged between 00:00-01:00 local time (BST) lands on the previous day.
     const rows = await query<{ date: string; total: string; scored: string }>(
       `SELECT
-         to_char(date_trunc('day', c.created_at), 'YYYY-MM-DD') as date,
+         to_char(date_trunc('day', c.created_at AT TIME ZONE 'Europe/London'), 'YYYY-MM-DD') as date,
          COUNT(*)::text as total,
          COUNT(*) FILTER (WHERE c.status = 'scored')::text as scored
        FROM calls c
@@ -132,13 +148,18 @@ dashboardRouter.get('/trends/calls-per-day', requireOrgView, async (req, res, ne
       [...params, days]
     );
 
-    // Fill gaps so the chart x-axis is continuous
+    // Fill gaps so the chart x-axis is continuous. Keys must be London
+    // calendar dates to match the query above — building them from the
+    // server process's local Date methods then formatting with
+    // toISOString() (always UTC) silently drifts a day out of step with the
+    // query during BST.
     const byDate = new Map(rows.map((r) => [r.date, r]));
     const filled: { date: string; total: number; scored: number }[] = [];
-    const today = new Date();
+    const todayLondon = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/London' }).format(new Date());
+    const anchor = new Date(`${todayLondon}T00:00:00Z`);
     for (let i = days - 1; i >= 0; i--) {
-      const d = new Date(today);
-      d.setDate(today.getDate() - i);
+      const d = new Date(anchor);
+      d.setUTCDate(d.getUTCDate() - i);
       const key = d.toISOString().slice(0, 10);
       const row = byDate.get(key);
       filled.push({
@@ -167,7 +188,7 @@ dashboardRouter.get('/trends/scores-over-time', requireOrgView, async (req, res,
       pass_rate: string | null;
     }>(
       `SELECT
-         to_char(date_trunc('week', c.created_at), 'YYYY-MM-DD') as week_start,
+         to_char(date_trunc('week', c.created_at AT TIME ZONE 'Europe/London'), 'YYYY-MM-DD') as week_start,
          COUNT(*)::text as call_count,
          AVG(cs.overall_score)::text as avg_score,
          CASE WHEN COUNT(*) > 0 THEN
@@ -270,7 +291,7 @@ dashboardRouter.get('/trends/breach-severity', requireOrgView, async (req, res, 
       low: string;
     }>(
       `SELECT
-         to_char(date_trunc('week', b.detected_at), 'YYYY-MM-DD') as week_start,
+         to_char(date_trunc('week', b.detected_at AT TIME ZONE 'Europe/London'), 'YYYY-MM-DD') as week_start,
          COUNT(*) FILTER (WHERE b.severity = 'critical')::text as critical,
          COUNT(*) FILTER (WHERE b.severity = 'high')::text as high,
          COUNT(*) FILTER (WHERE b.severity = 'medium')::text as medium,
@@ -425,6 +446,9 @@ function recommendAction(
 // Agent leaderboard (admin only)
 dashboardRouter.get('/agent-leaderboard', authenticate, requireOrgView, async (req, res, next) => {
   try {
+    // LATERAL join on the latest score per call — a plain join on call_id
+    // fans a call with 2+ call_scores rows out into multiple joined rows,
+    // double-counting it in total_calls/scored_calls/pass_rate.
     const agents = await query(
       `SELECT
         u.id, u.name, u.email,
@@ -438,7 +462,12 @@ dashboardRouter.get('/agent-leaderboard', authenticate, requireOrgView, async (r
         END as pass_rate
        FROM users u
        LEFT JOIN calls c ON c.agent_id = u.id
-       LEFT JOIN call_scores cs ON cs.call_id = c.id
+       LEFT JOIN LATERAL (
+         SELECT id, overall_score, pass FROM call_scores
+         WHERE call_id = c.id
+         ORDER BY scored_at DESC
+         LIMIT 1
+       ) cs ON true
        WHERE u.organization_id = $1 AND u.role = 'adviser'
        GROUP BY u.id
        ORDER BY AVG(cs.overall_score) DESC NULLS LAST`,

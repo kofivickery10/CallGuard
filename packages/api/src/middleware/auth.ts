@@ -129,13 +129,17 @@ export const requireOrgView = requireRole('admin', 'supervisor', 'viewer');
 // Actioning calls (review breaches, correct scores, coach). Not viewers/advisers.
 export const requireActioner = requireRole('admin', 'supervisor');
 
-// Platform superadmin — full cross-tenant access.
+// Platform superadmin — full cross-tenant access. Superadmins have no
+// organization_id (see seed-superadmin.ts); requiring it be empty here is
+// defence-in-depth against a tenant-scoped user ever ending up with the
+// 'superadmin' role (e.g. a future bug in a tenant-facing role-assignment
+// endpoint) being able to reach these routes.
 export function requireSuperadmin(
   req: Request,
   _res: Response,
   next: NextFunction
 ): void {
-  if (!req.user || req.user.role !== 'superadmin') {
+  if (!req.user || req.user.role !== 'superadmin' || req.user.organizationId) {
     throw new AppError(403, 'Superadmin access required');
   }
   next();
@@ -188,31 +192,35 @@ export async function authenticateApiKey(
   _res: Response,
   next: NextFunction
 ): Promise<void> {
-  const apiKey = req.headers['x-api-key'];
-  if (!apiKey || typeof apiKey !== 'string') {
-    throw new AppError(401, 'Missing X-API-Key header');
+  try {
+    const apiKey = req.headers['x-api-key'];
+    if (!apiKey || typeof apiKey !== 'string') {
+      throw new AppError(401, 'Missing X-API-Key header');
+    }
+
+    const keyHash = hashApiKey(apiKey);
+    const record = await queryOne<{ id: string; organization_id: string }>(
+      'SELECT id, organization_id FROM api_keys WHERE key_hash = $1 AND revoked_at IS NULL',
+      [keyHash]
+    );
+
+    if (!record) {
+      throw new AppError(401, 'Invalid or revoked API key');
+    }
+
+    req.user = {
+      userId: record.id,
+      organizationId: record.organization_id,
+      role: 'api',
+    };
+
+    // Fire-and-forget last_used_at update
+    query('UPDATE api_keys SET last_used_at = now() WHERE id = $1', [record.id]).catch(
+      (err) => console.error('[auth] failed to update api_key last_used_at:', err)
+    );
+
+    next();
+  } catch (err) {
+    next(err);
   }
-
-  const keyHash = hashApiKey(apiKey);
-  const record = await queryOne<{ id: string; organization_id: string }>(
-    'SELECT id, organization_id FROM api_keys WHERE key_hash = $1 AND revoked_at IS NULL',
-    [keyHash]
-  );
-
-  if (!record) {
-    throw new AppError(401, 'Invalid or revoked API key');
-  }
-
-  req.user = {
-    userId: record.id,
-    organizationId: record.organization_id,
-    role: 'api',
-  };
-
-  // Fire-and-forget last_used_at update
-  query('UPDATE api_keys SET last_used_at = now() WHERE id = $1', [record.id]).catch(
-    (err) => console.error('[auth] failed to update api_key last_used_at:', err)
-  );
-
-  next();
 }

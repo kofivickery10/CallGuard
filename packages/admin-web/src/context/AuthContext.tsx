@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { api, setToken, clearToken, getToken } from '../api/client';
+import { api, setTokens, clearToken, getToken, getRefreshToken } from '../api/client';
 import type {
   AuthResponse,
   TwoFactorChallengeResponse,
@@ -77,7 +77,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     assertSuperadmin(res.user);
-    setToken(res.token);
+    setTokens(res.token, res.refresh_token);
     setUser(res.user);
     return res.mfa_enrolment_required ? { status: 'enrol_required' } : { status: 'authenticated' };
   };
@@ -93,7 +93,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       code,
     });
     assertSuperadmin(res.user);
-    setToken(res.token);
+    setTokens(res.token, res.refresh_token);
     setUser(res.user);
   };
 
@@ -108,12 +108,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       code,
     });
     assertSuperadmin(res.user);
-    setToken(res.token);
+    setTokens(res.token, res.refresh_token);
     setUser(res.user);
     return res.backup_codes;
   };
 
   const logout = () => {
+    const rt = getRefreshToken();
+    if (rt) {
+      // Fire-and-forget — we clear locally regardless of server response.
+      api.post('/auth/logout', { refresh_token: rt }).catch(() => undefined);
+    }
     clearToken();
     setUser(null);
   };

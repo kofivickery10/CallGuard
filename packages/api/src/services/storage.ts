@@ -3,10 +3,24 @@ import path from 'path';
 import { config } from '../config.js';
 import { encryptBuffer, decryptBuffer } from './crypto.js';
 
-const uploadsDir = config.uploadsDir;
+const uploadsDir = path.resolve(config.uploadsDir);
 
 async function ensureDir(dir: string) {
   await fs.mkdir(dir, { recursive: true });
+}
+
+// Storage keys embed caller-controlled filenames (multipart originalname, a
+// dialler-supplied recording filename, etc.). path.join happily collapses
+// "../" segments, so an unsanitised key can escape uploadsDir entirely — this
+// is the single choke point all four functions below go through, so no
+// caller can write/read/delete outside the uploads directory regardless of
+// what key it constructs upstream.
+function resolveSafePath(key: string): string {
+  const filePath = path.resolve(uploadsDir, key);
+  if (filePath !== uploadsDir && !filePath.startsWith(uploadsDir + path.sep)) {
+    throw new Error(`Refusing to access a path outside the uploads directory: ${key}`);
+  }
+  return filePath;
 }
 
 /**
@@ -18,7 +32,7 @@ export async function uploadFile(
   body: Buffer,
   _contentType: string
 ): Promise<void> {
-  const filePath = path.join(uploadsDir, key);
+  const filePath = resolveSafePath(key);
   await ensureDir(path.dirname(filePath));
   const encrypted = encryptBuffer(body);
   await fs.writeFile(filePath, encrypted);
@@ -29,7 +43,7 @@ export async function uploadFile(
  * Pass encrypted=false for legacy files written before encryption was enabled.
  */
 export async function readFile(key: string, encrypted: boolean): Promise<Buffer> {
-  const filePath = path.join(uploadsDir, key);
+  const filePath = resolveSafePath(key);
   const raw = await fs.readFile(filePath);
   if (!encrypted) return raw;
   return decryptBuffer(raw);
@@ -39,7 +53,7 @@ export async function readFile(key: string, encrypted: boolean): Promise<Buffer>
  * Delete a file from disk. Safe to call on missing files.
  */
 export async function deleteFile(key: string): Promise<void> {
-  const filePath = path.join(uploadsDir, key);
+  const filePath = resolveSafePath(key);
   try {
     await fs.unlink(filePath);
   } catch (err: unknown) {
@@ -52,7 +66,7 @@ export async function deleteFile(key: string): Promise<void> {
  * or deletion - reading an encrypted file this way will give ciphertext.
  */
 export async function getFilePath(key: string): Promise<string> {
-  const filePath = path.join(uploadsDir, key);
+  const filePath = resolveSafePath(key);
   await fs.access(filePath);
   return filePath;
 }

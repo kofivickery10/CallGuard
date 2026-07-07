@@ -29,6 +29,22 @@ interface FormState {
 }
 const BLANK: FormState = { title: '', body: '', level: 'info', active: true, starts_at: '', ends_at: '' };
 
+// <input type="datetime-local"> values are local wall-clock time with no
+// timezone, while the API stores/returns UTC timestamptz. Slicing the UTC
+// ISO string directly into the input (or sending the input value straight
+// back) reads/writes the wrong instant whenever local time != UTC — i.e.
+// every day during BST. These convert explicitly at the boundary.
+function toLocalInputValue(iso: string): string {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function fromLocalInputValue(local: string): string | null {
+  if (!local) return null;
+  return new Date(local).toISOString();
+}
+
 export default function Announcements() {
   const [list, setList] = useState<Announcement[]>([]);
   const [error, setError] = useState('');
@@ -48,14 +64,18 @@ export default function Announcements() {
 
   const save = async () => {
     if (!form.title.trim() || !form.body.trim()) { setError('Title and message are required'); return; }
+    if (form.starts_at && form.ends_at && new Date(form.starts_at) >= new Date(form.ends_at)) {
+      setError('End time must be after the start time');
+      return;
+    }
     setSaving(true); setError('');
     const payload = {
       title: form.title,
       body: form.body,
       level: form.level,
       active: form.active,
-      starts_at: form.starts_at || null,
-      ends_at: form.ends_at || null,
+      starts_at: fromLocalInputValue(form.starts_at),
+      ends_at: fromLocalInputValue(form.ends_at),
     };
     try {
       if (editingId) await api.put(`/superadmin/announcements/${editingId}`, payload);
@@ -76,14 +96,26 @@ export default function Announcements() {
       body: a.body,
       level: a.level,
       active: a.active,
-      starts_at: a.starts_at ? a.starts_at.slice(0, 16) : '',
-      ends_at: a.ends_at ? a.ends_at.slice(0, 16) : '',
+      starts_at: a.starts_at ? toLocalInputValue(a.starts_at) : '',
+      ends_at: a.ends_at ? toLocalInputValue(a.ends_at) : '',
     });
   };
 
   const toggleActive = async (a: Announcement) => {
     try {
-      await api.put(`/superadmin/announcements/${a.id}`, { active: !a.active });
+      // The API always writes starts_at/ends_at from the request body (it
+      // can't tell "field omitted" from "field explicitly cleared" apart from
+      // COALESCE, and the editor needs to be able to clear a schedule) — so a
+      // partial { active } payload would silently wipe the schedule. Send the
+      // full record back with only `active` flipped.
+      await api.put(`/superadmin/announcements/${a.id}`, {
+        title: a.title,
+        body: a.body,
+        level: a.level,
+        active: !a.active,
+        starts_at: a.starts_at,
+        ends_at: a.ends_at,
+      });
       load();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed');

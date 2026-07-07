@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import path from 'path';
 import { v4 as uuid } from 'uuid';
 import { authenticate } from '../middleware/auth.js';
 import { requireAdmin, requireActioner } from '../middleware/auth.js';
@@ -7,10 +8,10 @@ import { query, queryOne } from '../db/client.js';
 import { uploadFile, deleteFile, readFile } from '../services/storage.js';
 import { transcriptionQueue } from '../jobs/queue.js';
 import { AppError } from '../middleware/errors.js';
-import { ingestCall, inferMimeType } from '../services/ingestion.js';
+import { ingestCall, fetchRemoteAudio } from '../services/ingestion.js';
 import { recordAuditEvent } from '../services/audit.js';
-import type { Call, CallScore, CallItemScore } from '@callguard/shared';
-import { deriveSeverity } from '@callguard/shared';
+import type { Call, CallScore, CallItemScore, BreachSeverity } from '@callguard/shared';
+import { deriveSeverity, isItemPass, callPasses } from '@callguard/shared';
 
 export const callRouter = Router();
 callRouter.use(authenticate);
@@ -47,10 +48,21 @@ callRouter.get('/', async (req, res, next) => {
       params
     );
 
+    // A call can have more than one call_scores row (rescored against a
+    // different scorecard over time); joining on call_id alone fans a single
+    // call out into one row per score, which duplicates it in the page,
+    // desyncs `total` from the returned row count, and would double-count it
+    // in any aggregate built on top of this query. The LATERAL join picks
+    // only the most recent score per call.
     const calls = await query(
       `SELECT c.*, cs.overall_score, cs.pass, u.name as resolved_agent_name
        FROM calls c
-       LEFT JOIN call_scores cs ON cs.call_id = c.id
+       LEFT JOIN LATERAL (
+         SELECT overall_score, pass FROM call_scores
+         WHERE call_id = c.id
+         ORDER BY scored_at DESC
+         LIMIT 1
+       ) cs ON true
        LEFT JOIN users u ON u.id = c.agent_id
        ${whereClause}
        ORDER BY c.created_at DESC
@@ -77,7 +89,10 @@ callRouter.post('/upload', upload.single('audio'), async (req, res, next) => {
     }
 
     const callId = uuid();
-    const fileKey = `calls/${req.user!.organizationId}/${callId}/${req.file.originalname}`;
+    // path.basename strips any directory component a crafted originalname
+    // (e.g. "../../../etc/x") would otherwise carry into the storage key.
+    const safeFileName = path.basename(req.file.originalname);
+    const fileKey = `calls/${req.user!.organizationId}/${callId}/${safeFileName}`;
 
     await uploadFile(fileKey, req.file.buffer, req.file.mimetype);
 
@@ -107,7 +122,7 @@ callRouter.post('/upload', upload.single('audio'), async (req, res, next) => {
         callId,
         req.user!.organizationId,
         req.user!.userId,
-        req.file.originalname,
+        safeFileName,
         fileKey,
         req.file.size,
         req.file.mimetype,
@@ -161,24 +176,6 @@ interface BulkImportRow {
   scorecard_id?: string | null;
 }
 
-async function fetchAudioUrl(url: string): Promise<{
-  buffer: Buffer;
-  fileName: string;
-  mimeType: string;
-}> {
-  const res = await fetch(url);
-  if (!res.ok) {
-    throw new Error(`HTTP ${res.status} ${res.statusText}`);
-  }
-  const arrayBuffer = await res.arrayBuffer();
-  const buffer = Buffer.from(arrayBuffer);
-  const urlObj = new URL(url);
-  const lastPart = urlObj.pathname.split('/').pop() || 'call.mp3';
-  const fileName = lastPart.includes('.') ? lastPart : `${lastPart}.mp3`;
-  const mimeType = res.headers.get('content-type')?.split(';')[0]?.trim() || inferMimeType(fileName);
-  return { buffer, fileName, mimeType };
-}
-
 callRouter.post('/bulk-import', requireAdmin, async (req, res, next) => {
   try {
     const rows = (req.body?.rows ?? []) as BulkImportRow[];
@@ -201,7 +198,7 @@ callRouter.post('/bulk-import', requireAdmin, async (req, res, next) => {
         if (!r.audio_url || typeof r.audio_url !== 'string') {
           throw new Error('audio_url missing or not a string');
         }
-        const { buffer, fileName, mimeType } = await fetchAudioUrl(r.audio_url);
+        const { buffer, fileName, mimeType } = await fetchRemoteAudio(r.audio_url);
         const tags = Array.isArray(r.tags)
           ? r.tags
           : typeof r.tags === 'string' && r.tags
@@ -519,7 +516,7 @@ callRouter.post('/:id/scores/items/:itemScoreId/correct', requireActioner, async
 
     const correctedNormalized = corrected_pass ? 100 : 0;
     const correctedRawScore = corrected_pass ? 1 : 0;
-    const originalPass = Number(itemScore.normalized_score) >= 70;
+    const originalPass = isItemPass(Number(itemScore.normalized_score));
 
     // Upsert correction record (unique on call_item_score_id)
     await query(
@@ -555,8 +552,8 @@ callRouter.post('/:id/scores/items/:itemScoreId/correct', requireActioner, async
     );
 
     // Recalculate overall score for this call_score
-    const items = await query<{ normalized_score: string; weight: string }>(
-      `SELECT cis.normalized_score::text, si.weight::text
+    const items = await query<{ normalized_score: string; weight: string; severity: string | null }>(
+      `SELECT cis.normalized_score::text, si.weight::text, si.severity
          FROM call_item_scores cis
          JOIN scorecard_items si ON si.id = cis.scorecard_item_id
         WHERE cis.call_score_id = $1`,
@@ -564,13 +561,20 @@ callRouter.post('/:id/scores/items/:itemScoreId/correct', requireActioner, async
     );
     let totalWeighted = 0;
     let totalWeight = 0;
+    const failingSeverities: BreachSeverity[] = [];
     for (const it of items) {
       const w = Number(it.weight);
-      totalWeighted += Number(it.normalized_score) * w;
+      const normalized = Number(it.normalized_score);
+      totalWeighted += normalized * w;
       totalWeight += w;
+      if (!isItemPass(normalized)) failingSeverities.push(deriveSeverity(w, it.severity));
     }
     const newOverall = totalWeight > 0 ? totalWeighted / totalWeight : 0;
-    const newPass = newOverall >= 70;
+    // Use the same pass gate as initial scoring: a critical-severity failure
+    // fails the call regardless of overall score. The old `newOverall >= 70`
+    // check ignored this, so correcting one unrelated item could flip a call
+    // with a still-unresolved critical breach back to PASS.
+    const newPass = callPasses(newOverall, failingSeverities);
 
     await query(
       'UPDATE call_scores SET overall_score = $1, pass = $2 WHERE id = $3',

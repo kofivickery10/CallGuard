@@ -19,9 +19,8 @@ interface ActiveSeats {
 }
 
 export function OrganizationSettings() {
-  const { user, refreshUser } = useAuth();
+  const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
-  const [saving, setSaving] = useState<Plan | null>(null);
   const [error, setError] = useState('');
 
   const currentPlan = user?.organization_plan as Plan | undefined;
@@ -110,19 +109,6 @@ export function OrganizationSettings() {
       setError((err as Error).message);
     } finally {
       setSavingOptIn(false);
-    }
-  };
-
-  const handleChange = async (plan: Plan) => {
-    setSaving(plan);
-    setError('');
-    try {
-      await api.put<OrganizationInfo>('/organization/plan', { plan });
-      await refreshUser();
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setSaving(null);
     }
   };
 
@@ -322,7 +308,6 @@ export function OrganizationSettings() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {PLANS.map((p) => {
           const isCurrent = currentPlan === p;
-          const isSaving = saving === p;
           return (
             <div
               key={p}
@@ -348,28 +333,13 @@ export function OrganizationSettings() {
                   {p === 'enterprise' ? <Check /> : <Cross />} Dedicated support & white-label
                 </li>
               </ul>
-              {!isCurrent && isAdmin && (
-                <button
-                  onClick={() => handleChange(p)}
-                  disabled={!!saving}
-                  className="mt-4 w-full bg-primary text-white px-4 py-2 rounded-btn text-table-cell font-semibold hover:bg-primary-hover disabled:opacity-50 transition-colors"
-                >
-                  {isSaving ? 'Switching...' : `Switch to ${PLAN_LABELS[p]}`}
-                </button>
-              )}
             </div>
           );
         })}
       </div>
 
-      {!isAdmin && (
-        <p className="text-[12px] text-text-muted mt-4 text-center">
-          Ask your admin to change your organisation's plan.
-        </p>
-      )}
-
-      <p className="text-[11px] text-text-muted mt-6 text-center">
-        Plan changes are applied immediately. In production, this would be gated by billing.
+      <p className="text-[12px] text-text-muted mt-4 text-center">
+        To change your organisation's plan, contact CallGuard support.
       </p>
     </div>
   );
