@@ -68,9 +68,17 @@ and industry. Recommended Trust Point values:
 | `scoring_scope` | `sales_only` | Only fully score closed-sale journeys — cost control. **Requires a working Zoho sale-trigger (Phase 6); until then it safely falls back to per-call scoring** |
 | `pass_threshold` | Confirm with their QA (default 70) | Their matrix weights items ~equally |
 | `retention_days` | `1825` (5 years) | COBS 9.5 / MiFID II. Floored at 30 by validation |
-| `transcription_mode` | `stereo_multichannel` if CloudTalk gives split-channel recordings, else `mono_diarize` | Split channel = reliable adviser/customer attribution → consent gates auto-score instead of routing to manual review |
-| `adviser_channel` | `0` or `1` (whichever channel is the adviser) — only if stereo | Needed for consent-gate speaker attribution |
+| `transcription_mode` | `mono_diarize` | **Trust Point records mono**, so speaker split comes from diarisation (a heuristic, not a deterministic channel). See the consent-gate note below. |
+| `adviser_channel` | `null` | N/A on mono — only applies to split-stereo recordings; leave unset. |
 | `deepgram_region` | `eu` | UK data residency |
+
+> **Mono + consent gates:** because Trust Point is mono, the adviser/customer
+> split is a diarisation guess rather than a pinned channel. Where
+> speaker-attribution confidence on a consent checkpoint is low, that item
+> routes to **manual review** (in the Review Queue) instead of being auto-scored
+> — the safe behaviour for a hard-consent point, but it means the 7 consent
+> gates will land for human sign-off more often than they would on split-stereo.
+> Factor that into the QA team's review workload.
 
 ---
 
