@@ -15,3 +15,7 @@ uploads/
 
 # Model evaluation output (generated artifact)
 evaluation-report.json
+
+# Client-supplied proprietary source docs (keep out of git history)
+docs/trustpoint/*.docx
+docs/trustpoint/*.xlsx

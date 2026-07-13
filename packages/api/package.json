@@ -10,6 +10,7 @@
     "start": "node dist/index.js",
     "start:worker": "node dist/jobs/worker.js",
     "migrate": "tsx src/db/migrate.ts",
+    "onboard-tenant": "tsx src/scripts/onboard-tenant.ts",
     "encrypt-existing": "tsx src/scripts/encrypt-existing-files.ts",
     "seed-demo": "tsx src/scripts/seed-demo.ts",
     "export-training-data": "tsx src/scripts/export-training-data.ts",

@@ -1,0 +1,50 @@
+{
+  "org": {
+    "name": "Trust Point Mortgage and Protection Services",
+    "plan": "enterprise",
+    "industry": "FCA-regulated protection insurance advice (life, critical illness, income protection)"
+  },
+  "admin": {
+    "name": "Trust Point Admin",
+    "email": "CHANGE_ME@trustpoint.example"
+  },
+  "scoring": {
+    "scoring_scope": "sales_only",
+    "pass_threshold": 70,
+    "retention_days": 1825,
+    "transcription_mode": "stereo_multichannel",
+    "deepgram_region": "eu",
+    "adviser_channel": 0
+  },
+  "scorecard": {
+    "name": "Trust Point — Protection QA",
+    "description": "Generated from the QA Framework & Scoring Matrix (June 2026). 47 checkpoints, branched on_risk/referred.",
+    "csv": "../../../../../sample_scorecards/trustpoint/trustpoint-protection.csv",
+    "scoring_mode": "journey",
+    "branch_config": {
+      "branches": ["on_risk", "referred"],
+      "detect": "keyword",
+      "keywords": {
+        "referred": [
+          "referred for underwriting",
+          "referred to the underwriters",
+          "not active yet",
+          "no final decision",
+          "hasn't declined"
+        ]
+      }
+    }
+  },
+  "knowledge_base": [
+    { "section": "company_overview", "file": "../../../../../docs/trustpoint/kb/company-overview.md" },
+    { "section": "compliance", "file": "../../../../../docs/trustpoint/kb/compliance-rules.md" },
+    {
+      "section": "scripts",
+      "files": [
+        "../../../../../docs/trustpoint/kb/sales-process-v4.md",
+        "../../../../../docs/trustpoint/kb/wrap-up-on-risk.md",
+        "../../../../../docs/trustpoint/kb/wrap-up-referred.md"
+      ]
+    }
+  ]
+}

@@ -1,76 +1,78 @@
 # Trust Point — Protection QA onboarding
 
-Draft scorecards + KB mapping derived from Trust Point's supplied files
-(QA Framework and Scoring Matrix June 2026.xlsx, the two Protection Wrap-Up
-scripts, and Sales Process v4). Status: **v1.0 draft — pending Trust Point
-sign-off on the manual-item split (see below).**
+Scorecard + KB mapping generated from Trust Point's supplied files (QA Framework
+and Scoring Matrix June 2026.xlsx, the two Protection Wrap-Up scripts, and Sales
+Process v4 — all under `docs/trustpoint/`). Status: **v2.0 — regenerated from the
+authoritative 47-item QA Framework; pending Trust Point sign-off on the manual-item
+split (see below).**
 
 ## Scorecards
 
-**Use `trustpoint-protection.csv`** — a single branched scorecard covering both
-application outcomes. CallGuard now supports branch-scoped criteria with an N/A
-result, so the previous two-scorecard split is no longer needed:
+**Use `trustpoint-protection.csv`** — a single branched scorecard, one row per
+QA Framework item, covering both application outcomes. Regenerate with
+`sample_scorecards/trustpoint/gen_scorecard.py` if the framework changes.
 
 | File | Items | Notes |
 |---|---|---|
-| `trustpoint-protection.csv` | 49 | **Recommended.** 38 common + 5 `on_risk` + 3 `referred` branch items + 3 manual back-office items. |
-| `trustpoint-protection-on-risk.csv` | 43 | Legacy per-outcome card (kept for reference). |
-| `trustpoint-protection-referred.csv` | 41 | Legacy per-outcome card (kept for reference). |
+| `trustpoint-protection.csv` | 47 | **Recommended.** Exactly the QA Framework's 47 items: 44 AI-scored + 3 manual (see split below), 7 consent gates, 10 word-for-word, `on_risk`/`referred` branch tags. |
+| `trustpoint-protection-on-risk.csv` | 43 | Legacy per-outcome card (superseded). |
+| `trustpoint-protection-referred.csv` | 41 | Legacy per-outcome card (superseded). |
 
 ### Import
 Scorecards → New → Import CSV. The importer reads `label, description,
 score_type, weight, severity, section, item_type, branch, expectation,
-ai_check, consent_gate`. Branch names found in the CSV pre-fill the scorecard's
-branch list — after import, set the **branch keywords** so the scorer can tell
-the paths apart. Suggested:
+ai_check, consent_gate`. Branch names in the CSV pre-fill the branch list —
+after import, set the **branch keywords** so the scorer can tell the paths apart:
 
 - `on_risk` (default branch — leave keywords empty)
-- `referred`: `referred for underwriting, referred to the underwriters, not active yet, no final decision`
+- `referred`: `referred for underwriting, referred to the underwriters, not active yet, no final decision, hasn't declined`
 
 ### What the columns drive
-- **severity** — now imported directly; drives the breach register (critical/high
-  fails raise breaches).
-- **section** — groups items in dashboards and coaching views.
-- **item_type=manual** — the three back-office items (fact find on CRM, suitability
-  review, data-entry accuracy) are included as `manual`: never sent to the AI,
-  land in the review queue, excluded from the AI-scored denominator.
+- **severity** — drives the breach register (critical/high fails raise breaches).
+- **section** — the QA Framework category; groups items in dashboards/coaching.
+- **item_type=manual** — never sent to the AI; lands in the review queue,
+  excluded from the AI-scored denominator (see the split below).
 - **branch** — outcome-specific items score only on their branch; on the other
-  branch they resolve to `na` and drop out of the denominator.
-- **consent_gate=true** — the six hard-consent items require an explicit customer
-  "yes"; if speaker attribution on the evidence is low-confidence the item routes
-  to manual review instead of a score.
-- **ai_check** — set on the word-for-word regulatory statements (FCA authorisation,
-  advised/no-fee, call recording, honesty warning, exclusions/cancellation) to
-  require presence *and* full regulatory meaning.
+  branch they resolve to `na` and drop out of the denominator. `on_risk`: the
+  Direct Debit setup and the two Policy-in-Trust items. `referred`: the "not
+  active yet" Direct Debit item.
+- **consent_gate=true** — the 7 hard-consent items require an explicit customer
+  "yes"; low-confidence speaker attribution routes them to manual review.
+- **ai_check** — set on the 10 word-for-word regulatory statements to require
+  presence *and* full regulatory meaning.
 
-## ⚠️ Open item: the 9 "Manual Process" items
-Trust Point's matrix splits the 47 items into **38 AI-scored (80.94%) + 9 Manual
-Process (19.08%)** but the spreadsheet does **not** tag which rows are manual.
-Only three unambiguous back-office rows are included as `manual` items:
-- **7** — full Fact Find completed & recorded on the CRM
-- **8** — comprehensive, justified recommendation (file/suitability review)
-- **25** — all customer disclosures input accurately (data-entry accuracy)
+## ⚠️ Open item: the 9 "Manual Process" items (Trust Point sign-off)
 
-That leaves 44 call-observable AI items, i.e. **6 more than Trust Point's "38
-AI" count.** Trust Point needs to confirm which 6 further items they treat as
-manual so they can be flipped to `item_type=manual` (not deleted — manual items
-now stay on the card). Likely candidates to query: 11 (Trust set up free of
-charge), 21/23 (GP-report admin), 16 (risk summary vs file), 19 (features vs
-file).
+The framework splits the 47 items **38 AI (80.94%) + 9 Manual (19.08%)** but the
+spreadsheet does not tag *which* 9. Three are unambiguous back-office checks and
+are shipped as `manual` (items 7, 8, 25 — fact find on CRM, recommendation on
+file, disclosure-entry accuracy).
 
-## Knowledge Base staging
-Upload the supplied docs to Knowledge Base sections so the scorer has Trust
-Point's expected call flow as context (it's injected into the scoring prompt):
+**The scorecard leaves the other 44 as AI by design** — better to over-score than
+to silently suppress a compliance checkpoint. To reach the framework's 9-manual
+figure, Trust Point should confirm **6 more** to flip to `item_type=manual`.
+Recommended set, with rationale (these are quality/process checks that a call
+recording alone can't fully evidence):
 
-| Document | KB section |
+| Item | Why it may be manual |
 |---|---|
-| Trust Point – Sales Process v4 | **Sales Scripts** (`scripts`) |
-| Protection Wrap Up Script – On Risk | **Sales Scripts** (`scripts`) |
-| Protection Wrap Up Script – Referred | **Sales Scripts** (`scripts`) |
-| Regulatory "word-for-word" statements (from the framework) | **Compliance Rules** (`compliance`) |
+| 24 — allowed customer to answer every H&L question | Quality check against how the application was actually completed |
+| 26 — did NOT lead the customer's H&L answers | Integrity check; hard to evidence conclusively from audio |
+| 43 — explained placing the policy in Trust | Trust set-up is a back-office follow-up, on_risk only |
+| 44 — arranged to contact the nominated trustee | Admin action tracked off-call |
+| 45 — raised will / estate planning | Follow-up booked off-call |
+| 16 — summarised risks & confirmed agreement, **or** 19 — features vs file | Either the needs-summary quality or the features-vs-file accuracy check |
 
-Also set Organisation Settings → **Industry / advice domain** to
+Once confirmed, edit those rows' `item_type` to `manual` and re-import (or flip
+them in the Scorecard Editor). Nothing is lost either way — manual items stay on
+the card and appear in the review queue.
+
+## Knowledge Base
+
+Ready-to-upload KB content built from the source docs lives in
+[`docs/trustpoint/kb/`](../../docs/trustpoint/kb/) — see the README there for the
+file → section mapping (company overview, compliance rules, and the three
+scripts). Also set Organisation Settings → **Industry / advice domain** to
 `FCA-regulated protection insurance advice (life, critical illness, income
-protection)` so calls are scored in the right regulatory context, and (if calls
-arrive via CloudTalk or Zoho sale triggers) configure those under
-Integrations so journeys assemble automatically per sale.
+protection)`, and configure CloudTalk / Zoho under Integrations so journeys
+assemble per sale.
