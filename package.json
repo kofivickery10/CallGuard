@@ -19,6 +19,7 @@
     "build:web": "npm run build --workspace=packages/web",
     "build:admin": "npm run build --workspace=packages/admin-web",
     "migrate": "npm run migrate --workspace=packages/api",
+    "test": "npm run test --workspace=packages/shared && npm run test --workspace=packages/api",
     "start": "pm2 start ecosystem.config.js"
   },
   "engines": {

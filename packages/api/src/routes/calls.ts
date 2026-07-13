@@ -10,6 +10,7 @@ import { transcriptionQueue } from '../jobs/queue.js';
 import { AppError } from '../middleware/errors.js';
 import { ingestCall, fetchRemoteAudio } from '../services/ingestion.js';
 import { recordAuditEvent } from '../services/audit.js';
+import { getScoringSettings } from '../services/tenant-settings.js';
 import type { Call, CallScore, CallItemScore, BreachSeverity } from '@callguard/shared';
 import { deriveSeverity, isItemPass, callPasses } from '@callguard/shared';
 
@@ -514,9 +515,10 @@ callRouter.post('/:id/scores/items/:itemScoreId/correct', requireActioner, async
     );
     if (!itemScore) throw new AppError(404, 'Item score not found');
 
+    const scoringSettings = await getScoringSettings(call.organization_id);
     const correctedNormalized = corrected_pass ? 100 : 0;
     const correctedRawScore = corrected_pass ? 1 : 0;
-    const originalPass = isItemPass(Number(itemScore.normalized_score));
+    const originalPass = isItemPass(Number(itemScore.normalized_score), scoringSettings.passThreshold);
 
     // Upsert correction record (unique on call_item_score_id)
     await query(
@@ -551,12 +553,16 @@ callRouter.post('/:id/scores/items/:itemScoreId/correct', requireActioner, async
       [correctedRawScore, correctedNormalized, itemScore.id]
     );
 
-    // Recalculate overall score for this call_score
+    // Recalculate overall score for this call_score. Only pass/fail rows count
+    // toward the weighted denominator — na / manual_review rows carry a NULL
+    // normalized_score and must be excluded, or Number(null)=0 would drag them
+    // in as zero-scored failures, deflating the overall and inventing breaches.
     const items = await query<{ normalized_score: string; weight: string; severity: string | null }>(
       `SELECT cis.normalized_score::text, si.weight::text, si.severity
          FROM call_item_scores cis
          JOIN scorecard_items si ON si.id = cis.scorecard_item_id
-        WHERE cis.call_score_id = $1`,
+        WHERE cis.call_score_id = $1
+          AND cis.result IN ('pass', 'fail')`,
       [itemScore.call_score_id]
     );
     let totalWeighted = 0;
@@ -567,14 +573,13 @@ callRouter.post('/:id/scores/items/:itemScoreId/correct', requireActioner, async
       const normalized = Number(it.normalized_score);
       totalWeighted += normalized * w;
       totalWeight += w;
-      if (!isItemPass(normalized)) failingSeverities.push(deriveSeverity(w, it.severity));
+      if (!isItemPass(normalized, scoringSettings.passThreshold)) failingSeverities.push(deriveSeverity(w, it.severity));
     }
     const newOverall = totalWeight > 0 ? totalWeighted / totalWeight : 0;
     // Use the same pass gate as initial scoring: a critical-severity failure
-    // fails the call regardless of overall score. The old `newOverall >= 70`
-    // check ignored this, so correcting one unrelated item could flip a call
-    // with a still-unresolved critical breach back to PASS.
-    const newPass = callPasses(newOverall, failingSeverities);
+    // fails the call regardless of overall score, and the org's own pass
+    // threshold (not a hardcoded 70) decides borderline items.
+    const newPass = callPasses(newOverall, failingSeverities, scoringSettings.passThreshold);
 
     await query(
       'UPDATE call_scores SET overall_score = $1, pass = $2 WHERE id = $3',

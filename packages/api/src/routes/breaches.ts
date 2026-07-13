@@ -154,15 +154,16 @@ breachesRouter.get('/review-queue', async (req, res, next) => {
     const rows = await query<BreachWithDetail & { risk_score: number }>(
       `SELECT
           b.*,
-          c.file_name as call_file_name,
+          COALESCE(c.file_name, 'Journey — ' || COALESCE(jcust.name, 'customer')) as call_file_name,
+          jcust.name as customer_name,
           c.agent_name,
           c.agent_id,
           u.name as assigned_to_name,
           si.label as breach_type,
           sc.name as scorecard_name,
-          cis.evidence,
-          cis.reasoning,
-          cis.normalized_score,
+          COALESCE(cis.evidence, jis.evidence) as evidence,
+          COALESCE(cis.reasoning, jis.reasoning) as reasoning,
+          COALESCE(cis.normalized_score, jis.normalized_score) as normalized_score,
           (
             CASE b.severity
               WHEN 'critical' THEN 100
@@ -181,8 +182,11 @@ breachesRouter.get('/review-queue', async (req, res, next) => {
             LEAST(20, EXTRACT(EPOCH FROM (now() - b.detected_at)) / 86400)
           ) AS risk_score
         FROM breaches b
-        JOIN calls c ON c.id = b.call_id
-        JOIN call_item_scores cis ON cis.id = b.call_item_score_id
+        LEFT JOIN calls c ON c.id = b.call_id
+        LEFT JOIN call_item_scores cis ON cis.id = b.call_item_score_id
+        LEFT JOIN journeys j ON j.id = b.journey_id
+        LEFT JOIN journey_item_scores jis ON jis.id = b.journey_item_score_id
+        LEFT JOIN customers jcust ON jcust.id = j.customer_id
         JOIN scorecard_items si ON si.id = b.scorecard_item_id
         LEFT JOIN scorecards sc ON sc.id = si.scorecard_id
         LEFT JOIN users u ON u.id = b.assigned_to
@@ -215,7 +219,7 @@ breachesRouter.get('/', async (req, res, next) => {
     const countResult = await queryOne<{ count: string }>(
       `SELECT COUNT(*)::text as count
          FROM breaches b
-         JOIN calls c ON c.id = b.call_id
+         LEFT JOIN calls c ON c.id = b.call_id
          JOIN scorecard_items si ON si.id = b.scorecard_item_id
         WHERE ${whereSQL}`,
       params
@@ -224,18 +228,22 @@ breachesRouter.get('/', async (req, res, next) => {
     const rows = await query<BreachWithDetail>(
       `SELECT
           b.*,
-          c.file_name as call_file_name,
+          COALESCE(c.file_name, 'Journey — ' || COALESCE(jcust.name, 'customer')) as call_file_name,
+          jcust.name as customer_name,
           c.agent_name,
           c.agent_id,
           u.name as assigned_to_name,
           si.label as breach_type,
           sc.name as scorecard_name,
-          cis.evidence,
-          cis.reasoning,
-          cis.normalized_score
+          COALESCE(cis.evidence, jis.evidence) as evidence,
+          COALESCE(cis.reasoning, jis.reasoning) as reasoning,
+          COALESCE(cis.normalized_score, jis.normalized_score) as normalized_score
         FROM breaches b
-        JOIN calls c ON c.id = b.call_id
-        JOIN call_item_scores cis ON cis.id = b.call_item_score_id
+        LEFT JOIN calls c ON c.id = b.call_id
+        LEFT JOIN call_item_scores cis ON cis.id = b.call_item_score_id
+        LEFT JOIN journeys j ON j.id = b.journey_id
+        LEFT JOIN journey_item_scores jis ON jis.id = b.journey_item_score_id
+        LEFT JOIN customers jcust ON jcust.id = j.customer_id
         JOIN scorecard_items si ON si.id = b.scorecard_item_id
         LEFT JOIN scorecards sc ON sc.id = si.scorecard_id
         LEFT JOIN users u ON u.id = b.assigned_to
@@ -268,17 +276,21 @@ breachesRouter.get('/export.csv', async (req, res, next) => {
     const rows = await query<BreachWithDetail>(
       `SELECT
           b.*,
-          c.file_name as call_file_name,
+          COALESCE(c.file_name, 'Journey — ' || COALESCE(jcust.name, 'customer')) as call_file_name,
+          jcust.name as customer_name,
           c.agent_name,
           u.name as assigned_to_name,
           si.label as breach_type,
           sc.name as scorecard_name,
-          cis.evidence,
-          cis.reasoning,
-          cis.normalized_score
+          COALESCE(cis.evidence, jis.evidence) as evidence,
+          COALESCE(cis.reasoning, jis.reasoning) as reasoning,
+          COALESCE(cis.normalized_score, jis.normalized_score) as normalized_score
         FROM breaches b
-        JOIN calls c ON c.id = b.call_id
-        JOIN call_item_scores cis ON cis.id = b.call_item_score_id
+        LEFT JOIN calls c ON c.id = b.call_id
+        LEFT JOIN call_item_scores cis ON cis.id = b.call_item_score_id
+        LEFT JOIN journeys j ON j.id = b.journey_id
+        LEFT JOIN journey_item_scores jis ON jis.id = b.journey_item_score_id
+        LEFT JOIN customers jcust ON jcust.id = j.customer_id
         JOIN scorecard_items si ON si.id = b.scorecard_item_id
         LEFT JOIN scorecards sc ON sc.id = si.scorecard_id
         LEFT JOIN users u ON u.id = b.assigned_to
@@ -309,14 +321,14 @@ breachesRouter.get('/export.csv', async (req, res, next) => {
       lines.push(
         [
           r.detected_at,
-          r.call_id,
+          r.call_id || r.journey_id || '',
           r.call_file_name,
           r.agent_name || '',
           r.breach_type,
           r.scorecard_name || '',
           r.severity,
           r.status,
-          String(r.normalized_score),
+          r.normalized_score != null ? String(r.normalized_score) : '',
           r.assigned_to_name || '',
           r.evidence || '',
           r.reasoning || '',
@@ -354,15 +366,19 @@ breachesRouter.get('/report', async (req, res, next) => {
     const rows = await query<BreachWithDetail>(
       `SELECT
           b.*,
-          c.file_name as call_file_name,
+          COALESCE(c.file_name, 'Journey — ' || COALESCE(jcust.name, 'customer')) as call_file_name,
+          jcust.name as customer_name,
           c.agent_name,
           u.name as assigned_to_name,
           si.label as breach_type,
           sc.name as scorecard_name,
-          cis.normalized_score
+          COALESCE(cis.normalized_score, jis.normalized_score) as normalized_score
         FROM breaches b
-        JOIN calls c ON c.id = b.call_id
-        JOIN call_item_scores cis ON cis.id = b.call_item_score_id
+        LEFT JOIN calls c ON c.id = b.call_id
+        LEFT JOIN call_item_scores cis ON cis.id = b.call_item_score_id
+        LEFT JOIN journeys j ON j.id = b.journey_id
+        LEFT JOIN journey_item_scores jis ON jis.id = b.journey_item_score_id
+        LEFT JOIN customers jcust ON jcust.id = j.customer_id
         JOIN scorecard_items si ON si.id = b.scorecard_item_id
         LEFT JOIN scorecards sc ON sc.id = si.scorecard_id
         LEFT JOIN users u ON u.id = b.assigned_to
@@ -404,18 +420,22 @@ breachesRouter.get('/:id', async (req, res, next) => {
     const breach = await queryOne<BreachWithDetail>(
       `SELECT
           b.*,
-          c.file_name as call_file_name,
+          COALESCE(c.file_name, 'Journey — ' || COALESCE(jcust.name, 'customer')) as call_file_name,
+          jcust.name as customer_name,
           c.agent_name,
           c.agent_id,
           u.name as assigned_to_name,
           si.label as breach_type,
           sc.name as scorecard_name,
-          cis.evidence,
-          cis.reasoning,
-          cis.normalized_score
+          COALESCE(cis.evidence, jis.evidence) as evidence,
+          COALESCE(cis.reasoning, jis.reasoning) as reasoning,
+          COALESCE(cis.normalized_score, jis.normalized_score) as normalized_score
         FROM breaches b
-        JOIN calls c ON c.id = b.call_id
-        JOIN call_item_scores cis ON cis.id = b.call_item_score_id
+        LEFT JOIN calls c ON c.id = b.call_id
+        LEFT JOIN call_item_scores cis ON cis.id = b.call_item_score_id
+        LEFT JOIN journeys j ON j.id = b.journey_id
+        LEFT JOIN journey_item_scores jis ON jis.id = b.journey_item_score_id
+        LEFT JOIN customers jcust ON jcust.id = j.customer_id
         JOIN scorecard_items si ON si.id = b.scorecard_item_id
         LEFT JOIN scorecards sc ON sc.id = si.scorecard_id
         LEFT JOIN users u ON u.id = b.assigned_to

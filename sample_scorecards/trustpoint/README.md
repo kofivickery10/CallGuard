@@ -2,58 +2,61 @@
 
 Draft scorecards + KB mapping derived from Trust Point's supplied files
 (QA Framework and Scoring Matrix June 2026.xlsx, the two Protection Wrap-Up
-scripts, and Sales Process v4). Status: **v0.9 draft — pending Trust Point
+scripts, and Sales Process v4). Status: **v1.0 draft — pending Trust Point
 sign-off on the manual-item split (see below).**
 
 ## Scorecards
 
-Two scorecards, one per application outcome, because CallGuard scores every
-listed item and has no "not applicable" state yet — so path-specific items would
-otherwise fail on the wrong call type. Pick the scorecard per call (Calls →
-scorecard selection).
+**Use `trustpoint-protection.csv`** — a single branched scorecard covering both
+application outcomes. CallGuard now supports branch-scoped criteria with an N/A
+result, so the previous two-scorecard split is no longer needed:
 
-| File | Items | Use for |
+| File | Items | Notes |
 |---|---|---|
-| `trustpoint-protection-on-risk.csv` | 43 | Calls where the policy goes **on risk** (accepted / immediate acceptance). Mirrors *Protection Wrap Up Script – On Risk*. |
-| `trustpoint-protection-referred.csv` | 41 | Calls **referred for underwriting**. Mirrors *Protection Wrap Up Script – Referred*. |
-
-38 items are common to both. On Risk adds DD/start-date (35), Trust (43, 44) and
-accepted-terms outcome (30, 31). Referred adds the referred DD script (36) and
-the "not active yet" outcome wording (30, 31).
+| `trustpoint-protection.csv` | 49 | **Recommended.** 38 common + 5 `on_risk` + 3 `referred` branch items + 3 manual back-office items. |
+| `trustpoint-protection-on-risk.csv` | 43 | Legacy per-outcome card (kept for reference). |
+| `trustpoint-protection-referred.csv` | 41 | Legacy per-outcome card (kept for reference). |
 
 ### Import
-Scorecards → New → paste/upload CSV. The importer reads `label, description,
-score_type, weight`. All items are `binary`, `weight 1` (Trust Point weights
-items roughly equally — ~2.13% each — so equal weighting reproduces the same
-relative result).
+Scorecards → New → Import CSV. The importer reads `label, description,
+score_type, weight, severity, section, item_type, branch, expectation,
+ai_check, consent_gate`. Branch names found in the CSV pre-fill the scorecard's
+branch list — after import, set the **branch keywords** so the scorer can tell
+the paths apart. Suggested:
 
-### Severity (the 5th column)
-The CSV includes a `severity` column for documentation, but **the current CSV
-importer ignores it** — severity is set per item in the Scorecard Editor after
-import (it drives the breach register). Proposed mapping:
-- **critical** — hard-consent gates (info-sharing yes, recommendation yes, happy
-  with cover/premium yes), the honesty/non-disclosure warning, and not leading
-  the customer in Health & Lifestyle answers, and the Referred "not active yet".
-- **high** — regulatory disclosures (FCA authorisation, advised/no-fee, call
-  recording, data sharing, vulnerability, key features, GP consent, cancellation
-  rights, document consent) and the DD/outcome items.
-- **medium** — process/recap items.
-- **low** — rapport, future support, Google review, referral, estate planning.
+- `on_risk` (default branch — leave keywords empty)
+- `referred`: `referred for underwriting, referred to the underwriters, not active yet, no final decision`
+
+### What the columns drive
+- **severity** — now imported directly; drives the breach register (critical/high
+  fails raise breaches).
+- **section** — groups items in dashboards and coaching views.
+- **item_type=manual** — the three back-office items (fact find on CRM, suitability
+  review, data-entry accuracy) are included as `manual`: never sent to the AI,
+  land in the review queue, excluded from the AI-scored denominator.
+- **branch** — outcome-specific items score only on their branch; on the other
+  branch they resolve to `na` and drop out of the denominator.
+- **consent_gate=true** — the six hard-consent items require an explicit customer
+  "yes"; if speaker attribution on the evidence is low-confidence the item routes
+  to manual review instead of a score.
+- **ai_check** — set on the word-for-word regulatory statements (FCA authorisation,
+  advised/no-fee, call recording, honesty warning, exclusions/cancellation) to
+  require presence *and* full regulatory meaning.
 
 ## ⚠️ Open item: the 9 "Manual Process" items
 Trust Point's matrix splits the 47 items into **38 AI-scored (80.94%) + 9 Manual
 Process (19.08%)** but the spreadsheet does **not** tag which rows are manual.
-Only three are unambiguously back-office and have been **excluded** here:
+Only three unambiguous back-office rows are included as `manual` items:
 - **7** — full Fact Find completed & recorded on the CRM
 - **8** — comprehensive, justified recommendation (file/suitability review)
 - **25** — all customer disclosures input accurately (data-entry accuracy)
 
-That leaves these drafts at 44 call-observable items, i.e. **6 more than Trust
-Point's "38 AI" count.** Trust Point needs to confirm which 6 further items they
-treat as manual so they can be removed. Likely candidates to query: 11 (Trust set
-up free of charge), 21/23 (GP-report admin), 16 (risk summary vs file), 19
-(features vs file). Once confirmed, regenerate via
-`scratchpad/gen_scorecards.py`.
+That leaves 44 call-observable AI items, i.e. **6 more than Trust Point's "38
+AI" count.** Trust Point needs to confirm which 6 further items they treat as
+manual so they can be flipped to `item_type=manual` (not deleted — manual items
+now stay on the card). Likely candidates to query: 11 (Trust set up free of
+charge), 21/23 (GP-report admin), 16 (risk summary vs file), 19 (features vs
+file).
 
 ## Knowledge Base staging
 Upload the supplied docs to Knowledge Base sections so the scorer has Trust
@@ -68,4 +71,6 @@ Point's expected call flow as context (it's injected into the scoring prompt):
 
 Also set Organisation Settings → **Industry / advice domain** to
 `FCA-regulated protection insurance advice (life, critical illness, income
-protection)` so calls are scored in the right regulatory context.
+protection)` so calls are scored in the right regulatory context, and (if calls
+arrive via CloudTalk or Zoho sale triggers) configure those under
+Integrations so journeys assemble automatically per sale.

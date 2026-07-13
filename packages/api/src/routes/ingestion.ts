@@ -14,8 +14,10 @@ import { encrypt } from '../services/crypto.js';
 import { ingestCall, fetchRemoteAudio } from '../services/ingestion.js';
 import { recordAuditEvent } from '../services/audit.js';
 import * as sftp from '../services/sftp.js';
+import { getDialerConnection, verifyDialerSignature } from '../services/tenant-settings.js';
+import { ingestionQueue } from '../jobs/queue.js';
 import { isItemPass } from '@callguard/shared';
-import type { ApiKey, SFTPSource, SFTPPollLog } from '@callguard/shared';
+import type { ApiKey, SFTPSource, SFTPPollLog, DialerConnection, DialerFieldMap } from '@callguard/shared';
 
 export const ingestionRouter = Router();
 
@@ -101,12 +103,25 @@ ingestionRouter.post(
 
 // ============================================================
 // POST /api/ingestion/cloudtalk (X-API-Key auth)
-// CloudTalk "Recording Uploaded" webhook receiver. CloudTalk's payload shape
-// varies by setup, so we read the recording URL + agent + call id tolerantly
-// from a range of likely field names (top-level or nested under call/Call/data).
-// Maps to the generic ingest. If a CloudTalk recording URL needs auth to
-// download, set CLOUDTALK_API_KEY_ID / CLOUDTALK_API_SECRET (Basic auth).
+// CloudTalk "Recording Uploaded" / "Call Ended" webhook receiver. Does NOT
+// download or ingest inline — it validates, dedupes, and enqueues an
+// `ingest-call` job with a delay (the recording is often still processing on
+// CloudTalk's side when the event fires), then returns immediately. If the
+// org has a dialer_connections row configured (Integrations → CloudTalk),
+// its per-tenant signing secret, field-name mapping and fetch delay are used;
+// otherwise this falls back to the historical default mapping and a 60s
+// delay so orgs that haven't configured a connection yet keep working.
 // ============================================================
+
+const DEFAULT_CLOUDTALK_FIELD_MAP: DialerFieldMap = {
+  call_id: ['call_uuid', 'uuid', 'call_id', 'id'],
+  recording_url: ['recording_url', 'recording', 'call_recording_url', 'recording_link', 'audio_url', 'url'],
+  agent_email: ['agent_email', 'agent_mail', 'internal_email'],
+  agent_external_id: ['agent_id', 'agent', 'internal_id'],
+  agent_name: ['agent_name', 'internal_name'],
+  customer_phone: ['external_number', 'public_external_number', 'contact_number', 'phone_number'],
+};
+const DEFAULT_RECORDING_FETCH_DELAY_SECONDS = 60;
 
 // Find the first non-empty string at any of the candidate keys, checking the
 // body and one level of common nesting (call / Call / data / payload).
@@ -126,68 +141,245 @@ function pickField(body: Record<string, unknown>, keys: string[]): string | null
   return null;
 }
 
-ingestionRouter.post('/cloudtalk', authenticateApiKey, apiKeyLimiter, async (req, res, next) => {
+// Named export so app.ts can also mount this at POST /webhooks/cloudtalk to
+// match the spec's literal path, without exposing the rest of this router.
+export async function handleCloudTalkWebhook(
+  req: import('express').Request,
+  res: import('express').Response,
+  next: import('express').NextFunction
+): Promise<void> {
   try {
     const orgId = req.user!.organizationId;
     const body = (req.body || {}) as Record<string, unknown>;
+    const rawBody = (req as typeof req & { rawBody?: Buffer }).rawBody ?? Buffer.from(JSON.stringify(body));
 
-    const recordingUrl = pickField(body, [
-      'recording_url', 'recording', 'call_recording_url', 'recording_link', 'audio_url', 'url',
-    ]);
-    // CloudTalk setups without a native call id in the payload would otherwise
-    // skip the idempotency check entirely (ingestCall only dedupes when
-    // externalId is present) — a webhook retry then re-ingests the same
-    // recording as a brand-new call, doubling transcription/scoring cost and
-    // breach counts. Fall back to hashing the recording URL, which is stable
-    // across retries of the same delivery.
+    const conn = await getDialerConnection(orgId, 'cloudtalk');
+
+    // Second layer on top of X-API-Key possession — a no-op until the tenant
+    // sets a signing secret on their CloudTalk connection, at which point a
+    // request without a matching signature is rejected outright.
+    const signatureHeader = req.headers['x-callguard-dialer-signature'] as string | undefined;
+    if (!verifyDialerSignature(conn, rawBody, signatureHeader)) {
+      throw new AppError(401, 'Invalid or missing dialer webhook signature');
+    }
+
+    const fieldMap = conn?.field_map ?? DEFAULT_CLOUDTALK_FIELD_MAP;
+    const recordingUrl = pickField(body, fieldMap.recording_url);
+    const cloudtalkCallId = pickField(body, fieldMap.call_id);
+    // A webhook retry without a native call id in the payload would otherwise
+    // skip the idempotency check entirely — fall back to hashing the
+    // recording URL, which is stable across retries of the same delivery.
     const externalId =
-      pickField(body, ['call_uuid', 'uuid', 'call_id', 'id']) ??
+      cloudtalkCallId ??
       (recordingUrl ? `cloudtalk:${crypto.createHash('sha256').update(recordingUrl).digest('hex')}` : null);
-    const agentEmail = pickField(body, ['agent_email', 'agent_mail', 'internal_email']);
-    const agentExternalId = pickField(body, ['agent_id', 'agent', 'internal_id']);
-    const agentName = pickField(body, ['agent_name', 'internal_name']);
-    const customerPhone = pickField(body, ['external_number', 'public_external_number', 'contact_number', 'phone_number']);
+    const agentEmail = pickField(body, fieldMap.agent_email);
+    const agentExternalId = pickField(body, fieldMap.agent_external_id);
+    const agentName = pickField(body, fieldMap.agent_name);
+    const customerPhone = pickField(body, fieldMap.customer_phone);
 
     // CloudTalk fires events before the recording exists too - acknowledge and skip.
-    if (!recordingUrl) {
-      res.status(202).json({ status: 'ignored', reason: 'no recording URL in payload' });
+    if (!recordingUrl && !cloudtalkCallId) {
+      res.status(202).json({ status: 'ignored', reason: 'no recording URL or call id in payload' });
+      return;
+    }
+    if (!externalId) {
+      // Unreachable in practice (recordingUrl or cloudtalkCallId implies
+      // externalId), but keeps the type narrow for the queue add below.
+      res.status(202).json({ status: 'ignored', reason: 'could not derive an idempotency key' });
       return;
     }
 
-    // Optional Basic auth for protected CloudTalk recording URLs.
-    const headers: Record<string, string> = {};
-    if (process.env.CLOUDTALK_API_KEY_ID && process.env.CLOUDTALK_API_SECRET) {
-      const token = Buffer.from(
-        `${process.env.CLOUDTALK_API_KEY_ID}:${process.env.CLOUDTALK_API_SECRET}`
-      ).toString('base64');
-      headers['Authorization'] = `Basic ${token}`;
+    const existing = await queryOne<{ id: string }>(
+      'SELECT id FROM calls WHERE organization_id = $1 AND external_id = $2',
+      [orgId, externalId]
+    );
+    if (existing) {
+      res.status(200).json({ status: 'duplicate', call_id: existing.id, external_id: externalId });
+      return;
     }
 
-    const downloaded = await fetchRemoteAudio(recordingUrl, headers);
+    const delaySeconds = conn?.recording_fetch_delay_seconds ?? DEFAULT_RECORDING_FETCH_DELAY_SECONDS;
+    const ingestJobId = `ingest-${orgId}-${externalId}`;
 
-    const { call, isDuplicate } = await ingestCall({
-      organizationId: orgId,
-      uploadedBy: null,
-      fileName: downloaded.fileName,
-      buffer: downloaded.buffer,
-      mimeType: downloaded.mimeType,
-      ingestionSource: 'api',
-      agentEmail,
-      agentExternalId,
-      agentName,
-      customerPhone,
-      externalId,
-    });
+    // If a previous delivery's job for this call already exhausted its retries
+    // and is sitting in the failed set, re-adding under the same jobId is a
+    // silent no-op — so an eventual CloudTalk webhook retry would be lost and
+    // the recording never ingested. Revive the failed job instead.
+    const existingJob = await ingestionQueue.getJob(ingestJobId);
+    if (existingJob) {
+      const state = await existingJob.getState();
+      if (state === 'failed') {
+        await existingJob.retry();
+      }
+      // Any other state (waiting/delayed/active/completed) already covers this
+      // call — the idempotency check in processIngestCall handles completed.
+    } else {
+      await ingestionQueue.add(
+        'ingest-call',
+        {
+          organizationId: orgId,
+          provider: 'cloudtalk',
+          dialerConnectionId: conn?.id ?? null,
+          recordingUrl,
+          cloudtalkCallId,
+          externalId,
+          agentEmail,
+          agentExternalId,
+          agentName,
+          customerPhone,
+        },
+        {
+          delay: delaySeconds * 1000,
+          // Recordings can take minutes to finish processing on CloudTalk's
+          // side; give the fetch generous retry headroom (~30 min of backoff)
+          // rather than losing the call after ~90s.
+          attempts: 6,
+          backoff: { type: 'exponential', delay: 60_000 },
+          jobId: ingestJobId,
+        }
+      );
+    }
 
-    res.status(isDuplicate ? 200 : 201).json({
-      status: isDuplicate ? 'duplicate' : 'accepted',
-      call_id: call.id,
-      external_id: call.external_id,
-    });
+    if (conn) {
+      query('UPDATE dialer_connections SET last_event_at = now(), last_error = NULL WHERE id = $1', [
+        conn.id,
+      ]).catch(() => {});
+    }
+
+    res.status(202).json({ status: 'accepted', external_id: externalId });
+  } catch (err) {
+    next(err);
+  }
+}
+
+ingestionRouter.post('/cloudtalk', authenticateApiKey, apiKeyLimiter, handleCloudTalkWebhook);
+
+// ============================================================
+// Dialer connection management (admin JWT auth). CloudTalk today; the
+// `provider` column + field_map shape generalise to other inbound dialers
+// without a schema change (see migration 039).
+// ============================================================
+
+const dialerRouter = Router();
+dialerRouter.use(authenticate);
+dialerRouter.use(requireAdmin);
+
+const DIALER_PUBLIC_COLUMNS = `id, organization_id, provider, name, api_base_url,
+  recording_fetch_delay_seconds, history_window_days, field_map, is_active,
+  last_event_at, last_error, created_at, updated_at,
+  (signing_secret_encrypted IS NOT NULL) AS signing_secret_configured,
+  (api_key_id_encrypted IS NOT NULL AND api_secret_encrypted IS NOT NULL) AS api_credentials_configured`;
+
+dialerRouter.get('/', async (req, res, next) => {
+  try {
+    const rows = await query<DialerConnection>(
+      `SELECT ${DIALER_PUBLIC_COLUMNS} FROM dialer_connections
+        WHERE organization_id = $1 ORDER BY created_at DESC`,
+      [req.user!.organizationId]
+    );
+    res.json({ data: rows });
   } catch (err) {
     next(err);
   }
 });
+
+dialerRouter.post('/', async (req, res, next) => {
+  try {
+    const orgId = req.user!.organizationId;
+    const body = req.body as {
+      provider?: string;
+      name?: string;
+      api_base_url?: string;
+      recording_fetch_delay_seconds?: number;
+      history_window_days?: number;
+      field_map?: Partial<DialerFieldMap>;
+      is_active?: boolean;
+      signing_secret?: string;
+      api_key_id?: string;
+      api_secret?: string;
+    };
+
+    const provider = body.provider ?? 'cloudtalk';
+    if (provider !== 'cloudtalk') throw new AppError(400, 'Unsupported dialer provider');
+
+    const fieldMap: DialerFieldMap = { ...DEFAULT_CLOUDTALK_FIELD_MAP, ...(body.field_map ?? {}) };
+
+    const existing = await queryOne<{ id: string }>(
+      'SELECT id FROM dialer_connections WHERE organization_id = $1 AND provider = $2',
+      [orgId, provider]
+    );
+
+    const rows = await query<DialerConnection>(
+      `INSERT INTO dialer_connections
+         (organization_id, provider, name, api_base_url, recording_fetch_delay_seconds,
+          history_window_days, field_map, is_active, signing_secret_encrypted,
+          api_key_id_encrypted, api_secret_encrypted)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+       ON CONFLICT (organization_id, provider) DO UPDATE SET
+         name                          = EXCLUDED.name,
+         api_base_url                  = EXCLUDED.api_base_url,
+         recording_fetch_delay_seconds = EXCLUDED.recording_fetch_delay_seconds,
+         history_window_days           = EXCLUDED.history_window_days,
+         field_map                     = EXCLUDED.field_map,
+         is_active                     = EXCLUDED.is_active,
+         signing_secret_encrypted      = COALESCE(EXCLUDED.signing_secret_encrypted, dialer_connections.signing_secret_encrypted),
+         api_key_id_encrypted          = COALESCE(EXCLUDED.api_key_id_encrypted, dialer_connections.api_key_id_encrypted),
+         api_secret_encrypted          = COALESCE(EXCLUDED.api_secret_encrypted, dialer_connections.api_secret_encrypted),
+         updated_at                    = now()
+       RETURNING ${DIALER_PUBLIC_COLUMNS}`,
+      [
+        orgId,
+        provider,
+        body.name || 'CloudTalk',
+        body.api_base_url || 'https://my.cloudtalk.io/api',
+        body.recording_fetch_delay_seconds ?? 60,
+        body.history_window_days ?? 30,
+        JSON.stringify(fieldMap),
+        body.is_active ?? true,
+        body.signing_secret ? encrypt(body.signing_secret) : null,
+        body.api_key_id ? encrypt(body.api_key_id) : null,
+        body.api_secret ? encrypt(body.api_secret) : null,
+      ]
+    );
+
+    void recordAuditEvent({
+      organizationId: orgId,
+      userId: req.user!.userId,
+      actionType: existing ? 'dialer_connection.update' : 'dialer_connection.create',
+      entityType: 'dialer_connection',
+      entityId: rows[0].id,
+      summary: `${existing ? 'Updated' : 'Configured'} ${provider} dialer connection`,
+      req,
+    });
+
+    res.status(existing ? 200 : 201).json(rows[0]);
+  } catch (err) {
+    next(err);
+  }
+});
+
+dialerRouter.delete('/:id', async (req, res, next) => {
+  try {
+    const result = await queryOne(
+      `DELETE FROM dialer_connections WHERE id = $1 AND organization_id = $2 RETURNING id`,
+      [req.params.id, req.user!.organizationId]
+    );
+    if (!result) throw new AppError(404, 'Dialer connection not found');
+    void recordAuditEvent({
+      organizationId: req.user!.organizationId,
+      userId: req.user!.userId,
+      actionType: 'dialer_connection.delete',
+      entityType: 'dialer_connection',
+      entityId: req.params.id,
+      req,
+    });
+    res.json({ message: 'Dialer connection deleted' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+ingestionRouter.use('/dialer-connections', dialerRouter);
 
 // ============================================================
 // GET /api/ingestion/scorecards (X-API-Key auth)

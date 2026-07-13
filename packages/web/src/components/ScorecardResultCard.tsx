@@ -1,14 +1,19 @@
 import { useState } from 'react';
 import { isItemPass } from '@callguard/shared';
+import type { ItemResult } from '@callguard/shared';
+import { ItemResultBadge } from './ItemResultBadge';
 
 interface ScorecardResultCardProps {
   label: string;
-  score: number;
+  score: number | null;
   scoreType: string;
-  normalizedScore: number;
+  normalizedScore: number | null;
   confidence: number | null;
   evidence: string | null;
   reasoning: string | null;
+  // The checkpoint's terminal state. Defaults to deriving pass/fail from the
+  // score for older rows that predate the result column.
+  result?: ItemResult | null;
   canCorrect?: boolean;
   wasCorrected?: boolean;
   onCorrect?: () => void;
@@ -22,11 +27,16 @@ export function ScorecardResultCard({
   confidence,
   evidence,
   reasoning,
+  result,
   canCorrect,
   wasCorrected,
   onCorrect,
 }: ScorecardResultCardProps) {
-  const passed = isItemPass(normalizedScore);
+  const passed = isItemPass(normalizedScore ?? 0);
+  const effectiveResult: ItemResult = result ?? (passed ? 'pass' : 'fail');
+  // na / manual_review were never AI-scored — the numeric score is meaningless
+  // and there is nothing to "correct".
+  const isScored = effectiveResult === 'pass' || effectiveResult === 'fail';
   const [expanded, setExpanded] = useState(false);
   const hasDetails = Boolean(evidence || reasoning);
 
@@ -51,7 +61,7 @@ export function ScorecardResultCard({
               {expanded ? 'Hide' : 'Details'}
             </button>
           )}
-          {canCorrect && onCorrect && (
+          {canCorrect && onCorrect && isScored && (
             <button
               onClick={onCorrect}
               className="text-[11px] text-primary hover:text-primary-hover font-semibold"
@@ -59,18 +69,14 @@ export function ScorecardResultCard({
               Correct
             </button>
           )}
-          {scoreType === 'binary' ? (
+          {isScored && scoreType !== 'binary' ? (
             <span className={`px-2.5 py-[3px] rounded-[20px] text-badge font-semibold ${
-              passed ? 'bg-pass-bg text-pass' : 'bg-fail-bg text-fail'
-            }`}>
-              {passed ? 'Pass' : 'Fail'}
-            </span>
-          ) : (
-            <span className={`px-2.5 py-[3px] rounded-[20px] text-badge font-semibold ${
-              passed ? 'bg-pass-bg text-pass' : normalizedScore >= 50 ? 'bg-review-bg text-review' : 'bg-fail-bg text-fail'
+              passed ? 'bg-pass-bg text-pass' : (normalizedScore ?? 0) >= 50 ? 'bg-review-bg text-review' : 'bg-fail-bg text-fail'
             }`}>
               {score}/{scoreType === 'scale_1_5' ? '5' : '10'}
             </span>
+          ) : (
+            <ItemResultBadge result={effectiveResult} />
           )}
         </div>
       </div>

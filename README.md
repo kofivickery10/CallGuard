@@ -34,5 +34,5 @@ pm2 start ecosystem.config.js
 - **Backend:** Node.js + Express + TypeScript
 - **Database:** PostgreSQL
 - **Queue:** BullMQ + Redis
-- **Storage:** AWS S3
+- **Storage:** Local disk, encrypted at rest (AES-256-GCM)
 - **AI:** Deepgram (transcription) + Claude (scoring)

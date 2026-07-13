@@ -5,6 +5,7 @@ import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { PASS_THRESHOLD } from '@callguard/shared';
+import type { JourneyListItem } from '@callguard/shared';
 import { useTheme } from '../lib/theme';
 
 interface Customer {
@@ -47,6 +48,28 @@ export default function CustomerProfile() {
     queryKey: ['customer-journey', id],
     queryFn: () => api.get<{ customer_id: string; calls: JourneyCall[] }>(`/customers/${id}/journey`),
     enabled: !!id && (user?.role !== 'adviser'),
+  });
+
+  const canAction = user?.role === 'admin' || user?.role === 'supervisor';
+
+  const { data: journeysData } = useQuery({
+    queryKey: ['customer-journeys', id],
+    queryFn: () => api.get<{ data: JourneyListItem[] }>(`/journeys?customer_id=${id}&limit=50`),
+    enabled: !!id && canAction,
+    refetchInterval: (query) => {
+      const rows = query.state.data?.data ?? [];
+      return rows.some((j) => j.status === 'pending' || j.status === 'scoring') ? 4000 : false;
+    },
+  });
+  const journeys = journeysData?.data ?? [];
+
+  const triggerMutation = useMutation({
+    mutationFn: () => api.post<{ journey_id?: string; message?: string }>('/journeys/trigger', { customer_id: id }),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['customer-journeys', id] });
+      if (!res.journey_id && res.message) alert(res.message);
+    },
+    onError: (err) => alert('Failed to trigger journey: ' + (err instanceof Error ? err.message : 'unknown error')),
   });
 
   const updateMutation = useMutation({
@@ -118,6 +141,16 @@ export default function CustomerProfile() {
               {user?.role !== 'adviser' && (
                 <button onClick={startEdit} className="text-xs text-primary hover:underline">Edit</button>
               )}
+              {canAction && (
+                <button
+                  onClick={() => triggerMutation.mutate()}
+                  disabled={triggerMutation.isPending}
+                  className="text-xs bg-primary text-white px-2.5 py-1 rounded-btn font-semibold hover:bg-primary-hover disabled:opacity-50"
+                  title="Assemble this customer's calls into a journey and score them together"
+                >
+                  {triggerMutation.isPending ? 'Scoring…' : 'Score journey'}
+                </button>
+              )}
             </div>
           )}
           <p className="text-page-sub text-text-secondary mt-0.5">{customer.phone_normalized}</p>
@@ -167,6 +200,45 @@ export default function CustomerProfile() {
               <Line type="monotone" dataKey="score" stroke="#4a9e6e" strokeWidth={2} dot={{ r: 3 }} />
             </LineChart>
           </ResponsiveContainer>
+        </div>
+      )}
+
+      {/* Scored journeys for this customer (supervisors/admins only) */}
+      {canAction && journeys.length > 0 && (
+        <div className="bg-card rounded-card border border-border overflow-hidden">
+          <div className="px-5 py-4 border-b border-border">
+            <h2 className="text-[15px] font-semibold text-text-primary">Journeys ({journeys.length})</h2>
+          </div>
+          <table className="w-full text-sm">
+            <thead className="bg-table-header border-b border-border">
+              <tr>
+                {['Scored', 'Calls', 'Branch', 'Score', 'Result', 'Status', ''].map((h) => (
+                  <th key={h} className="text-left px-4 py-2.5 text-table-header uppercase tracking-wider text-text-muted">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {journeys.map((j) => (
+                <tr key={j.id} className="hover:bg-page">
+                  <td className="px-4 py-3 text-table-cell text-text-secondary">
+                    {j.scored_at ? new Date(j.scored_at).toLocaleDateString('en-GB') : '—'}
+                  </td>
+                  <td className="px-4 py-3 text-table-cell text-text-cell tabular-nums">{j.call_count}</td>
+                  <td className="px-4 py-3 text-table-cell text-text-secondary">{j.branch || '—'}</td>
+                  <td className="px-4 py-3 text-table-cell font-medium tabular-nums">
+                    {j.overall_score != null ? `${Number(j.overall_score).toFixed(1)}%` : '—'}
+                  </td>
+                  <td className={`px-4 py-3 text-table-cell ${j.pass == null ? '' : j.pass ? 'text-pass font-semibold' : 'text-fail font-semibold'}`}>
+                    {j.pass == null ? '—' : j.pass ? 'Pass' : 'Fail'}
+                  </td>
+                  <td className="px-4 py-3 text-table-cell text-text-muted capitalize">{j.status}</td>
+                  <td className="px-4 py-3">
+                    <Link to={`/journeys/${j.id}`} className="text-primary hover:underline text-xs font-medium">View</Link>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 

@@ -9,6 +9,8 @@ import type {
   ZohoConnection,
   ZohoModule,
   ZohoRegion,
+  ZohoQAFieldMap,
+  DialerConnection,
 } from '@callguard/shared';
 
 export function Integrations() {
@@ -17,15 +19,232 @@ export function Integrations() {
       <div className="mb-7">
         <h2 className="text-page-title text-text-primary">Integrations</h2>
         <p className="text-page-sub text-text-subtle mt-1">
-          Connect external systems via API, SFTP or CRM
+          Connect external systems via API, SFTP, dialer or CRM
         </p>
       </div>
 
       <ApiKeysSection />
       <div className="h-8" />
+      <DialerConnectionSection />
+      <div className="h-8" />
       <SFTPSourcesSection />
       <div className="h-8" />
       <ZohoSection />
+    </div>
+  );
+}
+
+// ============================================================
+// Dialer connection (CloudTalk) — signature verification, recording-fetch
+// delay, journey window, and field-name mapping (spec §4/§9/§10).
+// ============================================================
+
+interface DialerFormState {
+  name: string;
+  api_base_url: string;
+  recording_fetch_delay_seconds: number;
+  history_window_days: number;
+  is_active: boolean;
+  signing_secret: string;
+  api_key_id: string;
+  api_secret: string;
+}
+
+const emptyDialerForm: DialerFormState = {
+  name: 'CloudTalk',
+  api_base_url: 'https://my.cloudtalk.io/api',
+  recording_fetch_delay_seconds: 60,
+  history_window_days: 30,
+  is_active: true,
+  signing_secret: '',
+  api_key_id: '',
+  api_secret: '',
+};
+
+function DialerConnectionSection() {
+  const queryClient = useQueryClient();
+  const [editing, setEditing] = useState(false);
+
+  const { data } = useQuery({
+    queryKey: ['dialer-connections'],
+    queryFn: () => api.get<{ data: DialerConnection[] }>('/ingestion/dialer-connections'),
+  });
+  const conn = data?.data.find((c) => c.provider === 'cloudtalk') ?? null;
+
+  const handleDelete = async () => {
+    if (!conn) return;
+    if (!confirm('Remove this CloudTalk connection? Webhooks will fall back to unsigned, undelayed ingestion.')) return;
+    await api.delete(`/ingestion/dialer-connections/${conn.id}`);
+    queryClient.invalidateQueries({ queryKey: ['dialer-connections'] });
+  };
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-[15px] font-semibold text-text-primary">CloudTalk</h3>
+        <button
+          onClick={() => setEditing(true)}
+          className="bg-primary text-white px-[18px] py-[9px] rounded-btn text-table-cell font-semibold hover:bg-primary-hover transition-colors"
+        >
+          {conn ? 'Edit' : 'Configure CloudTalk'}
+        </button>
+      </div>
+
+      {!conn ? (
+        <div className="bg-card border border-dashed border-border rounded-card p-8 text-center">
+          <p className="text-text-secondary font-semibold mb-1">CloudTalk not configured</p>
+          <p className="text-table-cell text-text-muted">
+            Without a connection, the CloudTalk webhook still works (using an API key), but with no
+            signature verification and a fixed 60s recording-fetch delay. Configure one for signed
+            webhooks, a tunable delay, and journey scoring windows.
+          </p>
+        </div>
+      ) : (
+        <div className="bg-card border border-border rounded-card p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              {conn.is_active ? (
+                <span className="px-2.5 py-[3px] rounded-[20px] text-badge font-semibold bg-pass-bg text-pass">Active</span>
+              ) : (
+                <span className="px-2.5 py-[3px] rounded-[20px] text-badge font-semibold bg-table-header text-text-muted">Paused</span>
+              )}
+              <span className="text-table-cell text-text-cell">
+                {conn.recording_fetch_delay_seconds}s fetch delay · {conn.history_window_days}d journey window
+              </span>
+            </div>
+            <button onClick={handleDelete} className="text-[12px] text-text-muted hover:text-fail">Remove</button>
+          </div>
+          <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-table-cell">
+            <div className="flex justify-between border-b border-border-light py-1">
+              <dt className="text-text-muted">Signature verification</dt>
+              <dd className={conn.signing_secret_configured ? 'text-pass' : 'text-review'}>
+                {conn.signing_secret_configured ? 'Enabled' : 'Not configured'}
+              </dd>
+            </div>
+            <div className="flex justify-between border-b border-border-light py-1">
+              <dt className="text-text-muted">API credentials (recording pull)</dt>
+              <dd className={conn.api_credentials_configured ? 'text-pass' : 'text-text-cell'}>
+                {conn.api_credentials_configured ? 'Configured' : 'Not set'}
+              </dd>
+            </div>
+            <div className="flex justify-between border-b border-border-light py-1">
+              <dt className="text-text-muted">Last event</dt>
+              <dd className="text-text-cell">{conn.last_event_at ? new Date(conn.last_event_at).toLocaleString() : 'Never'}</dd>
+            </div>
+            <div className="flex justify-between border-b border-border-light py-1">
+              <dt className="text-text-muted">Last error</dt>
+              <dd className={conn.last_error ? 'text-fail' : 'text-text-cell'}>{conn.last_error || 'None'}</dd>
+            </div>
+          </dl>
+        </div>
+      )}
+
+      {editing && (
+        <DialerConnectionModal
+          initial={
+            conn
+              ? {
+                  name: conn.name,
+                  api_base_url: conn.api_base_url,
+                  recording_fetch_delay_seconds: conn.recording_fetch_delay_seconds,
+                  history_window_days: conn.history_window_days,
+                  is_active: conn.is_active,
+                  signing_secret: '',
+                  api_key_id: '',
+                  api_secret: '',
+                }
+              : emptyDialerForm
+          }
+          onClose={() => setEditing(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+function DialerConnectionModal({ initial, onClose }: { initial: DialerFormState; onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const [form, setForm] = useState(initial);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const update = (changes: Partial<DialerFormState>) => setForm({ ...form, ...changes });
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    setError('');
+    try {
+      const payload: Record<string, unknown> = {
+        provider: 'cloudtalk',
+        name: form.name,
+        api_base_url: form.api_base_url,
+        recording_fetch_delay_seconds: form.recording_fetch_delay_seconds,
+        history_window_days: form.history_window_days,
+        is_active: form.is_active,
+      };
+      if (form.signing_secret) payload.signing_secret = form.signing_secret;
+      if (form.api_key_id) payload.api_key_id = form.api_key_id;
+      if (form.api_secret) payload.api_secret = form.api_secret;
+
+      await api.post('/ingestion/dialer-connections', payload);
+      queryClient.invalidateQueries({ queryKey: ['dialer-connections'] });
+      onClose();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto py-8">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative bg-card border border-border rounded-card w-full max-w-2xl p-6 shadow-lg my-auto">
+        <h3 className="text-[15px] font-semibold text-text-primary mb-1">Configure CloudTalk</h3>
+        <p className="text-table-cell text-text-subtle mb-4">
+          Point CloudTalk's "Call Ended" webhook at your CallGuard API key. These settings tune how
+          CallGuard verifies and processes it.
+        </p>
+        {error && <div className="bg-fail-bg text-fail px-3 py-2 rounded-btn text-table-cell mb-3">{error}</div>}
+        <form onSubmit={handleSubmit} className="grid grid-cols-2 gap-3">
+          <Field label="Name" full>
+            <input type="text" value={form.name} onChange={(e) => update({ name: e.target.value })} required className={inputCls} />
+          </Field>
+          <Field label="CloudTalk API base URL" full>
+            <input type="text" value={form.api_base_url} onChange={(e) => update({ api_base_url: e.target.value })} className={inputCls} />
+          </Field>
+          <Field label="Recording fetch delay (seconds)" hint="Wait this long after the webhook fires before pulling the recording — it's often still processing.">
+            <input type="number" min={0} value={form.recording_fetch_delay_seconds} onChange={(e) => update({ recording_fetch_delay_seconds: parseInt(e.target.value) || 0 })} className={inputCls} />
+          </Field>
+          <Field label="Journey window (days)" hint="How far back to gather a customer's prior calls when scoring a journey.">
+            <input type="number" min={1} value={form.history_window_days} onChange={(e) => update({ history_window_days: parseInt(e.target.value) || 30 })} className={inputCls} />
+          </Field>
+          <Field label="Signing secret" full hint="Set a shared secret in CloudTalk's webhook config; CallGuard verifies the HMAC signature before trusting the request. Leave blank to keep the existing one.">
+            <input type="password" value={form.signing_secret} onChange={(e) => update({ signing_secret: e.target.value })} className={inputCls} placeholder="Leave blank to keep existing" />
+          </Field>
+          <Field label="CloudTalk API key ID" hint="Only needed if recording URLs require auth to download, or to pull call history.">
+            <input type="text" value={form.api_key_id} onChange={(e) => update({ api_key_id: e.target.value })} className={inputCls} />
+          </Field>
+          <Field label="CloudTalk API secret">
+            <input type="password" value={form.api_secret} onChange={(e) => update({ api_secret: e.target.value })} className={inputCls} placeholder="Leave blank to keep existing" />
+          </Field>
+          <Field label="Active" full>
+            <label className="flex items-center gap-2 text-table-cell text-text-cell">
+              <input type="checkbox" checked={form.is_active} onChange={(e) => update({ is_active: e.target.checked })} />
+              Accept webhooks from this connection
+            </label>
+          </Field>
+          <div className="col-span-2 flex gap-2 mt-2">
+            <button type="button" onClick={onClose} className="flex-1 px-[18px] py-[9px] rounded-btn border border-border text-text-cell font-semibold text-table-cell hover:bg-sidebar-hover transition-colors">
+              Cancel
+            </button>
+            <button type="submit" disabled={saving} className="flex-1 bg-primary text-white px-[18px] py-[9px] rounded-btn font-semibold text-table-cell hover:bg-primary-hover disabled:opacity-50 transition-colors">
+              {saving ? 'Saving...' : 'Save'}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }
@@ -685,6 +904,16 @@ function ZohoSection() {
                 {conn.last_error ? conn.last_error.slice(0, 40) + (conn.last_error.length > 40 ? '…' : '') : 'None'}
               </dd>
             </div>
+            <div className="flex justify-between border-b border-border-light py-1">
+              <dt className="text-text-muted">Sale-trigger signature</dt>
+              <dd className={conn.inbound_configured ? 'text-pass' : 'text-review'}>
+                {conn.inbound_configured ? 'Enabled' : 'Not configured'}
+              </dd>
+            </div>
+            <div className="flex justify-between border-b border-border-light py-1">
+              <dt className="text-text-muted">QA module</dt>
+              <dd className="text-text-cell">{conn.qa_module || 'Not configured'}</dd>
+            </div>
           </dl>
 
           {conn.status === 'pending' && (
@@ -716,6 +945,12 @@ function ZohoConnectModal({ initial, onClose }: { initial: ZohoConnection | null
   const [module, setModule] = useState<ZohoModule>(initial?.module ?? 'Leads');
   const [clientId, setClientId] = useState(initial?.client_id ?? '');
   const [clientSecret, setClientSecret] = useState('');
+  const [salePhoneField, setSalePhoneField] = useState(initial?.sale_phone_field ?? 'Phone');
+  const [inboundSecret, setInboundSecret] = useState('');
+  const [qaModule, setQaModule] = useState(initial?.qa_module ?? '');
+  const [qaFieldMap, setQaFieldMap] = useState<ZohoQAFieldMap>(
+    initial?.qa_field_map ?? { adviser: 'Adviser_Name', month: 'Period', score: 'Compliance_Score', result: 'Compliance_Result', link: 'CallGuard_Link' }
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -724,12 +959,18 @@ function ZohoConnectModal({ initial, onClose }: { initial: ZohoConnection | null
     setSaving(true);
     setError('');
     try {
-      const { authorize_url } = await api.post<{ authorize_url: string }>('/integrations/zoho', {
+      const payload: Record<string, unknown> = {
         dc_region: dcRegion,
         module,
         client_id: clientId,
         client_secret: clientSecret,
-      });
+        sale_phone_field: salePhoneField,
+        qa_module: qaModule.trim() || null,
+        qa_field_map: qaFieldMap,
+      };
+      if (inboundSecret) payload.inbound_secret = inboundSecret;
+
+      const { authorize_url } = await api.post<{ authorize_url: string }>('/integrations/zoho', payload);
       // Hand off to Zoho's consent screen; it redirects back to /integrations.
       window.location.assign(authorize_url);
     } catch (err) {
@@ -771,6 +1012,46 @@ function ZohoConnectModal({ initial, onClose }: { initial: ZohoConnection | null
           <Field label="Client Secret" full hint="Stored encrypted. Re-enter when reconnecting.">
             <input type="password" value={clientSecret} onChange={(e) => setClientSecret(e.target.value)} required className={inputCls} />
           </Field>
+
+          <div className="col-span-2 border-t border-border-light pt-3 mt-1">
+            <p className="text-[12px] font-semibold text-text-primary mb-2">Sale trigger</p>
+          </div>
+          <Field label="Sale phone field" hint="The field on the inbound sale record carrying the customer's phone number.">
+            <input type="text" value={salePhoneField} onChange={(e) => setSalePhoneField(e.target.value)} className={inputCls} placeholder="Phone" />
+          </Field>
+          <Field label="Sale-trigger signing secret" hint="Set in Zoho's outbound webhook action; verified against POST /api/integrations/zoho/sale-trigger. Leave blank to keep existing.">
+            <input type="password" value={inboundSecret} onChange={(e) => setInboundSecret(e.target.value)} className={inputCls} />
+          </Field>
+
+          <div className="col-span-2 border-t border-border-light pt-3 mt-1">
+            <p className="text-[12px] font-semibold text-text-primary mb-2">QA module (optional)</p>
+            <p className="text-[11px] text-text-muted mb-2">
+              Push a QA record per scored call/journey to a custom module, so Trust Point can filter by
+              adviser + month for commission-tied averages.
+            </p>
+          </div>
+          <Field label="QA module API name" full hint="Leave blank to skip QA module write-back.">
+            <input type="text" value={qaModule} onChange={(e) => setQaModule(e.target.value)} className={inputCls} placeholder="e.g. CallGuard_QA" />
+          </Field>
+          {qaModule.trim() && (
+            <>
+              <Field label="Adviser field">
+                <input type="text" value={qaFieldMap.adviser} onChange={(e) => setQaFieldMap({ ...qaFieldMap, adviser: e.target.value })} className={inputCls} />
+              </Field>
+              <Field label="Month/period field">
+                <input type="text" value={qaFieldMap.month} onChange={(e) => setQaFieldMap({ ...qaFieldMap, month: e.target.value })} className={inputCls} />
+              </Field>
+              <Field label="Score field">
+                <input type="text" value={qaFieldMap.score} onChange={(e) => setQaFieldMap({ ...qaFieldMap, score: e.target.value })} className={inputCls} />
+              </Field>
+              <Field label="Result field">
+                <input type="text" value={qaFieldMap.result} onChange={(e) => setQaFieldMap({ ...qaFieldMap, result: e.target.value })} className={inputCls} />
+              </Field>
+              <Field label="Link field" full>
+                <input type="text" value={qaFieldMap.link} onChange={(e) => setQaFieldMap({ ...qaFieldMap, link: e.target.value })} className={inputCls} />
+              </Field>
+            </>
+          )}
 
           <div className="col-span-2 flex gap-2 mt-2">
             <button type="button" onClick={onClose} className="flex-1 px-[18px] py-[9px] rounded-btn border border-border text-text-cell font-semibold text-table-cell hover:bg-sidebar-hover transition-colors">

@@ -31,6 +31,8 @@ const Calibration = lazy(() => import('./pages/Calibration').then((m) => ({ defa
 const SupportInbox = lazy(() => import('./pages/SupportInbox').then((m) => ({ default: m.SupportInbox })));
 const Customers = lazy(() => import('./pages/Customers'));
 const CustomerProfile = lazy(() => import('./pages/CustomerProfile'));
+const Journeys = lazy(() => import('./pages/Journeys').then((m) => ({ default: m.Journeys })));
+const JourneyDetail = lazy(() => import('./pages/JourneyDetail').then((m) => ({ default: m.JourneyDetail })));
 const Account = lazy(() => import('./pages/Account'));
 const BillingOverview = lazy(() => import('./pages/BillingOverview'));
 const Settings = lazy(() => import('./pages/Settings'));
@@ -100,6 +102,8 @@ export function App() {
                   <Route path="/support-inbox" element={<SupportInbox />} />
                   <Route path="/customers" element={<Customers />} />
                   <Route path="/customers/:id" element={<CustomerProfile />} />
+                  <Route path="/journeys" element={<Journeys />} />
+                  <Route path="/journeys/:id" element={<JourneyDetail />} />
                   <Route path="/account" element={<Account />} />
                   <Route path="/billing" element={<BillingOverview />} />
                 </Routes>

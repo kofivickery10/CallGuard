@@ -19,7 +19,7 @@ Maintained under UK GDPR Article 30.
 | **Categories of personal data** | Audio call recordings; transcripts; customer and agent identifiers; scoring results; breach records; vulnerability indicators |
 | **Categories of recipients** | Internal compliance team; HR (for coaching/PIPs); senior management for board reporting; regulators on formal request |
 | **Third country transfers** | Data stored on UK-based servers. Sub-processors (Deepgram, Anthropic) process transiently; protected by Standard Contractual Clauses or equivalent |
-| **Retention period** | 7 years (aligned to COBS 9.5 / MiFID II record-keeping obligations) |
+| **Retention period** | 5 years (aligned to COBS 9.5 / MiFID II record-keeping obligations) |
 | **Security measures** | AES-256-GCM encryption at rest; TLS 1.3 in transit; RBAC; immutable audit log; UK data residency; annual penetration testing (planned) |
 
 ## Processing Activity 2: Alert Delivery
@@ -30,7 +30,7 @@ Maintained under UK GDPR Article 30.
 | **Data subjects** | Administrative users / compliance officers |
 | **Categories of data** | User names, email addresses; call metadata and scoring results linked to alerts |
 | **Recipients** | Designated compliance email/Slack recipients within {{organization_name}} |
-| **Retention** | Alert delivery log retained 7 years; email copies per email provider's retention |
+| **Retention** | Alert delivery log retained 5 years; email copies per email provider's retention |
 
 ## Processing Activity 3: Adviser Performance Analytics
 
@@ -40,7 +40,7 @@ Maintained under UK GDPR Article 30.
 | **Data subjects** | Employed / contracted agents |
 | **Categories of data** | Agent identifiers; aggregated scoring metrics; breach counts |
 | **Lawful basis** | Legitimate interest (compliance oversight); employee notified via internal privacy notice |
-| **Retention** | While the agent is active + 7 years |
+| **Retention** | While the agent is active + 5 years |
 
 ## Processing Activity 4: Customer Share Links (where enabled)
 
@@ -50,7 +50,7 @@ Maintained under UK GDPR Article 30.
 | **Data subjects** | Customers of the Controller |
 | **Categories of data** | Call summary (no transcript); scorecard results; optional customer feedback (star rating + comment) |
 | **Recipients** | Customer via signed URL (time-limited) |
-| **Retention** | Share link records and customer feedback retained 7 years |
+| **Retention** | Share link records and customer feedback retained 5 years |
 
 ---
 

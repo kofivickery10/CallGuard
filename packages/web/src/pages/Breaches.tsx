@@ -213,7 +213,7 @@ export function Breaches() {
                   </td>
                   <td className="px-5 py-3.5 text-table-cell">
                     <Link
-                      to={`/calls/${b.call_id}`}
+                      to={b.journey_id ? `/journeys/${b.journey_id}` : `/calls/${b.call_id}`}
                       onClick={(e) => e.stopPropagation()}
                       className="text-primary font-medium hover:underline"
                     >

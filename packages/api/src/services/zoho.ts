@@ -1,12 +1,20 @@
+import crypto from 'crypto';
 import { query, queryOne } from '../db/client.js';
 import { encrypt, decrypt } from './crypto.js';
 import { config } from '../config.js';
 import type {
   WebhookCallScoredPayload,
+  WebhookJourneyScoredPayload,
   ZohoFieldMap,
+  ZohoQAFieldMap,
   ZohoModule,
   ZohoRegion,
 } from '@callguard/shared';
+
+type ScoredPayload = WebhookCallScoredPayload | WebhookJourneyScoredPayload;
+function isJourneyPayload(p: ScoredPayload): p is WebhookJourneyScoredPayload {
+  return p.event === 'journey.scored';
+}
 
 // ============================================================
 // Zoho CRM write-back. One-way: after a call is scored we find the matching
@@ -42,15 +50,43 @@ interface ZohoConnectionRow {
   api_domain: string | null;
   module: ZohoModule;
   field_map: ZohoFieldMap;
+  inbound_secret_encrypted: string | null;
+  sale_phone_field: string;
+  qa_module: string | null;
+  qa_field_map: ZohoQAFieldMap;
   status: 'pending' | 'active' | 'disabled';
 }
 
 const ROW_COLUMNS = `id, organization_id, dc_region, client_id,
   client_secret_encrypted, refresh_token_encrypted, access_token_encrypted,
-  token_expires_at, api_domain, module, field_map, status`;
+  token_expires_at, api_domain, module, field_map,
+  inbound_secret_encrypted, sale_phone_field, qa_module, qa_field_map, status`;
 
 export function accountsHost(region: ZohoRegion): string {
   return ZOHO_ACCOUNTS_HOST[region] ?? ZOHO_ACCOUNTS_HOST.eu;
+}
+
+/**
+ * Verify the inbound Zoho "sale" webhook's HMAC signature against the org's
+ * configured inbound_secret (spec §9). The org is already known from
+ * X-API-Key auth on the route — this is a second, stronger layer on top of
+ * key possession, same pattern as CloudTalk's dialer webhook (see
+ * services/tenant-settings.ts verifyDialerSignature). Returns true if
+ * verification is not yet configured (nothing to check against) OR the
+ * signature matches; false only on an explicit mismatch.
+ */
+export function verifyInboundSaleSignature(
+  conn: Pick<ZohoConnectionRow, 'inbound_secret_encrypted'> | null,
+  rawBody: Buffer,
+  signatureHeader: string | null | undefined
+): boolean {
+  if (!conn?.inbound_secret_encrypted) return true;
+  if (!signatureHeader) return false;
+  const secret = decrypt(conn.inbound_secret_encrypted);
+  const expected = crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
+  const expectedBuf = Buffer.from(expected, 'utf8');
+  const gotBuf = Buffer.from(signatureHeader.replace(/^sha256=/, ''), 'utf8');
+  return expectedBuf.length === gotBuf.length && crypto.timingSafeEqual(expectedBuf, gotBuf);
 }
 
 export async function getConnectionRow(
@@ -288,7 +324,7 @@ async function findRecordByPhone(
   const res = await zohoApi(
     apiDomain,
     accessToken,
-    `/crm/v6/${module}/search?criteria=${encodeURIComponent(criteria)}`
+    `/crm/v8/${module}/search?criteria=${encodeURIComponent(criteria)}`
   );
   if (res.status === 204) return null; // Zoho returns 204 for no matches
   if (!res.ok) {
@@ -314,23 +350,31 @@ function toZohoDateTime(iso: string): string {
   return iso.replace(/\.\d+Z$/, 'Z').replace(/Z$/, '+00:00');
 }
 
+// Where the "review this in CallGuard" link on a Zoho record should point —
+// a single call, or the journey it belongs to (spec §9/§11).
+function reviewLink(payload: ScoredPayload): string {
+  return isJourneyPayload(payload)
+    ? `${config.appUrl}/journeys/${payload.journey_id}`
+    : `${config.appUrl}/calls/${payload.call_id}`;
+}
+
 async function updateRecordScore(
   apiDomain: string,
   accessToken: string,
   module: ZohoModule,
   fieldMap: ZohoFieldMap,
   recordId: string,
-  payload: WebhookCallScoredPayload
+  payload: ScoredPayload
 ): Promise<void> {
   const record: Record<string, unknown> = {
     id: recordId,
     [fieldMap.score]: Number(payload.overall_score.toFixed(1)),
     [fieldMap.result]: payload.pass ? 'Pass' : 'Fail',
     [fieldMap.last_scored]: toZohoDateTime(payload.scored_at),
-    [fieldMap.link]: `${config.appUrl}/calls/${payload.call_id}`,
+    [fieldMap.link]: reviewLink(payload),
   };
 
-  const res = await zohoApi(apiDomain, accessToken, `/crm/v6/${module}`, {
+  const res = await zohoApi(apiDomain, accessToken, `/crm/v8/${module}`, {
     method: 'PUT',
     body: JSON.stringify({ data: [record] }),
   });
@@ -341,34 +385,37 @@ async function createBreachTask(
   apiDomain: string,
   accessToken: string,
   match: ZohoMatch,
-  payload: WebhookCallScoredPayload
+  payload: ScoredPayload
 ): Promise<void> {
   const severities = payload.breaches.map((b) => b.severity);
   const highPriority = severities.some((s) => s === 'critical' || s === 'high');
   const lines = payload.breaches.map(
     (b) => `• [${b.severity.toUpperCase()}] ${b.scorecard_item_label}${b.evidence ? ` — ${b.evidence}` : ''}`
   );
+  const subject = isJourneyPayload(payload)
+    ? `Compliance breach on journey${payload.agent_name ? ` (${payload.agent_name})` : ''} — ${payload.breaches.length} issue${payload.breaches.length === 1 ? '' : 's'}`
+    : `Compliance breach on call${payload.agent_name ? ` (${payload.agent_name})` : ''} — ${payload.breaches.length} issue${payload.breaches.length === 1 ? '' : 's'}`;
 
   const due = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
   const task: Record<string, unknown> = {
-    Subject: `Compliance breach on call${payload.agent_name ? ` (${payload.agent_name})` : ''} — ${payload.breaches.length} issue${payload.breaches.length === 1 ? '' : 's'}`,
+    Subject: subject,
     Status: 'Not Started',
     Priority: highPriority ? 'High' : 'Normal',
     Due_Date: due,
     Description: [
-      `CallGuard scored this call ${payload.overall_score.toFixed(1)} (${payload.pass ? 'PASS' : 'FAIL'}).`,
+      `CallGuard scored this ${isJourneyPayload(payload) ? 'customer journey' : 'call'} ${payload.overall_score.toFixed(1)} (${payload.pass ? 'PASS' : 'FAIL'}).`,
       '',
       ...lines,
       '',
-      `Review: ${config.appUrl}/calls/${payload.call_id}`,
+      `Review: ${reviewLink(payload)}`,
     ].join('\n'),
     // Leads and Contacts both relate to a Task via Who_Id.
     Who_Id: { id: match.id },
   };
   if (match.ownerId) task.Owner = { id: match.ownerId };
 
-  const res = await zohoApi(apiDomain, accessToken, '/crm/v6/Tasks', {
+  const res = await zohoApi(apiDomain, accessToken, '/crm/v8/Tasks', {
     method: 'POST',
     body: JSON.stringify({ data: [task] }),
   });
@@ -376,81 +423,98 @@ async function createBreachTask(
 }
 
 /**
- * Push a scored call into the org's Zoho CRM, if connected. Best-effort: matches
- * the customer by phone, writes the compliance fields, and raises a breach task.
+ * Push a score into the org's QA custom module, if configured (spec §11) —
+ * standalone from the Lead/Contact match above, so Trust Point can filter QA
+ * records by adviser + month for commission-tied averages even when no
+ * matching Lead/Contact was found.
+ */
+async function pushQARecord(
+  apiDomain: string,
+  accessToken: string,
+  conn: ZohoConnectionRow,
+  payload: ScoredPayload
+): Promise<void> {
+  if (!conn.qa_module) return;
+
+  const scoredAt = new Date(payload.scored_at);
+  const period = `${scoredAt.getUTCFullYear()}-${String(scoredAt.getUTCMonth() + 1).padStart(2, '0')}`;
+
+  const record: Record<string, unknown> = {
+    [conn.qa_field_map.adviser]: payload.agent_name ?? 'Unknown',
+    [conn.qa_field_map.month]: period,
+    [conn.qa_field_map.score]: Number(payload.overall_score.toFixed(1)),
+    [conn.qa_field_map.result]: payload.pass ? 'Pass' : 'Fail',
+    [conn.qa_field_map.link]: reviewLink(payload),
+  };
+
+  const res = await zohoApi(apiDomain, accessToken, `/crm/v8/${conn.qa_module}`, {
+    method: 'POST',
+    body: JSON.stringify({ data: [record] }),
+  });
+  await checkZohoWriteResult(res, 'Zoho QA record create');
+}
+
+/**
+ * Push a scored call or journey into the org's Zoho CRM, if connected.
+ * Best-effort: matches the customer by phone, writes the compliance fields
+ * and a breach task on the matched Lead/Contact, and independently pushes a
+ * QA module record (if configured) regardless of whether a match was found.
  * Records outcome on the connection row; never throws to the caller.
  */
-export async function pushCallScored(
-  organizationId: string,
-  payload: WebhookCallScoredPayload
-): Promise<void> {
+async function pushScoredPayload(organizationId: string, payload: ScoredPayload): Promise<void> {
   const conn = await getConnectionRow(organizationId);
   if (!conn || conn.status !== 'active') return;
 
-  if (!payload.customer_phone) {
-    // Nothing to match on — leave a breadcrumb but don't treat as an error.
-    await query(
-      `UPDATE zoho_connections SET last_synced_at = now() WHERE organization_id = $1`,
-      [organizationId]
-    );
-    return;
-  }
+  const label = isJourneyPayload(payload) ? `journey ${payload.journey_id}` : `call ${payload.call_id}`;
 
   try {
     const { accessToken, apiDomain } = await ensureAccessToken(conn);
-    const match = await findRecordByPhone(
-      apiDomain,
-      accessToken,
-      conn.module,
-      payload.customer_phone
-    );
 
-    if (!match) {
-      console.log(
-        `[Zoho] no ${conn.module} match for ${payload.customer_phone} (org ${organizationId}); skipping write-back`
-      );
-      await query(
-        `UPDATE zoho_connections SET last_synced_at = now(), last_error = NULL WHERE organization_id = $1`,
-        [organizationId]
-      );
-      return;
+    if (payload.customer_phone) {
+      const match = await findRecordByPhone(apiDomain, accessToken, conn.module, payload.customer_phone);
+      if (match) {
+        await updateRecordScore(apiDomain, accessToken, conn.module, conn.field_map, match.id, payload);
+
+        // Cache the resolved Zoho id so future calls from this number skip the search.
+        if (payload.customer_id) {
+          await query(
+            `UPDATE customers SET external_crm_id = $2
+               WHERE id = $1 AND (external_crm_id IS NULL OR external_crm_id = '')`,
+            [payload.customer_id, match.id]
+          ).catch(() => {});
+        }
+
+        if (payload.breaches.length > 0) {
+          await createBreachTask(apiDomain, accessToken, match, payload);
+        }
+        console.log(`[Zoho] wrote score for ${label} → ${conn.module} ${match.id}`);
+      } else {
+        console.log(`[Zoho] no ${conn.module} match for ${payload.customer_phone} (org ${organizationId}); skipping customer-record write-back`);
+      }
     }
 
-    await updateRecordScore(
-      apiDomain,
-      accessToken,
-      conn.module,
-      conn.field_map,
-      match.id,
-      payload
-    );
-
-    // Cache the resolved Zoho id so future calls from this number skip the search.
-    if (payload.customer_id) {
-      await query(
-        `UPDATE customers SET external_crm_id = $2
-           WHERE id = $1 AND (external_crm_id IS NULL OR external_crm_id = '')`,
-        [payload.customer_id, match.id]
-      ).catch(() => {});
-    }
-
-    if (payload.breaches.length > 0) {
-      await createBreachTask(apiDomain, accessToken, match, payload);
-    }
+    await pushQARecord(apiDomain, accessToken, conn, payload);
 
     await query(
       `UPDATE zoho_connections SET last_synced_at = now(), last_error = NULL WHERE organization_id = $1`,
       [organizationId]
     );
-    console.log(`[Zoho] wrote score for call ${payload.call_id} → ${conn.module} ${match.id}`);
   } catch (err) {
     const message = (err as Error).message;
-    console.error(`[Zoho] write-back failed for call ${payload.call_id}:`, message);
+    console.error(`[Zoho] write-back failed for ${label}:`, message);
     await query(
       `UPDATE zoho_connections SET last_error = $2, updated_at = now() WHERE organization_id = $1`,
       [organizationId, message.slice(0, 500)]
     ).catch(() => {});
   }
+}
+
+export async function pushCallScored(organizationId: string, payload: WebhookCallScoredPayload): Promise<void> {
+  return pushScoredPayload(organizationId, payload);
+}
+
+export async function pushJourneyScored(organizationId: string, payload: WebhookJourneyScoredPayload): Promise<void> {
+  return pushScoredPayload(organizationId, payload);
 }
 
 // Lightweight credential check for the UI: refresh the token and hit a cheap
@@ -465,7 +529,7 @@ export async function testConnection(
   }
   try {
     const { accessToken, apiDomain } = await ensureAccessToken(conn);
-    const res = await zohoApi(apiDomain, accessToken, `/crm/v6/settings/modules`);
+    const res = await zohoApi(apiDomain, accessToken, `/crm/v8/settings/modules`);
     if (!res.ok) {
       return { ok: false, message: `Zoho returned ${res.status}` };
     }

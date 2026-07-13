@@ -4,20 +4,49 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
 import { SeverityBadge, StatusBadge } from '../components/BreachBadges';
 import { BreachDetailDrawer } from '../components/BreachDetailDrawer';
-import type { BreachStatus, BreachWithDetail } from '@callguard/shared';
+import { useAuth } from '../context/AuthContext';
+import type { BreachStatus, BreachWithDetail, ManualReviewItem } from '@callguard/shared';
 
 type QueueItem = BreachWithDetail & { risk_score: number };
 
 export function ReviewQueue() {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const canAction = user?.role === 'admin' || user?.role === 'supervisor';
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [resolvingKey, setResolvingKey] = useState<string | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['review-queue'],
     queryFn: () =>
       api.get<{ data: QueueItem[] }>('/breaches/review-queue?limit=50'),
   });
+
+  const { data: manualData } = useQuery({
+    queryKey: ['review-items'],
+    queryFn: () => api.get<{ data: ManualReviewItem[] }>('/review-items'),
+  });
+  const manualItems = manualData?.data ?? [];
+
+  const resolveManual = async (item: ManualReviewItem, result: 'pass' | 'fail') => {
+    const key = item.item_score_id;
+    setResolvingKey(key);
+    try {
+      await api.post('/review-items/resolve', {
+        kind: item.kind,
+        item_score_id: item.item_score_id,
+        result,
+      });
+      queryClient.invalidateQueries({ queryKey: ['review-items'] });
+      queryClient.invalidateQueries({ queryKey: ['breaches'] });
+      queryClient.invalidateQueries({ queryKey: ['breach-summary'] });
+    } catch (err) {
+      alert('Failed to resolve: ' + (err instanceof Error ? err.message : 'unknown error'));
+    } finally {
+      setResolvingKey(null);
+    }
+  };
 
   const updateStatus = async (breachId: string, status: BreachStatus) => {
     try {
@@ -41,6 +70,71 @@ export function ReviewQueue() {
           </p>
         </div>
       </div>
+
+      {/* Manual-review checkpoints: manual items + consent gates that couldn't
+          be auto-scored. These sit outside the breach workflow until a human
+          marks them, and are excluded from the score meanwhile. */}
+      {manualItems.length > 0 && (
+        <div className="bg-card border border-border rounded-card overflow-hidden mb-6">
+          <div className="px-5 py-4 border-b border-border flex items-center justify-between">
+            <div>
+              <h3 className="text-[15px] font-semibold text-text-primary">Awaiting human review ({manualItems.length})</h3>
+              <p className="text-[12px] text-text-muted mt-0.5">Manual checkpoints and consent gates that need a reviewer to mark pass or fail.</p>
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[640px]">
+              <thead>
+                <tr>
+                  {['Checkpoint', 'Where', 'Customer', 'Severity', ''].map((h) => (
+                    <th key={h} className="text-left px-5 py-2.5 text-table-header uppercase text-text-muted bg-table-header border-b border-border">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {manualItems.map((item) => (
+                  <tr key={`${item.kind}-${item.item_score_id}`} className="border-b border-border-light last:border-0 hover:bg-table-header transition-colors">
+                    <td className="px-5 py-3 text-table-cell text-text-primary">
+                      {item.section && <span className="text-text-muted">{item.section}: </span>}
+                      {item.label}
+                    </td>
+                    <td className="px-5 py-3 text-table-cell">
+                      <Link
+                        to={item.kind === 'journey' ? `/journeys/${item.parent_id}` : `/calls/${item.parent_id}`}
+                        className="text-primary hover:underline capitalize"
+                      >
+                        {item.kind}
+                      </Link>
+                    </td>
+                    <td className="px-5 py-3 text-table-cell text-text-cell">{item.customer_name || '—'}</td>
+                    <td className="px-5 py-3">{item.severity && <SeverityBadge severity={item.severity} />}</td>
+                    <td className="px-5 py-3 text-right">
+                      {canAction && (
+                        <div className="inline-flex gap-1.5">
+                          <button
+                            onClick={() => resolveManual(item, 'pass')}
+                            disabled={resolvingKey === item.item_score_id}
+                            className="text-[12px] text-pass hover:text-white hover:bg-pass px-2 py-1 rounded border border-pass/30 hover:border-pass transition-colors disabled:opacity-50"
+                          >
+                            Pass
+                          </button>
+                          <button
+                            onClick={() => resolveManual(item, 'fail')}
+                            disabled={resolvingKey === item.item_score_id}
+                            className="text-[12px] text-fail hover:text-white hover:bg-fail px-2 py-1 rounded border border-fail/30 hover:border-fail transition-colors disabled:opacity-50"
+                          >
+                            Fail
+                          </button>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       <div className="bg-card border border-border rounded-card overflow-x-auto">
         <table className="w-full min-w-[720px]">
@@ -109,7 +203,10 @@ export function ReviewQueue() {
                   )}
                 </td>
                 <td className="px-5 py-3.5">
-                  <Link to={`/calls/${b.call_id}`} className="text-primary text-table-cell hover:underline">
+                  <Link
+                    to={b.journey_id ? `/journeys/${b.journey_id}` : `/calls/${b.call_id}`}
+                    className="text-primary text-table-cell hover:underline"
+                  >
                     {b.call_file_name}
                   </Link>
                 </td>

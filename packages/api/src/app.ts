@@ -2,6 +2,8 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import path from 'path';
+import { pool } from './db/client.js';
+import { getRedis, readWorkerHeartbeat } from './services/redis.js';
 import { errorHandler } from './middleware/errors.js';
 import {
   globalLimiter,
@@ -17,8 +19,12 @@ import { callRouter } from './routes/calls.js';
 import { dashboardRouter } from './routes/dashboard.js';
 import { agentRouter } from './routes/agents.js';
 import { kbRouter } from './routes/kb.js';
-import { ingestionRouter } from './routes/ingestion.js';
-import { integrationsRouter } from './routes/integrations.js';
+import { ingestionRouter, handleCloudTalkWebhook } from './routes/ingestion.js';
+import { integrationsRouter, handleZohoSaleTrigger } from './routes/integrations.js';
+import { journeysRouter } from './routes/journeys.js';
+import { reviewRouter } from './routes/review.js';
+import { authenticateApiKey } from './middleware/auth.js';
+import { apiKeyLimiter } from './middleware/rate-limits.js';
 import { alertsRouter } from './routes/alerts.js';
 import { breachesRouter } from './routes/breaches.js';
 import { complianceDocsRouter } from './routes/compliance-docs.js';
@@ -52,7 +58,6 @@ app.use(
           "'self'",
           'https://*.anthropic.com',
           'https://*.deepgram.com',
-          'https://*.amazonaws.com', // S3
           'wss:', // WebSocket for live streaming
         ],
         scriptSrc: ["'self'"],
@@ -109,14 +114,68 @@ app.use(
   })
 );
 
-app.use(express.json());
+// Capture the raw request body alongside the parsed JSON so inbound webhook
+// signatures (CloudTalk, Zoho sale trigger) can be verified against the exact
+// bytes sent — re-serializing req.body would not byte-for-byte match what the
+// sender HMAC'd.
+app.use(
+  express.json({
+    verify: (req, _res, buf) => {
+      (req as express.Request & { rawBody?: Buffer }).rawBody = buf;
+    },
+  })
+);
 
 
 app.use(globalLimiter);
 
-// API routes
+// Liveness: process is up and serving. Cheap, no dependencies — for load
+// balancers that just need "is the port answering".
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Readiness: actually checks the dependencies the app can't run without —
+// Postgres, Redis, and a live worker heartbeat. Returns 503 if any is down so
+// an uptime monitor pages before customers notice calls aren't processing.
+app.get('/api/health/ready', async (_req, res) => {
+  const checks: Record<string, { ok: boolean; detail?: string }> = {};
+
+  try {
+    await pool.query('SELECT 1');
+    checks.database = { ok: true };
+  } catch (err) {
+    checks.database = { ok: false, detail: (err as Error).message };
+  }
+
+  try {
+    const pong = await getRedis().ping();
+    checks.redis = { ok: pong === 'PONG' };
+  } catch (err) {
+    checks.redis = { ok: false, detail: (err as Error).message };
+  }
+
+  try {
+    const beat = await readWorkerHeartbeat();
+    if (!beat) {
+      checks.worker = { ok: false, detail: 'no heartbeat (worker down or never started)' };
+    } else {
+      const ageMs = Date.now() - new Date(beat).getTime();
+      // Heartbeat is written every 30s; allow 2.5× before calling it stale.
+      checks.worker = ageMs < 75_000
+        ? { ok: true, detail: `last beat ${Math.round(ageMs / 1000)}s ago` }
+        : { ok: false, detail: `stale heartbeat (${Math.round(ageMs / 1000)}s ago)` };
+    }
+  } catch (err) {
+    checks.worker = { ok: false, detail: (err as Error).message };
+  }
+
+  const allOk = Object.values(checks).every((c) => c.ok);
+  res.status(allOk ? 200 : 503).json({
+    status: allOk ? 'ok' : 'degraded',
+    checks,
+    timestamp: new Date().toISOString(),
+  });
 });
 
 // Strict limits must be registered before the routers they protect.
@@ -148,9 +207,18 @@ app.use('/api/audit-log', auditRouter);
 app.use('/api/support', supportRouter);
 app.use('/api/superadmin', superadminRouter);
 app.use('/api/customers', customersRouter);
+app.use('/api/journeys', journeysRouter);
+app.use('/api/review-items', reviewRouter);
 app.use('/api/users', usersRouter);
 app.use('/api/announcements', announcementsRouter);
 app.use('/v1', streamRouter);
+
+// Spec-literal webhook aliases: the same handlers as
+// /api/ingestion/cloudtalk and /api/integrations/zoho/sale-trigger, mounted
+// at the top-level paths some integrators (and the system spec) expect,
+// without exposing the rest of either router at /webhooks/*.
+app.post('/webhooks/cloudtalk', authenticateApiKey, apiKeyLimiter, handleCloudTalkWebhook);
+app.post('/webhooks/zoho', authenticateApiKey, apiKeyLimiter, handleZohoSaleTrigger);
 
 // Serve React static build in production
 if (process.env.NODE_ENV === 'production') {

@@ -101,10 +101,13 @@ export function BreachDetailDrawer({ breachId, onClose }: BreachDetailDrawerProp
             </div>
 
             <div className="p-6 space-y-5">
-              {/* Call context */}
-              <Section title="Call">
+              {/* Call / journey context */}
+              <Section title={breach.journey_id ? 'Journey' : 'Call'}>
                 <div className="text-table-cell">
-                  <Link to={`/calls/${breach.call_id}`} className="text-primary font-medium hover:underline">
+                  <Link
+                    to={breach.journey_id ? `/journeys/${breach.journey_id}` : `/calls/${breach.call_id}`}
+                    className="text-primary font-medium hover:underline"
+                  >
                     {breach.call_file_name}
                   </Link>
                 </div>

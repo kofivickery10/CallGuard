@@ -17,6 +17,7 @@ export type AuditActionType =
   | 'call.reviewed'
   | 'call.review_cleared'
   | 'score.correct'
+  | 'review.resolve'
   | 'exemplar.toggle'
   | 'breach.status_change'
   | 'breach.assign'
@@ -41,6 +42,10 @@ export type AuditActionType =
   | 'scorecard.deactivate'
   | 'org.data_improvement_optin'
   | 'org.industry.change'
+  | 'org.scoring_settings.change'
+  | 'dialer_connection.create'
+  | 'dialer_connection.update'
+  | 'dialer_connection.delete'
   // Superadmin (cross-tenant) actions, logged against the target org.
   | 'tenant.create'
   | 'tenant.status_change'
@@ -57,6 +62,7 @@ export type AuditEntityType =
   | 'api_key'
   | 'sftp_source'
   | 'zoho_connection'
+  | 'dialer_connection'
   | 'user'
   | 'session'
   | 'organization';

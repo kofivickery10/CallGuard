@@ -161,10 +161,37 @@ export interface WebhookCallScoredPayload {
   }>;
 }
 
+// Fired when a customer journey finishes scoring (spec §9 — multi-call, not
+// a single upload/session). Mirrors WebhookCallScoredPayload's shape so
+// partner integrations (and services/zoho.ts) can handle both with the same
+// code, keyed on `event` / the presence of `journey_id` vs `call_id`.
+export interface WebhookJourneyScoredPayload {
+  event: 'journey.scored';
+  journey_id: string;
+  scorecard_id: string;
+  branch: string | null;
+  overall_score: number;
+  pass: boolean;
+  scored_at: string;
+  // The wrap-up/closing call's agent — the most relevant attribution point
+  // for commission/QA purposes when a journey spans several advisers.
+  agent_name: string | null;
+  customer_id: string;
+  customer_phone: string | null;
+  customer_external_crm_id: string | null;
+  breaches: Array<{
+    scorecard_item_id: string;
+    scorecard_item_label: string;
+    severity: string;
+    evidence: string;
+  }>;
+}
+
 export type WebhookPayload =
   | WebhookBreachPayload
   | WebhookScoredPayload
-  | WebhookCallScoredPayload;
+  | WebhookCallScoredPayload
+  | WebhookJourneyScoredPayload;
 
 // ─── Token mint ──────────────────────────────────────────────────────────
 

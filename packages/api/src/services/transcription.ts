@@ -1,11 +1,22 @@
 import { config } from '../config.js';
 import { readFile } from './storage.js';
+import type { TranscriptionMode, DeepgramRegion } from '@callguard/shared';
 
 interface TranscriptionResult {
   raw: unknown;
   text: string;
   duration_seconds: number;
+  // How reliable the adviser/customer split is (0-1) — see
+  // computeSpeakerAttributionConfidence below. Persisted on calls
+  // (migration 040) and read by services/scoring.ts to decide whether a
+  // consent_gate item can be auto-scored or must go to manual_review.
+  speaker_attribution_confidence: number;
 }
+
+const DEEPGRAM_BASE_URLS: Record<DeepgramRegion, string> = {
+  eu: 'https://api.eu.deepgram.com',
+  us: 'https://api.deepgram.com',
+};
 
 // Domain-specific terms Deepgram may mishear without boosting.
 // Tuned for UK protection & mortgage advice: identity/verification terms,
@@ -98,19 +109,43 @@ const DOMAIN_KEYTERMS = [
   'Aegon',
 ];
 
+/**
+ * How reliable the adviser/customer speaker split is (0-1). Deterministic
+ * (1.0) only when a per-tenant stereo channel is pinned — everything else is
+ * a heuristic guess, most so when diarisation on a mono recording finds a
+ * speaker count other than 2 (transfers, hold music, a third party on the
+ * line). services/scoring.ts routes consent_gate items to manual_review
+ * rather than auto-scoring them below a threshold, since a mislabelled
+ * speaker on a consent checkpoint is a false-pass risk (spec §6).
+ */
+function computeSpeakerAttributionConfidence(
+  isMultichannel: boolean,
+  pinnedAdviserChannel: number | null,
+  speakerCount: number
+): number {
+  if (isMultichannel) return pinnedAdviserChannel !== null ? 1.0 : 0.7;
+  if (speakerCount === 2) return 0.6;
+  return 0.3;
+}
+
 export async function transcribeCall(
   fileKey: string,
   extraKeyterms: string[] = [],
   encryptedAtRest: boolean = false,
-  adviserChannel: number | null = null
+  adviserChannel: number | null = null,
+  transcriptionMode: TranscriptionMode = 'mono_diarize',
+  deepgramRegion: DeepgramRegion = 'eu'
 ): Promise<TranscriptionResult> {
   if (!config.deepgram.apiKey) {
     throw new Error('DEEPGRAM_API_KEY is not set in .env - needed for transcription');
   }
 
+  // config.deepgram.baseUrl already resolves the EU default (or a DEEPGRAM_URL
+  // env override) — only override it here for a tenant explicitly on 'us'.
+  const baseUrl = deepgramRegion === 'us' ? DEEPGRAM_BASE_URLS.us : config.deepgram.baseUrl;
   const { createClient } = await import('@deepgram/sdk');
   const deepgram = createClient(config.deepgram.apiKey, {
-    global: { url: config.deepgram.baseUrl },
+    global: { url: baseUrl },
   });
 
   const audioBuffer = await readFile(fileKey, encryptedAtRest);
@@ -122,22 +157,26 @@ export async function transcribeCall(
     throw new Error('Audio file is empty (0 bytes after read/decrypt)');
   }
 
+  // CloudTalk (and most dialers CallGuard ingests from) records mono — the
+  // default. Multichannel is only requested for the small minority of
+  // tenants set to 'stereo_multichannel' (split-stereo recordings with the
+  // adviser and customer on separate channels), where per-channel
+  // attribution is exact instead of a diarisation guess.
+  const useMultichannel = transcriptionMode === 'stereo_multichannel';
+
   const { result, error } = await deepgram.listen.prerecorded.transcribeFile(
     audioBuffer,
     {
       model: 'nova-3',
       // Opt out of Deepgram's Model Improvement Program: call audio (containing
       // customers' financial/health disclosures) is not retained or used to
-      // train their models — required for FCA/DPA compliance.
+      // train their models — required for FCA/DPA compliance. Unconditional
+      // floor, not a tenant-facing toggle — no UI path sets this false.
       mip_opt_out: true,
       smart_format: true,
-      // Transcribe each channel separately. Split-stereo call recordings put the
-      // adviser and customer on separate channels, so per-channel attribution is
-      // exact (no guessing) and each voice is transcribed without the other
-      // bleeding over it (sharper postcodes / names). diarize stays on as the
-      // fall-back for mono recordings, which come back as a single channel.
-      multichannel: true,
+      multichannel: useMultichannel,
       diarize: true,
+      diarize_model: 'latest',
       punctuate: true,
       utterances: true,
       // en-GB (matches the live path): UK date formatting (DD/MM, not MM/DD),
@@ -171,8 +210,11 @@ export async function transcribeCall(
 
   // Split-stereo recordings come back with utterances tagged by channel. When
   // more than one channel is present, attribute by channel (exact, no guessing).
-  // Otherwise (mono) fall back to the diarized speaker label.
-  const isMultichannel = new Set(utts.map((u) => u.channel ?? 0)).size > 1;
+  // Otherwise (mono) fall back to the diarized speaker label. Guarded by
+  // useMultichannel too, in case a 'mono_diarize' tenant's file is
+  // unexpectedly stereo — the per-tenant setting still governs the branch.
+  const isMultichannel = useMultichannel && new Set(utts.map((u) => u.channel ?? 0)).size > 1;
+  const speakerCount = new Set(utts.map((u) => u.speaker ?? 0)).size;
 
   // Order by time so interleaved channels read as one conversation.
   const ordered = [...utts].sort((a, b) => (a.start ?? 0) - (b.start ?? 0));
@@ -216,5 +258,10 @@ export async function transcribeCall(
     raw: result,
     text: text || result.results?.channels?.[0]?.alternatives?.[0]?.transcript || '',
     duration_seconds: duration,
+    speaker_attribution_confidence: computeSpeakerAttributionConfidence(
+      isMultichannel,
+      isMultichannel ? pinnedAdviserChannel : null,
+      speakerCount
+    ),
   };
 }

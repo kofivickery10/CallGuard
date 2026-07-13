@@ -1,3 +1,5 @@
+import type { ItemResult } from './scorecard.js';
+
 export type CallStatus =
   | 'uploaded'
   | 'transcribing'
@@ -25,8 +27,10 @@ export interface Call {
   call_date: string | null;
   tags: string[];
   external_id: string | null;
-  ingestion_source: 'upload' | 'api' | 'sftp';
+  ingestion_source: 'upload' | 'api' | 'sftp' | 'live_stream' | 'dialer_webhook';
   scorecard_id: string | null;
+  dialer_connection_id: string | null;
+  journey_id: string | null;
   is_exemplar: boolean;
   exemplar_reason: string | null;
   reviewed_at: string | null;
@@ -39,6 +43,7 @@ export interface CallScore {
   id: string;
   call_id: string;
   scorecard_id: string;
+  scorecard_version: number;
   overall_score: number | null;
   pass: boolean | null;
   scored_at: string | null;
@@ -53,11 +58,14 @@ export interface CallItemScore {
   id: string;
   call_score_id: string;
   scorecard_item_id: string;
-  score: number;
-  normalized_score: number;
+  // null for na / manual_review checkpoints — they are never AI-scored.
+  score: number | null;
+  normalized_score: number | null;
   confidence: number | null;
   evidence: string | null;
   reasoning: string | null;
+  result: ItemResult;
+  source_timestamp: number | null;
   created_at: string;
 }
 

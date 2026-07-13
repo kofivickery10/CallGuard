@@ -13,12 +13,103 @@ organizationRouter.get('/', async (req, res, next) => {
   try {
     const org = await queryOne<OrganizationInfo>(
       `SELECT id, name, plan, industry, adviser_channel,
-              data_improvement_opt_in, data_improvement_opt_in_at
+              data_improvement_opt_in, data_improvement_opt_in_at,
+              scoring_scope, min_scoreable_seconds, min_scoreable_words,
+              pass_threshold, retention_days, transcription_mode,
+              deepgram_region, deepgram_mip_opt_out, status, cancelled_at
          FROM organizations WHERE id = $1`,
       [req.user!.organizationId]
     );
     if (!org) throw new AppError(404, 'Organisation not found');
     res.json(org);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Admins set the tenant's scoring/ingestion policy (spec §10) — previously
+// hardcoded globals, now per-org with the prior global value as the default
+// (see migration 038 / services/tenant-settings.ts).
+organizationRouter.put('/scoring-settings', requireAdmin, async (req, res, next) => {
+  try {
+    const body = req.body as {
+      scoring_scope?: string;
+      min_scoreable_seconds?: number;
+      min_scoreable_words?: number;
+      pass_threshold?: number;
+      retention_days?: number;
+      transcription_mode?: string;
+      deepgram_region?: string;
+    };
+
+    if (body.scoring_scope && !['sales_only', 'over_threshold', 'everything'].includes(body.scoring_scope)) {
+      throw new AppError(400, 'Invalid scoring_scope');
+    }
+    if (body.transcription_mode && !['mono_diarize', 'stereo_multichannel'].includes(body.transcription_mode)) {
+      throw new AppError(400, 'Invalid transcription_mode');
+    }
+    if (body.deepgram_region && !['eu', 'us'].includes(body.deepgram_region)) {
+      throw new AppError(400, 'Invalid deepgram_region');
+    }
+    if (body.pass_threshold !== undefined && (body.pass_threshold < 0 || body.pass_threshold > 100)) {
+      throw new AppError(400, 'pass_threshold must be between 0 and 100');
+    }
+    // Floor retention at 30 days. Without this, a retention_days of 0 (or a
+    // negative) makes the nightly purge delete every call, recording, score and
+    // breach in the org within 24h — irreversible, no confirmation. 30 days is
+    // the minimum the compliance templates and termination-purge window assume.
+    if (body.retention_days !== undefined && (!Number.isInteger(body.retention_days) || body.retention_days < 30)) {
+      throw new AppError(400, 'retention_days must be a whole number of at least 30');
+    }
+    if (
+      body.min_scoreable_seconds !== undefined &&
+      (!Number.isInteger(body.min_scoreable_seconds) || body.min_scoreable_seconds < 0)
+    ) {
+      throw new AppError(400, 'min_scoreable_seconds must be a non-negative whole number');
+    }
+    if (
+      body.min_scoreable_words !== undefined &&
+      (!Number.isInteger(body.min_scoreable_words) || body.min_scoreable_words < 0)
+    ) {
+      throw new AppError(400, 'min_scoreable_words must be a non-negative whole number');
+    }
+
+    const rows = await query<OrganizationInfo>(
+      `UPDATE organizations SET
+         scoring_scope           = COALESCE($1, scoring_scope),
+         min_scoreable_seconds   = COALESCE($2, min_scoreable_seconds),
+         min_scoreable_words     = COALESCE($3, min_scoreable_words),
+         pass_threshold          = COALESCE($4, pass_threshold),
+         retention_days          = COALESCE($5, retention_days),
+         transcription_mode      = COALESCE($6, transcription_mode),
+         deepgram_region         = COALESCE($7, deepgram_region),
+         updated_at              = now()
+       WHERE id = $8
+       RETURNING id, name, plan, scoring_scope, min_scoreable_seconds,
+                 min_scoreable_words, pass_threshold, retention_days,
+                 transcription_mode, deepgram_region, deepgram_mip_opt_out`,
+      [
+        body.scoring_scope,
+        body.min_scoreable_seconds,
+        body.min_scoreable_words,
+        body.pass_threshold,
+        body.retention_days,
+        body.transcription_mode,
+        body.deepgram_region,
+        req.user!.organizationId,
+      ]
+    );
+
+    void recordAuditEvent({
+      organizationId: req.user!.organizationId,
+      userId: req.user!.userId,
+      actionType: 'org.scoring_settings.change',
+      entityType: 'organization',
+      entityId: req.user!.organizationId,
+      metadata: body,
+    });
+
+    res.json(rows[0]);
   } catch (err) {
     next(err);
   }

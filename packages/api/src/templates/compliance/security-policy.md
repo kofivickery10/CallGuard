@@ -65,7 +65,7 @@ This policy supports obligations under:
 - UK GDPR / Data Protection Act 2018
 - FCA SM&CR (evidence of compliance oversight)
 - FCA Consumer Duty (PS22/9) - evidencing good client outcomes
-- COBS 9.5 / MiFID II record retention (7 years)
+- COBS 9.5 / MiFID II record retention (5 years)
 
 ## 9. Policy Review
 

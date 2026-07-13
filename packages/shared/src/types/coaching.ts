@@ -21,6 +21,10 @@ export interface CallCoaching {
   next_actions: string[];
 }
 
+export type ScoringScope = 'sales_only' | 'over_threshold' | 'everything';
+export type TranscriptionMode = 'mono_diarize' | 'stereo_multichannel';
+export type DeepgramRegion = 'eu' | 'us';
+
 export interface OrganizationInfo {
   id: string;
   name: string;
@@ -34,6 +38,18 @@ export interface OrganizationInfo {
   // data to improve the Services, per DPA §4.2.
   data_improvement_opt_in?: boolean;
   data_improvement_opt_in_at?: string | null;
+  // Per-tenant scoring/ingestion policy — see services/tenant-settings.ts,
+  // which layers these onto the shared/constants.ts defaults.
+  scoring_scope?: ScoringScope;
+  min_scoreable_seconds?: number;
+  min_scoreable_words?: number;
+  pass_threshold?: number;
+  retention_days?: number;
+  transcription_mode?: TranscriptionMode;
+  deepgram_region?: DeepgramRegion;
+  deepgram_mip_opt_out?: boolean;
+  status?: 'active' | 'suspended' | 'cancelled';
+  cancelled_at?: string | null;
 }
 
 export type FeatureFlag =

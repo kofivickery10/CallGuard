@@ -68,6 +68,11 @@ export const config = {
     fromEmail: optional('RESEND_FROM_EMAIL', 'alerts@callguardai.co.uk'),
   },
 
+  // Internal ops inbox for infrastructure alerts (jobs failing after all
+  // retries, etc.). Distinct from tenant-facing alerts. Empty = ops alerting
+  // off (a console warning is logged at boot).
+  opsAlertEmail: process.env.OPS_ALERT_EMAIL || '',
+
   appUrl: optional('APP_URL', 'http://localhost:5173'),
 
   zoho: {

@@ -208,11 +208,12 @@ export function CallDetail() {
                   confidence={item.confidence}
                   evidence={item.evidence}
                   reasoning={item.reasoning}
+                  result={item.result}
                   canCorrect={canAction && canLearn}
                   onCorrect={() => setCorrectingItem({
                     itemScoreId: item.id,
                     label: item.label,
-                    pass: isItemPass(item.normalized_score),
+                    pass: isItemPass(item.normalized_score ?? 0),
                     evidence: item.evidence,
                   })}
                 />

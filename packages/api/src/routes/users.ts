@@ -75,6 +75,17 @@ usersRouter.put('/me/password', async (req, res, next) => {
     const newHash = await bcrypt.hash(new_password, 12);
     await query('UPDATE users SET password_hash = $1 WHERE id = $2', [newHash, req.user!.userId]);
 
+    // Revoke every outstanding refresh token so a password change actually logs
+    // out all sessions — the point of changing a password after a suspected
+    // compromise is to cut off whoever else is logged in. This includes the
+    // current session, which is forced to re-authenticate once its short-lived
+    // access token expires (we can't single out "this" refresh token from the
+    // access-token-derived request, and logging out everywhere is the safe default).
+    await query(
+      'UPDATE refresh_tokens SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL',
+      [req.user!.userId]
+    );
+
     res.status(204).end();
   } catch (err) {
     next(err);

@@ -14,7 +14,8 @@ export interface IngestCallParams {
   fileName: string;
   buffer: Buffer;
   mimeType: string;
-  ingestionSource: 'upload' | 'api' | 'sftp';
+  ingestionSource: 'upload' | 'api' | 'sftp' | 'dialer_webhook';
+  dialerConnectionId?: string | null;
   // Agent attribution. Any of these may be supplied by a dialler; they are
   // resolved to a CallGuard adviser in precedence order (see resolveAgent).
   agentName?: string | null;
@@ -37,15 +38,34 @@ export interface IngestCallParams {
 /**
  * Normalise a phone number to E.164 (best-effort, UK-biased).
  * Returns null if the input is empty/whitespace-only.
+ *
+ * Must produce the SAME output for the same real number regardless of source
+ * format — CloudTalk and Zoho send the same customer in different shapes
+ * ("00447…", "+44 (0)7…", "07…"), and journey matching keys off the result,
+ * so any divergence silently strands a sale's journey (never scored).
  */
-function normalizePhone(raw: string): string | null {
-  const digits = raw.replace(/\D/g, '');
+export function normalizePhone(raw: string): string | null {
+  const trimmed = raw.trim();
+  let digits = trimmed.replace(/\D/g, '');
   if (!digits) return null;
-  // Already international (caller passed +44...)
-  if (raw.trim().startsWith('+')) return `+${digits}`;
-  // UK mobile/landline: 07xxx, 01xxx, 02xxx, 03xxx
-  if (digits.length === 11 && digits.startsWith('0')) return `+44${digits.slice(1)}`;
-  // Assume already without leading 0 / country code prefix
+
+  // "+" and the "00" international access prefix both mean an international
+  // number follows. Collapse "00" to the "+" form, then normalise once.
+  if (trimmed.startsWith('+') || digits.startsWith('00')) {
+    if (digits.startsWith('00')) digits = digits.slice(2);
+    // A national trunk '0' written after the UK country code, e.g.
+    // "+44 (0)7911 123456" -> 4407911123456 -> 447911123456.
+    if (digits.startsWith('440')) digits = `44${digits.slice(3)}`;
+    return `+${digits}`;
+  }
+
+  // National format with a trunk 0 (07xxx / 01xxx / 02xxx / 03xxx) -> UK.
+  if (digits.startsWith('0')) return `+44${digits.slice(1)}`;
+
+  // No '+', no '00', no leading '0'. Ambiguous. UK-bias (UK product): a
+  // 10-digit number is a UK subscriber number with the trunk 0 dropped;
+  // anything else is assumed to already carry a country code.
+  if (digits.length === 10) return `+44${digits}`;
   return `+${digits}`;
 }
 
@@ -170,9 +190,10 @@ export async function ingestCall(params: IngestCallParams): Promise<IngestedCall
          id, organization_id, uploaded_by, file_name, file_key,
          file_size_bytes, mime_type, agent_id, agent_name,
          customer_phone, customer_id, call_date, tags, status,
-         external_id, ingestion_source, encrypted_at_rest, scorecard_id
+         external_id, ingestion_source, encrypted_at_rest, scorecard_id,
+         dialer_connection_id
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'uploaded', $14, $15, true, $16)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'uploaded', $14, $15, true, $16, $17)
        RETURNING *`,
       [
         callId,
@@ -191,6 +212,7 @@ export async function ingestCall(params: IngestCallParams): Promise<IngestedCall
         params.externalId ?? null,
         params.ingestionSource,
         scorecardId,
+        params.dialerConnectionId ?? null,
       ]
     );
   } catch (err) {

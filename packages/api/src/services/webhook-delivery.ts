@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import { query, queryOne } from '../db/client.js';
 import { decrypt } from './crypto.js';
-import type { WebhookPayload, WebhookCallScoredPayload } from '@callguard/shared';
+import type { WebhookPayload, WebhookCallScoredPayload, WebhookJourneyScoredPayload } from '@callguard/shared';
 
 interface ApiKeyWebhookConfig {
   api_key_id: string;
@@ -123,14 +123,15 @@ export async function deliverWebhook(
 }
 
 /**
- * Deliver a `call.scored` event for a batch-ingested or uploaded call. There is
- * no live session/api-key on the call, so fire to every webhook-configured,
- * non-revoked API key in the org (typically one - e.g. the CRM integration key).
- * Best-effort: errors are swallowed per delivery.
+ * Deliver a `call.scored` (single call) or `journey.scored` (multi-call,
+ * spec §9) event. There is no live session/api-key tied to either, so fire
+ * to every webhook-configured, non-revoked API key in the org (typically
+ * one - e.g. the CRM integration key). Best-effort: errors are swallowed per
+ * delivery.
  */
 export async function deliverCallScored(
   organizationId: string,
-  payload: WebhookCallScoredPayload,
+  payload: WebhookCallScoredPayload | WebhookJourneyScoredPayload,
 ): Promise<void> {
   const keys = await query<{ id: string }>(
     `SELECT id FROM api_keys

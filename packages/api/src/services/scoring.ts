@@ -7,6 +7,12 @@ interface ScorecardItemInput {
   label: string;
   description: string | null;
   score_type: 'binary' | 'scale_1_5' | 'scale_1_10';
+  // Checkpoint model additions (spec §8) — only 'ai' items with these
+  // populated are ever passed to this function; 'manual' and branch-excluded
+  // ('na') items are filtered out by the caller before scoring.
+  expectation?: string | null;
+  ai_check?: string | null;
+  consent_gate?: boolean;
 }
 
 export interface ItemScoreOutput {
@@ -41,7 +47,8 @@ function buildScoringPrompt(
   kbContext: string | null | undefined = '',
   withCoaching: boolean = false,
   learning?: LearningContext | null,
-  industry?: string | null
+  industry?: string | null,
+  journeyMode: boolean = false
 ): { cached: string; dynamic: string } {
   const criteriaBlock = items
     .map((item, i) => {
@@ -63,9 +70,17 @@ function buildScoringPrompt(
             .join('\n')}`
         : '';
 
+      const expectationLine = item.expectation ? `\n  Expectation: ${item.expectation}` : '';
+      const aiCheckLine = item.ai_check
+        ? `\n  Presence-and-meaning check: ${item.ai_check} — a keyword match alone is not enough; confirm the substance was actually conveyed.`
+        : '';
+      const consentLine = item.consent_gate
+        ? '\n  CONSENT GATE: only score this as met if the customer gives an explicit, affirmative response (e.g. "yes", "that\'s fine", "I agree"). Do NOT infer consent from silence, from the call continuing, or from the adviser proceeding as if consent were given. If the transcript does not show an explicit customer affirmative, score it as not met.'
+        : '';
+
       return `Criterion ${i + 1} (ID: ${item.id}):
   Label: ${item.label}
-  ${item.description ? `Rubric: ${item.description}` : ''}
+  ${item.description ? `Rubric: ${item.description}` : ''}${expectationLine}${aiCheckLine}${consentLine}
   Scoring: ${scaleDesc}${correctionsBlock}`;
     })
     .join('\n\n');
@@ -117,14 +132,16 @@ ${criteriaBlock}
 
 ## Instructions
 
-Evaluate the call transcript (provided below) against each criterion listed above. For each criterion:
+Evaluate the call transcript${journeyMode ? '(s)' : ''} (provided below) against each criterion listed above. For each criterion:
 1. Determine the appropriate score based on the scoring type
 2. Provide a direct quote from the transcript as evidence (or state "No relevant evidence found")
 3. Explain your reasoning in 1-2 sentences
 4. Assess your confidence from 0.0 to 1.0
-
-Be strict but fair. Only score based on what is explicitly present in the transcript.
-If the transcript is unclear or the criterion cannot be evaluated, give the lowest score and note low confidence.${withCoaching ? `
+${journeyMode ? `
+This is a customer JOURNEY spanning multiple calls, each delimited by a header like "=== Call 2 (2026-01-15, agent: Jane) ===". Score each criterion against the whole journey, not any single call in isolation — a statement, disclosure or consent counts as met if it was given anywhere across the calls, even if the criterion's specific call ended without it. When you cite evidence, prefix the quote with the matching call marker in brackets exactly as shown, e.g. \`[Call 2] "...quote..."\`, so it's clear which call it came from.
+` : ''}
+Be strict but fair. Only score based on what is explicitly present in the transcript${journeyMode ? '(s)' : ''}.
+If the transcript${journeyMode ? '(s are)' : ' is'} unclear or the criterion cannot be evaluated, give the lowest score and note low confidence.${withCoaching ? `
 
 ## Coaching Output (REQUIRED)
 
@@ -139,7 +156,7 @@ Coaching tone: supportive, specific, actionable. Avoid generic platitudes like "
 
   const dynamic = `${priorCoachingBlock}
 
-## Call Transcript
+## Call Transcript${journeyMode ? 's (this customer\'s journey)' : ''}
 
 <transcript>
 ${transcript}
@@ -157,7 +174,12 @@ export async function scoreTranscript(
   kbContext: string | null = null,
   learning?: LearningContext | null,
   withCoaching: boolean = false,
-  industry: string | null = null
+  industry: string | null = null,
+  // True for journey scoring (spec §9): the transcript spans multiple calls
+  // delimited by "=== Call N ===" markers — see services/journey.ts, which
+  // asks Claude to prefix evidence quotes with the matching marker so the
+  // journey processor can attribute each checkpoint back to its source call.
+  journeyMode: boolean = false
 ): Promise<{ output: ScoringOutput; usage: { input_tokens: number; output_tokens: number; cache_creation_input_tokens: number; cache_read_input_tokens: number }; model: string }> {
   if (!config.anthropic.apiKey) {
     throw new Error('ANTHROPIC_API_KEY is not set in .env - needed for scoring');
@@ -169,7 +191,7 @@ export async function scoreTranscript(
 
   const model = modelOverride ?? DEFAULT_SCORING_MODEL;
 
-  const prompt = buildScoringPrompt(transcript, items, kbContext, withCoaching, learning, industry);
+  const prompt = buildScoringPrompt(transcript, items, kbContext, withCoaching, learning, industry, journeyMode);
 
   const response = await client.messages.create({
     model,
@@ -306,9 +328,13 @@ export async function verifyItems(
         scale_1_5: 'Score from 1 (poor) to 5 (excellent).',
         scale_1_10: 'Score from 1 (poor) to 10 (excellent).',
       }[item.score_type];
+      const expectationLine = item.expectation ? `\n  Expectation: ${item.expectation}` : '';
+      const consentLine = item.consent_gate
+        ? '\n  CONSENT GATE: only confirm this as met if the customer gives an explicit, affirmative response. Do not accept inferred consent as grounds to overturn a failure.'
+        : '';
       return `Criterion ${i + 1} (ID: ${item.id}):
   Label: ${item.label}
-  ${item.description ? `Rubric: ${item.description}` : ''}
+  ${item.description ? `Rubric: ${item.description}` : ''}${expectationLine}${consentLine}
   Scoring: ${scaleDesc}
   First-pass verdict (to confirm or overturn): scored ${item.firstPass.score} — ${item.firstPass.reasoning || 'no reasoning given'} (evidence: ${item.firstPass.evidence || 'none cited'})`;
     })

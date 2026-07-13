@@ -1,20 +1,25 @@
 import { Router } from 'express';
 import jwt from 'jsonwebtoken';
-import { authenticate, requireAdmin } from '../middleware/auth.js';
+import { authenticate, requireAdmin, authenticateApiKey } from '../middleware/auth.js';
+import { apiKeyLimiter } from '../middleware/rate-limits.js';
 import { query, queryOne } from '../db/client.js';
 import { config } from '../config.js';
 import { AppError } from '../middleware/errors.js';
 import { encrypt } from '../services/crypto.js';
 import { recordAuditEvent } from '../services/audit.js';
+import { normalizePhone } from '../services/ingestion.js';
+import { assembleJourney } from '../services/journey.js';
 import {
   buildAuthorizeUrl,
   exchangeCodeAndStore,
   getConnectionRow,
   testConnection,
+  verifyInboundSaleSignature,
 } from '../services/zoho.js';
 import type {
   ZohoConnection,
   ZohoFieldMap,
+  ZohoQAFieldMap,
   ZohoModule,
   ZohoRegion,
 } from '@callguard/shared';
@@ -23,7 +28,9 @@ export const integrationsRouter = Router();
 
 // Public columns only — never expose the encrypted secrets/tokens.
 const ZOHO_PUBLIC_COLUMNS = `id, organization_id, dc_region, client_id, module,
-  field_map, status, last_synced_at, last_error, created_at, updated_at`;
+  field_map, sale_phone_field, qa_module, qa_field_map, status, last_synced_at,
+  last_error, created_at, updated_at,
+  (inbound_secret_encrypted IS NOT NULL) AS inbound_configured`;
 
 const DEFAULT_FIELD_MAP: ZohoFieldMap = {
   score: 'Compliance_Score',
@@ -32,8 +39,25 @@ const DEFAULT_FIELD_MAP: ZohoFieldMap = {
   link: 'CallGuard_Link',
 };
 
+const DEFAULT_QA_FIELD_MAP: ZohoQAFieldMap = {
+  adviser: 'Adviser_Name',
+  month: 'Period',
+  score: 'Compliance_Score',
+  result: 'Compliance_Result',
+  link: 'CallGuard_Link',
+};
+
 const VALID_REGIONS: ZohoRegion[] = ['eu', 'com', 'in', 'com.au', 'jp', 'ca'];
 const VALID_MODULES: ZohoModule[] = ['Leads', 'Contacts'];
+
+// Zoho field/module API names are alphanumeric/underscore only. Catching a
+// malformed one here — rather than letting it reach Zoho — turns a silent
+// per-record write failure (see services/zoho.ts) into an actionable save-time error.
+function assertValidZohoApiName(label: string, value: unknown): void {
+  if (typeof value !== 'string' || !/^[A-Za-z][A-Za-z0-9_]*$/.test(value)) {
+    throw new AppError(400, `${label} must be a valid Zoho API name`);
+  }
+}
 
 // ============================================================
 // OAuth callback — PUBLIC. Zoho redirects the user's browser here with a code
@@ -81,6 +105,73 @@ integrationsRouter.get('/zoho/callback', async (req, res) => {
 });
 
 // ============================================================
+// POST /api/integrations/zoho/sale-trigger (X-API-Key auth)
+// The sale-trigger webhook (spec §9): fires when a deal/record is marked as
+// a sale in Zoho (a CRM Workflow Rule -> Webhook action, configured by the
+// tenant with the CallGuard API key as a custom header — same auth pattern
+// as the CloudTalk ingestion webhook). Carries the customer phone number;
+// assembles and scores that customer's journey.
+// Also mounted at POST /webhooks/zoho (see app.ts) to match the spec's path.
+// ============================================================
+
+export async function handleZohoSaleTrigger(
+  req: import('express').Request,
+  res: import('express').Response,
+  next: import('express').NextFunction
+): Promise<void> {
+  try {
+    const orgId = req.user!.organizationId;
+    const body = (req.body || {}) as Record<string, unknown>;
+    const rawBody = (req as typeof req & { rawBody?: Buffer }).rawBody ?? Buffer.from(JSON.stringify(body));
+
+    const conn = await getConnectionRow(orgId);
+    if (!conn) throw new AppError(404, 'No Zoho connection configured for this organization');
+
+    const signatureHeader = req.headers['x-callguard-zoho-signature'] as string | undefined;
+    if (!verifyInboundSaleSignature(conn, rawBody, signatureHeader)) {
+      throw new AppError(401, 'Invalid or missing sale-trigger signature');
+    }
+
+    const rawPhone = body[conn.sale_phone_field];
+    if (typeof rawPhone !== 'string' || !rawPhone.trim()) {
+      res.status(202).json({ status: 'ignored', reason: `no ${conn.sale_phone_field} field in payload` });
+      return;
+    }
+    const phone = normalizePhone(rawPhone);
+    if (!phone) {
+      res.status(202).json({ status: 'ignored', reason: 'could not normalise phone number' });
+      return;
+    }
+
+    const customer = await queryOne<{ id: string }>(
+      'SELECT id FROM customers WHERE organization_id = $1 AND phone_normalized = $2',
+      [orgId, phone]
+    );
+    if (!customer) {
+      res.status(202).json({ status: 'ignored', reason: `no calls on file yet for ${phone}` });
+      return;
+    }
+
+    const journeyId = await assembleJourney({
+      organizationId: orgId,
+      customerId: customer.id,
+      triggerSource: 'zoho_sale',
+    });
+
+    if (!journeyId) {
+      res.status(202).json({ status: 'ignored', reason: 'no transcribed calls in the journey window' });
+      return;
+    }
+
+    res.status(202).json({ status: 'accepted', journey_id: journeyId });
+  } catch (err) {
+    next(err);
+  }
+}
+
+integrationsRouter.post('/zoho/sale-trigger', authenticateApiKey, apiKeyLimiter, handleZohoSaleTrigger);
+
+// ============================================================
 // Zoho connection management (admin JWT auth)
 // ============================================================
 
@@ -112,6 +203,10 @@ zohoRouter.post('/', async (req, res, next) => {
       client_secret?: string;
       module?: string;
       field_map?: Partial<ZohoFieldMap>;
+      sale_phone_field?: string;
+      qa_module?: string | null;
+      qa_field_map?: Partial<ZohoQAFieldMap>;
+      inbound_secret?: string;
     };
 
     const region = (body.dc_region ?? 'eu') as ZohoRegion;
@@ -128,35 +223,57 @@ zohoRouter.post('/', async (req, res, next) => {
     }
 
     const fieldMap: ZohoFieldMap = { ...DEFAULT_FIELD_MAP, ...(body.field_map ?? {}) };
-    // Zoho field API names are alphanumeric/underscore only. Catching an
-    // empty or malformed entry here — rather than letting it reach Zoho —
-    // turns a silent per-record write failure (a bad field_map key just
-    // "succeeds" with nothing written, see services/zoho.ts) into an
-    // immediate, actionable error at save time.
     for (const [key, value] of Object.entries(fieldMap)) {
-      if (typeof value !== 'string' || !/^[A-Za-z][A-Za-z0-9_]*$/.test(value)) {
-        throw new AppError(400, `field_map.${key} must be a valid Zoho field API name`);
+      assertValidZohoApiName(`field_map.${key}`, value);
+    }
+
+    const salePhoneField = body.sale_phone_field ?? 'Phone';
+    assertValidZohoApiName('sale_phone_field', salePhoneField);
+
+    const qaModule = body.qa_module?.trim() || null;
+    if (qaModule) assertValidZohoApiName('qa_module', qaModule);
+
+    const qaFieldMap: ZohoQAFieldMap = { ...DEFAULT_QA_FIELD_MAP, ...(body.qa_field_map ?? {}) };
+    if (qaModule) {
+      for (const [key, value] of Object.entries(qaFieldMap)) {
+        assertValidZohoApiName(`qa_field_map.${key}`, value);
       }
     }
 
     await query(
       `INSERT INTO zoho_connections
          (organization_id, dc_region, client_id, client_secret_encrypted, module,
-          field_map, status)
-       VALUES ($1, $2, $3, $4, $5, $6, 'pending')
+          field_map, sale_phone_field, qa_module, qa_field_map,
+          inbound_secret_encrypted, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'pending')
        ON CONFLICT (organization_id) DO UPDATE SET
          dc_region               = EXCLUDED.dc_region,
          client_id               = EXCLUDED.client_id,
          client_secret_encrypted = EXCLUDED.client_secret_encrypted,
          module                  = EXCLUDED.module,
          field_map               = EXCLUDED.field_map,
+         sale_phone_field        = EXCLUDED.sale_phone_field,
+         qa_module               = EXCLUDED.qa_module,
+         qa_field_map            = EXCLUDED.qa_field_map,
+         inbound_secret_encrypted = COALESCE(EXCLUDED.inbound_secret_encrypted, zoho_connections.inbound_secret_encrypted),
          status                  = 'pending',
          refresh_token_encrypted = NULL,
          access_token_encrypted  = NULL,
          token_expires_at        = NULL,
          last_error              = NULL,
          updated_at              = now()`,
-      [orgId, region, body.client_id, encrypt(body.client_secret), module, JSON.stringify(fieldMap)]
+      [
+        orgId,
+        region,
+        body.client_id,
+        encrypt(body.client_secret),
+        module,
+        JSON.stringify(fieldMap),
+        salePhoneField,
+        qaModule,
+        JSON.stringify(qaFieldMap),
+        body.inbound_secret ? encrypt(body.inbound_secret) : null,
+      ]
     );
 
     void recordAuditEvent({

@@ -42,8 +42,13 @@ export const BREACH_STATUS_LABELS: Record<BreachStatus, string> = {
 export interface Breach {
   id: string;
   organization_id: string;
-  call_id: string;
-  call_item_score_id: string;
+  // Exactly one of call_id/journey_id is set — call-level breaches come from
+  // per-call scoring, journey-level breaches from journey scoring (a
+  // checkpoint that never passed anywhere across the customer's call set).
+  call_id: string | null;
+  call_item_score_id: string | null;
+  journey_id: string | null;
+  journey_item_score_id: string | null;
   scorecard_item_id: string;
   severity: BreachSeverity;
   status: BreachStatus;
@@ -56,15 +61,19 @@ export interface Breach {
 }
 
 export interface BreachWithDetail extends Breach {
+  // For a journey breach this is a synthesised "Journey — <customer>" label
+  // (there is no single call file); call breaches carry the real file name.
   call_file_name: string;
   agent_name: string | null;
   agent_id: string | null;
+  // Set for journey breaches so the UI can link to /journeys/:id and label the row.
+  customer_name: string | null;
   assigned_to_name: string | null;
   breach_type: string;
   scorecard_name: string | null;
   evidence: string | null;
   reasoning: string | null;
-  normalized_score: number;
+  normalized_score: number | null;
 }
 
 export interface BreachEvent {

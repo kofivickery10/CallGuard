@@ -9,6 +9,7 @@ let _transcriptionQueue: Queue | null = null;
 let _scoringQueue: Queue | null = null;
 let _ingestionQueue: Queue | null = null;
 let _alertsQueue: Queue | null = null;
+let _maintenanceQueue: Queue | null = null;
 
 export function getTranscriptionQueue(): Queue {
   if (!_transcriptionQueue) {
@@ -70,12 +71,34 @@ export function getAlertsQueue(): Queue {
   return _alertsQueue;
 }
 
+export function getMaintenanceQueue(): Queue {
+  if (!_maintenanceQueue) {
+    _maintenanceQueue = new Queue('maintenance', {
+      connection,
+      defaultJobOptions: {
+        attempts: 2,
+        backoff: { type: 'exponential', delay: 60_000 },
+        removeOnComplete: 30,
+        removeOnFail: 30,
+      },
+    });
+  }
+  return _maintenanceQueue;
+}
+
 // Keep named exports for backward compat in worker.ts
 export const transcriptionQueue = { add: (...args: Parameters<Queue['add']>) => getTranscriptionQueue().add(...args) };
-export const scoringQueue = { add: (...args: Parameters<Queue['add']>) => getScoringQueue().add(...args) };
+export const scoringQueue = {
+  add: (...args: Parameters<Queue['add']>) => getScoringQueue().add(...args),
+};
 export const ingestionQueue = {
   add: (...args: Parameters<Queue['add']>) => getIngestionQueue().add(...args),
+  getJob: (jobId: string) => getIngestionQueue().getJob(jobId),
   removeRepeatableByKey: (key: string) => getIngestionQueue().removeRepeatableByKey(key),
   getRepeatableJobs: () => getIngestionQueue().getRepeatableJobs(),
 };
 export const alertsQueue = { add: (...args: Parameters<Queue['add']>) => getAlertsQueue().add(...args) };
+export const maintenanceQueue = {
+  add: (...args: Parameters<Queue['add']>) => getMaintenanceQueue().add(...args),
+  getRepeatableJobs: () => getMaintenanceQueue().getRepeatableJobs(),
+};

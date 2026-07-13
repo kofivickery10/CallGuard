@@ -38,7 +38,7 @@
 
 - Only calls necessary for QA review are ingested.
 - Transcripts are auto-redacted for payment card details where configured.
-- Retention is limited to 7 years (aligned to COBS 9.5 / MiFID II record-keeping obligations).
+- Retention is limited to 5 years (aligned to COBS 9.5 / MiFID II record-keeping obligations), on a lifecycle of 2 years live in the portal, archived (retained, access-restricted) years 3-5, then deleted; sooner on request or within 30 days of contract termination.
 - Access is role-limited: only Admins and designated Compliance users view full call content.
 
 ## 5. Technical & Organisational Safeguards
