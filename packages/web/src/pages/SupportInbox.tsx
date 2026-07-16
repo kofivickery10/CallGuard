@@ -65,7 +65,7 @@ export function SupportInbox() {
         {/* Threads */}
         <div className="w-[280px] flex-shrink-0 bg-card border border-border rounded-card overflow-y-auto">
           {threads.length === 0 && (
-            <p className="text-[12px] text-text-muted p-4">No conversations yet.</p>
+            <p className="text-xs text-text-muted p-4">No conversations yet.</p>
           )}
           {threads.map((t) => (
             <button
@@ -85,7 +85,7 @@ export function SupportInbox() {
                   <span className="w-2 h-2 rounded-full bg-fail flex-shrink-0" title="Awaiting your reply" />
                 ) : null}
               </div>
-              <div className="text-[12px] text-text-muted truncate mt-0.5">{t.last_body}</div>
+              <div className="text-xs text-text-muted truncate mt-0.5">{t.last_body}</div>
             </button>
           ))}
         </div>
@@ -104,7 +104,7 @@ export function SupportInbox() {
               <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2.5">
                 {messages.map((m) => (
                   <div key={m.id} className={`flex ${m.from_staff ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`max-w-[75%] px-3 py-2 rounded-lg text-[13px] leading-relaxed ${
+                    <div className={`max-w-[75%] px-3 py-2 rounded-lg text-table-cell leading-relaxed ${
                       m.from_staff ? 'bg-primary text-white' : 'bg-table-header text-text-primary'
                     }`}>
                       {!m.from_staff && (

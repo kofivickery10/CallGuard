@@ -88,8 +88,8 @@ export function BreachDetailDrawer({ breachId, onClose }: BreachDetailDrawerProp
                   <SeverityBadge severity={breach.severity} />
                   <StatusBadge status={breach.status} />
                 </div>
-                <h3 className="text-[15px] font-semibold text-text-primary mt-2">{breach.breach_type}</h3>
-                <p className="text-[12px] text-text-muted mt-0.5">
+                <h3 className="text-section-title text-text-primary mt-2">{breach.breach_type}</h3>
+                <p className="text-xs text-text-muted mt-0.5">
                   Detected {new Date(breach.detected_at).toLocaleString('en-GB')}
                 </p>
               </div>
@@ -122,7 +122,7 @@ export function BreachDetailDrawer({ breachId, onClose }: BreachDetailDrawerProp
                   </div>
                 )}
                 <div className="mt-2 inline-flex items-center gap-2">
-                  <span className="text-[12px] text-text-muted">Score:</span>
+                  <span className="text-xs text-text-muted">Score:</span>
                   <span className="font-mono text-[15px] font-bold text-fail">
                     {Math.round(Number(breach.normalized_score))}%
                   </span>
@@ -149,7 +149,7 @@ export function BreachDetailDrawer({ breachId, onClose }: BreachDetailDrawerProp
               <Section title="Actions">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-[12px] text-text-muted mb-1">Status</label>
+                    <label className="block text-xs text-text-muted mb-1">Status</label>
                     <select
                       value={breach.status}
                       onChange={(e) => handleStatusChange(e.target.value as BreachStatus)}
@@ -162,7 +162,7 @@ export function BreachDetailDrawer({ breachId, onClose }: BreachDetailDrawerProp
                     </select>
                   </div>
                   <div>
-                    <label className="block text-[12px] text-text-muted mb-1">Assigned To</label>
+                    <label className="block text-xs text-text-muted mb-1">Assigned To</label>
                     <select
                       value={breach.assigned_to || ''}
                       onChange={(e) => handleAssignChange(e.target.value)}
@@ -191,7 +191,7 @@ export function BreachDetailDrawer({ breachId, onClose }: BreachDetailDrawerProp
                   <button
                     type="submit"
                     disabled={saving || !note.trim()}
-                    className="bg-primary text-white px-[14px] py-[7px] rounded-btn text-[12px] font-semibold hover:bg-primary-hover disabled:opacity-50 transition-colors"
+                    className="bg-primary text-white px-[14px] py-[7px] rounded-btn text-xs font-semibold hover:bg-primary-hover disabled:opacity-50 transition-colors"
                   >
                     Add Note
                   </button>
@@ -205,7 +205,7 @@ export function BreachDetailDrawer({ breachId, onClose }: BreachDetailDrawerProp
                     {breach.events.map((e) => (
                       <div key={e.id} className="border-l-2 border-border pl-3 py-1">
                         <div className="flex items-baseline justify-between">
-                          <span className="text-[12px] font-semibold text-text-primary">
+                          <span className="text-xs font-semibold text-text-primary">
                             {formatEvent(e)}
                           </span>
                           <span className="text-[11px] text-text-muted ml-2">
@@ -213,7 +213,7 @@ export function BreachDetailDrawer({ breachId, onClose }: BreachDetailDrawerProp
                           </span>
                         </div>
                         {e.note && (
-                          <p className="text-[12px] text-text-cell mt-1 whitespace-pre-wrap">{e.note}</p>
+                          <p className="text-xs text-text-cell mt-1 whitespace-pre-wrap">{e.note}</p>
                         )}
                         {e.user_name && (
                           <div className="text-[11px] text-text-muted mt-1">by {e.user_name}</div>

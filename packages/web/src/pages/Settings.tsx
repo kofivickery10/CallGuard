@@ -104,7 +104,7 @@ export default function Settings() {
                     <path d={card.icon} />
                   </svg>
                 </div>
-                <span className="text-[15px] font-semibold text-text-primary group-hover:text-primary transition-colors">
+                <span className="text-section-title text-text-primary group-hover:text-primary transition-colors">
                   {card.label}
                 </span>
               </div>

@@ -188,7 +188,7 @@ export function Upload() {
                   </option>
                 ))}
               </select>
-              <p className="text-[12px] text-text-muted mt-1.5">
+              <p className="text-xs text-text-muted mt-1.5">
                 Leave on "active" unless you are scoring against a specific campaign or client scorecard.
               </p>
             </>
@@ -204,7 +204,7 @@ export function Upload() {
             placeholder="e.g. 07473 123456"
             className="w-full border border-border rounded-btn px-3 py-2 text-table-cell text-text-primary placeholder:text-text-muted focus:outline-none focus:border-primary transition-colors"
           />
-          <p className="text-[12px] text-text-muted mt-1.5">
+          <p className="text-xs text-text-muted mt-1.5">
             Needed to match this call to the customer's other calls (journey scoring, sale flag below).
           </p>
 
@@ -218,7 +218,7 @@ export function Upload() {
               />
               <span>
                 This call resulted in a sale
-                <span className="block text-[12px] text-text-muted font-normal">
+                <span className="block text-xs text-text-muted font-normal">
                   Scores this customer's journey immediately once transcribed, instead of waiting for a CRM sale trigger. Requires the customer phone above.
                 </span>
               </span>
@@ -238,7 +238,7 @@ export function Upload() {
       {uploading && (
         <div className="mt-6 bg-card border border-border rounded-xl p-10 text-center">
           <div className="w-10 h-10 border-[3px] border-border border-t-primary rounded-full animate-spin mx-auto mb-4" />
-          <div className="text-[16px] font-semibold text-text-primary">Processing your call...</div>
+          <div className="text-base font-semibold text-text-primary">Processing your call...</div>
           <div className="text-table-cell text-text-muted mt-1">Uploading and preparing for analysis</div>
         </div>
       )}
@@ -250,12 +250,12 @@ export function Upload() {
             className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-table-header transition-colors"
           >
             <div>
-              <div className="text-[15px] font-semibold text-text-primary">Bulk import from URLs</div>
+              <div className="text-section-title text-text-primary">Bulk import from URLs</div>
               <div className="text-table-cell text-text-muted mt-0.5">
                 Paste a CSV of recording URLs to ingest many historical calls at once. Up to 200 per batch.
               </div>
             </div>
-            <span className="text-text-muted text-[18px]">{bulkOpen ? '−' : '+'}</span>
+            <span className="text-text-muted text-lg">{bulkOpen ? '−' : '+'}</span>
           </button>
 
           {bulkOpen && (
@@ -270,7 +270,7 @@ export function Upload() {
                   rows={8}
                   spellCheck={false}
                   placeholder={`audio_url,agent_name,customer_phone,call_date,external_id,tags,scorecard_id\nhttps://your-archive.example.com/call-001.mp3,Marcus Webb,+44 7468 432 368,2026-04-29,crm-12345,suitability,\nhttps://your-archive.example.com/call-002.mp3,Tina Lee,+44 7468 432 368,2026-04-30,crm-12346,vulnerability,`}
-                  className="w-full border border-border rounded-btn px-3 py-2 text-[12px] font-mono text-text-primary placeholder:text-text-muted focus:outline-none focus:border-primary transition-colors bg-page"
+                  className="w-full border border-border rounded-btn px-3 py-2 text-xs font-mono text-text-primary placeholder:text-text-muted focus:outline-none focus:border-primary transition-colors bg-page"
                 />
                 <div className="text-[11px] text-text-muted mt-1.5">
                   Required: <code>audio_url</code>. Optional: <code>agent_name</code>, <code>customer_phone</code>, <code>call_date</code> (ISO), <code>external_id</code> (your CRM id, used for deduplication), <code>tags</code> (comma-separated), <code>scorecard_id</code> (UUID of a scorecard from <a href="/scorecards" className="text-primary hover:underline">Scorecards</a>; leave blank to use the active one).
@@ -293,8 +293,8 @@ export function Upload() {
                   </div>
                   {bulkResult.error_rows.length > 0 && (
                     <details className="mt-2">
-                      <summary className="cursor-pointer text-fail text-[12px] font-semibold">View errors</summary>
-                      <ul className="mt-2 text-[12px] text-text-secondary space-y-1">
+                      <summary className="cursor-pointer text-fail text-xs font-semibold">View errors</summary>
+                      <ul className="mt-2 text-xs text-text-secondary space-y-1">
                         {bulkResult.error_rows.map((e) => (
                           <li key={e.row} className="font-mono">
                             row {e.row + 1}: {e.audio_url || '(missing url)'} - {e.error}

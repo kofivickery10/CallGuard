@@ -107,7 +107,7 @@ export function Journeys() {
               <tr key={j.id} className="hover:bg-table-header transition-colors border-b border-border-light last:border-0">
                 <td className="px-5 py-3.5 text-table-cell">
                   <div className="font-semibold text-text-primary">{j.customer_name || 'Unknown customer'}</div>
-                  <div className="text-[12px] text-text-muted">{j.customer_phone || '—'}</div>
+                  <div className="text-xs text-text-muted">{j.customer_phone || '—'}</div>
                 </td>
                 <td className="px-5 py-3.5 text-table-cell text-text-cell tabular-nums">{j.call_count}</td>
                 <td className="px-5 py-3.5 text-table-cell text-text-secondary">{j.branch || '—'}</td>
@@ -138,7 +138,7 @@ export function Journeys() {
         </table>
       </div>
       {data && data.total > journeys.length && (
-        <p className="text-[12px] text-text-muted mt-3">
+        <p className="text-xs text-text-muted mt-3">
           Showing {journeys.length} of {data.total}. Refine with the status filter.
         </p>
       )}

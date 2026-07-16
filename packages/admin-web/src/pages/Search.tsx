@@ -34,7 +34,7 @@ export default function Search() {
 
   return (
     <div className="p-6 space-y-5">
-      <h1 className="text-xl font-bold text-text-primary">Search</h1>
+      <h2 className="text-page-title text-text-primary">Search</h2>
       <form onSubmit={submit} className="flex gap-2 max-w-xl">
         <input
           type="text"

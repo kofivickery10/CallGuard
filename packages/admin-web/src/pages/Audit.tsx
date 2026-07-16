@@ -59,7 +59,7 @@ export default function Audit() {
 
   return (
     <div className="p-6 space-y-4">
-      <h1 className="text-xl font-bold text-text-primary">Audit Log</h1>
+      <h2 className="text-page-title text-text-primary">Audit Log</h2>
       <p className="text-page-sub text-text-subtle">Every recorded action across all tenants, newest first.</p>
 
       <div className="flex flex-wrap gap-3 items-end bg-card border border-border rounded-card p-4">

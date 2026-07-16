@@ -103,9 +103,9 @@ hr { border: none; border-top: 1px solid #e2e8e2; margin: 24px 0; }
             onClick={() => setSelected(doc)}
             className="bg-card border border-border rounded-card p-5 text-left hover:border-primary hover:shadow-md transition-all"
           >
-            <h3 className="text-[15px] font-semibold text-text-primary mb-2">{doc.title}</h3>
+            <h3 className="text-section-title text-text-primary mb-2">{doc.title}</h3>
             <p className="text-table-cell text-text-subtle leading-relaxed">{doc.description}</p>
-            <div className="mt-4 text-[12px] text-primary font-semibold">
+            <div className="mt-4 text-xs text-primary font-semibold">
               Generate &rarr;
             </div>
           </button>
@@ -116,7 +116,7 @@ hr { border: none; border-top: 1px solid #e2e8e2; margin: 24px 0; }
         <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto py-8">
           <div className="absolute inset-0 bg-black/40" onClick={handleClose} />
           <div className="relative bg-card border border-border rounded-card w-full max-w-2xl p-6 shadow-lg my-auto">
-            <h3 className="text-[15px] font-semibold text-text-primary mb-1">{selected.title}</h3>
+            <h3 className="text-section-title text-text-primary mb-1">{selected.title}</h3>
             <p className="text-table-cell text-text-subtle mb-5">{selected.description}</p>
 
             {error && (
@@ -128,7 +128,7 @@ hr { border: none; border-top: 1px solid #e2e8e2; margin: 24px 0; }
             {!rendered ? (
               <form onSubmit={handleGenerate} className="space-y-4">
                 <div>
-                  <label className="block text-[12px] text-text-muted mb-1">Data Controller Name</label>
+                  <label className="block text-xs text-text-muted mb-1">Data Controller Name</label>
                   <input
                     type="text"
                     value={controllerName}
@@ -139,7 +139,7 @@ hr { border: none; border-top: 1px solid #e2e8e2; margin: 24px 0; }
                   />
                 </div>
                 <div>
-                  <label className="block text-[12px] text-text-muted mb-1">DPO Email</label>
+                  <label className="block text-xs text-text-muted mb-1">DPO Email</label>
                   <input
                     type="email"
                     value={dpoEmail}

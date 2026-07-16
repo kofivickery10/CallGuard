@@ -58,7 +58,7 @@ export function DialogProvider({ children }: { children: ReactNode }) {
           />
           <div className="relative bg-card border border-border rounded-card w-full max-w-sm p-6 shadow-lg my-auto">
             {state.options.title && (
-              <h3 className="text-[15px] font-semibold text-text-primary mb-2">{state.options.title}</h3>
+              <h3 className="text-section-title text-text-primary mb-2">{state.options.title}</h3>
             )}
             <p className="text-table-cell text-text-secondary whitespace-pre-line mb-5">{state.message}</p>
             <div className="flex gap-2 justify-end">

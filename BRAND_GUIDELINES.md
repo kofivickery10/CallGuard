@@ -59,6 +59,14 @@ modifiers work everywhere (`bg-primary/10`, `ring-primary/40`).
 | `primary-hover` | `#3D8A5E` | `#6ABB8A` | Hover on primary surfaces |
 | `primary-light` | `#E8F0E8` | `#1F2E24` | Active-nav background, subtle green fills |
 
+> **Two greens on dark, by design.** The UI dark-mode primary token is `#57AB7A`
+> (product surfaces). The logo's "AI" and tagline periods on dark backgrounds use a
+> brighter `#6CC18D` (see the logo README / `*-primary-dark.svg`). These are
+> deliberately different — the logo accent is tuned for a small mark, the token for
+> large UI fills — so don't "reconcile" them to one value. The light primary
+> `#4A9E6E` must never appear as the "AI" colour on a dark background (that was a
+> stale-logo bug); use `#6CC18D` there.
+
 ### Semantic status (each has a matching `-bg`)
 | Purpose | Token | Light text / bg | Dark text / bg |
 |---|---|---|---|

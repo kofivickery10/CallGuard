@@ -12,7 +12,7 @@ export function ThemeToggle({ className = '' }: { className?: string }) {
       aria-checked={isDark}
       aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
       title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-      className={`flex items-center gap-1 text-text-muted hover:text-text-secondary transition-colors text-[12px] ${className}`}
+      className={`flex items-center gap-1 text-text-muted hover:text-text-secondary transition-colors text-xs ${className}`}
     >
       {isDark ? (
         // Sun

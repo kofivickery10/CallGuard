@@ -208,7 +208,7 @@ export function Breaches() {
                   onClick={() => setSelectedId(b.id)}
                   className="border-b border-border-light last:border-0 hover:bg-table-header cursor-pointer"
                 >
-                  <td className="px-5 py-3.5 text-table-cell text-text-cell font-mono text-[12px]">
+                  <td className="px-5 py-3.5 text-table-cell text-text-cell font-mono text-xs">
                     {new Date(b.detected_at).toLocaleDateString('en-GB')}
                   </td>
                   <td className="px-5 py-3.5 text-table-cell">
@@ -237,7 +237,7 @@ export function Breaches() {
         {totalPages > 1 && (
           <div className="flex items-center justify-between px-5 py-3 border-t border-border bg-table-header">
             <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="text-table-cell text-text-secondary hover:text-text-primary disabled:opacity-40">Previous</button>
-            <span className="text-[12px] text-text-muted">{page} / {totalPages} ({data?.total} total)</span>
+            <span className="text-xs text-text-muted">{page} / {totalPages} ({data?.total} total)</span>
             <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="text-table-cell text-text-secondary hover:text-text-primary disabled:opacity-40">Next</button>
           </div>
         )}

@@ -74,7 +74,7 @@ export function JourneyDetail() {
           <div className="flex items-center gap-4 mt-1.5 text-table-cell text-text-subtle">
             <span className="capitalize">{journey.status}</span>
             {journey.branch && (
-              <span className="px-2 py-[2px] rounded bg-primary-light text-pass text-[12px] font-semibold">
+              <span className="px-2 py-[2px] rounded bg-primary-light text-pass text-xs font-semibold">
                 Branch: {journey.branch}
               </span>
             )}
@@ -95,14 +95,14 @@ export function JourneyDetail() {
       {journey.status === 'failed' && journey.error_message && (
         <div className="bg-fail-bg border-l-[3px] border-l-fail rounded-r-lg p-4 mb-6">
           <div className="text-table-cell font-semibold text-fail">Scoring failed</div>
-          <div className="text-[12px] text-flag-text mt-1">{journey.error_message}</div>
+          <div className="text-xs text-flag-text mt-1">{journey.error_message}</div>
         </div>
       )}
 
       {(journey.status === 'pending' || journey.status === 'scoring') && (
         <div className="bg-card border border-border rounded-xl p-10 text-center mb-6">
           <div className="w-10 h-10 border-[3px] border-border border-t-primary rounded-full animate-spin mx-auto mb-4" />
-          <div className="text-[16px] font-semibold text-text-primary">
+          <div className="text-base font-semibold text-text-primary">
             {journey.status === 'pending' ? 'Queued for scoring' : 'Scoring the journey'}
           </div>
         </div>
@@ -112,8 +112,8 @@ export function JourneyDetail() {
         {/* Checkpoints */}
         <div className="lg:col-span-2 bg-card border border-border rounded-card overflow-hidden">
           <div className="px-5 py-4 border-b border-border flex items-center justify-between">
-            <h3 className="text-[15px] font-semibold text-text-primary">Checkpoints ({journey.item_scores.length})</h3>
-            <div className="text-[12px] text-text-muted">
+            <h3 className="text-section-title text-text-primary">Checkpoints ({journey.item_scores.length})</h3>
+            <div className="text-xs text-text-muted">
               {failed.length} failed · {pendingReview.length} to review
             </div>
           </div>
@@ -129,7 +129,7 @@ export function JourneyDetail() {
                     )}
                     <div className="text-table-cell text-text-secondary">{item.label}</div>
                     {item.evidence && (
-                      <blockquote className="text-[12px] text-text-muted italic border-l-2 border-border pl-2.5 mt-1.5 leading-relaxed">
+                      <blockquote className="text-xs text-text-muted italic border-l-2 border-border pl-2.5 mt-1.5 leading-relaxed">
                         {item.evidence}
                         {item.source_call_id && (
                           <Link to={`/calls/${item.source_call_id}`} className="not-italic ml-2 text-primary hover:underline">
@@ -139,7 +139,7 @@ export function JourneyDetail() {
                       </blockquote>
                     )}
                     {item.reasoning && (
-                      <p className="text-[12px] text-text-muted mt-1.5 leading-relaxed">{item.reasoning}</p>
+                      <p className="text-xs text-text-muted mt-1.5 leading-relaxed">{item.reasoning}</p>
                     )}
                   </div>
                   <div className="flex flex-col items-end gap-2 flex-shrink-0">
@@ -173,7 +173,7 @@ export function JourneyDetail() {
         <div className="space-y-4">
           <div className="bg-card border border-border rounded-card overflow-hidden">
             <div className="px-5 py-4 border-b border-border">
-              <h3 className="text-[15px] font-semibold text-text-primary">Calls in this journey ({journey.calls.length})</h3>
+              <h3 className="text-section-title text-text-primary">Calls in this journey ({journey.calls.length})</h3>
             </div>
             <div>
               {journey.calls.map((c) => (
@@ -186,7 +186,7 @@ export function JourneyDetail() {
                     <div className="text-table-cell text-text-primary">
                       {c.call_date ? new Date(c.call_date).toLocaleDateString('en-GB') : 'Undated'}
                     </div>
-                    <div className="text-[12px] text-text-muted">{c.agent_name || 'Unknown agent'}</div>
+                    <div className="text-xs text-text-muted">{c.agent_name || 'Unknown agent'}</div>
                   </div>
                   {c.role === 'wrap_up' && (
                     <span className="text-[10px] uppercase tracking-wider text-pass font-semibold">Wrap-up</span>
@@ -198,7 +198,7 @@ export function JourneyDetail() {
 
           <div className="bg-card border border-border rounded-card overflow-hidden">
             <div className="px-5 py-4 border-b border-border">
-              <h3 className="text-[15px] font-semibold text-text-primary">Breaches ({failed.length})</h3>
+              <h3 className="text-section-title text-text-primary">Breaches ({failed.length})</h3>
             </div>
             {failed.length === 0 ? (
               <p className="px-5 py-6 text-center text-text-muted text-table-cell">No failed checkpoints</p>

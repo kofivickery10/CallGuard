@@ -34,7 +34,7 @@ export function PublicCallView() {
         <div className="max-w-md text-center">
           <div className="text-[22px] font-semibold text-text-primary mb-2">Link Unavailable</div>
           <p className="text-table-cell text-text-subtle">{(error as Error).message}</p>
-          <p className="text-[12px] text-text-muted mt-4">This link may have expired or been revoked.</p>
+          <p className="text-xs text-text-muted mt-4">This link may have expired or been revoked.</p>
         </div>
       </div>
     );
@@ -54,7 +54,7 @@ export function PublicCallView() {
       {/* Content */}
       <main className="flex-1 max-w-3xl mx-auto w-full p-8">
         <div className="mb-6">
-          <div className="text-[12px] uppercase tracking-wider text-text-muted">{data.organization_name}</div>
+          <div className="text-xs uppercase tracking-wider text-text-muted">{data.organization_name}</div>
           <h1 className="text-page-title text-text-primary mt-1">Call Quality Summary</h1>
           <p className="text-page-sub text-text-subtle mt-1">
             {data.file_name}
@@ -66,14 +66,14 @@ export function PublicCallView() {
         {/* Score card */}
         <div className="bg-card border border-border rounded-card p-6 mb-6 flex items-center justify-between">
           <div>
-            <div className="text-[12px] uppercase tracking-wider text-text-muted mb-1">Overall Score</div>
+            <div className="text-xs uppercase tracking-wider text-text-muted mb-1">Overall Score</div>
             <div className="flex items-baseline gap-3">
               {data.overall_score != null ? (
                 <>
                   <span className={`text-[48px] font-bold font-mono ${scoreColor(data.overall_score)}`}>
                     {Math.round(data.overall_score)}%
                   </span>
-                  <span className={`px-3 py-1 rounded-[20px] text-[12px] font-semibold uppercase ${
+                  <span className={`px-3 py-1 rounded-[20px] text-xs font-semibold uppercase ${
                     data.pass ? 'bg-pass-bg text-pass' : 'bg-fail-bg text-fail'
                   }`}>
                     {data.pass ? 'Pass' : 'Needs Review'}
@@ -90,7 +90,7 @@ export function PublicCallView() {
         {data.items.length > 0 && (
           <div className="bg-card border border-border rounded-card overflow-hidden mb-6">
             <div className="px-5 py-3 border-b border-border">
-              <h3 className="text-[15px] font-semibold text-text-primary">Quality Criteria</h3>
+              <h3 className="text-section-title text-text-primary">Quality Criteria</h3>
             </div>
             {data.items.map((item, i) => (
               <div
@@ -121,7 +121,7 @@ export function PublicCallView() {
       </main>
 
       {/* Footer */}
-      <footer className="text-center py-6 text-[12px] text-text-muted">
+      <footer className="text-center py-6 text-xs text-text-muted">
         Powered by CallGuard · Secure AI Call QA
       </footer>
     </div>
@@ -158,7 +158,7 @@ function FeedbackForm({ token, onSubmitted }: { token: string; onSubmitted: () =
 
   return (
     <div className="bg-card border border-border rounded-card p-5">
-      <h3 className="text-[15px] font-semibold text-text-primary mb-1">Your Feedback (optional)</h3>
+      <h3 className="text-section-title text-text-primary mb-1">Your Feedback (optional)</h3>
       <p className="text-table-cell text-text-subtle mb-4">
         How satisfied were you with your call? Your feedback helps improve our service.
       </p>

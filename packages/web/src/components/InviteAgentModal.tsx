@@ -45,7 +45,7 @@ export function InviteAgentModal({ open, onClose }: InviteAgentModalProps) {
       <div className="relative bg-card border border-border rounded-card w-full max-w-md p-6 shadow-lg">
         {created ? (
           <div>
-            <h3 className="text-[15px] font-semibold text-text-primary mb-2">Agent Created</h3>
+            <h3 className="text-section-title text-text-primary mb-2">Agent Created</h3>
             <p className="text-table-cell text-text-subtle mb-4">Share these credentials with the agent:</p>
             <div className="bg-table-header rounded-btn p-4 space-y-1 text-table-cell">
               <div><span className="text-text-muted">Email: </span><span className="text-text-primary font-medium">{created.email}</span></div>
@@ -57,7 +57,7 @@ export function InviteAgentModal({ open, onClose }: InviteAgentModalProps) {
           </div>
         ) : (
           <form onSubmit={handleSubmit}>
-            <h3 className="text-[15px] font-semibold text-text-primary mb-1">Invite Agent</h3>
+            <h3 className="text-section-title text-text-primary mb-1">Invite Agent</h3>
             <p className="text-table-cell text-text-subtle mb-5">Create an account for a team member</p>
 
             {error && <div className="bg-fail-bg text-fail px-4 py-2 rounded-btn text-table-cell mb-4">{error}</div>}

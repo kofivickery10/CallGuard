@@ -81,10 +81,10 @@ export function TwoFactorEnroll() {
                     className="w-44 h-44 border border-border rounded-card bg-white p-2"
                   />
                   <details className="w-full text-center">
-                    <summary className="text-[12px] text-text-muted cursor-pointer">
+                    <summary className="text-xs text-text-muted cursor-pointer">
                       Can't scan? Enter this key manually
                     </summary>
-                    <code className="block mt-2 text-[13px] break-all bg-page rounded-btn px-3 py-2 text-text-primary">
+                    <code className="block mt-2 text-table-cell break-all bg-page rounded-btn px-3 py-2 text-text-primary">
                       {setup.secret}
                     </code>
                   </details>
@@ -121,14 +121,14 @@ export function TwoFactorEnroll() {
 
           {step === 'backup' && (
             <>
-              <h2 className="text-[18px] font-semibold text-text-primary">Save your backup codes</h2>
+              <h2 className="text-lg font-semibold text-text-primary">Save your backup codes</h2>
               <p className="text-table-cell text-text-secondary">
                 Store these somewhere safe. Each code can be used once to sign in if you lose access
                 to your authenticator. They won't be shown again.
               </p>
               <div className="grid grid-cols-2 gap-2 bg-page rounded-card p-4">
                 {backupCodes.map((c) => (
-                  <code key={c} className="text-[13px] text-text-primary text-center py-1">
+                  <code key={c} className="text-table-cell text-text-primary text-center py-1">
                     {c}
                   </code>
                 ))}
@@ -144,7 +144,7 @@ export function TwoFactorEnroll() {
 
           <button
             onClick={logout}
-            className="w-full text-center text-[12px] text-text-muted hover:text-text-secondary"
+            className="w-full text-center text-xs text-text-muted hover:text-text-secondary"
           >
             Sign out
           </button>

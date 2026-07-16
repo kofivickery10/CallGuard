@@ -50,19 +50,19 @@ export function ScoreCorrectionModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <div className="relative bg-card border border-border rounded-card w-full max-w-lg p-6 shadow-lg">
-        <h3 className="text-[15px] font-semibold text-text-primary mb-1">Correct Score</h3>
+        <h3 className="text-section-title text-text-primary mb-1">Correct Score</h3>
         <p className="text-table-cell text-text-subtle mb-4">
           Your correction is saved and becomes a calibration example in future scoring prompts.
           The AI learns your firm's interpretation over time.
         </p>
 
         <div className="bg-table-header rounded-btn p-3 mb-4">
-          <div className="text-[12px] text-text-muted font-semibold mb-1">Criterion</div>
+          <div className="text-xs text-text-muted font-semibold mb-1">Criterion</div>
           <div className="text-table-cell text-text-primary">{itemLabel}</div>
           {evidence && (
             <>
-              <div className="text-[12px] text-text-muted font-semibold mt-2 mb-1">AI evidence</div>
-              <div className="text-[12px] text-text-cell italic">"{evidence}"</div>
+              <div className="text-xs text-text-muted font-semibold mt-2 mb-1">AI evidence</div>
+              <div className="text-xs text-text-cell italic">"{evidence}"</div>
             </>
           )}
         </div>
@@ -73,7 +73,7 @@ export function ScoreCorrectionModal({
 
         <form onSubmit={handleSave}>
           <div className="mb-4">
-            <label className="block text-[12px] text-text-muted font-semibold mb-2">Correct verdict</label>
+            <label className="block text-xs text-text-muted font-semibold mb-2">Correct verdict</label>
             <div className="flex gap-2">
               <button
                 type="button"
@@ -104,7 +104,7 @@ export function ScoreCorrectionModal({
           </div>
 
           <div className="mb-4">
-            <label className="block text-[12px] text-text-muted font-semibold mb-1">Reason (optional)</label>
+            <label className="block text-xs text-text-muted font-semibold mb-1">Reason (optional)</label>
             <textarea
               value={reason}
               onChange={(e) => setReason(e.target.value)}

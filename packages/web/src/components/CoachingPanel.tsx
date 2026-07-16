@@ -21,7 +21,7 @@ export function CoachingPanel({ coaching, plan, callStatus, isAdmin, priorCoachi
     return (
       <div className="bg-card border border-border rounded-card overflow-hidden">
         <div className="px-5 py-4 border-b border-border flex items-center justify-between">
-          <h3 className="text-[15px] font-semibold text-text-primary flex items-center gap-2">
+          <h3 className="text-section-title text-text-primary flex items-center gap-2">
             Coaching
             <span className="text-[10px] font-semibold uppercase tracking-wider bg-secondary/20 text-secondary px-1.5 py-0.5 rounded">
               Premium
@@ -40,7 +40,7 @@ export function CoachingPanel({ coaching, plan, callStatus, isAdmin, priorCoachi
               Upgrade your plan
             </Link>
           ) : (
-            <p className="text-[12px] text-text-muted">
+            <p className="text-xs text-text-muted">
               Ask your admin to upgrade to {PLAN_LABELS.professional} or {PLAN_LABELS.enterprise} to enable this feature.
             </p>
           )}
@@ -54,7 +54,7 @@ export function CoachingPanel({ coaching, plan, callStatus, isAdmin, priorCoachi
     return (
       <div className="bg-card border border-border rounded-card overflow-hidden">
         <div className="px-5 py-4 border-b border-border">
-          <h3 className="text-[15px] font-semibold text-text-primary">Coaching</h3>
+          <h3 className="text-section-title text-text-primary">Coaching</h3>
         </div>
         <div className="p-6 text-center text-table-cell text-text-muted">
           {callStatus === 'scored'
@@ -68,7 +68,7 @@ export function CoachingPanel({ coaching, plan, callStatus, isAdmin, priorCoachi
   return (
     <div className="bg-card border border-border rounded-card overflow-hidden">
       <div className="px-5 py-4 border-b border-border flex items-center justify-between">
-        <h3 className="text-[15px] font-semibold text-text-primary flex items-center gap-2">
+        <h3 className="text-section-title text-text-primary flex items-center gap-2">
           Coaching
           <span className="text-[10px] font-semibold uppercase tracking-wider text-text-muted flex items-center gap-1">
             <svg viewBox="0 0 24 24" className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="2">
@@ -155,7 +155,7 @@ function CoachingList({
           )}
           {icon === 'arrow' && <path d="M5 12h14M13 6l6 6-6 6" />}
         </svg>
-        <span className="text-[12px] font-semibold uppercase tracking-wider">{title}</span>
+        <span className="text-xs font-semibold uppercase tracking-wider">{title}</span>
       </div>
       <ul className={`${bgClass} rounded-btn p-3 space-y-2`}>
         {items.map((item, i) => (

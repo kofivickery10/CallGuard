@@ -136,7 +136,7 @@ export function AuditLog() {
 
             {data?.data.map((e) => (
               <tr key={e.id} className="hover:bg-table-header transition-colors border-b border-border-light last:border-0">
-                <td className="px-5 py-3 text-[12px] text-text-muted whitespace-nowrap font-mono">
+                <td className="px-5 py-3 text-xs text-text-muted whitespace-nowrap font-mono">
                   {new Date(e.created_at).toLocaleString()}
                 </td>
                 <td className="px-5 py-3 text-table-cell text-text-cell">
@@ -150,7 +150,7 @@ export function AuditLog() {
                 <td className="px-5 py-3 text-table-cell text-text-cell">
                   {e.summary || <span className="text-text-muted">{e.entity_type}{e.entity_id ? ` #${e.entity_id}` : ''}</span>}
                 </td>
-                <td className="px-5 py-3 text-[12px] text-text-muted font-mono whitespace-nowrap">
+                <td className="px-5 py-3 text-xs text-text-muted font-mono whitespace-nowrap">
                   {e.ip_address || '--'}
                 </td>
               </tr>
@@ -163,7 +163,7 @@ export function AuditLog() {
             <button onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page === 0} className="text-table-cell text-text-secondary hover:text-text-primary disabled:opacity-40 transition-colors">
               Previous
             </button>
-            <span className="text-[12px] text-text-muted">{page + 1} / {totalPages}</span>
+            <span className="text-xs text-text-muted">{page + 1} / {totalPages}</span>
             <button onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1} className="text-table-cell text-text-secondary hover:text-text-primary disabled:opacity-40 transition-colors">
               Next
             </button>

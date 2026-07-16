@@ -74,10 +74,10 @@ export function Calibration() {
               {/* Agreement headline (the real moat metric) */}
               {data.current_agreement_pct != null && (
                 <div className="bg-card border border-border rounded-card p-5 mb-5">
-                  <h3 className="text-[13px] uppercase tracking-wider text-text-muted font-semibold mb-1">
+                  <h3 className="text-table-cell uppercase tracking-wider text-text-muted font-semibold mb-1">
                     AI ↔ reviewer agreement
                   </h3>
-                  <p className="text-[12px] text-text-subtle mb-3">
+                  <p className="text-xs text-text-subtle mb-3">
                     On calls your reviewers checked, the share of item scores they agreed with. Higher
                     means the AI is scoring the way your team does.
                   </p>
@@ -87,7 +87,7 @@ export function Calibration() {
                     </div>
                     {data.previous_agreement_pct != null && (
                       <span
-                        className={`mb-1.5 text-[12px] font-semibold px-2 py-0.5 rounded ${
+                        className={`mb-1.5 text-xs font-semibold px-2 py-0.5 rounded ${
                           data.current_agreement_pct >= data.previous_agreement_pct
                             ? 'bg-pass-bg text-pass'
                             : 'bg-fail-bg text-fail'
@@ -98,7 +98,7 @@ export function Calibration() {
                       </span>
                     )}
                   </div>
-                  <div className="text-[12px] text-text-muted mt-1">
+                  <div className="text-xs text-text-muted mt-1">
                     Across {data.total_reviewed_items} reviewed item scores.
                   </div>
                 </div>
@@ -106,21 +106,21 @@ export function Calibration() {
 
               {/* Override rate */}
               <div className="bg-card border border-border rounded-card p-5 mb-5">
-                <h3 className="text-[13px] uppercase tracking-wider text-text-muted font-semibold mb-1">
+                <h3 className="text-table-cell uppercase tracking-wider text-text-muted font-semibold mb-1">
                   Reviewer override rate
                 </h3>
-                <p className="text-[12px] text-text-subtle mb-3">
+                <p className="text-xs text-text-subtle mb-3">
                   How often a reviewer had to override the AI, per 100 scored calls. Lower means the
                   AI is more aligned with your team.
                 </p>
                 <div className="flex items-end gap-3">
                   <div className="text-[34px] font-bold text-text-primary leading-none">
                     {cur != null ? cur : '—'}
-                    <span className="text-[16px] text-text-muted font-semibold"> / 100 calls</span>
+                    <span className="text-base text-text-muted font-semibold"> / 100 calls</span>
                   </div>
                   {prev != null && cur != null && (
                     <span
-                      className={`mb-1 text-[12px] font-semibold px-2 py-0.5 rounded ${
+                      className={`mb-1 text-xs font-semibold px-2 py-0.5 rounded ${
                         improving ? 'bg-pass-bg text-pass' : worsening ? 'bg-fail-bg text-fail' : 'bg-table-header text-text-muted'
                       }`}
                     >
@@ -128,14 +128,14 @@ export function Calibration() {
                     </span>
                   )}
                 </div>
-                <div className="text-[12px] text-text-muted mt-1">
+                <div className="text-xs text-text-muted mt-1">
                   {data.total_corrections} total corrections used to calibrate the AI to date.
                 </div>
               </div>
 
               {/* Trend */}
               <div className="bg-card border border-border rounded-card p-5 mb-5">
-                <h3 className="text-[13px] uppercase tracking-wider text-text-muted font-semibold mb-3">
+                <h3 className="text-table-cell uppercase tracking-wider text-text-muted font-semibold mb-3">
                   Trend (last 6 months)
                 </h3>
                 <div className="flex items-end gap-3 h-32">
@@ -162,10 +162,10 @@ export function Calibration() {
               {/* Where it disagrees most */}
               {data.top_items.length > 0 && (
                 <div className="bg-card border border-border rounded-card p-5">
-                  <h3 className="text-[13px] uppercase tracking-wider text-text-muted font-semibold mb-1">
+                  <h3 className="text-table-cell uppercase tracking-wider text-text-muted font-semibold mb-1">
                     Items needing the most calibration
                   </h3>
-                  <p className="text-[12px] text-text-subtle mb-3">
+                  <p className="text-xs text-text-subtle mb-3">
                     Where reviewers override the AI most — and which way it leans.
                   </p>
                   <div className="space-y-2">
@@ -183,7 +183,7 @@ export function Calibration() {
                               {it.too_harsh} too harsh
                             </span>
                           )}
-                          <span className="text-[12px] text-text-muted w-10 text-right">{it.corrections}</span>
+                          <span className="text-xs text-text-muted w-10 text-right">{it.corrections}</span>
                         </div>
                       </div>
                     ))}

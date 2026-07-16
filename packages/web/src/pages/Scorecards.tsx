@@ -28,15 +28,15 @@ export function Scorecards() {
               to={`/scorecards/${scorecard.id}/edit`}
               className="bg-card border border-border rounded-card p-5 cursor-pointer transition-all hover:border-primary hover:shadow-md group"
             >
-              <h4 className="text-[14px] font-semibold text-text-primary mb-1.5">
+              <h4 className="text-sm font-semibold text-text-primary mb-1.5">
                 {scorecard.name}
               </h4>
               {scorecard.description && (
-                <p className="text-[12px] text-text-subtle leading-relaxed">
+                <p className="text-xs text-text-subtle leading-relaxed">
                   {scorecard.description}
                 </p>
               )}
-              <div className="mt-3 text-[12px] text-primary font-semibold">
+              <div className="mt-3 text-xs text-primary font-semibold">
                 {scorecard.is_active ? 'Active' : 'Inactive'}
               </div>
             </Link>
@@ -48,7 +48,7 @@ export function Scorecards() {
             className="border-2 border-dashed border-border rounded-card p-5 flex flex-col items-center justify-center text-text-muted cursor-pointer transition-all hover:text-primary hover:border-primary min-h-[120px]"
           >
             <span className="text-[28px] font-light leading-none mb-1">+</span>
-            <span className="text-[12px] font-medium">Create New Scorecard</span>
+            <span className="text-xs font-medium">Create New Scorecard</span>
           </Link>
         </div>
       )}

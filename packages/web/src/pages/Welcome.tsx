@@ -28,26 +28,26 @@ export function Welcome() {
 
       {/* Hero */}
       <section className="max-w-4xl mx-auto px-6 py-24 text-center">
-        <div className="inline-block px-3 py-1 rounded-[20px] bg-primary-light text-pass text-[12px] font-semibold uppercase tracking-wider mb-6">
+        <div className="inline-block px-3 py-1 rounded-[20px] bg-primary-light text-pass text-xs font-semibold uppercase tracking-wider mb-6">
           AI-Powered Call Quality Assurance
         </div>
         <h1 className="text-[40px] md:text-[56px] font-bold text-text-primary leading-[1.1] tracking-tight">
           100% of calls, scored in under 5 minutes.
         </h1>
-        <p className="text-[18px] text-text-subtle mt-6 leading-relaxed max-w-2xl mx-auto">
+        <p className="text-lg text-text-subtle mt-6 leading-relaxed max-w-2xl mx-auto">
           CallGuard transcribes and evaluates every customer call against your compliance scorecard -
           automatically. Replace spot-check QA with complete coverage. Catch breaches in hours, not weeks.
         </p>
         <div className="flex items-center justify-center gap-3 mt-10">
           <a
             href="#demo"
-            className="bg-primary text-white px-6 py-3 rounded-btn text-[15px] font-semibold hover:bg-primary-hover transition-colors"
+            className="bg-primary text-white px-6 py-3 rounded-btn text-section-title hover:bg-primary-hover transition-colors"
           >
             Request Demo
           </a>
           <Link
             to="/login"
-            className="px-6 py-3 rounded-btn border border-border text-text-cell text-[15px] font-semibold hover:bg-card transition-colors"
+            className="px-6 py-3 rounded-btn border border-border text-text-cell text-section-title hover:bg-card transition-colors"
           >
             Sign In
           </Link>
@@ -145,7 +145,7 @@ export function Welcome() {
 
       {/* Footer */}
       <footer className="bg-card border-t border-border py-8">
-        <div className="max-w-6xl mx-auto px-6 flex flex-col md:flex-row justify-between items-center gap-4 text-[12px] text-text-muted">
+        <div className="max-w-6xl mx-auto px-6 flex flex-col md:flex-row justify-between items-center gap-4 text-xs text-text-muted">
           <div>
             &copy; {new Date().getFullYear()} CallGuard. UK-based. UK data residency. AES-256 encryption at rest.
           </div>
@@ -163,7 +163,7 @@ function ProblemCard({ value, label, detail }: { value: string; label: string; d
   return (
     <div className="bg-card border border-border rounded-card p-6">
       <div className="text-[36px] font-bold text-fail font-mono">{value}</div>
-      <div className="text-[13px] font-semibold text-text-primary mt-1">{label}</div>
+      <div className="text-table-cell font-semibold text-text-primary mt-1">{label}</div>
       <div className="text-table-cell text-text-subtle mt-2 leading-relaxed">{detail}</div>
     </div>
   );
@@ -175,7 +175,7 @@ function StepCard({ n, title, body }: { n: string; title: string; body: string }
       <div className="w-10 h-10 rounded-full bg-primary-light text-pass font-bold mx-auto flex items-center justify-center font-mono">
         {n}
       </div>
-      <h3 className="text-[15px] font-semibold text-text-primary mt-4">{title}</h3>
+      <h3 className="text-section-title text-text-primary mt-4">{title}</h3>
       <p className="text-table-cell text-text-subtle mt-2 leading-relaxed">{body}</p>
     </div>
   );
@@ -184,7 +184,7 @@ function StepCard({ n, title, body }: { n: string; title: string; body: string }
 function FeatureCard({ title, body }: { title: string; body: string }) {
   return (
     <div className="bg-card border border-border rounded-card p-6 hover:border-primary hover:shadow-md transition-all">
-      <h3 className="text-[15px] font-semibold text-text-primary">{title}</h3>
+      <h3 className="text-section-title text-text-primary">{title}</h3>
       <p className="text-table-cell text-text-subtle mt-2 leading-relaxed">{body}</p>
     </div>
   );
@@ -214,7 +214,7 @@ function PricingCard({
           Most popular
         </div>
       )}
-      <h3 className="text-[18px] font-bold text-text-primary">{tier}</h3>
+      <h3 className="text-lg font-bold text-text-primary">{tier}</h3>
       <p className="text-table-cell text-text-subtle mt-0.5">{description}</p>
       <div className="mt-4 flex items-baseline gap-1">
         <span className="text-[36px] font-bold text-text-primary">{price}</span>
@@ -281,7 +281,7 @@ function DemoForm() {
   if (success) {
     return (
       <div className="bg-pass-bg border border-pass/20 rounded-card p-8 text-center">
-        <div className="text-[18px] font-semibold text-pass mb-1">Thanks - we'll be in touch shortly.</div>
+        <div className="text-lg font-semibold text-pass mb-1">Thanks - we'll be in touch shortly.</div>
         <p className="text-table-cell text-text-subtle">
           Expect a reply within one business day. In the meantime,{' '}
           <Link to="/login" className="text-primary font-semibold hover:underline">
@@ -367,7 +367,7 @@ const inputCls =
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="block text-[12px] text-text-muted mb-1">{label}</label>
+      <label className="block text-xs text-text-muted mb-1">{label}</label>
       {children}
     </div>
   );

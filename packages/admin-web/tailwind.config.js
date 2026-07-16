@@ -46,6 +46,10 @@ export default {
           DEFAULT: v('--cg-processing'),
           bg: v('--cg-processing-bg'),
         },
+        secondary: {
+          DEFAULT: v('--cg-secondary'),
+          bg: v('--cg-secondary-bg'),
+        },
         chart: {
           secondary: v('--cg-chart-secondary'),
         },
@@ -75,6 +79,7 @@ export default {
       fontSize: {
         'page-title': ['19px', { lineHeight: '1.3', fontWeight: '700', letterSpacing: '-0.2px' }],
         'page-sub': ['13px', { lineHeight: '1.5', fontWeight: '400' }],
+        'section-title': ['15px', { lineHeight: '1.4', fontWeight: '600' }],
         'card-label': ['11px', { lineHeight: '1.4', fontWeight: '600', letterSpacing: '0.4px' }],
         'card-value': ['24px', { lineHeight: '1.2', fontWeight: '700', letterSpacing: '-0.3px' }],
         'table-header': ['11px', { lineHeight: '1.4', fontWeight: '600', letterSpacing: '0.4px' }],
@@ -91,6 +96,20 @@ export default {
       borderRadius: {
         card: '10px',
         btn: '8px',
+      },
+      keyframes: {
+        'breach-pulse': {
+          '0%, 100%': { boxShadow: '0 0 0 0 rgba(192, 57, 43, 0.45)' },
+          '50%':       { boxShadow: '0 0 0 6px rgba(192, 57, 43, 0)' },
+        },
+        'skeleton-shimmer': {
+          '0%':   { backgroundPosition: '-400px 0' },
+          '100%': { backgroundPosition: '400px 0' },
+        },
+      },
+      animation: {
+        'breach-pulse': 'breach-pulse 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+        'skeleton-shimmer': 'skeleton-shimmer 1.4s ease-in-out infinite',
       },
     },
   },

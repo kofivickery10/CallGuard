@@ -59,8 +59,8 @@ export function NotificationBell() {
       {open && (
         <div className="absolute right-0 top-12 w-80 bg-card border border-border rounded-card shadow-lg z-50">
           <div className="px-4 py-3 border-b border-border flex items-center justify-between">
-            <span className="text-[13px] font-semibold text-text-primary">Notifications</span>
-            <Link to="/notifications" onClick={() => setOpen(false)} className="text-[12px] text-primary font-medium hover:underline">
+            <span className="text-table-cell font-semibold text-text-primary">Notifications</span>
+            <Link to="/notifications" onClick={() => setOpen(false)} className="text-xs text-primary font-medium hover:underline">
               View all
             </Link>
           </div>
@@ -77,8 +77,8 @@ export function NotificationBell() {
                   <div className="flex items-start gap-2">
                     <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${severityDot(n.severity)}`} />
                     <div className="flex-1 min-w-0">
-                      <div className="text-[13px] font-semibold text-text-primary truncate">{n.title}</div>
-                      {n.body && <div className="text-[12px] text-text-secondary mt-0.5 line-clamp-2">{n.body}</div>}
+                      <div className="text-table-cell font-semibold text-text-primary truncate">{n.title}</div>
+                      {n.body && <div className="text-xs text-text-secondary mt-0.5 line-clamp-2">{n.body}</div>}
                       <div className="text-[11px] text-text-muted mt-1">{timeAgo(n.created_at)}</div>
                     </div>
                     {n.call_id && (

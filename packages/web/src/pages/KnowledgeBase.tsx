@@ -110,10 +110,10 @@ function SectionCard({
   return (
     <div className="bg-card border border-border rounded-card p-5">
       <div className="mb-3">
-        <h3 className="text-[15px] font-semibold text-text-primary">
+        <h3 className="text-section-title text-text-primary">
           {KB_SECTION_LABELS[sectionType]}
         </h3>
-        <p className="text-[12px] text-text-muted mt-0.5">
+        <p className="text-xs text-text-muted mt-0.5">
           {KB_SECTION_HINTS[sectionType]}
         </p>
       </div>
@@ -163,7 +163,7 @@ function SectionCard({
               <button
                 type="button"
                 onClick={() => handleDeleteFile(file.id)}
-                className="text-[12px] text-text-muted hover:text-fail ml-2 flex-shrink-0"
+                className="text-xs text-text-muted hover:text-fail ml-2 flex-shrink-0"
               >
                 Remove
               </button>
@@ -186,7 +186,7 @@ function SectionCard({
             type="button"
             onClick={() => fileInputRef.current?.click()}
             disabled={uploading}
-            className="px-[14px] py-[7px] rounded-btn text-[12px] font-semibold border border-border text-text-cell hover:bg-sidebar-hover transition-colors disabled:opacity-50"
+            className="px-[14px] py-[7px] rounded-btn text-xs font-semibold border border-border text-text-cell hover:bg-sidebar-hover transition-colors disabled:opacity-50"
           >
             {uploading ? 'Uploading...' : '+ Attach File (PDF, DOCX, TXT)'}
           </button>
@@ -194,7 +194,7 @@ function SectionCard({
 
         <div className="flex items-center gap-3">
           {saved && (
-            <span className="text-[12px] text-pass font-medium">Saved</span>
+            <span className="text-xs text-pass font-medium">Saved</span>
           )}
           <button
             type="button"

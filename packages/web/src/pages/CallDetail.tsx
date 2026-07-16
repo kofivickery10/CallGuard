@@ -107,7 +107,7 @@ export function CallDetail() {
             <h2 className="text-page-title text-text-primary">{call.file_name}</h2>
             {call.is_exemplar && (
               <span
-                className="text-secondary text-[18px]"
+                className="text-secondary text-lg"
                 title={call.exemplar_reason || 'Exemplar call'}
               >
                 ★
@@ -129,7 +129,7 @@ export function CallDetail() {
             {canAction && call.status === 'scored' && (
               <button
                 onClick={handleToggleReviewed}
-                className={`text-[12px] font-semibold transition-colors ${call.reviewed_at ? 'text-pass' : 'text-text-muted hover:text-text-secondary'}`}
+                className={`text-xs font-semibold transition-colors ${call.reviewed_at ? 'text-pass' : 'text-text-muted hover:text-text-secondary'}`}
                 title={call.reviewed_at ? 'Reviewed - click to clear' : 'Mark this call reviewed (feeds calibration / agreement tracking)'}
               >
                 {call.reviewed_at ? '✓ Reviewed' : 'Mark reviewed'}
@@ -138,7 +138,7 @@ export function CallDetail() {
             {canAction && call.status === 'scored' && canLearn && (
               <button
                 onClick={handleToggleExemplar}
-                className="text-[12px] text-text-muted hover:text-secondary font-semibold transition-colors"
+                className="text-xs text-text-muted hover:text-secondary font-semibold transition-colors"
                 title={call.is_exemplar ? 'Remove exemplar flag' : 'Mark as firm exemplar - feeds the AI learning system'}
               >
                 {call.is_exemplar ? '★ Exemplar' : '☆ Mark as exemplar'}
@@ -154,7 +154,7 @@ export function CallDetail() {
             <button
               onClick={handleDelete}
               disabled={deleting}
-              className="text-[12px] text-text-muted hover:text-fail font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="text-xs text-text-muted hover:text-fail font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               title="Permanently delete this call"
             >
               {deleting ? 'Deleting...' : 'Delete call'}
@@ -167,7 +167,7 @@ export function CallDetail() {
       {(call.status === 'uploaded' || call.status === 'transcribing' || call.status === 'scoring') && (
         <div className="bg-card border border-border rounded-xl p-10 text-center mb-6">
           <div className="w-10 h-10 border-[3px] border-border border-t-primary rounded-full animate-spin mx-auto mb-4" />
-          <div className="text-[16px] font-semibold text-text-primary mb-1">
+          <div className="text-base font-semibold text-text-primary mb-1">
             {call.status === 'uploaded' && 'Queued for processing'}
             {call.status === 'transcribing' && 'Transcribing audio'}
             {call.status === 'scoring' && 'Scoring against scorecard'}
@@ -179,14 +179,14 @@ export function CallDetail() {
       {call.status === 'failed' && (
         <div className="bg-fail-bg border-l-[3px] border-l-fail rounded-r-lg p-4 mb-6">
           <div className="text-table-cell font-semibold text-fail">Processing failed</div>
-          {call.error_message && <div className="text-[12px] text-flag-text mt-1">{call.error_message}</div>}
+          {call.error_message && <div className="text-xs text-flag-text mt-1">{call.error_message}</div>}
         </div>
       )}
 
       {call.status === 'skipped' && (
         <div className="bg-table-header border-l-[3px] border-l-text-muted rounded-r-lg p-4 mb-6">
           <div className="text-table-cell font-semibold text-text-secondary">Not scored — call too short</div>
-          <div className="text-[12px] text-text-muted mt-1">
+          <div className="text-xs text-text-muted mt-1">
             {call.error_message || 'This call was too short to evaluate against a scorecard and was skipped.'}
           </div>
         </div>
@@ -198,7 +198,7 @@ export function CallDetail() {
         {primaryScore && (
           <div className="bg-card border border-border rounded-card overflow-hidden">
             <div className="px-5 py-4 border-b border-border flex justify-between items-center">
-              <h3 className="text-[15px] font-semibold text-text-primary">Compliance Scorecard</h3>
+              <h3 className="text-section-title text-text-primary">Compliance Scorecard</h3>
               {primaryScore.overall_score != null && (
                 <ScoreGauge score={primaryScore.overall_score} size="lg" />
               )}
@@ -233,7 +233,7 @@ export function CallDetail() {
         {call.transcript_text && (
           <div className="bg-card border border-border rounded-card overflow-hidden flex flex-col">
             <div className="px-5 py-4 border-b border-border">
-              <h3 className="text-[15px] font-semibold text-text-primary">Transcript</h3>
+              <h3 className="text-section-title text-text-primary">Transcript</h3>
             </div>
             <TranscriptViewer transcript={call.transcript_text} />
           </div>

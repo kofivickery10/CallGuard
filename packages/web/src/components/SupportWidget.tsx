@@ -89,14 +89,14 @@ export function SupportWidget() {
 
           <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2.5">
             {messages.length === 0 && (
-              <p className="text-[12px] text-text-muted text-center mt-6">
+              <p className="text-xs text-text-muted text-center mt-6">
                 Send us a message and we'll get back to you here.
               </p>
             )}
             {messages.map((m) => (
               <div key={m.id} className={`flex ${m.from_staff ? 'justify-start' : 'justify-end'}`}>
                 <div
-                  className={`max-w-[80%] px-3 py-2 rounded-lg text-[13px] leading-relaxed ${
+                  className={`max-w-[80%] px-3 py-2 rounded-lg text-table-cell leading-relaxed ${
                     m.from_staff ? 'bg-table-header text-text-primary' : 'bg-primary text-white'
                   }`}
                 >

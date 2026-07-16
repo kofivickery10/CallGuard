@@ -86,7 +86,11 @@ export default function CustomerProfile() {
   const customer = customerData?.customer;
   const calls = journeyData?.calls ?? [];
   const { theme } = useTheme();
-  const chartTick = theme === 'dark' ? '#8a9c8d' : '#8a9e8a';
+  const isDark = theme === 'dark';
+  // Match the app's semantic tokens per theme (Recharts can't read CSS var()).
+  const chartTick = isDark ? '#8a9c8d' : '#8a9e8a';
+  const chartPrimary = isDark ? '#57ab7a' : '#4a9e6e';
+  const chartFail = isDark ? '#f0726a' : '#c0392b';
 
   if (!customer) {
     return <div className="p-6 text-text-muted text-table-cell">Loading…</div>;
@@ -165,11 +169,11 @@ export default function CustomerProfile() {
         <div className="flex gap-6 text-right">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wider text-text-muted">Calls</p>
-            <p className="text-2xl font-bold text-text-primary">{customer.call_count}</p>
+            <p className="text-card-value text-text-primary">{customer.call_count}</p>
           </div>
           <div>
             <p className="text-xs font-semibold uppercase tracking-wider text-text-muted">Avg score</p>
-            <p className={`text-2xl font-bold ${avgScore !== null ? (avgScore >= PASS_THRESHOLD ? 'text-pass' : 'text-fail') : 'text-text-muted'}`}>
+            <p className={`text-card-value ${avgScore !== null ? (avgScore >= PASS_THRESHOLD ? 'text-pass' : 'text-fail') : 'text-text-muted'}`}>
               {avgScore !== null ? `${avgScore.toFixed(1)}%` : '—'}
             </p>
           </div>
@@ -187,7 +191,7 @@ export default function CustomerProfile() {
       {/* Score trend chart */}
       {chartData.length > 1 && (
         <div className="bg-card rounded-card border border-border p-5">
-          <h2 className="text-[15px] font-semibold text-text-primary mb-4">Score trend</h2>
+          <h2 className="text-section-title text-text-primary mb-4">Score trend</h2>
           <ResponsiveContainer width="100%" height={160}>
             <LineChart data={chartData}>
               <XAxis dataKey="call" tick={{ fontSize: 11, fill: chartTick }} />
@@ -198,8 +202,8 @@ export default function CustomerProfile() {
                 formatter={(v) => [`${Number(v).toFixed(1)}%`, 'Score']}
                 labelFormatter={(l) => `Call ${l}`}
               />
-              <ReferenceLine y={PASS_THRESHOLD} stroke="#c0392b" strokeDasharray="3 3" />
-              <Line type="monotone" dataKey="score" stroke="#4a9e6e" strokeWidth={2} dot={{ r: 3 }} />
+              <ReferenceLine y={PASS_THRESHOLD} stroke={chartFail} strokeDasharray="3 3" />
+              <Line type="monotone" dataKey="score" stroke={chartPrimary} strokeWidth={2} dot={{ r: 3 }} />
             </LineChart>
           </ResponsiveContainer>
         </div>
@@ -209,7 +213,7 @@ export default function CustomerProfile() {
       {canAction && journeys.length > 0 && (
         <div className="bg-card rounded-card border border-border overflow-hidden">
           <div className="px-5 py-4 border-b border-border">
-            <h2 className="text-[15px] font-semibold text-text-primary">Journeys ({journeys.length})</h2>
+            <h2 className="text-section-title text-text-primary">Journeys ({journeys.length})</h2>
           </div>
           <table className="w-full text-sm">
             <thead className="bg-table-header border-b border-border">
@@ -248,7 +252,7 @@ export default function CustomerProfile() {
       {user?.role !== 'adviser' && (
         <div className="bg-card rounded-card border border-border overflow-hidden">
           <div className="px-5 py-4 border-b border-border">
-            <h2 className="text-[15px] font-semibold text-text-primary">Call journey ({calls.length})</h2>
+            <h2 className="text-section-title text-text-primary">Call journey ({calls.length})</h2>
           </div>
           {calls.length === 0 ? (
             <p className="px-5 py-8 text-center text-text-muted text-table-cell">No scored calls yet</p>

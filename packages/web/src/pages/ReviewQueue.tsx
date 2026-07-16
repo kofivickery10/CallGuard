@@ -80,8 +80,8 @@ export function ReviewQueue() {
         <div className="bg-card border border-border rounded-card overflow-hidden mb-6">
           <div className="px-5 py-4 border-b border-border flex items-center justify-between">
             <div>
-              <h3 className="text-[15px] font-semibold text-text-primary">Awaiting human review ({manualItems.length})</h3>
-              <p className="text-[12px] text-text-muted mt-0.5">Manual checkpoints and consent gates that need a reviewer to mark pass or fail.</p>
+              <h3 className="text-section-title text-text-primary">Awaiting human review ({manualItems.length})</h3>
+              <p className="text-xs text-text-muted mt-0.5">Manual checkpoints and consent gates that need a reviewer to mark pass or fail.</p>
             </div>
           </div>
           <div className="overflow-x-auto">
@@ -116,14 +116,14 @@ export function ReviewQueue() {
                           <button
                             onClick={() => resolveManual(item, 'pass')}
                             disabled={resolvingKey === item.item_score_id}
-                            className="text-[12px] text-pass hover:text-white hover:bg-pass px-2 py-1 rounded border border-pass/30 hover:border-pass transition-colors disabled:opacity-50"
+                            className="text-xs text-pass hover:text-white hover:bg-pass px-2 py-1 rounded border border-pass/30 hover:border-pass transition-colors disabled:opacity-50"
                           >
                             Pass
                           </button>
                           <button
                             onClick={() => resolveManual(item, 'fail')}
                             disabled={resolvingKey === item.item_score_id}
-                            className="text-[12px] text-fail hover:text-white hover:bg-fail px-2 py-1 rounded border border-fail/30 hover:border-fail transition-colors disabled:opacity-50"
+                            className="text-xs text-fail hover:text-white hover:bg-fail px-2 py-1 rounded border border-fail/30 hover:border-fail transition-colors disabled:opacity-50"
                           >
                             Fail
                           </button>
@@ -199,7 +199,7 @@ export function ReviewQueue() {
                     {b.breach_type}
                   </button>
                   {b.evidence && (
-                    <div className="text-[12px] text-text-muted mt-1 line-clamp-1 max-w-[480px]">
+                    <div className="text-xs text-text-muted mt-1 line-clamp-1 max-w-[480px]">
                       "{b.evidence}"
                     </div>
                   )}
@@ -224,7 +224,7 @@ export function ReviewQueue() {
                       <button
                         onClick={() => updateStatus(b.id, 'acknowledged')}
                         disabled={busyId === b.id}
-                        className="text-[12px] text-text-secondary hover:text-primary px-2 py-1 rounded border border-border hover:border-primary transition-colors disabled:opacity-50"
+                        className="text-xs text-text-secondary hover:text-primary px-2 py-1 rounded border border-border hover:border-primary transition-colors disabled:opacity-50"
                       >
                         Acknowledge
                       </button>
@@ -233,7 +233,7 @@ export function ReviewQueue() {
                       <button
                         onClick={() => updateStatus(b.id, 'escalated')}
                         disabled={busyId === b.id}
-                        className="text-[12px] text-fail hover:text-fail-bg hover:bg-fail px-2 py-1 rounded border border-fail/30 hover:border-fail transition-colors disabled:opacity-50"
+                        className="text-xs text-fail hover:text-fail-bg hover:bg-fail px-2 py-1 rounded border border-fail/30 hover:border-fail transition-colors disabled:opacity-50"
                       >
                         Escalate
                       </button>
@@ -241,14 +241,14 @@ export function ReviewQueue() {
                     <button
                       onClick={() => updateStatus(b.id, 'coached')}
                       disabled={busyId === b.id}
-                      className="text-[12px] text-pass hover:text-white hover:bg-pass px-2 py-1 rounded border border-pass/30 hover:border-pass transition-colors disabled:opacity-50"
+                      className="text-xs text-pass hover:text-white hover:bg-pass px-2 py-1 rounded border border-pass/30 hover:border-pass transition-colors disabled:opacity-50"
                     >
                       Coached
                     </button>
                     <button
                       onClick={() => updateStatus(b.id, 'resolved')}
                       disabled={busyId === b.id}
-                      className="text-[12px] text-pass hover:text-white hover:bg-pass px-2 py-1 rounded border border-pass/30 hover:border-pass transition-colors disabled:opacity-50"
+                      className="text-xs text-pass hover:text-white hover:bg-pass px-2 py-1 rounded border border-pass/30 hover:border-pass transition-colors disabled:opacity-50"
                     >
                       Resolve
                     </button>

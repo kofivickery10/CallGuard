@@ -209,7 +209,7 @@ function stringToAppliesWhen(branch: string): AppliesWhen | null {
 
 const inputClass = 'w-full border border-border rounded-btn px-3 py-2 text-table-cell text-text-primary placeholder:text-text-muted focus:outline-none focus:border-primary transition-colors';
 const selectClass = 'border border-border rounded-btn px-3 py-1.5 text-table-cell text-text-primary focus:outline-none focus:border-primary transition-colors';
-const labelClass = 'block text-[12px] text-text-muted mb-1';
+const labelClass = 'block text-xs text-text-muted mb-1';
 
 export function ScorecardEditor() {
   const { id } = useParams<{ id: string }>();
@@ -427,8 +427,8 @@ export function ScorecardEditor() {
 
         <div className="bg-card border border-border rounded-card p-5 space-y-4">
           <div>
-            <h3 className="text-[15px] font-semibold text-text-primary">Branching <span className="text-text-muted font-normal text-[12px]">(optional)</span></h3>
-            <p className="text-[12px] text-text-muted mt-0.5">
+            <h3 className="text-section-title text-text-primary">Branching <span className="text-text-muted font-normal text-xs">(optional)</span></h3>
+            <p className="text-xs text-text-muted mt-0.5">
               For scorecards where the call can take different paths (e.g. policy goes on risk vs referred for underwriting).
               Criteria can then be limited to one branch; the rest score as N/A instead of failing.
             </p>
@@ -456,8 +456,8 @@ export function ScorecardEditor() {
         <div>
           <div className="flex items-center justify-between mb-3">
             <div>
-              <h3 className="text-[15px] font-semibold text-text-primary">Criteria</h3>
-              <p className="text-[12px] text-text-muted mt-0.5">{items.length} {items.length === 1 ? 'criterion' : 'criteria'}</p>
+              <h3 className="text-section-title text-text-primary">Criteria</h3>
+              <p className="text-xs text-text-muted mt-0.5">{items.length} {items.length === 1 ? 'criterion' : 'criteria'}</p>
             </div>
             <div className="flex items-center gap-3">
               <input ref={csvInputRef} type="file" accept=".csv" onChange={handleCSVImport} className="hidden" />
@@ -555,7 +555,7 @@ export function ScorecardEditor() {
                       </>
                     )}
                     {item.item_type === 'manual' && (
-                      <p className="text-[12px] text-text-muted">
+                      <p className="text-xs text-text-muted">
                         Manual items are never sent to the AI — they land in the review queue and are excluded from the AI score until a reviewer marks them.
                       </p>
                     )}

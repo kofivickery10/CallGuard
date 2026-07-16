@@ -20,27 +20,40 @@ import type {
   BreachSeverityPoint,
 } from '@callguard/shared';
 
-const COLORS = {
-  primary: '#4a9e6e',
-  fail: '#c0392b',
-  review: '#b8860b',
-  processing: '#2d5a9e',
-  neutral: '#c2c5c5',
-  neutralDark: '#8a9e8a',
+// Recharts paints series/grid/tick colours as SVG attributes, which don't
+// resolve CSS var(), so we mirror the app's semantic tokens as concrete values
+// for each theme. Series colours re-theme too, so e.g. fail-red lightens on dark
+// to stay legible — matching the --cg-* tokens in src/index.css.
+const CHART_COLORS = {
+  light: {
+    primary: '#4a9e6e',
+    fail: '#c0392b',
+    high: '#e57766',
+    review: '#b8860b',
+    processing: '#2d5a9e',
+    neutral: '#c2c5c5',
+    grid: '#c2c5c5',
+    tick: '#8a9e8a',
+  },
+  dark: {
+    primary: '#57ab7a',
+    fail: '#f0726a',
+    high: '#e8938c',
+    review: '#d6a838',
+    processing: '#6f9bdb',
+    neutral: '#4a554e',
+    grid: '#2b3630',
+    tick: '#8a9c8d',
+  },
 };
 
 interface TrendChartsProps {
   agentFilter: string | null;
 }
 
-// Recharts paints grid/axis ticks as SVG attributes, which don't resolve CSS
-// var(), so we pick concrete colours from the active theme. Series colours stay
-// fixed (they read fine on both themes); only the neutral grid/ticks switch.
 function useChartColors() {
   const { theme } = useTheme();
-  return theme === 'dark'
-    ? { grid: '#2b3630', tick: '#8a9c8d' }
-    : { grid: COLORS.neutral, tick: COLORS.neutralDark };
+  return theme === 'dark' ? CHART_COLORS.dark : CHART_COLORS.light;
 }
 
 export function TrendCharts({ agentFilter }: TrendChartsProps) {
@@ -77,8 +90,8 @@ function ChartCard({
   return (
     <div className="bg-card border border-border rounded-card p-5">
       <div className="mb-4">
-        <h4 className="text-[15px] font-semibold text-text-primary">{title}</h4>
-        {subtitle && <p className="text-[12px] text-text-muted mt-0.5">{subtitle}</p>}
+        <h4 className="text-section-title text-text-primary">{title}</h4>
+        {subtitle && <p className="text-xs text-text-muted mt-0.5">{subtitle}</p>}
       </div>
       {children}
     </div>
@@ -105,7 +118,7 @@ function CallsPerDayChart({ agentFilter }: { agentFilter: string | null }) {
   });
 
   const hasData = data?.data.some((d) => d.total > 0);
-  const { grid, tick } = useChartColors();
+  const { grid, tick, primary, neutral } = useChartColors();
 
   return (
     <ChartCard title="Calls Per Day" subtitle="Last 30 days">
@@ -127,8 +140,8 @@ function CallsPerDayChart({ agentFilter }: { agentFilter: string | null }) {
               labelStyle={{ color: 'rgb(var(--cg-text-primary))' }}
               labelFormatter={(v) => new Date(v).toLocaleDateString('en-GB')}
             />
-            <Bar dataKey="scored" stackId="a" fill={COLORS.primary} name="Scored" />
-            <Bar dataKey="total" stackId="b" fill={COLORS.neutral} name="Total" opacity={0} />
+            <Bar dataKey="scored" stackId="a" fill={primary} name="Scored" />
+            <Bar dataKey="total" stackId="b" fill={neutral} name="Total" opacity={0} />
           </BarChart>
         </ResponsiveContainer>
       )}
@@ -147,7 +160,7 @@ function ScoresOverTimeChart({ agentFilter }: { agentFilter: string | null }) {
     queryFn: () => api.get<{ data: ScoreTrendPoint[] }>(`/dashboard/trends/scores-over-time${qs}`),
   });
 
-  const { grid, tick } = useChartColors();
+  const { grid, tick, primary, processing } = useChartColors();
 
   return (
     <ChartCard title="Scores Over Time" subtitle="Weekly avg score & pass rate (last 12 weeks)">
@@ -177,7 +190,7 @@ function ScoresOverTimeChart({ agentFilter }: { agentFilter: string | null }) {
             <Line
               type="monotone"
               dataKey="avg_score"
-              stroke={COLORS.primary}
+              stroke={primary}
               strokeWidth={2}
               dot={{ r: 3 }}
               name="Avg Score"
@@ -185,7 +198,7 @@ function ScoresOverTimeChart({ agentFilter }: { agentFilter: string | null }) {
             <Line
               type="monotone"
               dataKey="pass_rate"
-              stroke={COLORS.processing}
+              stroke={processing}
               strokeWidth={2}
               dot={{ r: 3 }}
               name="Pass Rate"
@@ -204,6 +217,7 @@ function ScoresOverTimeChart({ agentFilter }: { agentFilter: string | null }) {
 
 function ScorecardBreakdownTable({ agentFilter }: { agentFilter: string | null }) {
   const qs = agentFilter ? `?agent_id=${agentFilter}` : '';
+  const { primary, review, fail } = useChartColors();
   const { data } = useQuery({
     queryKey: ['trends', 'by-scorecard', agentFilter],
     queryFn: () => api.get<{ data: ScorecardBreakdownRow[] }>(`/dashboard/trends/by-scorecard${qs}`),
@@ -238,7 +252,7 @@ function ScorecardBreakdownTable({ agentFilter }: { agentFilter: string | null }
                             className="h-full rounded-[3px]"
                             style={{
                               width: `${Math.max(0, Math.min(100, row.avg_score))}%`,
-                              background: row.avg_score >= 80 ? COLORS.primary : row.avg_score >= 65 ? COLORS.review : COLORS.fail,
+                              background: row.avg_score >= 80 ? primary : row.avg_score >= 65 ? review : fail,
                             }}
                           />
                         </div>
@@ -282,7 +296,7 @@ function BreachSeverityChart({ agentFilter }: { agentFilter: string | null }) {
     (d) => d.critical + d.high + d.medium + d.low > 0
   );
 
-  const { grid, tick } = useChartColors();
+  const { grid, tick, fail, high, review, neutral } = useChartColors();
 
   return (
     <ChartCard title="Breach Severity" subtitle="Weekly breach counts by severity (last 12 weeks)">
@@ -304,10 +318,10 @@ function BreachSeverityChart({ agentFilter }: { agentFilter: string | null }) {
               labelFormatter={(v) => `Week of ${new Date(v).toLocaleDateString('en-GB')}`}
             />
             <Legend wrapperStyle={{ fontSize: 12 }} />
-            <Bar dataKey="critical" stackId="s" fill={COLORS.fail} name="Critical" />
-            <Bar dataKey="high" stackId="s" fill="#e57766" name="High" />
-            <Bar dataKey="medium" stackId="s" fill={COLORS.review} name="Medium" />
-            <Bar dataKey="low" stackId="s" fill={COLORS.neutral} name="Low" />
+            <Bar dataKey="critical" stackId="s" fill={fail} name="Critical" />
+            <Bar dataKey="high" stackId="s" fill={high} name="High" />
+            <Bar dataKey="medium" stackId="s" fill={review} name="Medium" />
+            <Bar dataKey="low" stackId="s" fill={neutral} name="Low" />
           </BarChart>
         </ResponsiveContainer>
       )}

@@ -1,6 +1,8 @@
 {
   "name": "@callguard/web",
   "version": "0.1.0",
+  "description": "CallGuard AI tenant web app — compliance scoring dashboard for sales teams.",
+  "license": "UNLICENSED",
   "private": true,
   "type": "module",
   "scripts": {

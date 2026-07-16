@@ -89,7 +89,7 @@ export function ScorecardResultCard({
                 <div className="text-[10px] uppercase tracking-wider text-text-muted font-semibold mb-1.5">
                   Evidence from the call
                 </div>
-                <blockquote className="text-[13px] text-text-secondary italic border-l-2 border-primary pl-3 leading-relaxed">
+                <blockquote className="text-table-cell text-text-secondary italic border-l-2 border-primary pl-3 leading-relaxed">
                   {evidence}
                 </blockquote>
               </>
@@ -99,7 +99,7 @@ export function ScorecardResultCard({
                 <div className="text-[10px] uppercase tracking-wider text-text-muted font-semibold mt-3 mb-1.5">
                   Why
                 </div>
-                <p className="text-[13px] text-text-secondary leading-relaxed">{reasoning}</p>
+                <p className="text-table-cell text-text-secondary leading-relaxed">{reasoning}</p>
               </>
             )}
             {confidence != null && (

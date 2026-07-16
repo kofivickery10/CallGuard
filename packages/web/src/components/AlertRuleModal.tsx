@@ -175,7 +175,7 @@ export function AlertRuleModal({ open, initial, onClose }: AlertRuleModalProps) 
     <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto py-8">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <div className="relative bg-card border border-border rounded-card w-full max-w-2xl p-6 shadow-lg my-auto">
-        <h3 className="text-[15px] font-semibold text-text-primary mb-4">
+        <h3 className="text-section-title text-text-primary mb-4">
           {initial ? 'Edit Alert Rule' : 'Create Alert Rule'}
         </h3>
 
@@ -240,7 +240,7 @@ export function AlertRuleModal({ open, initial, onClose }: AlertRuleModalProps) 
 
           {/* Channels */}
           <div className="border-t border-border-light pt-4">
-            <label className="block text-[13px] font-semibold text-text-primary mb-3">Delivery Channels</label>
+            <label className="block text-table-cell font-semibold text-text-primary mb-3">Delivery Channels</label>
 
             <div className="space-y-3">
               {/* In-app */}
@@ -304,7 +304,7 @@ export function AlertRuleModal({ open, initial, onClose }: AlertRuleModalProps) 
                     value={slackUrl}
                     onChange={(e) => setSlackUrl(e.target.value)}
                     placeholder="https://hooks.slack.com/services/T00/B00/XX"
-                    className={inputCls + ' mt-2 font-mono text-[12px]'}
+                    className={inputCls + ' mt-2 font-mono text-xs'}
                   />
                 )}
               </div>
@@ -337,7 +337,7 @@ const inputCls = "w-full border border-border rounded-btn px-3 py-2 text-table-c
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      {label && <label className="block text-[12px] text-text-muted mb-1">{label}</label>}
+      {label && <label className="block text-xs text-text-muted mb-1">{label}</label>}
       {children}
     </div>
   );
