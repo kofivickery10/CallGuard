@@ -173,9 +173,17 @@ export function Layout({ children }: { children: ReactNode }) {
           navOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
-        {/* Logo */}
+        {/* Logo + active workspace (which tenant this session belongs to) */}
         <div className="px-4 py-4 flex-shrink-0">
           <Logo className="h-8 w-auto" />
+          {user?.organization_name && (
+            <div className="mt-3">
+              <div className="text-nav-label uppercase text-text-muted">Workspace</div>
+              <div className="text-table-cell font-semibold text-text-primary truncate mt-0.5" title={user.organization_name}>
+                {user.organization_name}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Nav (scrolls independently when items exceed viewport height) */}
@@ -297,13 +305,16 @@ export function Layout({ children }: { children: ReactNode }) {
 
         <AppBanners />
 
-        {/* Desktop notification bell (lg+ only) */}
-        <div className="hidden lg:block absolute top-4 right-6 z-10">
-          <NotificationBell />
-        </div>
-
         {/* Content: fills the viewport width, gently capped only on ultra-wide. */}
-        <div className="py-6 px-4 sm:px-6 lg:px-8 w-full max-w-[1760px] mx-auto">{children}</div>
+        <div className="py-6 px-4 sm:px-6 lg:px-8 w-full max-w-[1760px] mx-auto">
+          {/* Desktop notification bell (lg+ only). In normal flow and aligned to
+              the content's right edge so it reserves its own space — an absolute
+              overlay here would sit on top of each page's top-right controls. */}
+          <div className="hidden lg:flex justify-end -mt-1 mb-3">
+            <NotificationBell />
+          </div>
+          {children}
+        </div>
       </main>
 
       {/* Tenant-facing support chat (self-hides for staff) */}

@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
+import { useDialog } from '../components/DialogProvider';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { PASS_THRESHOLD } from '@callguard/shared';
 import type { JourneyListItem } from '@callguard/shared';
@@ -34,6 +35,7 @@ export default function CustomerProfile() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const { notify } = useDialog();
   const [editMode, setEditMode] = useState(false);
   const [editName, setEditName] = useState('');
   const [editCrmId, setEditCrmId] = useState('');
@@ -67,9 +69,9 @@ export default function CustomerProfile() {
     mutationFn: () => api.post<{ journey_id?: string; message?: string }>('/journeys/trigger', { customer_id: id }),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['customer-journeys', id] });
-      if (!res.journey_id && res.message) alert(res.message);
+      if (!res.journey_id && res.message) void notify(res.message);
     },
-    onError: (err) => alert('Failed to trigger journey: ' + (err instanceof Error ? err.message : 'unknown error')),
+    onError: (err) => void notify('Failed to trigger journey: ' + (err instanceof Error ? err.message : 'unknown error')),
   });
 
   const updateMutation = useMutation({

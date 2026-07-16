@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { BrowserRouter, Routes, Route, NavLink, Navigate, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { DialogProvider } from './components/DialogProvider';
 import { api } from './api/client';
 import { pingOnIncrease } from './lib/browserPing';
 import { ThemeToggle } from './components/ThemeToggle';
@@ -149,11 +150,13 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <Routes>
-          <Route path="/login" element={<LoginGuard />} />
-          <Route path="/enroll-2fa" element={<EnrolGuard />} />
-          <Route path="/*"    element={<AppLayout />} />
-        </Routes>
+        <DialogProvider>
+          <Routes>
+            <Route path="/login" element={<LoginGuard />} />
+            <Route path="/enroll-2fa" element={<EnrolGuard />} />
+            <Route path="/*"    element={<AppLayout />} />
+          </Routes>
+        </DialogProvider>
       </AuthProvider>
     </BrowserRouter>
   );

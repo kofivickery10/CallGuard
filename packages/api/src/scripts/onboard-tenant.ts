@@ -35,6 +35,7 @@ interface OnboardConfig {
     pass_threshold?: number;
     retention_days?: number;
     transcription_mode?: string;
+    mono_first_speaker?: string;
     deepgram_region?: string;
     adviser_channel?: number | null;
   };
@@ -161,6 +162,7 @@ async function main() {
          pass_threshold = COALESCE($6, pass_threshold),
          retention_days = COALESCE($7, retention_days),
          transcription_mode = COALESCE($8, transcription_mode),
+         mono_first_speaker = COALESCE($11, mono_first_speaker),
          deepgram_region = COALESCE($9, deepgram_region),
          adviser_channel = COALESCE($10, adviser_channel),
          updated_at = now()
@@ -171,6 +173,7 @@ async function main() {
         cfg.scoring?.min_scoreable_words ?? null, cfg.scoring?.pass_threshold ?? null,
         cfg.scoring?.retention_days ?? null, cfg.scoring?.transcription_mode ?? null,
         cfg.scoring?.deepgram_region ?? null, cfg.scoring?.adviser_channel ?? null,
+        cfg.scoring?.mono_first_speaker ?? null,
       ]
     );
     console.log(`Set scoring policy (scope=${cfg.scoring?.scoring_scope}, retention=${cfg.scoring?.retention_days}d, mode=${cfg.scoring?.transcription_mode}).`);

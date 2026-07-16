@@ -193,9 +193,16 @@ export async function authenticateApiKey(
   next: NextFunction
 ): Promise<void> {
   try {
-    const apiKey = req.headers['x-api-key'];
-    if (!apiKey || typeof apiKey !== 'string') {
-      throw new AppError(401, 'Missing X-API-Key header');
+    // Prefer the header — some webhook senders (e.g. a dialler's basic
+    // "webhook URL" field, with no way to add custom headers) can only reach
+    // us via the URL itself, so a query-string fallback is accepted too.
+    // Header wins if somehow both are present.
+    const headerKey = req.headers['x-api-key'];
+    const queryKey = req.query.api_key;
+    const apiKey =
+      typeof headerKey === 'string' ? headerKey : typeof queryKey === 'string' ? queryKey : null;
+    if (!apiKey) {
+      throw new AppError(401, 'Missing API key (X-API-Key header or ?api_key= query parameter)');
     }
 
     const keyHash = hashApiKey(apiKey);

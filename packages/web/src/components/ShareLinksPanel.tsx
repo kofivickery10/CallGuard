@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
+import { useDialog } from './DialogProvider';
 import type { CallShareLink } from '@callguard/shared';
 
 interface Props {
@@ -9,6 +10,7 @@ interface Props {
 
 export function ShareLinksPanel({ callId }: Props) {
   const queryClient = useQueryClient();
+  const { confirm } = useDialog();
   const [expiresInDays, setExpiresInDays] = useState(7);
   const [creating, setCreating] = useState(false);
   const [justCreated, setJustCreated] = useState<{ url: string } | null>(null);
@@ -36,7 +38,7 @@ export function ShareLinksPanel({ callId }: Props) {
   };
 
   const handleRevoke = async (linkId: string) => {
-    if (!confirm('Revoke this share link? It will stop working immediately.')) return;
+    if (!(await confirm('Revoke this share link? It will stop working immediately.', { danger: true }))) return;
     await api.delete(`/calls/${callId}/share-links/${linkId}`);
     invalidate();
   };

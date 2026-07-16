@@ -4,6 +4,11 @@ import { deleteFile } from '../../services/storage.js';
 
 const ARCHIVE_AFTER_DAYS = 730; // 2yr live in the portal (spec §15)
 const TERMINATION_PURGE_AFTER_DAYS = 30; // return/delete within 30 days of termination
+// Never-converted 'captured' calls (metadata only, no audio) are personal data
+// that should not sit for the full retention window. Once a capture is older
+// than any journey window could reach back (default 30d + generous margin) and
+// still hasn't been pulled into a journey, it will never be — purge it.
+const CAPTURED_PURGE_AFTER_DAYS = 90;
 
 interface OrgRetentionRow {
   id: string;
@@ -12,7 +17,7 @@ interface OrgRetentionRow {
 
 interface PurgeableCall {
   id: string;
-  file_key: string;
+  file_key: string | null;
 }
 
 /**
@@ -51,6 +56,29 @@ export async function processRetentionPurge(_job: Job): Promise<void> {
            AND COALESCE(call_date::timestamptz, created_at) < now() - interval '1 day' * $2`,
       [org.id, org.retention_days]
     );
+
+    // Never-converted captured metadata: purge well before the full retention
+    // window. Scoped to captures not attached to any journey (journey_id NULL)
+    // so a call being hydrated into a journey is never yanked out from under it.
+    purgedTotal += await purgeCalls(
+      `SELECT id, file_key FROM calls
+         WHERE organization_id = $1
+           AND status = 'captured'
+           AND journey_id IS NULL
+           AND created_at < now() - interval '1 day' * $2`,
+      [org.id, CAPTURED_PURGE_AFTER_DAYS]
+    );
+
+    // Customers left with no calls and no journeys are orphaned personal data
+    // (name + normalised phone) — remove them. They are re-created on demand if
+    // that number is dialled again, so this is safe to run every sweep.
+    await query(
+      `DELETE FROM customers c
+        WHERE c.organization_id = $1
+          AND NOT EXISTS (SELECT 1 FROM calls ca WHERE ca.customer_id = c.id)
+          AND NOT EXISTS (SELECT 1 FROM journeys j WHERE j.customer_id = c.id)`,
+      [org.id]
+    ).catch((err) => console.error(`[Retention] Failed to purge orphan customers for org ${org.id}:`, (err as Error).message));
 
     // A journey whose calls have all aged out is now empty (journey_calls
     // cascaded away with the calls) — delete it so its transcript-quote
@@ -97,6 +125,17 @@ async function purgeCalls(sql: string, params: unknown[]): Promise<number> {
   const rows = await query<PurgeableCall>(sql, params);
   let deleted = 0;
   for (const call of rows) {
+    // A 'captured' call is metadata-only — no audio was ever fetched, so there
+    // is no file to delete; go straight to removing the row.
+    if (call.file_key === null) {
+      try {
+        await query('DELETE FROM calls WHERE id = $1', [call.id]);
+        deleted++;
+      } catch (err) {
+        console.error(`[Retention] Failed to delete metadata-only call ${call.id}:`, (err as Error).message);
+      }
+      continue;
+    }
     try {
       await deleteFile(call.file_key);
     } catch (err) {

@@ -25,10 +25,11 @@ export interface TotpSetup {
   qrDataUrl: string; // data: PNG for the enrolment screen
 }
 
-// Generate a fresh secret and the matching otpauth URL + QR image. The secret is
-// returned to the caller (to persist encrypted as "pending") and rendered as a QR.
-export async function generateTotpSetup(email: string): Promise<TotpSetup> {
-  const secret = generateSecret();
+// Generate a fresh secret (or reuse an existing pending one) and the matching
+// otpauth URL + QR image. The secret is returned to the caller (to persist
+// encrypted as "pending") and rendered as a QR.
+export async function generateTotpSetup(email: string, existingSecret?: string): Promise<TotpSetup> {
+  const secret = existingSecret ?? generateSecret();
   const otpauthUrl = generateURI({ issuer: ISSUER, label: email, secret });
   const qrDataUrl = await QRCode.toDataURL(otpauthUrl);
   return { secret, otpauthUrl, qrDataUrl };

@@ -5,6 +5,7 @@ import { api } from '../api/client';
 import { SeverityBadge, StatusBadge } from '../components/BreachBadges';
 import { BreachDetailDrawer } from '../components/BreachDetailDrawer';
 import { useAuth } from '../context/AuthContext';
+import { useDialog } from '../components/DialogProvider';
 import type { BreachStatus, BreachWithDetail, ManualReviewItem } from '@callguard/shared';
 
 type QueueItem = BreachWithDetail & { risk_score: number };
@@ -12,6 +13,7 @@ type QueueItem = BreachWithDetail & { risk_score: number };
 export function ReviewQueue() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
+  const { notify } = useDialog();
   const canAction = user?.role === 'admin' || user?.role === 'supervisor';
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -42,7 +44,7 @@ export function ReviewQueue() {
       queryClient.invalidateQueries({ queryKey: ['breaches'] });
       queryClient.invalidateQueries({ queryKey: ['breach-summary'] });
     } catch (err) {
-      alert('Failed to resolve: ' + (err instanceof Error ? err.message : 'unknown error'));
+      await notify('Failed to resolve: ' + (err instanceof Error ? err.message : 'unknown error'));
     } finally {
       setResolvingKey(null);
     }

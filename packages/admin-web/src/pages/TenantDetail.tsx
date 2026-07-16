@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
+import { useDialog } from '../components/DialogProvider';
 import { PLANS, PLAN_LABELS, SEAT_PRICING, FEATURES } from '@callguard/shared';
 import type { Plan } from '@callguard/shared';
 
@@ -26,7 +27,38 @@ interface OrgDetail {
   subscription_notes: string | null;
   seat_price_override: string | null;
   feature_overrides: Record<string, boolean>;
+  adviser_channel: number | null;
+  scoring_scope: string;
+  min_scoreable_seconds: number;
+  min_scoreable_words: number;
+  pass_threshold: number;
+  retention_days: number;
+  transcription_mode: string;
+  deepgram_region: string;
 }
+
+interface ScoringForm {
+  adviser_channel: number | null;
+  scoring_scope: string;
+  min_scoreable_seconds: number;
+  min_scoreable_words: number;
+  pass_threshold: number;
+  retention_days: number;
+  transcription_mode: string;
+  deepgram_region: string;
+}
+
+const SCOPE_OPTIONS: { value: string; label: string; hint: string }[] = [
+  { value: 'sales_only', label: 'Sales only', hint: 'Score journeys once a sale is confirmed. Every call is still transcribed.' },
+  { value: 'over_threshold', label: 'Over length threshold', hint: 'Score every call once it clears the length threshold below.' },
+  { value: 'everything', label: 'Everything', hint: 'Score every transcribed call, regardless of length.' },
+];
+
+const CHANNEL_OPTIONS: { value: number | null; label: string }[] = [
+  { value: null, label: 'Auto-detect' },
+  { value: 0, label: 'Left channel' },
+  { value: 1, label: 'Right channel' },
+];
 interface MonthBreakdown {
   month: string;
   active_seats: number;
@@ -53,6 +85,7 @@ interface User {
   role: string;
   last_active_at: string | null;
   plan_override: string | null;
+  billing_exempt: boolean;
 }
 interface CallStats {
   total_calls: string;
@@ -73,6 +106,8 @@ interface TenantDetailData {
 
 export default function TenantDetail() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const { confirm, notify } = useDialog();
   const [data, setData] = useState<TenantDetailData | null>(null);
   const [trend, setTrend] = useState<MonthBreakdown[]>([]);
   const [failed, setFailed] = useState<FailedCall[]>([]);
@@ -85,7 +120,22 @@ export default function TenantDetail() {
   const [saveMsg, setSaveMsg] = useState('');
   const [tierSaving, setTierSaving] = useState<string | null>(null);
   const [resetting2fa, setResetting2fa] = useState<string | null>(null);
+  const [billingSaving, setBillingSaving] = useState<string | null>(null);
   const [featSaving, setFeatSaving] = useState<string | null>(null);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState('');
+  const [deleting, setDeleting] = useState(false);
+  const [deleteErr, setDeleteErr] = useState('');
+  const [seedOpen, setSeedOpen] = useState(false);
+  const [seedName, setSeedName] = useState('');
+  const [seedEmail, setSeedEmail] = useState('');
+  const [seedSkip2fa, setSeedSkip2fa] = useState(false);
+  const [seeding, setSeeding] = useState(false);
+  const [seedErr, setSeedErr] = useState('');
+  const [seedResult, setSeedResult] = useState<{ admin_email: string; temp_password: string; two_factor_exempt: boolean } | null>(null);
+  const [scoringForm, setScoringForm] = useState<ScoringForm | null>(null);
+  const [savingScoring, setSavingScoring] = useState(false);
+  const [scoringMsg, setScoringMsg] = useState('');
 
   useEffect(() => {
     if (!id) return;
@@ -96,6 +146,16 @@ export default function TenantDetail() {
         setStatusValue(d.org.status);
         setNotes(d.org.subscription_notes ?? '');
         setPriceOverride(d.org.seat_price_override ?? '');
+        setScoringForm({
+          adviser_channel: d.org.adviser_channel ?? null,
+          scoring_scope: d.org.scoring_scope ?? 'sales_only',
+          min_scoreable_seconds: d.org.min_scoreable_seconds ?? 15,
+          min_scoreable_words: d.org.min_scoreable_words ?? 30,
+          pass_threshold: d.org.pass_threshold ?? 70,
+          retention_days: d.org.retention_days ?? 1825,
+          transcription_mode: d.org.transcription_mode ?? 'mono_diarize',
+          deepgram_region: d.org.deepgram_region ?? 'eu',
+        });
       })
       .catch((e: Error) => setError(e.message));
     api.get<{ breakdown: MonthBreakdown[] }>(`/superadmin/billing/${id}`)
@@ -115,7 +175,7 @@ export default function TenantDetail() {
       );
       setData((prev) => prev ? { ...prev, org: { ...prev.org, feature_overrides: r.feature_overrides } } : prev);
     } catch (e) {
-      alert(e instanceof Error ? e.message : 'Failed to set feature');
+      await notify(e instanceof Error ? e.message : 'Failed to set feature');
     } finally {
       setFeatSaving(null);
     }
@@ -148,6 +208,20 @@ export default function TenantDetail() {
     }
   };
 
+  const saveScoring = async () => {
+    if (!id || !scoringForm) return;
+    setSavingScoring(true); setScoringMsg('');
+    try {
+      const updated = await api.put<Partial<OrgDetail>>(`/superadmin/tenants/${id}/scoring-settings`, scoringForm);
+      setData((prev) => prev ? { ...prev, org: { ...prev.org, ...updated } } : prev);
+      setScoringMsg('Call & scoring settings saved');
+    } catch (e) {
+      setScoringMsg(e instanceof Error ? e.message : 'Failed to save');
+    } finally {
+      setSavingScoring(false);
+    }
+  };
+
   const saveStatus = async () => {
     if (!id) return;
     setSaving(true); setSaveMsg('');
@@ -161,8 +235,37 @@ export default function TenantDetail() {
     }
   };
 
+  const seedAdmin = async () => {
+    if (!id) return;
+    setSeeding(true); setSeedErr('');
+    try {
+      const r = await api.post<{ user_id: string; admin_email: string; temp_password: string; two_factor_exempt: boolean }>(
+        `/superadmin/tenants/${id}/admin`, { admin_name: seedName.trim(), admin_email: seedEmail.trim(), skip_2fa: seedSkip2fa }
+      );
+      setSeedResult({ admin_email: r.admin_email, temp_password: r.temp_password, two_factor_exempt: r.two_factor_exempt });
+      // Refresh the users table so the new admin shows.
+      api.get<TenantDetailData>(`/superadmin/tenants/${id}`).then(setData).catch(() => {});
+    } catch (e) {
+      setSeedErr(e instanceof Error ? e.message : 'Failed to seed admin');
+    } finally {
+      setSeeding(false);
+    }
+  };
+
+  const deleteTenant = async () => {
+    if (!id) return;
+    setDeleting(true); setDeleteErr('');
+    try {
+      await api.delete(`/superadmin/tenants/${id}`, { confirm_name: deleteConfirm });
+      navigate('/tenants', { replace: true });
+    } catch (e) {
+      setDeleteErr(e instanceof Error ? e.message : 'Failed to delete tenant');
+      setDeleting(false);
+    }
+  };
+
   const impersonate = async () => {
-    if (!id || !confirm('Open a 1-hour impersonation session as this tenant\'s admin?')) return;
+    if (!id || !(await confirm('Open a 1-hour impersonation session as this tenant\'s admin?'))) return;
     try {
       const r = await api.post<{ token: string; url: string; note: string }>(`/superadmin/tenants/${id}/impersonate`, {});
       // Opens the tenant app directly with the session already established —
@@ -170,20 +273,41 @@ export default function TenantDetail() {
       // had to manually paste into devtools localStorage to use.
       window.open(r.url, '_blank', 'noopener');
     } catch (e) {
-      alert(e instanceof Error ? e.message : 'Failed');
+      await notify(e instanceof Error ? e.message : 'Failed');
     }
   };
 
   const resetUserTwoFactor = async (userId: string, name: string) => {
-    if (!confirm(`Reset 2FA for ${name}? They will need to re-enrol on next login.`)) return;
+    if (!(await confirm(`Reset 2FA for ${name}? They will need to re-enrol on next login.`, { danger: true }))) return;
     setResetting2fa(userId);
     try {
       await api.post(`/superadmin/users/${userId}/reset-2fa`, {});
-      alert(`2FA reset for ${name}.`);
+      await notify(`2FA reset for ${name}.`);
     } catch (e) {
-      alert(e instanceof Error ? e.message : 'Failed to reset 2FA');
+      await notify(e instanceof Error ? e.message : 'Failed to reset 2FA');
     } finally {
       setResetting2fa(null);
+    }
+  };
+
+  const setUserBillingExempt = async (userId: string, exempt: boolean) => {
+    if (!id) return;
+    setBillingSaving(userId);
+    try {
+      const result = await api.put<{ user_id: string; billing_exempt: boolean }>(
+        `/superadmin/tenants/${id}/users/${userId}/billing-exempt`,
+        { exempt }
+      );
+      setData((prev) => prev ? {
+        ...prev,
+        users: prev.users.map((u) =>
+          u.id === userId ? { ...u, billing_exempt: result.billing_exempt } : u
+        ),
+      } : prev);
+    } catch (e) {
+      await notify(e instanceof Error ? e.message : 'Failed to update billing exemption');
+    } finally {
+      setBillingSaving(null);
     }
   };
 
@@ -205,7 +329,7 @@ export default function TenantDetail() {
         };
       });
     } catch (e) {
-      alert(e instanceof Error ? e.message : 'Failed to set tier');
+      await notify(e instanceof Error ? e.message : 'Failed to set tier');
     } finally {
       setTierSaving(null);
     }
@@ -332,6 +456,13 @@ export default function TenantDetail() {
           <button onClick={impersonate} className="border border-border text-text-secondary px-4 py-2 rounded-btn text-sm hover:bg-sidebar-hover">
             Impersonate admin
           </button>
+          <button
+            onClick={() => { setSeedOpen(true); setSeedName(''); setSeedEmail(''); setSeedSkip2fa(false); setSeedErr(''); setSeedResult(null); }}
+            className="border border-border text-text-secondary px-4 py-2 rounded-btn text-sm hover:bg-sidebar-hover"
+            title="Create a bootstrap admin login for this tenant — e.g. a temporary setup account, removed before go-live"
+          >
+            Seed admin login
+          </button>
         </div>
         <div className="flex gap-3 items-end pt-2 border-t border-border">
           <div>
@@ -392,6 +523,133 @@ export default function TenantDetail() {
         </div>
       </div>
 
+      {/* Call recording & scoring policy — staff-controlled, not tenant self-serve */}
+      {scoringForm && (
+        <div className="bg-card rounded-card border border-border p-4 space-y-5">
+          <div>
+            <h2 className="text-sm font-semibold text-text-primary">Call recording &amp; scoring policy</h2>
+            <p className="text-xs text-text-muted mt-0.5">
+              Configured by CallGuard staff, not the tenant. Carries cost, retention/compliance and
+              data-residency implications.
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-text-muted mb-1.5">
+              Adviser recording channel
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {CHANNEL_OPTIONS.map((opt) => {
+                const active = scoringForm.adviser_channel === opt.value;
+                return (
+                  <button
+                    key={String(opt.value)}
+                    type="button"
+                    onClick={() => setScoringForm({ ...scoringForm, adviser_channel: opt.value })}
+                    className={`px-3 py-2 rounded-btn text-sm border transition-colors ${
+                      active
+                        ? 'border-primary bg-primary-light text-pass font-semibold'
+                        : 'border-border text-text-secondary hover:border-primary/50'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-text-muted mb-1.5">Scoring scope</label>
+            <div className="flex flex-wrap gap-2">
+              {SCOPE_OPTIONS.map((opt) => {
+                const active = scoringForm.scoring_scope === opt.value;
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    title={opt.hint}
+                    onClick={() => setScoringForm({ ...scoringForm, scoring_scope: opt.value })}
+                    className={`px-3 py-2 rounded-btn text-sm border transition-colors ${
+                      active
+                        ? 'border-primary bg-primary-light text-pass font-semibold'
+                        : 'border-border text-text-secondary hover:border-primary/50'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-xs text-text-muted mt-1.5">
+              {SCOPE_OPTIONS.find((o) => o.value === scoringForm.scoring_scope)?.hint}
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <ScoringNumberField
+              label="Skip under (seconds)"
+              value={scoringForm.min_scoreable_seconds}
+              onChange={(v) => setScoringForm({ ...scoringForm, min_scoreable_seconds: v })}
+            />
+            <ScoringNumberField
+              label="Skip under (words)"
+              value={scoringForm.min_scoreable_words}
+              onChange={(v) => setScoringForm({ ...scoringForm, min_scoreable_words: v })}
+            />
+            <ScoringNumberField
+              label="Pass threshold (%)"
+              value={scoringForm.pass_threshold}
+              min={0}
+              max={100}
+              onChange={(v) => setScoringForm({ ...scoringForm, pass_threshold: v })}
+            />
+            <ScoringNumberField
+              label="Retention (days)"
+              value={scoringForm.retention_days}
+              min={30}
+              onChange={(v) => setScoringForm({ ...scoringForm, retention_days: v })}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-text-muted mb-1.5">Transcription mode</label>
+              <select
+                value={scoringForm.transcription_mode}
+                onChange={(e) => setScoringForm({ ...scoringForm, transcription_mode: e.target.value })}
+                className="w-full border border-border rounded-btn px-3 py-2 text-sm"
+              >
+                <option value="mono_diarize">Mono (diarise speakers)</option>
+                <option value="stereo_multichannel">Split-stereo (separate channels)</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-text-muted mb-1.5">Deepgram region</label>
+              <select
+                value={scoringForm.deepgram_region}
+                onChange={(e) => setScoringForm({ ...scoringForm, deepgram_region: e.target.value })}
+                className="w-full border border-border rounded-btn px-3 py-2 text-sm"
+              >
+                <option value="eu">EU (UK/EU data residency)</option>
+                <option value="us">US</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button
+              onClick={saveScoring}
+              disabled={savingScoring}
+              className="bg-primary text-white px-4 py-2 rounded-btn text-sm font-semibold hover:bg-primary-hover disabled:opacity-60"
+            >
+              {savingScoring ? 'Saving…' : 'Save call & scoring settings'}
+            </button>
+            {scoringMsg && <p className="text-sm text-pass">{scoringMsg}</p>}
+          </div>
+        </div>
+      )}
+
       {/* Failed / stuck calls */}
       {failed.length > 0 && (
         <div className="bg-card rounded-card border border-border overflow-hidden">
@@ -431,13 +689,15 @@ export default function TenantDetail() {
         <div className="px-4 py-3 border-b border-border">
           <h2 className="text-sm font-semibold text-text-primary">Users ({users.length})</h2>
           <p className="text-xs text-text-muted mt-0.5">
-            Tier override bumps a user above the org plan — they pay the higher tier rate.
+            Tier override bumps a user above the org plan — they pay the higher tier rate. Mark an
+            internal/setup login <span className="font-medium">billing-exempt</span> to drop it from
+            this tenant's billable seat count.
           </p>
         </div>
         <table className="w-full text-sm">
           <thead className="bg-table-header border-b border-border">
             <tr>
-              {['Name', 'Email', 'Role', 'Last active', 'Tier override', ''].map((h) => (
+              {['Name', 'Email', 'Role', 'Last active', 'Tier override', 'Billing', ''].map((h) => (
                 <th key={h} className="text-left px-4 py-2 text-xs font-semibold uppercase tracking-wider text-text-muted">{h}</th>
               ))}
             </tr>
@@ -465,6 +725,18 @@ export default function TenantDetail() {
                   </select>
                 </td>
                 <td className="px-4 py-2">
+                  <label className="flex items-center gap-1.5 text-xs text-text-secondary cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={u.billing_exempt}
+                      disabled={billingSaving === u.id}
+                      onChange={(e) => setUserBillingExempt(u.id, e.target.checked)}
+                      className="disabled:opacity-60"
+                    />
+                    Exempt
+                  </label>
+                </td>
+                <td className="px-4 py-2">
                   <button
                     onClick={() => resetUserTwoFactor(u.id, u.name)}
                     disabled={resetting2fa === u.id}
@@ -479,6 +751,155 @@ export default function TenantDetail() {
           </tbody>
         </table>
       </div>
+
+      {/* Danger zone — permanent hard delete */}
+      <div className="border border-fail/40 rounded-card p-6 space-y-3">
+        <h2 className="text-sm font-semibold text-fail uppercase tracking-wider">Danger zone</h2>
+        <p className="text-sm text-text-secondary">
+          Permanently delete <span className="font-semibold text-text-primary">{org.name}</span> and
+          all of its data — calls, scores, scorecards, breaches, knowledge base, users and audit log.
+          This cannot be undone. To retire a tenant reversibly, set its status to{' '}
+          <span className="font-medium">cancelled</span> instead.
+        </p>
+        <button
+          onClick={() => { setDeleteOpen(true); setDeleteConfirm(''); setDeleteErr(''); }}
+          className="border border-fail text-fail px-4 py-2 rounded-btn text-sm font-semibold hover:bg-fail-bg"
+        >
+          Delete tenant…
+        </button>
+      </div>
+
+      {seedOpen && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-card shadow-lg w-full max-w-md p-6 space-y-4">
+            <h3 className="text-lg font-semibold text-text-primary">Seed an admin login</h3>
+            {seedResult ? (
+              <>
+                <p className="text-sm text-text-secondary">
+                  Admin created for <span className="font-semibold">{org.name}</span>. Share these over a
+                  secure channel — the temp password is shown once.{' '}
+                  {seedResult.two_factor_exempt
+                    ? 'This login is 2FA-exempt — remove it before go-live.'
+                    : 'They\'ll change it and enrol 2FA on first login.'}
+                </p>
+                <div className="bg-sidebar-hover rounded-btn p-3 text-sm space-y-1">
+                  <div><span className="text-text-muted">Email:</span> <span className="font-mono">{seedResult.admin_email}</span></div>
+                  <div><span className="text-text-muted">Temp password:</span> <span className="font-mono font-semibold">{seedResult.temp_password}</span></div>
+                </div>
+                <div className="flex justify-end pt-1">
+                  <button onClick={() => setSeedOpen(false)} className="bg-primary text-white px-4 py-2 rounded-btn text-sm font-semibold hover:bg-primary-hover">Done</button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-text-secondary">
+                  Creates an <span className="font-medium">admin</span> user for this tenant with a one-time
+                  temporary password. Use it to configure the account; remove it (Team table) before go-live.
+                </p>
+                <div>
+                  <label className="block text-xs font-medium text-text-muted mb-1">Name</label>
+                  <input type="text" value={seedName} onChange={(e) => setSeedName(e.target.value)} placeholder="Setup Admin" autoFocus className="w-full border border-border rounded-btn px-3 py-2 text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-text-muted mb-1">Email</label>
+                  <input type="email" value={seedEmail} onChange={(e) => setSeedEmail(e.target.value)} placeholder="setup@yourdomain.com" className="w-full border border-border rounded-btn px-3 py-2 text-sm" />
+                </div>
+                <label className="flex items-start gap-2 text-sm text-text-secondary">
+                  <input type="checkbox" checked={seedSkip2fa} onChange={(e) => setSeedSkip2fa(e.target.checked)} className="mt-0.5" />
+                  <span>
+                    Skip 2FA for this login
+                    <span className="block text-xs text-text-muted">Bypasses mandatory two-factor enrolment. Only for a temporary internal setup account — remove it before go-live.</span>
+                  </span>
+                </label>
+                {seedErr && <p className="text-sm text-fail">{seedErr}</p>}
+                <div className="flex justify-end gap-3 pt-1">
+                  <button onClick={() => setSeedOpen(false)} disabled={seeding} className="border border-border text-text-secondary px-4 py-2 rounded-btn text-sm hover:bg-sidebar-hover disabled:opacity-60">Cancel</button>
+                  <button
+                    onClick={seedAdmin}
+                    disabled={seeding || !seedName.trim() || !seedEmail.trim()}
+                    className="bg-primary text-white px-4 py-2 rounded-btn text-sm font-semibold hover:bg-primary-hover disabled:opacity-40"
+                  >
+                    {seeding ? 'Creating…' : 'Create admin'}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {deleteOpen && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-card shadow-lg w-full max-w-md p-6 space-y-4">
+            <h3 className="text-lg font-semibold text-text-primary">Delete this tenant?</h3>
+            <p className="text-sm text-text-secondary">
+              This permanently removes <span className="font-semibold">{org.name}</span> and everything
+              belonging to it. This action is irreversible. Type the tenant name to confirm:
+            </p>
+            <input
+              type="text"
+              value={deleteConfirm}
+              onChange={(e) => setDeleteConfirm(e.target.value)}
+              placeholder={org.name}
+              autoFocus
+              className="w-full border border-border rounded-btn px-3 py-2 text-sm"
+            />
+            {deleteErr && <p className="text-sm text-fail">{deleteErr}</p>}
+            <div className="flex justify-end gap-3 pt-1">
+              <button
+                onClick={() => setDeleteOpen(false)}
+                disabled={deleting}
+                className="border border-border text-text-secondary px-4 py-2 rounded-btn text-sm hover:bg-sidebar-hover disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={deleteTenant}
+                disabled={deleting || deleteConfirm !== org.name}
+                className="bg-fail text-white px-4 py-2 rounded-btn text-sm font-semibold hover:opacity-90 disabled:opacity-40"
+              >
+                {deleting ? 'Deleting…' : 'Delete permanently'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ScoringNumberField({
+  label,
+  value,
+  onChange,
+  min = 0,
+  max,
+}: {
+  label: string;
+  value: number;
+  onChange: (v: number) => void;
+  min?: number;
+  max?: number;
+}) {
+  return (
+    <div>
+      <label className="block text-xs font-medium text-text-muted mb-1.5">{label}</label>
+      <input
+        type="number"
+        value={value}
+        min={min}
+        max={max}
+        onChange={(e) => onChange(Number(e.target.value) || 0)}
+        onBlur={(e) => {
+          // Snap back into range on blur so a cleared/0 retention field can't be
+          // saved below its floor — the purge job treats retention_days=0 as
+          // "delete everything older than now". Server enforces the same floor.
+          const n = Number(e.target.value) || 0;
+          const clamped = Math.min(max ?? Infinity, Math.max(min ?? 0, n));
+          if (clamped !== value) onChange(clamped);
+        }}
+        className="w-full border border-border rounded-btn px-3 py-2 text-sm"
+      />
     </div>
   );
 }

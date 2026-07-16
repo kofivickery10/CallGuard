@@ -1,6 +1,6 @@
 import { Job } from 'bullmq';
 import { query } from '../../db/client.js';
-import { transcriptionQueue, scoringQueue } from '../queue.js';
+import { transcriptionQueue, scoringQueue, ingestionQueue } from '../queue.js';
 
 // How long a call/journey may sit in a pre-terminal state before we assume its
 // job was never enqueued (a Redis blip between the DB write and queue.add) or
@@ -37,13 +37,43 @@ export async function processStuckRepair(_job: Job): Promise<void> {
          AND updated_at < now() - interval '1 minute' * $1`,
     [STUCK_AFTER_MINUTES]
   );
+  let rehydrated = 0;
+  let rescoredJourneys = 0;
   for (const journey of stuckJourneys) {
-    await scoringQueue
-      .add('score-journey', { journeyId: journey.id }, { jobId: `score-journey-repair-${journey.id}-${Date.now()}` })
-      .catch((err) => console.error(`[Repair] Failed to re-enqueue journey ${journey.id}:`, (err as Error).message));
+    // A pending journey may legitimately be waiting for its captured calls to
+    // hydrate + transcribe — NOT stuck. Decide by the linked calls' states:
+    //  - any still 'captured' → its hydrate-call job was lost; re-enqueue it.
+    //  - any 'uploaded'/'transcribing' → mid-flight, its own completion will
+    //    drive scoring; leave alone.
+    //  - all terminal (transcribed/scored/failed/skipped) → the journey is
+    //    genuinely ready but the score-journey enqueue was lost; re-enqueue it.
+    const linked = await query<{ id: string; status: string }>(
+      `SELECT c.id, c.status FROM journey_calls jc
+         JOIN calls c ON c.id = jc.call_id
+        WHERE jc.journey_id = $1`,
+      [journey.id]
+    );
+    const capturedIds = linked.filter((c) => c.status === 'captured').map((c) => c.id);
+    const midFlight = linked.some((c) => c.status === 'uploaded' || c.status === 'transcribing');
+
+    if (capturedIds.length > 0) {
+      for (const callId of capturedIds) {
+        await ingestionQueue
+          .add('hydrate-call', { callId }, { jobId: `hydrate-repair-${callId}-${Date.now()}` })
+          .catch((err) => console.error(`[Repair] Failed to re-enqueue hydration for call ${callId}:`, (err as Error).message));
+        rehydrated++;
+      }
+    } else if (!midFlight) {
+      await scoringQueue
+        .add('score-journey', { journeyId: journey.id }, { jobId: `score-journey-repair-${journey.id}-${Date.now()}` })
+        .catch((err) => console.error(`[Repair] Failed to re-enqueue journey ${journey.id}:`, (err as Error).message));
+      rescoredJourneys++;
+    }
   }
 
-  if (stuckCalls.length > 0 || stuckJourneys.length > 0) {
-    console.log(`[Repair] Re-enqueued ${stuckCalls.length} stuck call(s) and ${stuckJourneys.length} stuck journey(s)`);
+  if (stuckCalls.length > 0 || rehydrated > 0 || rescoredJourneys > 0) {
+    console.log(
+      `[Repair] Re-enqueued ${stuckCalls.length} stuck call(s), ${rehydrated} hydration(s), ${rescoredJourneys} journey score(s)`
+    );
   }
 }

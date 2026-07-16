@@ -1,6 +1,11 @@
 import type { ItemResult } from './scorecard.js';
 
 export type CallStatus =
+  // Metadata-only capture for sales_only tenants: the CloudTalk webhook has
+  // recorded the call's metadata but no audio has been fetched or transcribed
+  // yet — that happens later, driven by a Zoho sale trigger (see
+  // services/journey.ts). Has no file_key/transcript until then.
+  | 'captured'
   | 'uploaded'
   | 'transcribing'
   | 'transcribed'
@@ -14,7 +19,9 @@ export interface Call {
   organization_id: string;
   uploaded_by: string | null;
   file_name: string;
-  file_key: string;
+  // null for 'captured' calls — audio isn't fetched until a sale trigger
+  // hydrates them (see services/journey.ts / jobs/processors/hydrate-call.ts).
+  file_key: string | null;
   file_size_bytes: number | null;
   duration_seconds: number | null;
   mime_type: string | null;

@@ -2,10 +2,12 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
 import { AlertRuleModal } from '../components/AlertRuleModal';
+import { useDialog } from '../components/DialogProvider';
 import { ALERT_TRIGGER_LABELS, type AlertRule } from '@callguard/shared';
 
 export function Alerts() {
   const queryClient = useQueryClient();
+  const { confirm, notify } = useDialog();
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<AlertRule | null>(null);
 
@@ -27,9 +29,9 @@ export function Alerts() {
   const handleTest = async (id: string) => {
     try {
       await api.post(`/alerts/rules/${id}/test`);
-      alert('Test alert queued for delivery - check your channels');
+      await notify('Test alert queued for delivery - check your channels');
     } catch (err) {
-      alert(`Test failed: ${(err as Error).message}`);
+      await notify(`Test failed: ${(err as Error).message}`);
     }
   };
 
@@ -39,7 +41,7 @@ export function Alerts() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Delete this alert rule?')) return;
+    if (!(await confirm('Delete this alert rule?', { danger: true }))) return;
     await api.delete(`/alerts/rules/${id}`);
     queryClient.invalidateQueries({ queryKey: ['alert-rules'] });
   };

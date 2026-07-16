@@ -1,6 +1,6 @@
 import { config } from '../config.js';
 import { readFile } from './storage.js';
-import type { TranscriptionMode, DeepgramRegion } from '@callguard/shared';
+import type { TranscriptionMode, MonoFirstSpeaker, DeepgramRegion } from '@callguard/shared';
 
 interface TranscriptionResult {
   raw: unknown;
@@ -134,7 +134,8 @@ export async function transcribeCall(
   encryptedAtRest: boolean = false,
   adviserChannel: number | null = null,
   transcriptionMode: TranscriptionMode = 'mono_diarize',
-  deepgramRegion: DeepgramRegion = 'eu'
+  deepgramRegion: DeepgramRegion = 'eu',
+  monoFirstSpeaker: MonoFirstSpeaker = 'agent'
 ): Promise<TranscriptionResult> {
   if (!config.deepgram.apiKey) {
     throw new Error('DEEPGRAM_API_KEY is not set in .env - needed for transcription');
@@ -176,7 +177,6 @@ export async function transcribeCall(
       smart_format: true,
       multichannel: useMultichannel,
       diarize: true,
-      diarize_model: 'latest',
       punctuate: true,
       utterances: true,
       // en-GB (matches the live path): UK date formatting (DD/MM, not MM/DD),
@@ -222,16 +222,24 @@ export async function transcribeCall(
   // Which party is the adviser. For split-stereo the adviser is consistently on
   // one channel, so we pin it deterministically (no guessing). Precedence:
   // the per-tenant setting (adviserChannel arg) > the global ADVISER_CHANNEL env
-  // fallback > "whoever speaks first" (they usually greet). Mono recordings
-  // always fall back to the first-speaker guess via diarisation.
+  // fallback > "whoever speaks first" (they usually greet).
   const envChannel =
     process.env.ADVISER_CHANNEL === '0' || process.env.ADVISER_CHANNEL === '1'
       ? Number(process.env.ADVISER_CHANNEL)
       : null;
   const pinnedAdviserChannel = adviserChannel === 0 || adviserChannel === 1 ? adviserChannel : envChannel;
+
+  // Mono has no channel to pin, so the adviser is guessed from who speaks
+  // first — correct for inbound calls (the adviser greets), backwards for
+  // outbound calling (the customer answers "Hello?" before the adviser
+  // speaks). monoFirstSpeaker flips which role that first speaker is taken
+  // to be; when it's 'customer' the adviser is the next distinct speaker.
+  const firstSpeakerKey = ordered[0]?.speaker ?? 0;
   const agentKey = isMultichannel
     ? pinnedAdviserChannel ?? (ordered[0]?.channel ?? 0)
-    : ordered[0]?.speaker ?? 0;
+    : monoFirstSpeaker === 'customer'
+      ? ordered.find((u) => (u.speaker ?? 0) !== firstSpeakerKey)?.speaker ?? firstSpeakerKey
+      : firstSpeakerKey;
 
   // Merge consecutive utterances from the same party into single blocks
   const merged: { speaker: string; text: string }[] = [];

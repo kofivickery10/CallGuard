@@ -10,6 +10,7 @@ import { PLANS, SEAT_PRICING, effectivePlan, FEATURES } from '@callguard/shared'
 import type { Plan } from '@callguard/shared';
 import { CLAUDE_PRICING, DEEPGRAM_PRICING, DEFAULT_USD_TO_GBP } from '@callguard/shared';
 import { recordAuditEvent } from '../services/audit.js';
+import { deleteOrganizationCascade } from '../services/tenant-deletion.js';
 import {
   getTranscriptionQueue,
   getScoringQueue,
@@ -77,7 +78,8 @@ superadminRouter.get('/tenants', async (_req, res, next) => {
          COUNT(DISTINCT u.id)::text                                          AS user_count,
          COUNT(DISTINCT CASE
            WHEN c.created_at >= date_trunc('month', now())
-            AND c.status = 'scored' THEN c.agent_id
+            AND c.status = 'scored'
+            AND c.agent_id NOT IN (SELECT id FROM users WHERE billing_exempt) THEN c.agent_id
          END)::text                                                          AS active_seats_mtd
        FROM organizations o
        LEFT JOIN users u ON u.organization_id = o.id AND u.role != 'superadmin'
@@ -176,17 +178,27 @@ superadminRouter.get('/tenants/:id', async (req, res, next) => {
       subscription_notes: string | null;
       seat_price_override: string | null;
       feature_overrides: Record<string, boolean>;
+      adviser_channel: number | null;
+      scoring_scope: string;
+      min_scoreable_seconds: number;
+      min_scoreable_words: number;
+      pass_threshold: number;
+      retention_days: number;
+      transcription_mode: string;
+      deepgram_region: string;
     }>(
       `SELECT id, name, plan, status, created_at, suspended_at, subscription_notes,
-              seat_price_override, feature_overrides
+              seat_price_override, feature_overrides,
+              adviser_channel, scoring_scope, min_scoreable_seconds, min_scoreable_words,
+              pass_threshold, retention_days, transcription_mode, deepgram_region
        FROM organizations WHERE id = $1`,
       [req.params.id]
     );
     if (!org) throw new AppError(404, 'Tenant not found');
 
     const [users, callStats, seatHistory] = await Promise.all([
-      query<{ id: string; name: string; email: string; role: string; last_active_at: string | null; plan_override: string | null }>(
-        `SELECT id, name, email, role, last_active_at, plan_override
+      query<{ id: string; name: string; email: string; role: string; last_active_at: string | null; plan_override: string | null; billing_exempt: boolean }>(
+        `SELECT id, name, email, role, last_active_at, plan_override, billing_exempt
          FROM users WHERE organization_id = $1 ORDER BY name`,
         [req.params.id]
       ),
@@ -211,6 +223,7 @@ superadminRouter.get('/tenants/:id', async (req, res, next) => {
          FROM calls c
          WHERE c.organization_id = $1
            AND c.status = 'scored'
+           AND c.agent_id NOT IN (SELECT id FROM users WHERE billing_exempt)
            AND c.created_at >= now() - interval '12 months'
          GROUP BY 1
          ORDER BY 1`,
@@ -316,6 +329,216 @@ superadminRouter.put('/tenants/:id/status', async (req, res, next) => {
       req,
     });
     res.json(rows[0]);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── Set a tenant's call-recording + scoring policy ───────────────────────────
+// These settings (stereo channel mapping, scoring scope/thresholds, retention,
+// transcription mode and Deepgram region) are configured by CallGuard staff, not
+// self-served by tenants — they carry cost, compliance (retention) and data
+// residency implications. The equivalent tenant-facing routes were removed; this
+// is the only place they can be changed via the API.
+superadminRouter.put('/tenants/:id/scoring-settings', async (req, res, next) => {
+  try {
+    const body = req.body as {
+      adviser_channel?: number | null;
+      scoring_scope?: string;
+      min_scoreable_seconds?: number;
+      min_scoreable_words?: number;
+      pass_threshold?: number;
+      retention_days?: number;
+      transcription_mode?: string;
+      deepgram_region?: string;
+    };
+
+    if (
+      body.adviser_channel !== undefined &&
+      body.adviser_channel !== null &&
+      body.adviser_channel !== 0 &&
+      body.adviser_channel !== 1
+    ) {
+      throw new AppError(400, 'adviser_channel must be 0 (left), 1 (right), or null (auto)');
+    }
+    if (body.scoring_scope && !['sales_only', 'over_threshold', 'everything'].includes(body.scoring_scope)) {
+      throw new AppError(400, 'Invalid scoring_scope');
+    }
+    if (body.transcription_mode && !['mono_diarize', 'stereo_multichannel'].includes(body.transcription_mode)) {
+      throw new AppError(400, 'Invalid transcription_mode');
+    }
+    if (body.deepgram_region && !['eu', 'us'].includes(body.deepgram_region)) {
+      throw new AppError(400, 'Invalid deepgram_region');
+    }
+    if (body.pass_threshold !== undefined && (body.pass_threshold < 0 || body.pass_threshold > 100)) {
+      throw new AppError(400, 'pass_threshold must be between 0 and 100');
+    }
+    // Floor retention at 30 days — a retention_days of 0 (or negative) makes the
+    // nightly purge delete every call, recording, score and breach within 24h.
+    if (body.retention_days !== undefined && (!Number.isInteger(body.retention_days) || body.retention_days < 30)) {
+      throw new AppError(400, 'retention_days must be a whole number of at least 30');
+    }
+    if (
+      body.min_scoreable_seconds !== undefined &&
+      (!Number.isInteger(body.min_scoreable_seconds) || body.min_scoreable_seconds < 0)
+    ) {
+      throw new AppError(400, 'min_scoreable_seconds must be a non-negative whole number');
+    }
+    if (
+      body.min_scoreable_words !== undefined &&
+      (!Number.isInteger(body.min_scoreable_words) || body.min_scoreable_words < 0)
+    ) {
+      throw new AppError(400, 'min_scoreable_words must be a non-negative whole number');
+    }
+
+    const rows = await query(
+      `UPDATE organizations SET
+         adviser_channel        = CASE WHEN $10::boolean THEN $1 ELSE adviser_channel END,
+         scoring_scope          = COALESCE($2, scoring_scope),
+         min_scoreable_seconds  = COALESCE($3, min_scoreable_seconds),
+         min_scoreable_words    = COALESCE($4, min_scoreable_words),
+         pass_threshold         = COALESCE($5, pass_threshold),
+         retention_days         = COALESCE($6, retention_days),
+         transcription_mode     = COALESCE($7, transcription_mode),
+         deepgram_region        = COALESCE($8, deepgram_region),
+         updated_at             = now()
+       WHERE id = $9
+       RETURNING id, adviser_channel, scoring_scope, min_scoreable_seconds,
+                 min_scoreable_words, pass_threshold, retention_days,
+                 transcription_mode, deepgram_region`,
+      [
+        // adviser_channel's "unset" state is itself a real value (null =
+        // auto-detect), so it can't be COALESCE'd. $10 says whether the caller
+        // supplied it at all — only then do we overwrite the stored value.
+        body.adviser_channel ?? null,
+        body.scoring_scope,
+        body.min_scoreable_seconds,
+        body.min_scoreable_words,
+        body.pass_threshold,
+        body.retention_days,
+        body.transcription_mode,
+        body.deepgram_region,
+        req.params.id,
+        body.adviser_channel !== undefined,
+      ]
+    );
+    if (!rows.length) throw new AppError(404, 'Tenant not found');
+
+    await recordAuditEvent({
+      organizationId: req.params.id,
+      userId: req.user!.userId,
+      actionType: 'org.scoring_settings.change',
+      entityType: 'organization',
+      entityId: req.params.id,
+      summary: 'Call-recording & scoring policy changed by CallGuard staff',
+      metadata: body,
+      req,
+    });
+
+    res.json(rows[0]);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── Seed an admin login into an existing tenant ─────────────────────────────────
+// Bootstraps an admin for a tenant that has none — e.g. one onboarded via the DB
+// script, or where all admins were removed. The Agents "invite" flow can't do
+// this (it needs an existing admin session), so this is the chicken-and-egg
+// escape hatch. Also used to seed a temporary setup admin during onboarding that
+// gets removed before go-live. Returns a one-time temp password to share securely.
+
+superadminRouter.post('/tenants/:id/admin', async (req, res, next) => {
+  try {
+    const { admin_name, admin_email, skip_2fa } = req.body as {
+      admin_name?: string;
+      admin_email?: string;
+      skip_2fa?: boolean;
+    };
+    if (!admin_name || !admin_email) {
+      throw new AppError(400, 'admin_name and admin_email are required');
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(admin_email)) {
+      throw new AppError(400, 'admin_email is not a valid email address');
+    }
+
+    const org = await queryOne<{ id: string; name: string }>(
+      'SELECT id, name FROM organizations WHERE id = $1',
+      [req.params.id]
+    );
+    if (!org) throw new AppError(404, 'Tenant not found');
+
+    const existing = await queryOne('SELECT id FROM users WHERE email = $1', [admin_email]);
+    if (existing) throw new AppError(409, 'Email already registered');
+
+    // crypto.randomBytes (not Math.random) — this is a real, if short-lived,
+    // credential. The admin changes it (and, unless exempt, enrols 2FA) on login.
+    const tempPassword = crypto.randomBytes(9).toString('base64url') + 'Cg1!';
+    const passwordHash = await bcrypt.hash(tempPassword, 12);
+    // skip_2fa marks the account 2FA-exempt: it bypasses the mandatory enrolment
+    // gate. Intended for a temporary internal setup login, removed before go-live.
+    const exempt = skip_2fa === true;
+    const rows = await query<{ id: string }>(
+      `INSERT INTO users (organization_id, email, name, password_hash, role, two_factor_exempt)
+       VALUES ($1, $2, $3, $4, 'admin', $5) RETURNING id`,
+      [org.id, admin_email, admin_name, passwordHash, exempt]
+    );
+
+    await recordAuditEvent({
+      organizationId: org.id,
+      userId: req.user!.userId,
+      actionType: 'user.invite',
+      entityType: 'user',
+      entityId: rows[0]!.id,
+      summary: `Seeded admin ${admin_email} for tenant "${org.name}"${exempt ? ' (2FA-exempt setup login)' : ''}`,
+      req,
+    });
+
+    res.status(201).json({ user_id: rows[0]!.id, admin_email, temp_password: tempPassword, two_factor_exempt: exempt });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── Delete tenant (hard delete) ─────────────────────────────────────────────────
+// Permanently removes an organization and ALL of its data — calls, scores,
+// scorecards, breaches, knowledge base, users, audit log, everything — in one
+// transaction. Irreversible, and distinct from setting status to 'cancelled'
+// (the reversible soft option above). The caller must echo the exact tenant name
+// in `confirm_name` as a guard against accidental deletion.
+
+superadminRouter.delete('/tenants/:id', async (req, res, next) => {
+  try {
+    const { confirm_name } = req.body as { confirm_name?: string };
+    const org = await queryOne<{ id: string; name: string }>(
+      'SELECT id, name FROM organizations WHERE id = $1',
+      [req.params.id]
+    );
+    if (!org) throw new AppError(404, 'Tenant not found');
+    if (!confirm_name || confirm_name !== org.name) {
+      throw new AppError(
+        400,
+        `To confirm deletion, confirm_name must exactly match the tenant name ("${org.name}").`
+      );
+    }
+
+    const cfIp = req.headers['cf-connecting-ip'];
+    const result = await deleteOrganizationCascade(org.id, {
+      userId: req.user?.userId ?? null,
+      orgName: org.name,
+      ip: (Array.isArray(cfIp) ? cfIp[0] : cfIp) || req.ip || null,
+      userAgent: req.headers['user-agent']?.toString().slice(0, 500) || null,
+    });
+
+    // The tenant's own audit_log is purged with it; the deletion is recorded as a
+    // retained platform-level audit event (organization_id NULL) inside the same
+    // transaction. Also log to the operator stream.
+    console.warn(
+      `[superadmin] Tenant deleted: "${org.name}" (${org.id}) by user ` +
+        `${req.user?.userId ?? 'unknown'} — ${result.total} rows removed`
+    );
+
+    res.json({ deleted: true, id: org.id, name: org.name, ...result });
   } catch (err) {
     next(err);
   }
@@ -603,7 +826,9 @@ superadminRouter.get('/billing', async (req, res, next) => {
          o.name                                     AS org_name,
          o.plan,
          o.seat_price_override,
-         COUNT(DISTINCT c.agent_id)::text           AS active_seats,
+         COUNT(DISTINCT c.agent_id) FILTER (
+           WHERE c.agent_id NOT IN (SELECT id FROM users WHERE billing_exempt)
+         )::text                                    AS active_seats,
          COALESCE(SUM(c.duration_seconds), 0)::text AS total_duration_seconds
        FROM organizations o
        LEFT JOIN calls c
@@ -633,6 +858,7 @@ superadminRouter.get('/billing', async (req, res, next) => {
            AND c.created_at <  $1::date + interval '1 month'
          JOIN users u ON u.id = c.agent_id
         WHERE o.status = 'active'
+          AND NOT u.billing_exempt
         GROUP BY o.id, o.plan, o.seat_price_override, u.id, u.plan_override`,
       [monthStart]
     );
@@ -719,7 +945,9 @@ superadminRouter.get('/billing/:orgId', async (req, res, next) => {
     }>(
       `SELECT
          to_char(date_trunc('month', c.created_at AT TIME ZONE 'Europe/London'), 'YYYY-MM') AS month,
-         COUNT(DISTINCT c.agent_id)::text                       AS active_seats,
+         COUNT(DISTINCT c.agent_id) FILTER (
+           WHERE c.agent_id NOT IN (SELECT id FROM users WHERE billing_exempt)
+         )::text                                               AS active_seats,
          COUNT(*)::text                                         AS calls,
          COALESCE(SUM(c.duration_seconds), 0)::text             AS total_duration_seconds
        FROM calls c
@@ -814,6 +1042,47 @@ superadminRouter.put('/tenants/:id/users/:userId/tier', async (req, res, next) =
       user_id:       rows[0].id,
       plan_override: rows[0].plan_override,
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── Per-user billing exemption ────────────────────────────────────────────────
+// Drop a user from the tenant's billable seat count. Intended for an internal
+// CallGuard login seeded into a tenant (setup/support admin) so it never bills
+// the tenant a seat, even if test calls get attributed to it. Body: { exempt }.
+
+superadminRouter.put('/tenants/:id/users/:userId/billing-exempt', async (req, res, next) => {
+  try {
+    const { exempt } = req.body as { exempt?: unknown };
+    if (typeof exempt !== 'boolean') {
+      throw new AppError(400, 'exempt must be a boolean');
+    }
+
+    // Verify the user belongs to this tenant before mutating.
+    const user = await queryOne<{ id: string; name: string; email: string }>(
+      `SELECT id, name, email FROM users WHERE id = $1 AND organization_id = $2`,
+      [req.params.userId, req.params.id]
+    );
+    if (!user) throw new AppError(404, 'User not found in this tenant');
+
+    const rows = await query<{ id: string; billing_exempt: boolean }>(
+      `UPDATE users SET billing_exempt = $1 WHERE id = $2
+       RETURNING id, billing_exempt`,
+      [exempt, req.params.userId]
+    );
+
+    await recordAuditEvent({
+      organizationId: req.params.id,
+      userId: req.user!.userId,
+      actionType: 'tenant.billing_exempt',
+      entityType: 'user',
+      entityId: req.params.userId,
+      summary: `${user.email} ${exempt ? 'excluded from' : 'included in'} billable seat count`,
+      req,
+    });
+
+    res.json({ user_id: rows[0].id, billing_exempt: rows[0].billing_exempt });
   } catch (err) {
     next(err);
   }

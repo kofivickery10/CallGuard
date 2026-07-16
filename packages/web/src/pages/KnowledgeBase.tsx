@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
+import { useDialog } from '../components/DialogProvider';
 import {
   KB_SECTION_TYPES,
   KB_SECTION_LABELS,
@@ -44,6 +45,7 @@ function SectionCard({
   section?: KBSection;
 }) {
   const queryClient = useQueryClient();
+  const { confirm } = useDialog();
   const [content, setContent] = useState(section?.content || '');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -94,7 +96,7 @@ function SectionCard({
   };
 
   const handleDeleteFile = async (fileId: string) => {
-    if (!confirm('Delete this file?')) return;
+    if (!(await confirm('Delete this file?', { danger: true }))) return;
     try {
       await api.delete(`/kb/files/${fileId}`);
       queryClient.invalidateQueries({ queryKey: ['kb'] });

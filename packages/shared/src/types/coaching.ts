@@ -24,6 +24,10 @@ export interface CallCoaching {
 export type ScoringScope = 'sales_only' | 'over_threshold' | 'everything';
 export type TranscriptionMode = 'mono_diarize' | 'stereo_multichannel';
 export type DeepgramRegion = 'eu' | 'us';
+// Mono recordings have no channel to pin, so the agent is identified by
+// who speaks first — true for inbound calls (agent greets), backwards for
+// outbound calls (the customer answers "Hello?" before the agent speaks).
+export type MonoFirstSpeaker = 'agent' | 'customer';
 
 export interface OrganizationInfo {
   id: string;
@@ -46,6 +50,7 @@ export interface OrganizationInfo {
   pass_threshold?: number;
   retention_days?: number;
   transcription_mode?: TranscriptionMode;
+  mono_first_speaker?: MonoFirstSpeaker;
   deepgram_region?: DeepgramRegion;
   deepgram_mip_opt_out?: boolean;
   status?: 'active' | 'suspended' | 'cancelled';

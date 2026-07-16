@@ -8,7 +8,7 @@ import { AppError } from '../middleware/errors.js';
 import { encrypt } from '../services/crypto.js';
 import { recordAuditEvent } from '../services/audit.js';
 import { normalizePhone } from '../services/ingestion.js';
-import { assembleJourney } from '../services/journey.js';
+import { ingestionQueue } from '../jobs/queue.js';
 import {
   buildAuthorizeUrl,
   exchangeCodeAndStore,
@@ -28,8 +28,8 @@ export const integrationsRouter = Router();
 
 // Public columns only — never expose the encrypted secrets/tokens.
 const ZOHO_PUBLIC_COLUMNS = `id, organization_id, dc_region, client_id, module,
-  field_map, sale_phone_field, qa_module, qa_field_map, status, last_synced_at,
-  last_error, created_at, updated_at,
+  field_map, sale_phone_field, qa_module, qa_field_map, sale_trigger_enabled,
+  status, last_synced_at, last_error, created_at, updated_at,
   (inbound_secret_encrypted IS NOT NULL) AS inbound_configured`;
 
 const DEFAULT_FIELD_MAP: ZohoFieldMap = {
@@ -40,15 +40,20 @@ const DEFAULT_FIELD_MAP: ZohoFieldMap = {
 };
 
 const DEFAULT_QA_FIELD_MAP: ZohoQAFieldMap = {
-  adviser: 'Adviser_Name',
-  month: 'Period',
-  score: 'Compliance_Score',
-  result: 'Compliance_Result',
-  link: 'CallGuard_Link',
+  score: 'AI_Call_Score',
+  client_name: 'Name',
+  customer_lookup: 'Client',
+  notes: '', // opt-in: set to a text field's API name to write the summary
 };
 
 const VALID_REGIONS: ZohoRegion[] = ['eu', 'com', 'in', 'com.au', 'jp', 'ca'];
 const VALID_MODULES: ZohoModule[] = ['Leads', 'Contacts'];
+
+// How long the sale trigger waits before assembling the journey, so a close
+// call whose CloudTalk "Call Ended" webhook lands just after the sale is still
+// captured and included. Comfortably covers the seconds-scale gap between a
+// call ending and its capture webhook arriving.
+const SALE_TRIGGER_GRACE_SECONDS = 90;
 
 // Zoho field/module API names are alphanumeric/underscore only. Catching a
 // malformed one here — rather than letting it reach Zoho — turns a silent
@@ -143,27 +148,26 @@ export async function handleZohoSaleTrigger(
       return;
     }
 
-    const customer = await queryOne<{ id: string }>(
-      'SELECT id FROM customers WHERE organization_id = $1 AND phone_normalized = $2',
-      [orgId, phone]
+    // Defer assembly by a short grace delay so a close call whose CloudTalk
+    // "Call Ended" webhook lands a beat after the sale still gets captured and
+    // included in the journey. The customer lookup + assembly run in the job
+    // (after the delay), so a sale that fires before any call was captured
+    // isn't lost to an early "no calls on file" — the delay gives capture time
+    // to arrive. assembleJourney is idempotent, so a Zoho retry that enqueues a
+    // second job just reuses the in-flight journey.
+    const recordId = typeof body.id === 'string' ? body.id : null;
+    const clientName = typeof body.client_name === 'string' ? body.client_name.trim() || null : null;
+    await ingestionQueue.add(
+      'assemble-journey',
+      { organizationId: orgId, phone, recordId, clientName },
+      {
+        delay: SALE_TRIGGER_GRACE_SECONDS * 1000,
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 30_000 },
+      }
     );
-    if (!customer) {
-      res.status(202).json({ status: 'ignored', reason: `no calls on file yet for ${phone}` });
-      return;
-    }
 
-    const journeyId = await assembleJourney({
-      organizationId: orgId,
-      customerId: customer.id,
-      triggerSource: 'zoho_sale',
-    });
-
-    if (!journeyId) {
-      res.status(202).json({ status: 'ignored', reason: 'no transcribed calls in the journey window' });
-      return;
-    }
-
-    res.status(202).json({ status: 'accepted', journey_id: journeyId });
+    res.status(202).json({ status: 'accepted', phone });
   } catch (err) {
     next(err);
   }
@@ -207,6 +211,7 @@ zohoRouter.post('/', async (req, res, next) => {
       qa_module?: string | null;
       qa_field_map?: Partial<ZohoQAFieldMap>;
       inbound_secret?: string;
+      sale_trigger_enabled?: boolean;
     };
 
     const region = (body.dc_region ?? 'eu') as ZohoRegion;
@@ -236,6 +241,8 @@ zohoRouter.post('/', async (req, res, next) => {
     const qaFieldMap: ZohoQAFieldMap = { ...DEFAULT_QA_FIELD_MAP, ...(body.qa_field_map ?? {}) };
     if (qaModule) {
       for (const [key, value] of Object.entries(qaFieldMap)) {
+        // Empty = not configured (e.g. the optional notes field) — skip it.
+        if (!value) continue;
         assertValidZohoApiName(`qa_field_map.${key}`, value);
       }
     }
@@ -244,8 +251,8 @@ zohoRouter.post('/', async (req, res, next) => {
       `INSERT INTO zoho_connections
          (organization_id, dc_region, client_id, client_secret_encrypted, module,
           field_map, sale_phone_field, qa_module, qa_field_map,
-          inbound_secret_encrypted, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'pending')
+          inbound_secret_encrypted, sale_trigger_enabled, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'pending')
        ON CONFLICT (organization_id) DO UPDATE SET
          dc_region               = EXCLUDED.dc_region,
          client_id               = EXCLUDED.client_id,
@@ -256,6 +263,7 @@ zohoRouter.post('/', async (req, res, next) => {
          qa_module               = EXCLUDED.qa_module,
          qa_field_map            = EXCLUDED.qa_field_map,
          inbound_secret_encrypted = COALESCE(EXCLUDED.inbound_secret_encrypted, zoho_connections.inbound_secret_encrypted),
+         sale_trigger_enabled    = EXCLUDED.sale_trigger_enabled,
          status                  = 'pending',
          refresh_token_encrypted = NULL,
          access_token_encrypted  = NULL,
@@ -273,6 +281,7 @@ zohoRouter.post('/', async (req, res, next) => {
         qaModule,
         JSON.stringify(qaFieldMap),
         body.inbound_secret ? encrypt(body.inbound_secret) : null,
+        body.sale_trigger_enabled ?? false,
       ]
     );
 

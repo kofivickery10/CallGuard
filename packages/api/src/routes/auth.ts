@@ -138,8 +138,9 @@ authRouter.post('/login', async (req, res, next) => {
       email: string;
       password_hash: string;
       totp_enabled: boolean;
+      two_factor_exempt: boolean;
     }>(
-      `SELECT u.id, u.email, u.password_hash, u.totp_enabled
+      `SELECT u.id, u.email, u.password_hash, u.totp_enabled, u.two_factor_exempt
        FROM users u WHERE u.email = $1`,
       [email]
     );
@@ -164,6 +165,14 @@ authRouter.post('/login', async (req, res, next) => {
         methods: ['totp', 'email', ...(backupCodes > 0 ? ['backup'] : [])],
         email_hint: maskEmail(user.email),
       });
+      return;
+    }
+
+    // 2FA-exempt accounts (superadmin-seeded internal/setup logins) skip both the
+    // challenge and mandatory enrolment: issue a full session with mfa satisfied.
+    if (user.two_factor_exempt) {
+      const session = await issueSession(user.id, true);
+      res.json(session);
       return;
     }
 
@@ -216,8 +225,9 @@ authRouter.post('/refresh', async (req, res, next) => {
       organization_id: string | null;
       role: string;
       totp_enabled: boolean;
+      two_factor_exempt: boolean;
     }>(
-      'SELECT id, organization_id, role, totp_enabled FROM users WHERE id = $1',
+      'SELECT id, organization_id, role, totp_enabled, two_factor_exempt FROM users WHERE id = $1',
       [record.user_id]
     );
     if (!user) throw new AppError(401, 'User not found');
@@ -228,7 +238,8 @@ authRouter.post('/refresh', async (req, res, next) => {
       role: user.role,
       // Re-derive the second-factor state from the DB on every refresh so the gate
       // stays correct without a re-login (enrolment grants mfa; a reset revokes it).
-      mfa: user.totp_enabled,
+      // Exempt accounts stay satisfied without enrolling.
+      mfa: user.totp_enabled || user.two_factor_exempt,
     };
     const token = jwt.sign(payload, config.jwt.secret, { expiresIn: config.jwt.expiresIn });
 

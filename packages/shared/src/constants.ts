@@ -80,12 +80,17 @@ export const CLAUDE_PRICING: Record<string, { input_per_1m: number; output_per_1
 // runtime with the USD_TO_GBP env var; update this default periodically.
 export const DEFAULT_USD_TO_GBP = 0.79;
 
-// Deepgram nova-3 (per minute of audio). We transcribe with `multichannel: true`
-// (split-stereo adviser/customer) AND `mip_opt_out: true` (excluded from the
-// Model Improvement Program), which forgoes the MIP discount — so this is the
-// full opted-out multichannel rate (~2x the discounted rate). Mono opted-out is
-// ~0.0086/min.
-export const DEEPGRAM_PRICING = { per_minute: 0.0104 };
+// Deepgram nova-3 (per minute of audio), opted out of the Model Improvement
+// Program (`mip_opt_out: true`, which forgoes the MIP discount — a DPA/FCA
+// requirement, see services/transcription.ts). Deepgram bills multichannel
+// (split-stereo) per channel, so it's ~2x mono; which rate applies is the
+// tenant's transcription_mode. `per_minute` (multichannel) is also the
+// conservative blended rate used for platform-level MTD estimates in
+// routes/superadmin.ts that can't see per-call mode.
+export const DEEPGRAM_PRICING = {
+  per_minute: 0.0104, // multichannel (stereo_multichannel tenants)
+  per_minute_mono: 0.0086, // mono_diarize tenants — the default & majority
+};
 
 // Monthly revenue per active seat by tier (GBP). A "seat" is an adviser with at
 // least one scored call in the month. A tenant can override this with a

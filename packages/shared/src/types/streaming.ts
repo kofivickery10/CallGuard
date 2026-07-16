@@ -176,9 +176,17 @@ export interface WebhookJourneyScoredPayload {
   // The wrap-up/closing call's agent — the most relevant attribution point
   // for commission/QA purposes when a journey spans several advisers.
   agent_name: string | null;
+  // The wrap-up agent's email, for resolving the Zoho record owner (QA Score
+  // Owner = the agent). Null when the agent is unlinked / has no email.
+  agent_email: string | null;
   customer_id: string;
   customer_phone: string | null;
   customer_external_crm_id: string | null;
+  // Carried from the Zoho sale trigger: the sold-customer record id (QA
+  // write-back links to it) and the client's name (required QA field). Null for
+  // non-Zoho journeys (e.g. a manually sale-flagged upload).
+  zoho_record_id: string | null;
+  client_name: string | null;
   breaches: Array<{
     scorecard_item_id: string;
     scorecard_item_label: string;

@@ -13,15 +13,22 @@ export interface ZohoFieldMap {
   link: string;
 }
 
-// API names of the fields on the QA custom module (adviser + month + score),
-// so Trust Point can filter QA records by adviser + month for commission-tied
-// averages.
+// API names of the fields on the tenant's QA module that CallGuard writes.
+// CallGuard fills only the AI score component (the tenant's own formula
+// averages it with their human QA marks), links the record to the sold-customer
+// record, and optionally writes a free-text summary.
 export interface ZohoQAFieldMap {
-  adviser: string;
-  month: string;
+  // Numeric AI compliance score field (Trust Point: AI_Call_Score).
   score: string;
-  result: string;
-  link: string;
+  // Required name field on the QA record (Trust Point: Name).
+  client_name: string;
+  // Lookup field to the sold-customer record (Trust Point: Client → Customers
+  // Sold). Set to the record id carried on the sale trigger.
+  customer_lookup: string;
+  // Free-text field for the "what happened" summary. Empty string = not
+  // configured; CallGuard then writes no summary (nothing breaks if the tenant
+  // hasn't added a notes field yet).
+  notes: string;
 }
 
 // Public shape returned to the admin UI — never includes encrypted secrets.
@@ -39,8 +46,13 @@ export interface ZohoConnection {
   qa_module: string | null;
   qa_field_map: ZohoQAFieldMap;
   // Whether the inbound sale-trigger secret has been set (never returns the
-  // secret itself).
+  // secret itself). When set, the sale-trigger endpoint enforces the HMAC
+  // signature; when unset the trigger runs API-key-only.
   inbound_configured: boolean;
+  // Admin has confirmed the Zoho sale trigger is configured. Together with an
+  // active status this activates sales_only metadata capture even without a
+  // signing secret (the API-key-only path for Zoho's plain Webhook action).
+  sale_trigger_enabled: boolean;
   status: ZohoConnectionStatus;
   last_synced_at: string | null;
   last_error: string | null;
@@ -60,4 +72,6 @@ export interface ZohoConnectionInput {
   qa_field_map?: Partial<ZohoQAFieldMap>;
   // Set/replace the inbound sale-webhook secret. Omit to keep the existing one.
   inbound_secret?: string;
+  // Mark the sale trigger as configured (activates capture without a secret).
+  sale_trigger_enabled?: boolean;
 }

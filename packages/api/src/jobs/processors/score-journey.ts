@@ -17,6 +17,8 @@ interface JourneyRow {
   customer_id: string;
   scorecard_id: string;
   scorecard_version: number;
+  zoho_record_id: string | null;
+  client_name: string | null;
 }
 
 interface JourneyCallRow {
@@ -170,6 +172,8 @@ export async function processScoreJourney(job: Job<{ journeyId: string }>) {
           modelId: verified.model,
           inputTokens: verified.usage.input_tokens,
           outputTokens: verified.usage.output_tokens,
+          cacheReadTokens: verified.usage.cache_read_input_tokens,
+          cacheCreationTokens: verified.usage.cache_creation_input_tokens,
         });
       }
     } catch (verifyErr) {
@@ -288,6 +292,12 @@ export async function processScoreJourney(job: Job<{ journeyId: string }>) {
       [journey.customer_id]
     );
 
+    // The wrap-up (closing) agent's email — used to set the QA record's owner
+    // to the agent (services/zoho.ts). Null if the agent is unlinked.
+    const agent = wrapUp.agent_id
+      ? await queryOne<{ email: string | null }>('SELECT email FROM users WHERE id = $1', [wrapUp.agent_id])
+      : null;
+
     const payload: WebhookJourneyScoredPayload = {
       event: 'journey.scored',
       journey_id: journeyId,
@@ -297,9 +307,12 @@ export async function processScoreJourney(job: Job<{ journeyId: string }>) {
       pass,
       scored_at: new Date().toISOString(),
       agent_name: wrapUp.agent_name,
+      agent_email: agent?.email ?? null,
       customer_id: journey.customer_id,
       customer_phone: customer?.phone_normalized ?? null,
       customer_external_crm_id: customer?.external_crm_id ?? null,
+      zoho_record_id: journey.zoho_record_id,
+      client_name: journey.client_name,
       breaches: failures,
     };
 

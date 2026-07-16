@@ -9,6 +9,7 @@ import {
 import type {
   ScoringScope,
   TranscriptionMode,
+  MonoFirstSpeaker,
   DeepgramRegion,
   DialerProvider,
   DialerFieldMap,
@@ -30,6 +31,7 @@ export interface ScoringSettings {
   passThreshold: number;
   retentionDays: number;
   transcriptionMode: TranscriptionMode;
+  monoFirstSpeaker: MonoFirstSpeaker;
   deepgramRegion: DeepgramRegion;
   deepgramMipOptOut: boolean;
 }
@@ -41,6 +43,7 @@ interface ScoringSettingsRow {
   pass_threshold: string;
   retention_days: number;
   transcription_mode: TranscriptionMode;
+  mono_first_speaker: MonoFirstSpeaker;
   deepgram_region: DeepgramRegion;
   deepgram_mip_opt_out: boolean;
 }
@@ -52,6 +55,7 @@ const FALLBACK: ScoringSettings = {
   passThreshold: PASS_THRESHOLD,
   retentionDays: 1825,
   transcriptionMode: 'mono_diarize',
+  monoFirstSpeaker: 'agent',
   deepgramRegion: 'eu',
   deepgramMipOptOut: true,
 };
@@ -64,7 +68,8 @@ const FALLBACK: ScoringSettings = {
 export async function getScoringSettings(organizationId: string): Promise<ScoringSettings> {
   const row = await queryOne<ScoringSettingsRow>(
     `SELECT scoring_scope, min_scoreable_seconds, min_scoreable_words, pass_threshold,
-            retention_days, transcription_mode, deepgram_region, deepgram_mip_opt_out
+            retention_days, transcription_mode, mono_first_speaker, deepgram_region,
+            deepgram_mip_opt_out
        FROM organizations WHERE id = $1`,
     [organizationId]
   );
@@ -76,10 +81,33 @@ export async function getScoringSettings(organizationId: string): Promise<Scorin
     passThreshold: Number(row.pass_threshold),
     retentionDays: row.retention_days,
     transcriptionMode: row.transcription_mode,
+    monoFirstSpeaker: row.mono_first_speaker,
     deepgramRegion: row.deepgram_region,
     // Floor: never let a bad row value disable the opt-out.
     deepgramMipOptOut: row.deepgram_mip_opt_out !== false,
   };
+}
+
+/**
+ * Whether the org has a Zoho sale trigger that can actually drive journey
+ * scoring — an active connection that the admin has marked as having a
+ * configured trigger, either by setting a signing secret (the HMAC path) OR
+ * by ticking sale_trigger_enabled (the API-key-only path, for Zoho's plain
+ * Webhook action which can't sign). Used to decide whether 'sales_only'
+ * deferral is safe: deferring scoring (or, now, capturing calls metadata-only)
+ * with no working trigger would silently stop scoring forever, so callers fall
+ * back to scoring immediately when this is false. Shared by
+ * jobs/processors/transcribe.ts and the CloudTalk webhook capture branch
+ * (routes/ingestion.ts).
+ */
+export async function hasUsableSaleTrigger(organizationId: string): Promise<boolean> {
+  const row = await queryOne<{ id: string }>(
+    `SELECT id FROM zoho_connections
+      WHERE organization_id = $1 AND status = 'active'
+        AND (inbound_secret_encrypted IS NOT NULL OR sale_trigger_enabled = true)`,
+    [organizationId]
+  );
+  return !!row;
 }
 
 // ============================================================

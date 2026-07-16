@@ -27,6 +27,14 @@ describe('normalizePhone', () => {
     expect(normalizePhone('+1 (212) 555-0100')).toBe('+12125550100');
   });
 
+  it('collapses a CRM-mangled "44 + trunk-0 + national" number', () => {
+    // Zoho stored "4407800728124" (country code 44 with the national trunk 0
+    // never stripped) — must resolve to the same E.164 as the CloudTalk call
+    // "07800728124", or the sale's journey never matches its calls.
+    expect(normalizePhone('4407800728124')).toBe('+447800728124');
+    expect(normalizePhone('07800728124')).toBe('+447800728124');
+  });
+
   it('treats a bare 10-digit number as a UK subscriber number', () => {
     expect(normalizePhone('7911123456')).toBe('+447911123456');
   });

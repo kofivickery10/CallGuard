@@ -13,8 +13,8 @@
     "pass_threshold": 70,
     "retention_days": 1825,
     "transcription_mode": "mono_diarize",
-    "deepgram_region": "eu",
-    "adviser_channel": null
+    "mono_first_speaker": "customer",
+    "deepgram_region": "eu"
   },
   "scorecard": {
     "name": "Trust Point — Protection QA",

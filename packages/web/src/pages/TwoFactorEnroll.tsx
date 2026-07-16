@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Logo } from '../components/Logo';
@@ -22,19 +22,19 @@ export function TwoFactorEnroll() {
     if (user?.totp_enabled && step !== 'backup') navigate('/', { replace: true });
   }, [user?.totp_enabled, step, navigate]);
 
-  // Fetch the QR / secret once on mount.
+  // Fetch the QR / secret once on mount. The ref guard stops React StrictMode's
+  // double-mount from firing /setup twice, which would otherwise race two secrets
+  // against the same row and could leave the stored secret out of sync with the QR.
+  // NB: we deliberately do NOT use a `cancelled` cleanup flag here — under
+  // StrictMode the mount's cleanup would set it before the single guarded fetch
+  // resolves, discarding the result and leaving the QR stuck on "Loading…".
+  const setupStarted = useRef(false);
   useEffect(() => {
-    let cancelled = false;
+    if (setupStarted.current) return;
+    setupStarted.current = true;
     setupTwoFactor()
-      .then((res) => {
-        if (!cancelled) setSetup(res);
-      })
-      .catch((err) => {
-        if (!cancelled) setError((err as Error).message);
-      });
-    return () => {
-      cancelled = true;
-    };
+      .then(setSetup)
+      .catch((err) => setError((err as Error).message));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

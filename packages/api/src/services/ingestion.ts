@@ -28,6 +28,11 @@ export interface IngestCallParams {
   callDate?: string | null;
   externalId?: string | null;
   tags?: string[];
+  // Call direction, when the dialler's payload carries it (see
+  // routes/ingestion.ts's DialerFieldMap.direction) — null when absent/
+  // unrecognised, in which case transcription falls back to the org's
+  // mono_first_speaker default for the mono-diarisation speaker guess.
+  direction?: 'inbound' | 'outbound' | null;
   // When set, the caller picks which scorecard the call should be scored
   // against. Useful for BPOs running multiple campaigns / clients.
   // Validated against the org before being persisted; falls back to the
@@ -49,30 +54,36 @@ export function normalizePhone(raw: string): string | null {
   let digits = trimmed.replace(/\D/g, '');
   if (!digits) return null;
 
-  // "+" and the "00" international access prefix both mean an international
-  // number follows. Collapse "00" to the "+" form, then normalise once.
+  // Resolve to bare international digits (no '+'), then collapse once below.
   if (trimmed.startsWith('+') || digits.startsWith('00')) {
+    // "+" and the "00" access prefix both mean an international number follows.
     if (digits.startsWith('00')) digits = digits.slice(2);
-    // A national trunk '0' written after the UK country code, e.g.
-    // "+44 (0)7911 123456" -> 4407911123456 -> 447911123456.
-    if (digits.startsWith('440')) digits = `44${digits.slice(3)}`;
-    return `+${digits}`;
+  } else if (digits.startsWith('0')) {
+    // National format with a trunk 0 (07xxx / 01xxx / 02xxx / 03xxx) -> UK.
+    digits = `44${digits.slice(1)}`;
+  } else if (digits.length === 10) {
+    // No '+', no '00', no leading '0'. UK-bias (UK product): a 10-digit number
+    // is a UK subscriber number with the trunk 0 dropped. Anything longer is
+    // assumed to already carry a country code (handled by the collapse below).
+    digits = `44${digits}`;
   }
 
-  // National format with a trunk 0 (07xxx / 01xxx / 02xxx / 03xxx) -> UK.
-  if (digits.startsWith('0')) return `+44${digits.slice(1)}`;
+  // Collapse a spurious UK trunk '0' written after the country code, however
+  // it arrived — "+44 (0)7911…" -> 4407911… , or a CRM that stored the number
+  // as "44" + the full national number without stripping the leading 0
+  // ("4407800728124"). A real UK national significant number never starts with
+  // 0, so a leading "440" is always a mis-inserted trunk zero. Without this,
+  // such a number normalises to "+4407800728124" and never matches the same
+  // customer's CloudTalk calls (which come through as "+447800728124").
+  if (digits.startsWith('440')) digits = `44${digits.slice(3)}`;
 
-  // No '+', no '00', no leading '0'. Ambiguous. UK-bias (UK product): a
-  // 10-digit number is a UK subscriber number with the trunk 0 dropped;
-  // anything else is assumed to already carry a country code.
-  if (digits.length === 10) return `+44${digits}`;
   return `+${digits}`;
 }
 
 /**
  * Upsert a customer record based on normalised phone. Returns the customer id.
  */
-async function upsertCustomer(
+export async function upsertCustomer(
   organizationId: string,
   phone: string,
   name?: string | null,
@@ -191,9 +202,9 @@ export async function ingestCall(params: IngestCallParams): Promise<IngestedCall
          file_size_bytes, mime_type, agent_id, agent_name,
          customer_phone, customer_id, call_date, tags, status,
          external_id, ingestion_source, encrypted_at_rest, scorecard_id,
-         dialer_connection_id
+         dialer_connection_id, direction
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'uploaded', $14, $15, true, $16, $17)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'uploaded', $14, $15, true, $16, $17, $18)
        RETURNING *`,
       [
         callId,
@@ -213,6 +224,7 @@ export async function ingestCall(params: IngestCallParams): Promise<IngestedCall
         params.ingestionSource,
         scorecardId,
         params.dialerConnectionId ?? null,
+        params.direction ?? null,
       ]
     );
   } catch (err) {
@@ -234,6 +246,91 @@ export async function ingestCall(params: IngestCallParams): Promise<IngestedCall
   await transcriptionQueue.add('transcribe', { callId }, { jobId: callId });
 
   return { call: rows[0]!, isDuplicate: false };
+}
+
+export interface CaptureCallParams {
+  organizationId: string;
+  externalId: string;
+  // The CloudTalk call UUID, used to re-fetch the recording at sale time.
+  cloudtalkCallId: string | null;
+  // The webhook's recording URL if it carried one — stored as a hint only;
+  // hydration prefers a fresh fetch by cloudtalkCallId to dodge URL expiry.
+  recordingPointer: string | null;
+  agentEmail?: string | null;
+  agentExternalId?: string | null;
+  agentName?: string | null;
+  customerPhone?: string | null;
+  callDate?: string | null;
+  direction?: 'inbound' | 'outbound' | null;
+  dialerConnectionId?: string | null;
+}
+
+/**
+ * Metadata-only capture for sales_only tenants (see routes/ingestion.ts
+ * handleCloudTalkWebhook). Records the call's identity, agent, customer and
+ * recording pointer as a 'captured' row WITHOUT downloading audio or
+ * transcribing — that is deferred until a Zoho sale trigger hydrates the
+ * customer's journey. Idempotent by (org, externalId), same as ingestCall.
+ */
+export async function captureCallMetadata(
+  params: CaptureCallParams
+): Promise<IngestedCall> {
+  const existing = await queryOne<Call>(
+    'SELECT * FROM calls WHERE organization_id = $1 AND external_id = $2',
+    [params.organizationId, params.externalId]
+  );
+  if (existing) return { call: existing, isDuplicate: true };
+
+  const { agentId, agentName } = await resolveAgent(params.organizationId, params);
+
+  let customerId: string | null = null;
+  if (params.customerPhone) {
+    const normalised = normalizePhone(params.customerPhone);
+    if (normalised) {
+      customerId = await upsertCustomer(params.organizationId, normalised, null, null);
+    }
+  }
+
+  const callId = uuid();
+  try {
+    const rows = await query<Call>(
+      `INSERT INTO calls (
+         id, organization_id, uploaded_by, file_name, file_key,
+         mime_type, agent_id, agent_name, customer_phone, customer_id,
+         call_date, status, external_id, ingestion_source, encrypted_at_rest,
+         dialer_connection_id, direction, recording_pointer
+       )
+       VALUES ($1, $2, NULL, $3, NULL, NULL, $4, $5, $6, $7, $8,
+               'captured', $9, 'dialer_webhook', false, $10, $11, $12)
+       RETURNING *`,
+      [
+        callId,
+        params.organizationId,
+        `cloudtalk-${params.cloudtalkCallId ?? params.externalId}`,
+        agentId,
+        agentName,
+        params.customerPhone ?? null,
+        customerId,
+        params.callDate ?? null,
+        params.externalId,
+        params.dialerConnectionId ?? null,
+        params.direction ?? null,
+        params.recordingPointer ?? null,
+      ]
+    );
+    return { call: rows[0]!, isDuplicate: false };
+  } catch (err) {
+    // Same TOCTOU race as ingestCall: two concurrent webhook deliveries both
+    // pass the SELECT above before either INSERTs. Return the row the other won.
+    if ((err as { code?: string }).code === '23505') {
+      const raced = await queryOne<Call>(
+        'SELECT * FROM calls WHERE organization_id = $1 AND external_id = $2',
+        [params.organizationId, params.externalId]
+      );
+      if (raced) return { call: raced, isDuplicate: true };
+    }
+    throw err;
+  }
 }
 
 // Infer a content type from a filename extension

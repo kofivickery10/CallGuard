@@ -34,9 +34,16 @@ const ZOHO_ACCOUNTS_HOST: Record<ZohoRegion, string> = {
   ca: 'https://accounts.zohocloud.ca',
 };
 
-// modules.ALL covers read/update on Leads/Contacts and creating Tasks. offline +
-// consent guarantee a refresh token comes back on first authorisation.
-const OAUTH_SCOPE = 'ZohoCRM.modules.ALL';
+// Scopes CallGuard needs:
+//  - modules.ALL           : read/update Leads/Contacts, create Tasks, and
+//                            read/write the QA custom module records.
+//  - settings.modules.READ : the connection Test hits /settings/modules.
+//  - users.READ            : resolve an adviser's email to a Zoho user so the
+//                            QA record's owner can be set to the agent.
+// offline + consent (see buildAuthorizeUrl) guarantee a refresh token on first
+// authorisation. NB: widening this list requires reconnecting — an existing
+// token only carries the scopes it was granted with.
+const OAUTH_SCOPE = 'ZohoCRM.modules.ALL,ZohoCRM.settings.modules.READ,ZohoCRM.users.READ';
 
 interface ZohoConnectionRow {
   id: string;
@@ -422,11 +429,86 @@ async function createBreachTask(
   await checkZohoWriteResult(res, 'Zoho task create');
 }
 
+// Resolve a CallGuard adviser's email to a Zoho CRM user id, so the QA record's
+// owner can be set to the agent. Users change rarely, so the full active-user
+// list is cached per Zoho account (api_domain) for an hour. Returns null if the
+// email is absent or has no matching Zoho user — the caller then leaves the
+// owner defaulting rather than failing.
+const USER_CACHE_TTL_MS = 60 * 60 * 1000;
+const userCaches = new Map<string, { at: number; byEmail: Map<string, string> }>();
+
+async function resolveZohoUserIdByEmail(
+  apiDomain: string,
+  accessToken: string,
+  email: string | null
+): Promise<string | null> {
+  if (!email) return null;
+  const key = email.trim().toLowerCase();
+  if (!key) return null;
+
+  let cache = userCaches.get(apiDomain);
+  if (!cache || Date.now() - cache.at > USER_CACHE_TTL_MS) {
+    const res = await zohoApi(apiDomain, accessToken, `/crm/v8/users?type=ActiveUsers`);
+    if (!res.ok) {
+      console.warn(`[Zoho] user lookup returned ${res.status}; leaving QA owner default`);
+      return null;
+    }
+    const body = (await res.json().catch(() => null)) as { users?: Array<{ id: string; email?: string }> } | null;
+    const byEmail = new Map<string, string>();
+    for (const u of body?.users ?? []) {
+      if (u.email) byEmail.set(u.email.trim().toLowerCase(), u.id);
+    }
+    cache = { at: Date.now(), byEmail };
+    userCaches.set(apiDomain, cache);
+  }
+  return cache.byEmail.get(key) ?? null;
+}
+
+// Find an existing QA record already linked to this sold-customer record, so we
+// update it (adding the AI score to the tenant's human QA marks) rather than
+// creating a duplicate. Returns null (→ create) on no match or a search error.
+async function findQARecordByCustomer(
+  apiDomain: string,
+  accessToken: string,
+  module: string,
+  lookupField: string,
+  recordId: string
+): Promise<string | null> {
+  const criteria = `(${lookupField}:equals:${recordId})`;
+  const res = await zohoApi(
+    apiDomain,
+    accessToken,
+    `/crm/v8/${module}/search?criteria=${encodeURIComponent(criteria)}`
+  );
+  if (res.status === 204) return null;
+  if (!res.ok) {
+    console.warn(`[Zoho] QA record search returned ${res.status}; will create instead`);
+    return null;
+  }
+  const body = (await res.json().catch(() => null)) as { data?: Array<{ id: string }> } | null;
+  return body?.data?.[0]?.id ?? null;
+}
+
+// Human-readable "what happened" summary for the QA record's notes field.
+function buildQASummary(payload: WebhookJourneyScoredPayload): string {
+  const header = `CallGuard AI scored this sale ${payload.overall_score.toFixed(1)}/100 — ${payload.pass ? 'PASS' : 'FAIL'}.`;
+  const review = `Review: ${reviewLink(payload)}`;
+  if (payload.breaches.length === 0) {
+    return [header, 'No compliance breaches detected.', '', review].join('\n');
+  }
+  const lines = payload.breaches.map(
+    (b) => `• [${b.severity.toUpperCase()}] ${b.scorecard_item_label}${b.evidence ? ` — ${b.evidence}` : ''}`
+  );
+  return [header, '', 'Breaches:', ...lines, '', review].join('\n');
+}
+
 /**
- * Push a score into the org's QA custom module, if configured (spec §11) —
- * standalone from the Lead/Contact match above, so Trust Point can filter QA
- * records by adviser + month for commission-tied averages even when no
- * matching Lead/Contact was found.
+ * Write CallGuard's AI compliance score into the tenant's QA module (spec §11).
+ * CallGuard fills only its own component — the AI score (and, if configured, a
+ * summary) — linked to the sold-customer record; the tenant's formula averages
+ * it with their human QA marks. Upserts so it adds to, never duplicates, an
+ * existing QA record. Journey/sale-scoped: needs the sold-customer record id
+ * carried from the sale trigger, so it no-ops for per-call scores.
  */
 async function pushQARecord(
   apiDomain: string,
@@ -435,23 +517,45 @@ async function pushQARecord(
   payload: ScoredPayload
 ): Promise<void> {
   if (!conn.qa_module) return;
+  if (!isJourneyPayload(payload)) return;
+  const zohoRecordId = payload.zoho_record_id;
+  if (!zohoRecordId) return;
 
-  const scoredAt = new Date(payload.scored_at);
-  const period = `${scoredAt.getUTCFullYear()}-${String(scoredAt.getUTCMonth() + 1).padStart(2, '0')}`;
-
+  const qa = conn.qa_field_map;
   const record: Record<string, unknown> = {
-    [conn.qa_field_map.adviser]: payload.agent_name ?? 'Unknown',
-    [conn.qa_field_map.month]: period,
-    [conn.qa_field_map.score]: Number(payload.overall_score.toFixed(1)),
-    [conn.qa_field_map.result]: payload.pass ? 'Pass' : 'Fail',
-    [conn.qa_field_map.link]: reviewLink(payload),
+    [qa.score]: Number(payload.overall_score.toFixed(1)),
+    [qa.client_name]: payload.client_name ?? 'Unknown',
+    [qa.customer_lookup]: { id: zohoRecordId },
   };
+  // Notes field is opt-in — only write the summary if the tenant has configured
+  // a field API name for it.
+  if (qa.notes) record[qa.notes] = buildQASummary(payload);
 
-  const res = await zohoApi(apiDomain, accessToken, `/crm/v8/${conn.qa_module}`, {
-    method: 'POST',
-    body: JSON.stringify({ data: [record] }),
-  });
-  await checkZohoWriteResult(res, 'Zoho QA record create');
+  // Owner = the closing agent, if we can resolve them to a Zoho user.
+  const ownerId = await resolveZohoUserIdByEmail(apiDomain, accessToken, payload.agent_email);
+  if (ownerId) record.Owner = { id: ownerId };
+
+  const existingId = await findQARecordByCustomer(
+    apiDomain,
+    accessToken,
+    conn.qa_module,
+    qa.customer_lookup,
+    zohoRecordId
+  );
+  if (existingId) {
+    record.id = existingId;
+    const res = await zohoApi(apiDomain, accessToken, `/crm/v8/${conn.qa_module}`, {
+      method: 'PUT',
+      body: JSON.stringify({ data: [record] }),
+    });
+    await checkZohoWriteResult(res, 'Zoho QA record update');
+  } else {
+    const res = await zohoApi(apiDomain, accessToken, `/crm/v8/${conn.qa_module}`, {
+      method: 'POST',
+      body: JSON.stringify({ data: [record] }),
+    });
+    await checkZohoWriteResult(res, 'Zoho QA record create');
+  }
 }
 
 /**
@@ -467,9 +571,27 @@ async function pushScoredPayload(organizationId: string, payload: ScoredPayload)
 
   const label = isJourneyPayload(payload) ? `journey ${payload.journey_id}` : `call ${payload.call_id}`;
 
+  let accessToken: string;
+  let apiDomain: string;
   try {
-    const { accessToken, apiDomain } = await ensureAccessToken(conn);
+    ({ accessToken, apiDomain } = await ensureAccessToken(conn));
+  } catch (err) {
+    const message = (err as Error).message;
+    console.error(`[Zoho] token refresh failed for ${label}:`, message);
+    await query(
+      `UPDATE zoho_connections SET last_error = $2, updated_at = now() WHERE organization_id = $1`,
+      [organizationId, message.slice(0, 500)]
+    ).catch(() => {});
+    return;
+  }
 
+  // The customer-record (Leads/Contacts) write-back and the QA-module write-back
+  // are INDEPENDENT: a tenant may use one, the other, or both. Run each in its
+  // own try/catch so, e.g., a Lead missing the compliance custom fields doesn't
+  // stop the QA record being written (or vice versa).
+  const errors: string[] = [];
+
+  try {
     if (payload.customer_phone) {
       const match = await findRecordByPhone(apiDomain, accessToken, conn.module, payload.customer_phone);
       if (match) {
@@ -492,19 +614,29 @@ async function pushScoredPayload(organizationId: string, payload: ScoredPayload)
         console.log(`[Zoho] no ${conn.module} match for ${payload.customer_phone} (org ${organizationId}); skipping customer-record write-back`);
       }
     }
+  } catch (err) {
+    const message = (err as Error).message;
+    console.error(`[Zoho] customer-record write-back failed for ${label}:`, message);
+    errors.push(`record: ${message}`);
+  }
 
+  try {
     await pushQARecord(apiDomain, accessToken, conn, payload);
+  } catch (err) {
+    const message = (err as Error).message;
+    console.error(`[Zoho] QA write-back failed for ${label}:`, message);
+    errors.push(`qa: ${message}`);
+  }
 
+  if (errors.length > 0) {
+    await query(
+      `UPDATE zoho_connections SET last_error = $2, updated_at = now() WHERE organization_id = $1`,
+      [organizationId, errors.join(' | ').slice(0, 500)]
+    ).catch(() => {});
+  } else {
     await query(
       `UPDATE zoho_connections SET last_synced_at = now(), last_error = NULL WHERE organization_id = $1`,
       [organizationId]
-    );
-  } catch (err) {
-    const message = (err as Error).message;
-    console.error(`[Zoho] write-back failed for ${label}:`, message);
-    await query(
-      `UPDATE zoho_connections SET last_error = $2, updated_at = now() WHERE organization_id = $1`,
-      [organizationId, message.slice(0, 500)]
     ).catch(() => {});
   }
 }
