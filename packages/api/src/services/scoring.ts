@@ -2,6 +2,13 @@ import { config } from '../config.js';
 import { CLAUDE_MODELS } from '@callguard/shared';
 import type { CallCoaching } from '@callguard/shared';
 
+// 1-hour prompt-cache TTL (2x write, 0.1x read). The pinned SDK's types
+// predate the GA `ttl` field, hence the cast; the beta header below is the
+// pre-GA opt-in — harmless now, and keeps this working if the account is
+// still gated on it.
+export const CACHE_1H = { type: 'ephemeral', ttl: '1h' } as { type: 'ephemeral' };
+export const CACHE_TTL_HEADERS = { headers: { 'anthropic-beta': 'extended-cache-ttl-2025-04-11' } };
+
 interface ScorecardItemInput {
   id: string;
   label: string;
@@ -116,7 +123,7 @@ function buildScoringPrompt(
   // criteria + instructions — identical for every call scored against the same
   // scorecard for this org) and a volatile suffix (this agent's prior coaching +
   // this call's transcript). Prompt caching then bills the big prefix once per
-  // ~5-minute window instead of on every call in a batch.
+  // ~1-hour window (see the cache_control ttl below) instead of on every call.
   const cached = `You are a call quality and compliance analyst evaluating ${callHeadline}. You will evaluate the transcript against specific scoring criteria.
 
 ## Important Context
@@ -200,8 +207,12 @@ export async function scoreTranscript(
       {
         role: 'user',
         content: [
-          // Stable prefix (scorecard + KB + instructions) — cached across calls.
-          { type: 'text', text: prompt.cached, cache_control: { type: 'ephemeral' } },
+          // Stable prefix (scorecard + KB + instructions) — cached across
+          // calls. 1-hour TTL (2x write vs 1.25x for 5-min, reads 0.1x
+          // either way): production calls arrive minutes-to-an-hour apart,
+          // which the 5-minute TTL misses on all but tight batches — one
+          // extra hit within the hour already pays for the dearer write.
+          { type: 'text', text: prompt.cached, cache_control: CACHE_1H },
           // Per-call suffix (this agent's coaching + this transcript).
           { type: 'text', text: prompt.dynamic },
         ],
@@ -268,7 +279,7 @@ export async function scoreTranscript(
       },
     ],
     tool_choice: { type: 'tool', name: 'submit_scores' },
-  });
+  }, CACHE_TTL_HEADERS);
 
   const toolUse = response.content.find(
     (block) => block.type === 'tool_use'
@@ -304,7 +315,12 @@ export async function verifyItems(
   industry: string | null = null
 ): Promise<{
   items: ItemScoreOutput[];
-  usage: { input_tokens: number; output_tokens: number };
+  usage: {
+    input_tokens: number;
+    output_tokens: number;
+    cache_creation_input_tokens: number;
+    cache_read_input_tokens: number;
+  };
   model: string;
 }> {
   const model = CLAUDE_MODELS.SONNET;
@@ -312,7 +328,11 @@ export async function verifyItems(
     throw new Error('ANTHROPIC_API_KEY is not set in .env - needed for verification');
   }
   if (items.length === 0) {
-    return { items: [], usage: { input_tokens: 0, output_tokens: 0 }, model };
+    return {
+      items: [],
+      usage: { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+      model,
+    };
   }
 
   const { default: Anthropic } = await import('@anthropic-ai/sdk');
@@ -344,13 +364,21 @@ export async function verifyItems(
     ? `\n\n## Business Knowledge Base\n\n${kbContext}\n`
     : '';
 
-  const prompt = `You are a senior compliance QA reviewer providing an independent second opinion on ${headline}. A faster first-pass model marked the criteria below as FAILED (a breach). Re-evaluate each one strictly and independently against the transcript, then either CONFIRM the failure or OVERTURN it if the first pass got it wrong.
+  // Stable per-org prefix (instructions + KB) vs per-call suffix (the flagged
+  // criteria + transcript). The prefix is most of this prompt's tokens when a
+  // KB is configured, and it's identical for every verify in the org — cache
+  // it (1h TTL, same reasoning as scoreTranscript) so only the per-call part
+  // bills at Sonnet's full input rate. Orgs without a KB fall below Sonnet's
+  // minimum cacheable prefix and silently skip caching, which is harmless.
+  const cachedPrefix = `You are a senior compliance QA reviewer providing an independent second opinion on ${headline}. A faster first-pass model marked the criteria below as FAILED (a breach). Re-evaluate each one strictly and independently against the transcript, then either CONFIRM the failure or OVERTURN it if the first pass got it wrong.
 
 Be rigorous in both directions: a wrong breach in a regulated firm's compliance register is costly, and so is a missed one. Only score a criterion as met (passed) if the transcript clearly shows it was satisfied; only confirm a failure if the transcript clearly shows it was not.
 
-Personal/sensitive data is redacted to typed tags like [PII_NAME_1], [PHONE_NUMBER_1] or [CREDIT_CARD_1]. A tag is positive evidence the information was provided/collected - do NOT confirm a failure simply because a value is redacted. Only where a criterion needs the agent to confirm a read-back value MATCHES the customer's, treat the match as unverifiable and judge on whether the confirmation step occurred.${kbBlock}
+Personal/sensitive data is redacted to typed tags like [PII_NAME_1], [PHONE_NUMBER_1] or [CREDIT_CARD_1]. A tag is positive evidence the information was provided/collected - do NOT confirm a failure simply because a value is redacted. Only where a criterion needs the agent to confirm a read-back value MATCHES the customer's, treat the match as unverifiable and judge on whether the confirmation step occurred.
 
-## Criteria to re-check
+For each criterion return the corrected score, a direct quote from the transcript as evidence (or "No relevant evidence found"), 1-2 sentences of reasoning, and your confidence from 0.0 to 1.0.${kbBlock}`;
+
+  const dynamic = `## Criteria to re-check
 
 ${criteriaBlock}
 
@@ -358,14 +386,20 @@ ${criteriaBlock}
 
 <transcript>
 ${transcript}
-</transcript>
-
-For each criterion return the corrected score, a direct quote from the transcript as evidence (or "No relevant evidence found"), 1-2 sentences of reasoning, and your confidence from 0.0 to 1.0.`;
+</transcript>`;
 
   const response = await client.messages.create({
     model,
     max_tokens: 2048,
-    messages: [{ role: 'user', content: prompt }],
+    messages: [
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: cachedPrefix, cache_control: CACHE_1H },
+          { type: 'text', text: dynamic },
+        ],
+      },
+    ],
     tools: [
       {
         name: 'submit_scores',
@@ -393,7 +427,7 @@ For each criterion return the corrected score, a direct quote from the transcrip
       },
     ],
     tool_choice: { type: 'tool', name: 'submit_scores' },
-  });
+  }, CACHE_TTL_HEADERS);
 
   const toolUse = response.content.find((block) => block.type === 'tool_use');
   if (!toolUse || toolUse.type !== 'tool_use') {
@@ -405,6 +439,8 @@ For each criterion return the corrected score, a direct quote from the transcrip
     usage: {
       input_tokens: response.usage.input_tokens,
       output_tokens: response.usage.output_tokens,
+      cache_creation_input_tokens: response.usage.cache_creation_input_tokens ?? 0,
+      cache_read_input_tokens: response.usage.cache_read_input_tokens ?? 0,
     },
     model,
   };

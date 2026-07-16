@@ -22,6 +22,7 @@ import { v4 as uuid } from 'uuid';
 import { randomBytes } from 'crypto';
 import { deriveSeverity, callPasses } from '@callguard/shared';
 import { pool, query, queryOne } from '../db/client.js';
+import { deleteOrganizationCascade } from '../services/tenant-deletion.js';
 
 const DEMO_ORG = 'Brookfield Protection';
 const DEMO_ADMIN_EMAIL = 'demo@callguardai.co.uk';
@@ -601,36 +602,11 @@ Looking ahead: a short team refresher on (1) always explaining the duty of discl
 }
 
 async function wipeOrg(orgId: string) {
-  // Delete every org-scoped table in FK-safe order. webhook_deliveries,
-  // live_sessions and audit_log reference organizations / users / api_keys /
-  // scorecards with NO ON DELETE CASCADE, so they must go before those parents
-  // or the final DELETE FROM users / organizations raises a foreign-key
-  // violation. (call_share_links and call_feedback cascade off calls, so
-  // deleting calls already covers them.) delOrg tolerates a missing table so the
-  // wipe still works on a DB where a later migration has not been applied yet.
-  const delOrg = async (table: string, col = 'organization_id') => {
-    try {
-      await query(`DELETE FROM ${table} WHERE ${col} = $1`, [orgId]);
-    } catch (err) {
-      if ((err as { code?: string })?.code !== '42P01') throw err; // 42P01 = undefined_table
-    }
-  };
-
-  await delOrg('webhook_deliveries');
-  await delOrg('live_sessions');
-  await delOrg('audit_log');
-  await delOrg('score_corrections');
-  await delOrg('insight_digests');
-  await delOrg('calls');
-  await delOrg('scorecards');
-  await delOrg('knowledge_base_sections');
-  await delOrg('alert_rules');
-  await delOrg('notifications');
-  await delOrg('api_keys');
-  await delOrg('sftp_sources');
-  await delOrg('breaches');
-  await delOrg('users');
-  await delOrg('organizations', 'id');
+  // Full, FK-safe, transactional teardown lives in the shared tenant-deletion
+  // service (also used by the superadmin "delete tenant" endpoint) so re-seeding
+  // and real tenant deletion can't drift apart. It removes every org-scoped table
+  // and guards against any newer table being missed.
+  await deleteOrganizationCascade(orgId);
 }
 
 function buildDemoCoaching(agent: string, score: number, failingItems: number) {

@@ -5,18 +5,10 @@ import { cleanupTranscript } from '../../services/transcript-cleanup.js';
 import { getKBContext } from '../../services/kb.js';
 import { evaluateAlertsForCall } from '../../services/alert-evaluator.js';
 import { recordUsage } from '../../services/usage.js';
-import { getScoringSettings } from '../../services/tenant-settings.js';
+import { getScoringSettings, hasUsableSaleTrigger } from '../../services/tenant-settings.js';
+import { assembleJourney, maybeScoreJourneyWhenReady } from '../../services/journey.js';
 import { scoringQueue } from '../queue.js';
 import type { Call } from '@callguard/shared';
-
-async function hasUsableSaleTrigger(organizationId: string): Promise<boolean> {
-  const row = await queryOne<{ id: string }>(
-    `SELECT id FROM zoho_connections
-      WHERE organization_id = $1 AND status = 'active' AND inbound_secret_encrypted IS NOT NULL`,
-    [organizationId]
-  );
-  return !!row;
-}
 
 export async function processTranscription(job: Job<{ callId: string }>) {
   const { callId } = job.data;
@@ -53,13 +45,30 @@ export async function processTranscription(job: Job<{ callId: string }>) {
     );
     const scoringSettings = await getScoringSettings(call.organization_id);
 
+    // A per-call direction (from the dialler's webhook, when it carries one)
+    // overrides the tenant's static mono_first_speaker default — it's a
+    // stronger signal since it's specific to this call, not an assumption
+    // about the tenant's calling pattern as a whole.
+    const callDirection = (call as Call & { direction?: 'inbound' | 'outbound' | null }).direction ?? null;
+    const monoFirstSpeaker =
+      callDirection === 'outbound' ? 'customer' : callDirection === 'inbound' ? 'agent' : scoringSettings.monoFirstSpeaker;
+
+    // A captured call reaches transcription only after hydration has fetched
+    // and stored its audio (set file_key). A null here means it was enqueued
+    // before hydration — a bug, not a transient — so fail loudly rather than
+    // hand null to the transcriber.
+    if (!call.file_key) {
+      throw new Error(`Call ${callId} has no file_key — not hydrated before transcription`);
+    }
+
     const result = await transcribeCall(
       call.file_key,
       agentNames,
       (call as Call & { encrypted_at_rest?: boolean }).encrypted_at_rest ?? false,
       orgRow?.adviser_channel ?? null,
       scoringSettings.transcriptionMode,
-      scoringSettings.deepgramRegion
+      scoringSettings.deepgramRegion,
+      monoFirstSpeaker
     );
 
     // Record Deepgram usage (billed per minute of audio).
@@ -70,12 +79,33 @@ export async function processTranscription(job: Job<{ callId: string }>) {
       operation: 'transcribe',
       modelId: 'nova-3',
       audioSeconds: result.duration_seconds,
+      deepgramMultichannel: scoringSettings.transcriptionMode === 'stereo_multichannel',
     });
 
-    // Clean up transcript with LLM (pass org ID + KB context so Claude knows business details)
+    // Clean up transcript with LLM (pass org ID + KB context so Claude knows business details).
+    // Below-1.0 confidence (mono-diarisation guess, not a pinned stereo channel)
+    // also has Claude verify the Agent/Customer split against conversational
+    // content — a safety net independent of the direction/heuristic that
+    // produced result.text, catching cases like a misconfigured tenant default
+    // or a call that doesn't match its usual direction.
     console.log(`[Transcription] Cleaning up transcript for call ${callId}`);
     const kbContext = await getKBContext(call.organization_id);
-    const cleanedText = await cleanupTranscript(result.text, call.organization_id, kbContext, callId);
+    const cleanup = await cleanupTranscript(
+      result.text,
+      call.organization_id,
+      kbContext,
+      callId,
+      result.speaker_attribution_confidence
+    );
+    if (cleanup.speakerLabelsSwapped) {
+      console.warn(`[Transcription] Call ${callId}: AI cleanup swapped Agent/Customer labels (heuristic guess was likely backwards)`);
+    }
+    // Content-verified either way (confirmed or corrected) is more reliable
+    // than the raw first-speaker heuristic alone — but only a swap is a
+    // strong enough positive signal to actually raise the stored confidence.
+    const speakerAttributionConfidence = cleanup.speakerLabelsSwapped
+      ? Math.max(result.speaker_attribution_confidence, 0.75)
+      : result.speaker_attribution_confidence;
 
     // Store transcript
     await query(
@@ -89,9 +119,9 @@ export async function processTranscription(job: Job<{ callId: string }>) {
        WHERE id = $5`,
       [
         JSON.stringify(result.raw),
-        cleanedText,
+        cleanup.text,
         result.duration_seconds,
-        result.speaker_attribution_confidence,
+        speakerAttributionConfidence,
         callId,
       ]
     );
@@ -109,7 +139,25 @@ export async function processTranscription(job: Job<{ callId: string }>) {
       scoringSettings.scoringScope === 'sales_only' &&
       (await hasUsableSaleTrigger(call.organization_id));
 
-    if (deferToSaleTrigger) {
+    // A call manually flagged as a sale at upload (see routes/calls.ts) short-
+    // circuits the defer/score-immediately choice above: assemble + score a
+    // journey for this customer right away, the same way the Zoho sale-trigger
+    // webhook would, instead of waiting on a CRM event that will never come
+    // for a manually-uploaded call. Falls through to the normal branches below
+    // if there's no linked customer (no phone was given) to attach a journey to.
+    const saleFlagged = (call as Call & { sale_flagged?: boolean }).sale_flagged === true;
+    const customerId = (call as Call & { customer_id?: string | null }).customer_id ?? null;
+    const journeyId = (call as Call & { journey_id?: string | null }).journey_id ?? null;
+
+    if (journeyId) {
+      // This call was hydrated as part of a journey (Zoho sale trigger). It is
+      // never scored on its own — once every call linked to the journey has
+      // been transcribed, the journey is scored as a whole.
+      await maybeScoreJourneyWhenReady(journeyId);
+    } else if (scoringSettings.scoringScope === 'sales_only' && saleFlagged && customerId) {
+      console.log(`[Transcription] Call ${callId} manually flagged as a sale — assembling journey for customer ${customerId}`);
+      await assembleJourney({ organizationId: call.organization_id, customerId, triggerSource: 'manual' });
+    } else if (deferToSaleTrigger) {
       console.log(`[Transcription] Call ${callId} held for Zoho sale trigger (scoring_scope=sales_only)`);
     } else {
       await scoringQueue.add('score', { callId }, { jobId: `score-${callId}` });

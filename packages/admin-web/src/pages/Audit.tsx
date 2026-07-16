@@ -20,7 +20,7 @@ const PAGE_SIZE = 100;
 // Actions that touch billing, access or tenant lifecycle — worth highlighting.
 const SENSITIVE = new Set([
   'tenant.impersonate', 'tenant.create', 'tenant.status_change',
-  'tenant.seat_price', 'tenant.feature_override', 'plan.change',
+  'tenant.delete', 'tenant.seat_price', 'tenant.feature_override', 'plan.change',
   'api_key.create', 'api_key.revoke', 'user.delete', 'user.role_change',
 ]);
 

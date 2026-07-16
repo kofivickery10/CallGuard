@@ -12,9 +12,9 @@
     "scoring_scope": "sales_only",
     "pass_threshold": 70,
     "retention_days": 1825,
-    "transcription_mode": "stereo_multichannel",
-    "deepgram_region": "eu",
-    "adviser_channel": 0
+    "transcription_mode": "mono_diarize",
+    "mono_first_speaker": "customer",
+    "deepgram_region": "eu"
   },
   "scorecard": {
     "name": "Trust Point — Protection QA",

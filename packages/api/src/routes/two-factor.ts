@@ -162,8 +162,8 @@ twoFactorRouter.get('/status', async (req, res, next) => {
 // stored encrypted but not yet enabled until /verify-setup confirms a live code.
 twoFactorRouter.post('/setup', async (req, res, next) => {
   try {
-    const user = await queryOne<{ email: string; totp_enabled: boolean }>(
-      'SELECT email, totp_enabled FROM users WHERE id = $1',
+    const user = await queryOne<{ email: string; totp_enabled: boolean; totp_secret: string | null }>(
+      'SELECT email, totp_enabled, totp_secret FROM users WHERE id = $1',
       [req.user!.userId]
     );
     if (!user) throw new AppError(404, 'User not found');
@@ -171,11 +171,25 @@ twoFactorRouter.post('/setup', async (req, res, next) => {
       throw new AppError(400, 'Two-factor authentication is already enabled');
     }
 
-    const setup = await generateTotpSetup(user.email);
-    await query('UPDATE users SET totp_secret = $1 WHERE id = $2', [
-      encryptSecret(setup.secret),
-      req.user!.userId,
-    ]);
+    // Reuse a pending secret if one exists, so a repeated setup call (e.g. React
+    // StrictMode double-mounting the enrolment page, or a page refresh mid-flow)
+    // can't silently invalidate the QR the user is about to scan.
+    let pendingSecret: string | undefined;
+    if (user.totp_secret) {
+      try {
+        pendingSecret = decryptSecret(user.totp_secret);
+      } catch {
+        // Undecryptable (e.g. ENCRYPTION_KEY changed) — fall through to a fresh secret.
+      }
+    }
+
+    const setup = await generateTotpSetup(user.email, pendingSecret);
+    if (!pendingSecret) {
+      await query('UPDATE users SET totp_secret = $1 WHERE id = $2', [
+        encryptSecret(setup.secret),
+        req.user!.userId,
+      ]);
+    }
 
     res.json({
       otpauth_url: setup.otpauthUrl,

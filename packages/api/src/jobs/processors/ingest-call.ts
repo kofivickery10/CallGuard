@@ -15,6 +15,7 @@ export interface IngestCallJobData {
   agentExternalId: string | null;
   agentName: string | null;
   customerPhone: string | null;
+  direction: 'inbound' | 'outbound' | null;
 }
 
 /**
@@ -73,6 +74,7 @@ export async function processIngestCall(job: Job<IngestCallJobData>) {
     customerPhone: data.customerPhone,
     externalId: data.externalId,
     dialerConnectionId: data.dialerConnectionId,
+    direction: data.direction,
   });
 
   console.log(

@@ -50,8 +50,10 @@ export type AuditActionType =
   | 'tenant.create'
   | 'tenant.status_change'
   | 'tenant.seat_price'
+  | 'tenant.billing_exempt'
   | 'tenant.feature_override'
-  | 'tenant.impersonate';
+  | 'tenant.impersonate'
+  | 'tenant.delete';
 
 export type AuditEntityType =
   | 'call'
@@ -68,7 +70,9 @@ export type AuditEntityType =
   | 'organization';
 
 interface AuditEvent {
-  organizationId: string;
+  // NULL for platform-level events not scoped to a tenant (e.g. a superadmin
+  // deleting a whole tenant), which are retained after that tenant is purged.
+  organizationId: string | null;
   userId: string | null;
   actionType: AuditActionType;
   entityType: AuditEntityType;

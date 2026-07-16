@@ -11,6 +11,7 @@ import { AssignAgentDropdown } from '../components/AssignAgentDropdown';
 import { ShareLinksPanel } from '../components/ShareLinksPanel';
 import { CoachingPanel } from '../components/CoachingPanel';
 import { ScoreCorrectionModal } from '../components/ScoreCorrectionModal';
+import { useDialog } from '../components/DialogProvider';
 import { hasFeature, isItemPass } from '@callguard/shared';
 import type { Call, CallScore, CallItemScore, CallCoaching } from '@callguard/shared';
 
@@ -24,6 +25,7 @@ export function CallDetail() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const { confirm, notify } = useDialog();
   const isAdmin = user?.role === 'admin';
   const canAction = user?.role === 'admin' || user?.role === 'supervisor';
   const canLearn = user ? hasFeature(user.organization_plan, 'ai_learning') : false;
@@ -52,7 +54,11 @@ export function CallDetail() {
 
   const handleDelete = async () => {
     if (!call) return;
-    if (!window.confirm(`Delete this call permanently?\n\n"${call.file_name}"\n\nThis removes the audio, transcript, scores, breaches, and any corrections. This cannot be undone.`)) return;
+    const ok = await confirm(
+      `Delete this call permanently?\n\n"${call.file_name}"\n\nThis removes the audio, transcript, scores, breaches, and any corrections. This cannot be undone.`,
+      { danger: true, confirmLabel: 'Delete' }
+    );
+    if (!ok) return;
     setDeleting(true);
     try {
       await api.delete(`/calls/${call.id}`);
@@ -60,7 +66,7 @@ export function CallDetail() {
       navigate('/calls');
     } catch (err) {
       setDeleting(false);
-      alert('Failed to delete call: ' + (err instanceof Error ? err.message : 'unknown error'));
+      await notify('Failed to delete call: ' + (err instanceof Error ? err.message : 'unknown error'));
     }
   };
 

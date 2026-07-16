@@ -1,6 +1,6 @@
 import { query, queryOne, withTransaction } from '../db/client.js';
 import { getDialerConnection } from './tenant-settings.js';
-import { scoringQueue } from '../jobs/queue.js';
+import { scoringQueue, ingestionQueue } from '../jobs/queue.js';
 import type { JourneyTriggerSource, Scorecard, Call } from '@callguard/shared';
 
 const DEFAULT_HISTORY_WINDOW_DAYS = 30;
@@ -10,6 +10,11 @@ interface AssembleJourneyParams {
   customerId: string;
   scorecardId?: string | null;
   triggerSource: JourneyTriggerSource;
+  // Carried from the Zoho sale trigger for the QA write-back (services/zoho.ts):
+  // the sold-customer record id (QA record links to it) and the client name
+  // (required QA field). Null for non-Zoho triggers (e.g. manual sale flag).
+  zohoRecordId?: string | null;
+  clientName?: string | null;
 }
 
 /**
@@ -44,7 +49,7 @@ async function resolveScorecard(organizationId: string, scorecardId?: string | n
  * and belongs in the journey.
  */
 export async function assembleJourney(params: AssembleJourneyParams): Promise<string | null> {
-  const { organizationId, customerId, scorecardId, triggerSource } = params;
+  const { organizationId, customerId, scorecardId, triggerSource, zohoRecordId, clientName } = params;
 
   const scorecard = await resolveScorecard(organizationId, scorecardId);
   if (!scorecard) {
@@ -73,18 +78,22 @@ export async function assembleJourney(params: AssembleJourneyParams): Promise<st
   const windowDays = dialerConn?.history_window_days ?? DEFAULT_HISTORY_WINDOW_DAYS;
   const windowStart = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
 
+  // Include 'captured' calls (metadata-only, no transcript yet) — under the
+  // capture model they are hydrated + transcribed on demand below. Excludes
+  // only calls that already failed permanently. score-journey later scores
+  // whichever ended up with a transcript.
   const calls = await query<Call>(
     `SELECT * FROM calls
        WHERE organization_id = $1
          AND customer_id = $2
-         AND transcript_text IS NOT NULL
+         AND status <> 'failed'
          AND COALESCE(call_date::timestamptz, created_at) >= $3
        ORDER BY COALESCE(call_date::timestamptz, created_at) ASC`,
     [organizationId, customerId, windowStart.toISOString()]
   );
 
   if (calls.length === 0) {
-    console.warn(`[Journey] No transcribed calls in the last ${windowDays}d for customer ${customerId} — skipping`);
+    console.warn(`[Journey] No calls in the last ${windowDays}d for customer ${customerId} — skipping`);
     return null;
   }
   const callIds = calls.map((c) => c.id).sort();
@@ -120,10 +129,10 @@ export async function assembleJourney(params: AssembleJourneyParams): Promise<st
     journeyId = await withTransaction(async (tx) => {
       const journeyRow = await tx.queryOne<{ id: string }>(
         `INSERT INTO journeys
-           (organization_id, customer_id, scorecard_id, scorecard_version, window_start, window_end, trigger_source, status)
-         VALUES ($1, $2, $3, $4, $5, now(), $6, 'pending')
+           (organization_id, customer_id, scorecard_id, scorecard_version, window_start, window_end, trigger_source, status, zoho_record_id, client_name)
+         VALUES ($1, $2, $3, $4, $5, now(), $6, 'pending', $7, $8)
          RETURNING id`,
-        [organizationId, customerId, scorecard.id, scorecard.version, windowStart.toISOString(), triggerSource]
+        [organizationId, customerId, scorecard.id, scorecard.version, windowStart.toISOString(), triggerSource, zohoRecordId ?? null, clientName ?? null]
       );
       const id = journeyRow!.id;
 
@@ -161,8 +170,65 @@ export async function assembleJourney(params: AssembleJourneyParams): Promise<st
     throw err;
   }
 
-  await scoringQueue.add('score-journey', { journeyId }, { jobId: `score-journey-${journeyId}` });
-
-  console.log(`[Journey] Assembled journey ${journeyId} for customer ${customerId}: ${calls.length} call(s), trigger=${triggerSource}`);
+  // Calls captured as metadata-only need their audio fetched + transcribed
+  // before the journey can be scored; kick off hydration for each and defer
+  // scoring. When the last one finishes transcribing, maybeScoreJourneyWhenReady
+  // (called from jobs/processors/transcribe.ts) enqueues the score-journey job.
+  // If nothing needs hydrating (every call already has a transcript — the
+  // manual-flag path, or a non-capture org), score straight away.
+  const toHydrate = calls.filter((c) => c.status === 'captured');
+  if (toHydrate.length > 0) {
+    for (const c of toHydrate) {
+      await ingestionQueue.add(
+        'hydrate-call',
+        { callId: c.id },
+        {
+          jobId: `hydrate-${c.id}`,
+          // The recording can still be processing on CloudTalk's side; give the
+          // fetch generous retry headroom rather than failing the whole journey.
+          attempts: 6,
+          backoff: { type: 'exponential', delay: 60_000 },
+        }
+      );
+    }
+    console.log(
+      `[Journey] Assembled journey ${journeyId} for customer ${customerId}: ${calls.length} call(s), ` +
+        `hydrating ${toHydrate.length}, scoring deferred (trigger=${triggerSource})`
+    );
+  } else {
+    await scoringQueue.add('score-journey', { journeyId }, { jobId: `score-journey-${journeyId}` });
+    console.log(
+      `[Journey] Assembled journey ${journeyId} for customer ${customerId}: ${calls.length} call(s), scoring now (trigger=${triggerSource})`
+    );
+  }
   return journeyId;
+}
+
+/**
+ * Enqueue journey scoring once every call linked to a pending journey has
+ * reached a terminal transcription state. Called from the transcribe processor
+ * as each hydrated call finishes. No-op unless the journey is still 'pending'
+ * and nothing is left mid-flight, so it fires exactly once per journey (the
+ * fixed score-journey jobId also dedupes a race between two calls finishing
+ * together).
+ */
+export async function maybeScoreJourneyWhenReady(journeyId: string): Promise<void> {
+  const journey = await queryOne<{ status: string }>(
+    'SELECT status FROM journeys WHERE id = $1',
+    [journeyId]
+  );
+  if (!journey || journey.status !== 'pending') return;
+
+  const pending = await queryOne<{ n: number }>(
+    `SELECT count(*)::int AS n
+       FROM journey_calls jc
+       JOIN calls c ON c.id = jc.call_id
+      WHERE jc.journey_id = $1
+        AND c.status NOT IN ('transcribed', 'scored', 'failed', 'skipped')`,
+    [journeyId]
+  );
+  if (pending && Number(pending.n) === 0) {
+    await scoringQueue.add('score-journey', { journeyId }, { jobId: `score-journey-${journeyId}` });
+    console.log(`[Journey] ${journeyId}: all calls transcribed — enqueued scoring`);
+  }
 }

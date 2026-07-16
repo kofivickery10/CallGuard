@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
+import { useDialog } from '../components/DialogProvider';
 import type {
   ApiKey,
   ApiKeyWithPlaintext,
@@ -63,6 +64,7 @@ const emptyDialerForm: DialerFormState = {
 
 function DialerConnectionSection() {
   const queryClient = useQueryClient();
+  const { confirm } = useDialog();
   const [editing, setEditing] = useState(false);
 
   const { data } = useQuery({
@@ -73,7 +75,8 @@ function DialerConnectionSection() {
 
   const handleDelete = async () => {
     if (!conn) return;
-    if (!confirm('Remove this CloudTalk connection? Webhooks will fall back to unsigned, undelayed ingestion.')) return;
+    const ok = await confirm('Remove this CloudTalk connection? Webhooks will fall back to unsigned, undelayed ingestion.', { danger: true });
+    if (!ok) return;
     await api.delete(`/ingestion/dialer-connections/${conn.id}`);
     queryClient.invalidateQueries({ queryKey: ['dialer-connections'] });
   };
@@ -255,6 +258,7 @@ function DialerConnectionModal({ initial, onClose }: { initial: DialerFormState;
 
 function ApiKeysSection() {
   const queryClient = useQueryClient();
+  const { confirm } = useDialog();
   const [createOpen, setCreateOpen] = useState(false);
   const [newKey, setNewKey] = useState<ApiKeyWithPlaintext | null>(null);
   const [name, setName] = useState('');
@@ -283,7 +287,7 @@ function ApiKeysSection() {
   };
 
   const handleRevoke = async (id: string) => {
-    if (!confirm('Revoke this API key? Any system using it will stop working.')) return;
+    if (!(await confirm('Revoke this API key? Any system using it will stop working.', { danger: true }))) return;
     await api.delete(`/ingestion/api-keys/${id}`);
     queryClient.invalidateQueries({ queryKey: ['api-keys'] });
   };
@@ -491,6 +495,7 @@ const emptyForm: SFTPFormState = {
 
 function SFTPSourcesSection() {
   const queryClient = useQueryClient();
+  const { confirm, notify } = useDialog();
   const [editing, setEditing] = useState<SFTPFormState | null>(null);
   const [logsForId, setLogsForId] = useState<string | null>(null);
 
@@ -501,11 +506,11 @@ function SFTPSourcesSection() {
 
   const handlePollNow = async (id: string) => {
     await api.post(`/ingestion/sftp-sources/${id}/poll-now`);
-    alert('Poll queued');
+    await notify('Poll queued');
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Delete this SFTP source? Polling will stop immediately.')) return;
+    if (!(await confirm('Delete this SFTP source? Polling will stop immediately.', { danger: true }))) return;
     await api.delete(`/ingestion/sftp-sources/${id}`);
     queryClient.invalidateQueries({ queryKey: ['sftp-sources'] });
   };
@@ -799,6 +804,7 @@ const ZOHO_REGIONS: { value: ZohoRegion; label: string }[] = [
 
 function ZohoSection() {
   const queryClient = useQueryClient();
+  const { confirm } = useDialog();
   const [editing, setEditing] = useState(false);
   const [banner, setBanner] = useState<{ ok: boolean; message: string } | null>(null);
   const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
@@ -834,7 +840,7 @@ function ZohoSection() {
   };
 
   const handleDisconnect = async () => {
-    if (!confirm('Disconnect Zoho CRM? Scored calls will stop syncing to Zoho.')) return;
+    if (!(await confirm('Disconnect Zoho CRM? Scored calls will stop syncing to Zoho.', { danger: true }))) return;
     await api.delete('/integrations/zoho');
     queryClient.invalidateQueries({ queryKey: ['zoho-connection'] });
   };
@@ -905,9 +911,15 @@ function ZohoSection() {
               </dd>
             </div>
             <div className="flex justify-between border-b border-border-light py-1">
+              <dt className="text-text-muted">Sale trigger</dt>
+              <dd className={conn.sale_trigger_enabled ? 'text-pass' : 'text-review'}>
+                {conn.sale_trigger_enabled ? 'Configured' : 'Not configured'}
+              </dd>
+            </div>
+            <div className="flex justify-between border-b border-border-light py-1">
               <dt className="text-text-muted">Sale-trigger signature</dt>
-              <dd className={conn.inbound_configured ? 'text-pass' : 'text-review'}>
-                {conn.inbound_configured ? 'Enabled' : 'Not configured'}
+              <dd className={conn.inbound_configured ? 'text-pass' : 'text-text-muted'}>
+                {conn.inbound_configured ? 'HMAC enabled' : 'API-key only'}
               </dd>
             </div>
             <div className="flex justify-between border-b border-border-light py-1">
@@ -947,9 +959,10 @@ function ZohoConnectModal({ initial, onClose }: { initial: ZohoConnection | null
   const [clientSecret, setClientSecret] = useState('');
   const [salePhoneField, setSalePhoneField] = useState(initial?.sale_phone_field ?? 'Phone');
   const [inboundSecret, setInboundSecret] = useState('');
+  const [saleTriggerEnabled, setSaleTriggerEnabled] = useState(initial?.sale_trigger_enabled ?? false);
   const [qaModule, setQaModule] = useState(initial?.qa_module ?? '');
   const [qaFieldMap, setQaFieldMap] = useState<ZohoQAFieldMap>(
-    initial?.qa_field_map ?? { adviser: 'Adviser_Name', month: 'Period', score: 'Compliance_Score', result: 'Compliance_Result', link: 'CallGuard_Link' }
+    initial?.qa_field_map ?? { score: 'AI_Call_Score', client_name: 'Name', customer_lookup: 'Client', notes: '' }
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -965,6 +978,7 @@ function ZohoConnectModal({ initial, onClose }: { initial: ZohoConnection | null
         client_id: clientId,
         client_secret: clientSecret,
         sale_phone_field: salePhoneField,
+        sale_trigger_enabled: saleTriggerEnabled,
         qa_module: qaModule.trim() || null,
         qa_field_map: qaFieldMap,
       };
@@ -1019,36 +1033,48 @@ function ZohoConnectModal({ initial, onClose }: { initial: ZohoConnection | null
           <Field label="Sale phone field" hint="The field on the inbound sale record carrying the customer's phone number.">
             <input type="text" value={salePhoneField} onChange={(e) => setSalePhoneField(e.target.value)} className={inputCls} placeholder="Phone" />
           </Field>
-          <Field label="Sale-trigger signing secret" hint="Set in Zoho's outbound webhook action; verified against POST /api/integrations/zoho/sale-trigger. Leave blank to keep existing.">
+          <Field label="Sale-trigger signing secret" hint="Optional HMAC secret. Set it in Zoho's webhook (needs a Deluge function to sign) for a stronger check; leave blank to run the trigger API-key-only. Leave blank to keep existing.">
             <input type="password" value={inboundSecret} onChange={(e) => setInboundSecret(e.target.value)} className={inputCls} />
           </Field>
+          <div className="col-span-2 flex items-start gap-2">
+            <input
+              id="sale-trigger-enabled"
+              type="checkbox"
+              checked={saleTriggerEnabled}
+              onChange={(e) => setSaleTriggerEnabled(e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-border text-primary focus:ring-2 focus:ring-focus-ring"
+            />
+            <label htmlFor="sale-trigger-enabled" className="text-table-cell text-text-secondary">
+              <span className="font-semibold text-text-primary">Sale trigger configured</span> — tick once the
+              Zoho workflow webhook is set up. Activates sales-only scoring: calls are captured as metadata and
+              transcribed/scored only when a sale fires. Leave off and every call is scored as it arrives.
+            </label>
+          </div>
 
           <div className="col-span-2 border-t border-border-light pt-3 mt-1">
             <p className="text-[12px] font-semibold text-text-primary mb-2">QA module (optional)</p>
             <p className="text-[11px] text-text-muted mb-2">
-              Push a QA record per scored call/journey to a custom module, so Trust Point can filter by
-              adviser + month for commission-tied averages.
+              On a sale, CallGuard writes its AI compliance score into the tenant's QA module, linked to the
+              sold-customer record. It fills only the AI score (and an optional summary) — the tenant's own
+              fields/formula handle the rest. Leave the module blank to skip QA write-back.
             </p>
           </div>
           <Field label="QA module API name" full hint="Leave blank to skip QA module write-back.">
-            <input type="text" value={qaModule} onChange={(e) => setQaModule(e.target.value)} className={inputCls} placeholder="e.g. CallGuard_QA" />
+            <input type="text" value={qaModule} onChange={(e) => setQaModule(e.target.value)} className={inputCls} placeholder="e.g. QA_Scores" />
           </Field>
           {qaModule.trim() && (
             <>
-              <Field label="Adviser field">
-                <input type="text" value={qaFieldMap.adviser} onChange={(e) => setQaFieldMap({ ...qaFieldMap, adviser: e.target.value })} className={inputCls} />
+              <Field label="AI score field" hint="Numeric field CallGuard writes the compliance score to (0–100).">
+                <input type="text" value={qaFieldMap.score} onChange={(e) => setQaFieldMap({ ...qaFieldMap, score: e.target.value })} className={inputCls} placeholder="AI_Call_Score" />
               </Field>
-              <Field label="Month/period field">
-                <input type="text" value={qaFieldMap.month} onChange={(e) => setQaFieldMap({ ...qaFieldMap, month: e.target.value })} className={inputCls} />
+              <Field label="Client name field" hint="Required field for the client's name.">
+                <input type="text" value={qaFieldMap.client_name} onChange={(e) => setQaFieldMap({ ...qaFieldMap, client_name: e.target.value })} className={inputCls} placeholder="Name" />
               </Field>
-              <Field label="Score field">
-                <input type="text" value={qaFieldMap.score} onChange={(e) => setQaFieldMap({ ...qaFieldMap, score: e.target.value })} className={inputCls} />
+              <Field label="Sold-customer lookup" hint="Lookup field that links the QA record to the sold-customer record.">
+                <input type="text" value={qaFieldMap.customer_lookup} onChange={(e) => setQaFieldMap({ ...qaFieldMap, customer_lookup: e.target.value })} className={inputCls} placeholder="Client" />
               </Field>
-              <Field label="Result field">
-                <input type="text" value={qaFieldMap.result} onChange={(e) => setQaFieldMap({ ...qaFieldMap, result: e.target.value })} className={inputCls} />
-              </Field>
-              <Field label="Link field" full>
-                <input type="text" value={qaFieldMap.link} onChange={(e) => setQaFieldMap({ ...qaFieldMap, link: e.target.value })} className={inputCls} />
+              <Field label="Summary field (optional)" hint="Multi-line text field for the 'what happened' summary. Leave blank to skip.">
+                <input type="text" value={qaFieldMap.notes} onChange={(e) => setQaFieldMap({ ...qaFieldMap, notes: e.target.value })} className={inputCls} placeholder="e.g. AI_Call_Notes" />
               </Field>
             </>
           )}

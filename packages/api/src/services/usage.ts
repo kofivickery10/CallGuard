@@ -1,10 +1,14 @@
 import { query } from '../db/client.js';
 import { CLAUDE_PRICING, DEEPGRAM_PRICING } from '@callguard/shared';
 
-// Prompt-cache pricing multipliers vs the base input rate (Anthropic ephemeral,
-// 5-minute TTL): cache reads bill ~0.1x base input, cache writes ~1.25x.
+// Prompt-cache pricing multipliers vs the base input rate. Reads bill ~0.1x
+// regardless of TTL. Writes: 1.25x for the 5-minute TTL, 2x for the 1-hour
+// TTL — the cache_control breakpoints in this codebase use ttl '1h'
+// (see services/scoring.ts and transcript-cleanup.ts), so estimates use the
+// 1-hour write rate. If a 5-minute breakpoint is ever reintroduced, this
+// slightly overestimates its writes rather than underestimating.
 const CACHE_READ_MULTIPLIER = 0.1;
-const CACHE_WRITE_MULTIPLIER = 1.25;
+const CACHE_WRITE_MULTIPLIER = 2.0;
 
 export type UsageProvider = 'anthropic' | 'deepgram';
 export type UsageOperation =
@@ -26,12 +30,19 @@ export interface RecordUsageInput {
   cacheReadTokens?: number;
   cacheCreationTokens?: number;
   audioSeconds?: number;
+  // Deepgram bills multichannel (split-stereo) per channel — ~2x the mono
+  // rate. Callers that know the tenant's transcription_mode set this so mono
+  // calls (the default & majority) aren't over-estimated at the stereo rate.
+  deepgramMultichannel?: boolean;
 }
 
 /** Estimated USD cost for one usage event, from the shared pricing tables. */
 export function estimateUsageCost(input: RecordUsageInput): number {
   if (input.provider === 'deepgram') {
-    return ((input.audioSeconds ?? 0) / 60) * DEEPGRAM_PRICING.per_minute;
+    const rate = input.deepgramMultichannel
+      ? DEEPGRAM_PRICING.per_minute
+      : DEEPGRAM_PRICING.per_minute_mono;
+    return ((input.audioSeconds ?? 0) / 60) * rate;
   }
   const pricing = input.modelId ? CLAUDE_PRICING[input.modelId] : undefined;
   if (!pricing) return 0;

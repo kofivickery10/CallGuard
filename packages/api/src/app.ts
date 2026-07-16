@@ -126,6 +126,20 @@ app.use(
   })
 );
 
+// Zoho's plain workflow Webhook action posts its module parameters as
+// application/x-www-form-urlencoded, not JSON — so the sale-trigger receiver
+// (routes/integrations.ts) would see an empty body under express.json alone.
+// Parse form-encoded bodies too, capturing rawBody the same way so any HMAC
+// signature check still verifies against the exact bytes sent.
+app.use(
+  express.urlencoded({
+    extended: false,
+    verify: (req, _res, buf) => {
+      (req as express.Request & { rawBody?: Buffer }).rawBody = buf;
+    },
+  })
+);
+
 
 app.use(globalLimiter);
 

@@ -11,10 +11,15 @@ import { query, queryOne } from '../db/client.js';
 import { AppError } from '../middleware/errors.js';
 import { generateApiKey } from '../services/api-keys.js';
 import { encrypt } from '../services/crypto.js';
-import { ingestCall, fetchRemoteAudio } from '../services/ingestion.js';
+import { ingestCall, fetchRemoteAudio, captureCallMetadata } from '../services/ingestion.js';
 import { recordAuditEvent } from '../services/audit.js';
 import * as sftp from '../services/sftp.js';
-import { getDialerConnection, verifyDialerSignature } from '../services/tenant-settings.js';
+import {
+  getDialerConnection,
+  verifyDialerSignature,
+  getScoringSettings,
+  hasUsableSaleTrigger,
+} from '../services/tenant-settings.js';
 import { ingestionQueue } from '../jobs/queue.js';
 import { isItemPass } from '@callguard/shared';
 import type { ApiKey, SFTPSource, SFTPPollLog, DialerConnection, DialerFieldMap } from '@callguard/shared';
@@ -120,8 +125,23 @@ const DEFAULT_CLOUDTALK_FIELD_MAP: DialerFieldMap = {
   agent_external_id: ['agent_id', 'agent', 'internal_id'],
   agent_name: ['agent_name', 'internal_name'],
   customer_phone: ['external_number', 'public_external_number', 'contact_number', 'phone_number'],
+  // Candidate keys only — not confirmed present in CloudTalk's actual payload
+  // (their public docs don't spell out the "Call Ended" webhook shape). Tried
+  // the same tolerant way as every other field; if none match, direction is
+  // just null and ingestion falls back to the org's mono_first_speaker default.
+  direction: ['direction', 'type', 'call_type', 'call_direction'],
 };
 const DEFAULT_RECORDING_FETCH_DELAY_SECONDS = 60;
+
+// Loosely normalise a dialler's direction value. Returns null (not a guess)
+// for anything unrecognised, rather than risk silently mislabelling a call.
+function normalizeCallDirection(raw: string | null): 'inbound' | 'outbound' | null {
+  if (!raw) return null;
+  const v = raw.trim().toLowerCase();
+  if (['inbound', 'incoming', 'in'].includes(v)) return 'inbound';
+  if (['outbound', 'outgoing', 'out'].includes(v)) return 'outbound';
+  return null;
+}
 
 // Find the first non-empty string at any of the candidate keys, checking the
 // body and one level of common nesting (call / Call / data / payload).
@@ -163,7 +183,10 @@ export async function handleCloudTalkWebhook(
       throw new AppError(401, 'Invalid or missing dialer webhook signature');
     }
 
-    const fieldMap = conn?.field_map ?? DEFAULT_CLOUDTALK_FIELD_MAP;
+    // Merge over the defaults (not a plain fallback) so a connection saved
+    // before a new field_map key existed (e.g. direction) still tries it,
+    // instead of silently having that key be undefined.
+    const fieldMap: DialerFieldMap = { ...DEFAULT_CLOUDTALK_FIELD_MAP, ...(conn?.field_map ?? {}) };
     const recordingUrl = pickField(body, fieldMap.recording_url);
     const cloudtalkCallId = pickField(body, fieldMap.call_id);
     // A webhook retry without a native call id in the payload would otherwise
@@ -176,6 +199,7 @@ export async function handleCloudTalkWebhook(
     const agentExternalId = pickField(body, fieldMap.agent_external_id);
     const agentName = pickField(body, fieldMap.agent_name);
     const customerPhone = pickField(body, fieldMap.customer_phone);
+    const direction = normalizeCallDirection(pickField(body, fieldMap.direction));
 
     // CloudTalk fires events before the recording exists too - acknowledge and skip.
     if (!recordingUrl && !cloudtalkCallId) {
@@ -195,6 +219,35 @@ export async function handleCloudTalkWebhook(
     );
     if (existing) {
       res.status(200).json({ status: 'duplicate', call_id: existing.id, external_id: externalId });
+      return;
+    }
+
+    // sales_only capture: record the call's metadata only and defer audio fetch
+    // + transcription to the Zoho sale trigger, so nothing but metadata touches
+    // CallGuard until the customer converts. Only when a working sale trigger
+    // exists to eventually score — otherwise fall through to the download path
+    // below, so an org without a configured trigger never silently stops
+    // ingesting. (Mirrors the deferral guard in jobs/processors/transcribe.ts.)
+    const scoringSettings = await getScoringSettings(orgId);
+    if (scoringSettings.scoringScope === 'sales_only' && (await hasUsableSaleTrigger(orgId))) {
+      await captureCallMetadata({
+        organizationId: orgId,
+        externalId,
+        cloudtalkCallId,
+        recordingPointer: recordingUrl,
+        agentEmail,
+        agentExternalId,
+        agentName,
+        customerPhone,
+        direction,
+        dialerConnectionId: conn?.id ?? null,
+      });
+      if (conn) {
+        query('UPDATE dialer_connections SET last_event_at = now(), last_error = NULL WHERE id = $1', [
+          conn.id,
+        ]).catch(() => {});
+      }
+      res.status(202).json({ status: 'captured', external_id: externalId });
       return;
     }
 
@@ -227,6 +280,7 @@ export async function handleCloudTalkWebhook(
           agentExternalId,
           agentName,
           customerPhone,
+          direction,
         },
         {
           delay: delaySeconds * 1000,

@@ -8,25 +8,7 @@ import {
   hasFeature,
   type Plan,
   type OrganizationInfo,
-  type ScoringScope,
-  type TranscriptionMode,
 } from '@callguard/shared';
-
-interface ScoringSettingsForm {
-  scoring_scope: ScoringScope;
-  min_scoreable_seconds: number;
-  min_scoreable_words: number;
-  pass_threshold: number;
-  retention_days: number;
-  transcription_mode: TranscriptionMode;
-  deepgram_region: 'eu' | 'us';
-}
-
-const SCOPE_OPTIONS: { value: ScoringScope; label: string; hint: string }[] = [
-  { value: 'sales_only', label: 'Sales only', hint: 'Score journeys once a sale is confirmed (via the Zoho sale trigger). Every call is still transcribed.' },
-  { value: 'over_threshold', label: 'Over length threshold', hint: 'Score every call once it clears the length threshold below.' },
-  { value: 'everything', label: 'Everything', hint: 'Score every transcribed call, regardless of length.' },
-];
 
 interface ActiveSeats {
   current_month: string;
@@ -43,10 +25,6 @@ export function OrganizationSettings() {
 
   const currentPlan = user?.organization_plan as Plan | undefined;
 
-  // Adviser stereo-channel mapping (undefined = loading)
-  const [adviserChannel, setAdviserChannel] = useState<number | null | undefined>(undefined);
-  const [savingChannel, setSavingChannel] = useState(false);
-
   // Data-improvement opt-in (DPA §4.2). undefined = loading.
   const [dataOptIn, setDataOptIn] = useState<boolean | undefined>(undefined);
   const [dataOptInAt, setDataOptInAt] = useState<string | null>(null);
@@ -60,84 +38,25 @@ export function OrganizationSettings() {
   // Active-seat usage (admin only)
   const [seats, setSeats] = useState<ActiveSeats | null>(null);
 
-  // Scoring/ingestion policy (spec §10). undefined = loading.
-  const [scoring, setScoring] = useState<ScoringSettingsForm | undefined>(undefined);
-  const [scoringDraft, setScoringDraft] = useState<ScoringSettingsForm | undefined>(undefined);
-  const [savingScoring, setSavingScoring] = useState(false);
-
   useEffect(() => {
     api
       .get<OrganizationInfo>('/organization')
       .then((org) => {
-        setAdviserChannel(org.adviser_channel ?? null);
         setDataOptIn(org.data_improvement_opt_in ?? false);
         setDataOptInAt(org.data_improvement_opt_in_at ?? null);
         setIndustry(org.industry ?? '');
         setIndustryDraft(org.industry ?? '');
-        const s: ScoringSettingsForm = {
-          scoring_scope: org.scoring_scope ?? 'sales_only',
-          min_scoreable_seconds: org.min_scoreable_seconds ?? 15,
-          min_scoreable_words: org.min_scoreable_words ?? 30,
-          pass_threshold: org.pass_threshold ?? 70,
-          retention_days: org.retention_days ?? 1825,
-          transcription_mode: org.transcription_mode ?? 'mono_diarize',
-          deepgram_region: org.deepgram_region ?? 'eu',
-        };
-        setScoring(s);
-        setScoringDraft(s);
       })
       .catch(() => {
-        setAdviserChannel(null);
         setDataOptIn(false);
         setIndustry('');
       });
   }, []);
 
-  const handleScoringSave = async () => {
-    if (!scoringDraft) return;
-    setSavingScoring(true);
-    setError('');
-    try {
-      const updated = await api.put<OrganizationInfo>('/organization/scoring-settings', scoringDraft);
-      const s: ScoringSettingsForm = {
-        scoring_scope: updated.scoring_scope ?? scoringDraft.scoring_scope,
-        min_scoreable_seconds: updated.min_scoreable_seconds ?? scoringDraft.min_scoreable_seconds,
-        min_scoreable_words: updated.min_scoreable_words ?? scoringDraft.min_scoreable_words,
-        pass_threshold: updated.pass_threshold ?? scoringDraft.pass_threshold,
-        retention_days: updated.retention_days ?? scoringDraft.retention_days,
-        transcription_mode: updated.transcription_mode ?? scoringDraft.transcription_mode,
-        deepgram_region: updated.deepgram_region ?? scoringDraft.deepgram_region,
-      };
-      setScoring(s);
-      setScoringDraft(s);
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setSavingScoring(false);
-    }
-  };
-
-  const scoringDirty = !!(scoring && scoringDraft) && JSON.stringify(scoring) !== JSON.stringify(scoringDraft);
-
   useEffect(() => {
     if (!isAdmin) return;
     api.get<ActiveSeats>('/organization/active-seats').then(setSeats).catch(() => setSeats(null));
   }, [isAdmin]);
-
-  const handleChannelChange = async (value: number | null) => {
-    setSavingChannel(true);
-    setError('');
-    try {
-      const updated = await api.put<OrganizationInfo>('/organization/adviser-channel', {
-        adviser_channel: value,
-      });
-      setAdviserChannel(updated.adviser_channel ?? null);
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setSavingChannel(false);
-    }
-  };
 
   const handleIndustrySave = async () => {
     setSavingIndustry(true);
@@ -262,169 +181,6 @@ export function OrganizationSettings() {
       )}
 
       <div className="bg-card border border-border rounded-card p-5 mb-5">
-        <h3 className="text-[13px] uppercase tracking-wider text-text-muted font-semibold mb-1">
-          Call recording
-        </h3>
-        <p className="text-[12px] text-text-subtle mb-3">
-          Which stereo channel is the adviser recorded on? Most diallers record the adviser and
-          customer on separate channels. If unsure, play a recording and check the balance (left vs
-          right).
-        </p>
-        {adviserChannel === undefined ? (
-          <p className="text-[12px] text-text-muted">Loading…</p>
-        ) : (
-          <div className="flex flex-wrap gap-2">
-            {[
-              { value: null as number | null, label: 'Auto-detect' },
-              { value: 0 as number | null, label: 'Left channel' },
-              { value: 1 as number | null, label: 'Right channel' },
-            ].map((opt) => {
-              const active = adviserChannel === opt.value;
-              return (
-                <button
-                  key={String(opt.value)}
-                  onClick={() => isAdmin && handleChannelChange(opt.value)}
-                  disabled={!isAdmin || savingChannel}
-                  className={`px-3 py-2 rounded-btn text-table-cell border transition-colors disabled:opacity-60 ${
-                    active
-                      ? 'border-primary bg-primary-light text-pass font-semibold'
-                      : 'border-border text-text-secondary hover:border-primary/50'
-                  } ${!isAdmin ? 'cursor-default' : ''}`}
-                >
-                  {opt.label}
-                </button>
-              );
-            })}
-          </div>
-        )}
-        {!isAdmin && (
-          <p className="text-[11px] text-text-muted mt-2">Ask your admin to change this.</p>
-        )}
-      </div>
-
-      <div className="bg-card border border-border rounded-card p-5 mb-5">
-        <h3 className="text-[13px] uppercase tracking-wider text-text-muted font-semibold mb-1">
-          Scoring policy
-        </h3>
-        <p className="text-[12px] text-text-subtle mb-3">
-          Which calls get the expensive scoring pass, the length below which a call is skipped as
-          too short to evaluate, the pass mark, and how long call data is retained before it's
-          deleted.
-        </p>
-        {!scoringDraft ? (
-          <p className="text-[12px] text-text-muted">Loading…</p>
-        ) : (
-          <div className="space-y-4">
-            <div>
-              <label className="block text-[11px] text-text-muted uppercase tracking-wider mb-1.5">Scoring scope</label>
-              <div className="flex flex-wrap gap-2">
-                {SCOPE_OPTIONS.map((opt) => {
-                  const active = scoringDraft.scoring_scope === opt.value;
-                  return (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      title={opt.hint}
-                      disabled={!isAdmin}
-                      onClick={() => isAdmin && setScoringDraft({ ...scoringDraft, scoring_scope: opt.value })}
-                      className={`px-3 py-2 rounded-btn text-table-cell border transition-colors disabled:opacity-60 ${
-                        active
-                          ? 'border-primary bg-primary-light text-pass font-semibold'
-                          : 'border-border text-text-secondary hover:border-primary/50'
-                      } ${!isAdmin ? 'cursor-default' : ''}`}
-                    >
-                      {opt.label}
-                    </button>
-                  );
-                })}
-              </div>
-              <p className="text-[11px] text-text-muted mt-1.5">
-                {SCOPE_OPTIONS.find((o) => o.value === scoringDraft.scoring_scope)?.hint}
-              </p>
-            </div>
-
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <NumberField
-                label="Skip under (seconds)"
-                value={scoringDraft.min_scoreable_seconds}
-                disabled={!isAdmin}
-                onChange={(v) => setScoringDraft({ ...scoringDraft, min_scoreable_seconds: v })}
-              />
-              <NumberField
-                label="Skip under (words)"
-                value={scoringDraft.min_scoreable_words}
-                disabled={!isAdmin}
-                onChange={(v) => setScoringDraft({ ...scoringDraft, min_scoreable_words: v })}
-              />
-              <NumberField
-                label="Pass threshold (%)"
-                value={scoringDraft.pass_threshold}
-                disabled={!isAdmin}
-                min={0}
-                max={100}
-                onChange={(v) => setScoringDraft({ ...scoringDraft, pass_threshold: v })}
-              />
-              <NumberField
-                label="Retention (days)"
-                value={scoringDraft.retention_days}
-                min={30}
-                disabled={!isAdmin}
-                onChange={(v) => setScoringDraft({ ...scoringDraft, retention_days: v })}
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-[11px] text-text-muted uppercase tracking-wider mb-1.5">
-                  Transcription mode
-                </label>
-                <select
-                  value={scoringDraft.transcription_mode}
-                  disabled={!isAdmin}
-                  onChange={(e) =>
-                    setScoringDraft({ ...scoringDraft, transcription_mode: e.target.value as TranscriptionMode })
-                  }
-                  className="w-full px-3 py-2 rounded-btn border border-border bg-card text-table-cell text-text-primary disabled:opacity-60 focus:border-primary focus:outline-none"
-                >
-                  <option value="mono_diarize">Mono (diarise speakers)</option>
-                  <option value="stereo_multichannel">Split-stereo (separate channels)</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-[11px] text-text-muted uppercase tracking-wider mb-1.5">
-                  Deepgram region
-                </label>
-                <select
-                  value={scoringDraft.deepgram_region}
-                  disabled={!isAdmin}
-                  onChange={(e) => setScoringDraft({ ...scoringDraft, deepgram_region: e.target.value as 'eu' | 'us' })}
-                  className="w-full px-3 py-2 rounded-btn border border-border bg-card text-table-cell text-text-primary disabled:opacity-60 focus:border-primary focus:outline-none"
-                >
-                  <option value="eu">EU (UK/EU data residency)</option>
-                  <option value="us">US</option>
-                </select>
-              </div>
-            </div>
-
-            {isAdmin && (
-              <div className="flex justify-end">
-                <button
-                  onClick={handleScoringSave}
-                  disabled={savingScoring || !scoringDirty}
-                  className="px-[18px] py-[9px] rounded-btn text-table-cell border border-primary bg-primary text-white font-semibold hover:bg-primary-hover disabled:opacity-50 transition-colors"
-                >
-                  {savingScoring ? 'Saving…' : 'Save scoring policy'}
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-        {!isAdmin && (
-          <p className="text-[11px] text-text-muted mt-2">Ask your admin to change this.</p>
-        )}
-      </div>
-
-      <div className="bg-card border border-border rounded-card p-5 mb-5">
         <div className="flex items-start justify-between gap-4">
           <div>
             <h3 className="text-[13px] uppercase tracking-wider text-text-muted font-semibold mb-1">
@@ -523,46 +279,6 @@ export function OrganizationSettings() {
       <p className="text-[12px] text-text-muted mt-4 text-center">
         To change your organisation's plan, contact CallGuard support.
       </p>
-    </div>
-  );
-}
-
-function NumberField({
-  label,
-  value,
-  onChange,
-  disabled,
-  min = 0,
-  max,
-}: {
-  label: string;
-  value: number;
-  onChange: (v: number) => void;
-  disabled?: boolean;
-  min?: number;
-  max?: number;
-}) {
-  return (
-    <div>
-      <label className="block text-[11px] text-text-muted uppercase tracking-wider mb-1.5">{label}</label>
-      <input
-        type="number"
-        value={value}
-        min={min}
-        max={max}
-        disabled={disabled}
-        onChange={(e) => onChange(Number(e.target.value) || 0)}
-        onBlur={(e) => {
-          // Snap back into range on blur so a cleared/0 retention field can't be
-          // saved below its floor — the purge job treats retention_days=0 as
-          // "delete everything older than now", so an accidental clear is
-          // catastrophic. Server enforces the same floor; this is the guard rail.
-          const n = Number(e.target.value) || 0;
-          const clamped = Math.min(max ?? Infinity, Math.max(min ?? 0, n));
-          if (clamped !== value) onChange(clamped);
-        }}
-        className="w-full px-3 py-2 rounded-btn border border-border bg-card text-table-cell text-text-primary disabled:opacity-60 focus:border-primary focus:outline-none"
-      />
     </div>
   );
 }

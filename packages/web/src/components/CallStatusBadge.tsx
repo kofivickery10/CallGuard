@@ -1,6 +1,10 @@
 import type { CallStatus } from '@callguard/shared';
 
 const statusConfig: Record<CallStatus, { label: string; className: string }> = {
+  captured: {
+    label: 'Awaiting sale',
+    className: 'bg-table-header text-text-muted',
+  },
   uploaded: {
     label: 'Uploaded',
     className: 'bg-primary-light text-text-secondary',

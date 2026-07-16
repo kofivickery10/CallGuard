@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { FileDropzone } from '../components/FileDropzone';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../api/client';
-import type { Call, AgentSummary } from '@callguard/shared';
+import type { Call, AgentSummary, OrganizationInfo } from '@callguard/shared';
 
 interface BulkImportResult {
   total: number;
@@ -66,6 +66,8 @@ export function Upload() {
   const [agentId, setAgentId] = useState('');
   const [agentName, setAgentName] = useState('');
   const [scorecardId, setScorecardId] = useState('');
+  const [customerPhone, setCustomerPhone] = useState('');
+  const [markAsSale, setMarkAsSale] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [csvText, setCsvText] = useState('');
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -83,6 +85,15 @@ export function Upload() {
     queryFn: () => api.get<{ data: ScorecardSummary[] }>('/scorecards'),
     enabled: isAdmin,
   });
+
+  // Only 'sales_only' tenants defer scoring to a sale trigger — the manual
+  // "this call is a sale" checkbox is only meaningful (and only shown) there.
+  const { data: organization } = useQuery({
+    queryKey: ['organization'],
+    queryFn: () => api.get<OrganizationInfo>('/organization'),
+    enabled: isAdmin,
+  });
+  const isSalesOnly = organization?.scoring_scope === 'sales_only';
 
   const handleFileSelected = async (file: File) => {
     setError('');
@@ -102,6 +113,12 @@ export function Upload() {
         }
         if (scorecardId) {
           formData.append('scorecard_id', scorecardId);
+        }
+        if (customerPhone) {
+          formData.append('customer_phone', customerPhone);
+        }
+        if (isSalesOnly && markAsSale) {
+          formData.append('mark_as_sale', 'true');
         }
       }
 
@@ -154,7 +171,7 @@ export function Upload() {
             />
           )}
 
-          {scorecards && scorecards.data.length > 1 && (
+          {scorecards && scorecards.data.length > 0 && (
             <>
               <label className="block text-table-cell font-medium text-text-secondary mb-1.5 mt-4">
                 Score against scorecard <span className="text-text-muted font-normal">(optional)</span>
@@ -175,6 +192,37 @@ export function Upload() {
                 Leave on "active" unless you are scoring against a specific campaign or client scorecard.
               </p>
             </>
+          )}
+
+          <label className="block text-table-cell font-medium text-text-secondary mb-1.5 mt-4">
+            Customer phone <span className="text-text-muted font-normal">(optional)</span>
+          </label>
+          <input
+            type="text"
+            value={customerPhone}
+            onChange={(e) => setCustomerPhone(e.target.value)}
+            placeholder="e.g. 07473 123456"
+            className="w-full border border-border rounded-btn px-3 py-2 text-table-cell text-text-primary placeholder:text-text-muted focus:outline-none focus:border-primary transition-colors"
+          />
+          <p className="text-[12px] text-text-muted mt-1.5">
+            Needed to match this call to the customer's other calls (journey scoring, sale flag below).
+          </p>
+
+          {isSalesOnly && (
+            <label className="flex items-start gap-2 mt-4 text-table-cell text-text-secondary cursor-pointer">
+              <input
+                type="checkbox"
+                checked={markAsSale}
+                onChange={(e) => setMarkAsSale(e.target.checked)}
+                className="mt-0.5"
+              />
+              <span>
+                This call resulted in a sale
+                <span className="block text-[12px] text-text-muted font-normal">
+                  Scores this customer's journey immediately once transcribed, instead of waiting for a CRM sale trigger. Requires the customer phone above.
+                </span>
+              </span>
+            </label>
           )}
         </div>
       )}

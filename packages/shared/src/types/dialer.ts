@@ -10,6 +10,12 @@ export interface DialerFieldMap {
   agent_external_id: string[];
   agent_name: string[];
   customer_phone: string[];
+  // Candidate keys for call direction (inbound/outbound). Values are
+  // normalised loosely (e.g. "incoming"/"in" -> inbound) — see
+  // normalizeCallDirection in routes/ingestion.ts. Not confirmed present in
+  // CloudTalk's payload for every tenant; absent/unrecognised values just
+  // fall back to the org's mono_first_speaker default.
+  direction: string[];
 }
 
 // Public shape returned to the admin UI — never includes encrypted secrets.

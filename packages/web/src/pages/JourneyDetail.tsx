@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
+import { useDialog } from '../components/DialogProvider';
 import { ScoreGauge } from '../components/ScoreGauge';
 import { ItemResultBadge } from '../components/ItemResultBadge';
 import { SeverityBadge } from '../components/BreachBadges';
@@ -15,6 +16,7 @@ export function JourneyDetail() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const { notify } = useDialog();
   const canAction = user?.role === 'admin' || user?.role === 'supervisor';
   const [resolvingId, setResolvingId] = useState<string | null>(null);
 
@@ -35,7 +37,7 @@ export function JourneyDetail() {
       queryClient.invalidateQueries({ queryKey: ['journey', id] });
       queryClient.invalidateQueries({ queryKey: ['review-items'] });
     } catch (err) {
-      alert('Failed to resolve: ' + (err instanceof Error ? err.message : 'unknown error'));
+      await notify('Failed to resolve: ' + (err instanceof Error ? err.message : 'unknown error'));
     } finally {
       setResolvingId(null);
     }

@@ -4,6 +4,8 @@ import { processTranscription } from './processors/transcribe.js';
 import { processScoring } from './processors/score.js';
 import { processSFTPPoll } from './processors/sftp-poll.js';
 import { processIngestCall } from './processors/ingest-call.js';
+import { processHydrateCall } from './processors/hydrate-call.js';
+import { processAssembleJourney } from './processors/assemble-journey.js';
 import { processAlertDelivery } from './processors/alert-deliver.js';
 import { processScoreJourney } from './processors/score-journey.js';
 import { processRetentionPurge } from './processors/retention-purge.js';
@@ -36,10 +38,14 @@ const scoringWorker = new Worker('scoring', dispatchScoring, {
   concurrency: 2,
 });
 
-// The ingestion queue carries 'sftp-poll' (recurring SFTP polling) and
-// 'ingest-call' (delayed dialer-webhook recording fetch, spec §4).
+// The ingestion queue carries 'sftp-poll' (recurring SFTP polling),
+// 'ingest-call' (delayed dialer-webhook recording fetch, spec §4),
+// 'hydrate-call' (fetch + transcribe a captured call on sale) and
+// 'assemble-journey' (grace-delayed journey assembly on a Zoho sale trigger).
 async function dispatchIngestion(job: Job) {
   if (job.name === 'ingest-call') return processIngestCall(job);
+  if (job.name === 'hydrate-call') return processHydrateCall(job);
+  if (job.name === 'assemble-journey') return processAssembleJourney(job);
   return processSFTPPoll(job);
 }
 

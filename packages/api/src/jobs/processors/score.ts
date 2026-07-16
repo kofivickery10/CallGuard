@@ -213,6 +213,8 @@ export async function processScoring(job: Job<{ callId: string }>) {
           modelId: verified.model,
           inputTokens: verified.usage.input_tokens,
           outputTokens: verified.usage.output_tokens,
+          cacheReadTokens: verified.usage.cache_read_input_tokens,
+          cacheCreationTokens: verified.usage.cache_creation_input_tokens,
         });
         console.log(
           `[Scoring] Verified ${flagged.length} flagged item(s) for call ${callId} on ${verified.model}`

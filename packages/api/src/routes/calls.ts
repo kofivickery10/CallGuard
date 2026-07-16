@@ -8,7 +8,7 @@ import { query, queryOne } from '../db/client.js';
 import { uploadFile, deleteFile, readFile } from '../services/storage.js';
 import { transcriptionQueue } from '../jobs/queue.js';
 import { AppError } from '../middleware/errors.js';
-import { ingestCall, fetchRemoteAudio } from '../services/ingestion.js';
+import { ingestCall, fetchRemoteAudio, upsertCustomer, normalizePhone } from '../services/ingestion.js';
 import { recordAuditEvent } from '../services/audit.js';
 import { getScoringSettings } from '../services/tenant-settings.js';
 import type { Call, CallScore, CallItemScore, BreachSeverity } from '@callguard/shared';
@@ -116,9 +116,26 @@ callRouter.post('/upload', upload.single('audio'), async (req, res, next) => {
       scorecardId = sc.id;
     }
 
+    // Resolve the customer by phone so this call can join a journey (spec §9)
+    // — without a customer_id, marking it as a sale below has nothing to
+    // attach the journey to.
+    let customerId: string | null = null;
+    if (req.body.customer_phone) {
+      const normalised = normalizePhone(req.body.customer_phone);
+      if (normalised) {
+        customerId = await upsertCustomer(req.user!.organizationId, normalised);
+      }
+    }
+
+    // Manually flags this call as having resulted in a sale — for
+    // 'sales_only' tenants, transcribe.ts assembles + scores a journey for
+    // this customer once transcription completes, the same way the Zoho
+    // sale-trigger webhook would (see services/journey.ts).
+    const saleFlagged = req.body.mark_as_sale === 'true';
+
     const rows = await query<Call>(
-      `INSERT INTO calls (id, organization_id, uploaded_by, file_name, file_key, file_size_bytes, mime_type, agent_id, agent_name, customer_phone, call_date, tags, status, encrypted_at_rest, scorecard_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'uploaded', true, $13) RETURNING *`,
+      `INSERT INTO calls (id, organization_id, uploaded_by, file_name, file_key, file_size_bytes, mime_type, agent_id, agent_name, customer_phone, customer_id, call_date, tags, status, encrypted_at_rest, scorecard_id, sale_flagged)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'uploaded', true, $14, $15) RETURNING *`,
       [
         callId,
         req.user!.organizationId,
@@ -130,9 +147,11 @@ callRouter.post('/upload', upload.single('audio'), async (req, res, next) => {
         agentId,
         agentName,
         req.body.customer_phone || null,
+        customerId,
         req.body.call_date || null,
         req.body.tags ? JSON.parse(req.body.tags) : [],
         scorecardId,
+        saleFlagged,
       ]
     );
 
