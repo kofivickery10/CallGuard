@@ -200,9 +200,20 @@ export async function scoreTranscript(
 
   const prompt = buildScoringPrompt(transcript, items, kbContext, withCoaching, learning, industry, journeyMode);
 
+  // Scale the output budget to the scorecard size: each scored item returns an
+  // id + score + confidence + an evidence quote + reasoning (~300-400 tokens).
+  // A fixed 4096 truncated the submit_scores tool call mid-JSON on large
+  // scorecards (e.g. 47 items), so output.items came back undefined. Haiku 4.5
+  // supports up to 64k output; cap generously.
+  const perItemBudget = 400;
+  const maxTokens = Math.min(
+    32000,
+    (withCoaching ? 6144 : 2048) + items.length * perItemBudget
+  );
+
   const response = await client.messages.create({
     model,
-    max_tokens: withCoaching ? 6144 : 4096,
+    max_tokens: maxTokens,
     messages: [
       {
         role: 'user',
@@ -288,8 +299,18 @@ export async function scoreTranscript(
     throw new Error('Claude did not return structured scores');
   }
 
+  // If the model hit the token ceiling mid tool-call, the input JSON is
+  // incomplete and `items` is missing — fail clearly here rather than letting
+  // an undefined `output.items` blow up downstream (score.ts / score-journey.ts).
+  const output = toolUse.input as ScoringOutput;
+  if (!output || !Array.isArray(output.items)) {
+    throw new Error(
+      `Claude returned incomplete scores (stop_reason=${response.stop_reason}, items=${items.length}, max_tokens=${maxTokens}) — likely truncated`
+    );
+  }
+
   return {
-    output: toolUse.input as ScoringOutput,
+    output,
     usage: {
       input_tokens: response.usage.input_tokens,
       output_tokens: response.usage.output_tokens,
