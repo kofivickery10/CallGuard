@@ -74,8 +74,15 @@ customersRouter.get('/', async (req, res, next) => {
       call_count: number;
       avg_score: string | null;
     }>(
+      // call_count is computed live rather than read from the denormalised
+      // customers.call_count column: under the capture/journey model calls stay
+      // 'captured'/'transcribed' (never per-call 'scored'), and that column is
+      // only ever recomputed by the per-call scorer — so it reads 0 for
+      // sales-only tenants. Count every real (non-failed) call instead.
       `SELECT c.id, c.phone_normalized, c.name, c.external_crm_id,
-              c.first_seen_at, c.last_seen_at, c.call_count, c.avg_score
+              c.first_seen_at, c.last_seen_at, c.avg_score,
+              (SELECT COUNT(*) FROM calls ca
+                WHERE ca.customer_id = c.id AND ca.status <> 'failed')::int AS call_count
          FROM customers c
         WHERE ${where}
         ORDER BY c.last_seen_at DESC
@@ -117,7 +124,14 @@ customersRouter.get('/:id', async (req, res, next) => {
       call_count: number;
       avg_score: string | null;
     }>(
-      'SELECT * FROM customers WHERE id = $1 AND organization_id = $2',
+      // Live call_count (see the list query above for why the denormalised
+      // column is unreliable under the capture/journey model).
+      `SELECT c.id, c.organization_id, c.phone_normalized, c.name, c.external_crm_id,
+              c.first_seen_at, c.last_seen_at, c.avg_score,
+              (SELECT COUNT(*) FROM calls ca
+                WHERE ca.customer_id = c.id AND ca.status <> 'failed')::int AS call_count
+         FROM customers c
+        WHERE c.id = $1 AND c.organization_id = $2`,
       [req.params.id, orgId]
     );
 
