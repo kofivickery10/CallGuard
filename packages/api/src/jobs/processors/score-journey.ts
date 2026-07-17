@@ -106,10 +106,10 @@ export async function processScoreJourney(job: Job<{ journeyId: string }>) {
       ? await getLearningContext(journey.organization_id, org.plan, scoreable.map((i) => i.id), wrapUp.agent_id)
       : undefined;
 
-    // Coaching is deliberately not requested for journeys — a journey can
-    // span several advisers, and a single coaching brief attributed to
-    // whichever one happened to close is not a clean concept; per-call
-    // coaching (jobs/processors/score.ts) already covers that need.
+    // Journey-level coaching: one brief for the whole sale (strengths /
+    // improvements / next actions across all the calls), stored on the journey.
+    // Deliberately journey-level, not per-call — a sale can span advisers, so
+    // the useful unit is the sale as a whole.
     const { output, usage, model } = await scoreTranscript(
       combinedTranscript,
       scoreable.map((i) => ({
@@ -124,7 +124,7 @@ export async function processScoreJourney(job: Job<{ journeyId: string }>) {
       null,
       kbContext,
       learning,
-      false,
+      true, // withCoaching — journey-level brief
       org?.industry ?? null,
       true // journeyMode
     );
@@ -276,9 +276,9 @@ export async function processScoreJourney(job: Job<{ journeyId: string }>) {
       await tx.query(
         `UPDATE journeys SET
            status = 'scored', branch = $2, overall_score = $3, pass = $4,
-           model_id = $5, scored_at = now(), updated_at = now()
+           model_id = $5, coaching = $6, scored_at = now(), updated_at = now()
          WHERE id = $1`,
-        [journeyId, branch, overallScore, pass, model]
+        [journeyId, branch, overallScore, pass, model, output.coaching ? JSON.stringify(output.coaching) : null]
       );
     });
 

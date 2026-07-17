@@ -294,9 +294,33 @@ callRouter.get('/:id', async (req, res, next) => {
       sql += ` AND c.agent_id = $${params.length}`;
     }
 
-    const call = await queryOne(sql, params);
+    const call = await queryOne<{ id: string; journey_id: string | null }>(sql, params);
     if (!call) throw new AppError(404, 'Call not found');
-    res.json(call);
+
+    // If this call belongs to a scored sale journey, attach a summary + the
+    // checkpoints whose evidence came from THIS call, so the call view can link
+    // to and surface its journey (per-call scoring doesn't run for journey
+    // calls — the score lives on the journey; see jobs/processors/score-journey).
+    let journey = null;
+    if (call.journey_id) {
+      const j = await queryOne<{ id: string; status: string; branch: string | null; overall_score: string | null; pass: boolean | null }>(
+        'SELECT id, status, branch, overall_score, pass FROM journeys WHERE id = $1 AND organization_id = $2',
+        [call.journey_id, req.user!.organizationId]
+      );
+      if (j) {
+        const thisCallItems = await query(
+          `SELECT jis.result, jis.normalized_score, jis.evidence, si.label, si.weight, si.severity
+             FROM journey_item_scores jis
+             JOIN scorecard_items si ON si.id = jis.scorecard_item_id
+            WHERE jis.journey_id = $1 AND jis.source_call_id = $2
+            ORDER BY si.sort_order ASC`,
+          [call.journey_id, call.id]
+        );
+        journey = { ...j, this_call_items: thisCallItems };
+      }
+    }
+
+    res.json({ ...call, journey });
   } catch (err) {
     next(err);
   }
