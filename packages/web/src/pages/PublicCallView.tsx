@@ -73,7 +73,7 @@ export function PublicCallView() {
                   <span className={`text-[48px] font-bold font-mono ${scoreColor(data.overall_score)}`}>
                     {Math.round(data.overall_score)}%
                   </span>
-                  <span className={`px-3 py-1 rounded-[20px] text-xs font-semibold uppercase ${
+                  <span className={`px-3 py-1 rounded-full text-xs font-semibold uppercase ${
                     data.pass ? 'bg-pass-bg text-pass' : 'bg-fail-bg text-fail'
                   }`}>
                     {data.pass ? 'Pass' : 'Needs Review'}
@@ -99,7 +99,7 @@ export function PublicCallView() {
               >
                 <span className="text-table-cell text-text-cell flex-1 pr-4">{item.label}</span>
                 <span
-                  className={`px-2.5 py-[3px] rounded-[20px] text-[11px] font-semibold ${
+                  className={`px-2.5 py-[3px] rounded-full text-[11px] font-semibold ${
                     item.passed ? 'bg-pass-bg text-pass' : 'bg-fail-bg text-fail'
                   }`}
                 >

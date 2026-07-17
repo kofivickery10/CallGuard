@@ -11,7 +11,7 @@ const classMap: Record<RiskLevel, string> = {
 export function RiskLevelBadge({ level }: { level: RiskLevel }) {
   return (
     <span
-      className={`px-2.5 py-[3px] rounded-[20px] text-badge font-semibold uppercase tracking-wider ${classMap[level]}`}
+      className={`px-2.5 py-[3px] rounded-full text-badge font-semibold uppercase tracking-wider ${classMap[level]}`}
     >
       {RISK_LEVEL_LABELS[level]}
     </span>

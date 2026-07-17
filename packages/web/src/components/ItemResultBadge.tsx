@@ -13,7 +13,7 @@ const STYLES: Record<ItemResult, { label: string; className: string }> = {
 export function ItemResultBadge({ result }: { result: ItemResult }) {
   const s = STYLES[result] ?? STYLES.na;
   return (
-    <span className={`px-2.5 py-[3px] rounded-[20px] text-badge font-semibold ${s.className}`}>
+    <span className={`px-2.5 py-[3px] rounded-full text-badge font-semibold ${s.className}`}>
       {s.label}
     </span>
   );

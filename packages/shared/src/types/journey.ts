@@ -50,6 +50,8 @@ export interface JourneyItemScore {
 }
 
 export interface JourneyWithDetail extends Journey {
+  customer_name: string | null;
+  customer_phone: string | null;
   calls: Array<{ id: string; role: JourneyCallRole; call_date: string | null; agent_name: string | null }>;
   item_scores: Array<
     JourneyItemScore & {

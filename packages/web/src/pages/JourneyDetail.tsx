@@ -1,4 +1,4 @@
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { api } from '../api/client';
@@ -8,20 +8,20 @@ import { ScoreGauge } from '../components/ScoreGauge';
 import { CoachingPanel } from '../components/CoachingPanel';
 import { ItemResultBadge } from '../components/ItemResultBadge';
 import { SeverityBadge } from '../components/BreachBadges';
+import { formatPhone } from '../lib/format';
 import type { JourneyWithDetail, ItemResult } from '@callguard/shared';
 
 const RESULT_ORDER: Record<ItemResult, number> = { fail: 0, manual_review: 1, pass: 2, na: 3 };
 
 export function JourneyDetail() {
   const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const { notify } = useDialog();
   const canAction = user?.role === 'admin' || user?.role === 'supervisor';
   const [resolvingId, setResolvingId] = useState<string | null>(null);
 
-  const { data: journey, isLoading } = useQuery({
+  const { data: journey, isLoading, isError } = useQuery({
     queryKey: ['journey', id],
     queryFn: () => api.get<JourneyWithDetail>(`/journeys/${id}`),
     enabled: !!id,
@@ -44,11 +44,29 @@ export function JourneyDetail() {
     }
   };
 
-  if (isLoading || !journey) {
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64 text-text-muted">
         <div className="w-10 h-10 border-[3px] border-border border-t-primary rounded-full animate-spin mr-3" />
         Loading…
+      </div>
+    );
+  }
+
+  if (isError || !journey) {
+    return (
+      <div className="bg-card border border-border rounded-card p-10 text-center">
+        <div className="bg-fail-bg text-fail px-3 py-2 rounded-btn inline-block">
+          Could not load this journey — it may have been removed.
+        </div>
+        <div className="mt-4">
+          <Link
+            to="/journeys"
+            className="text-primary text-table-cell font-semibold hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+          >
+            Back to Journeys
+          </Link>
+        </div>
       </div>
     );
   }
@@ -58,24 +76,45 @@ export function JourneyDetail() {
   );
   const failed = journey.item_scores.filter((i) => i.result === 'fail');
   const pendingReview = journey.item_scores.filter((i) => i.result === 'manual_review');
+  const customerLabel =
+    journey.customer_name ?? (journey.customer_phone ? formatPhone(journey.customer_phone) : null);
 
   return (
     <div>
-      <button
-        onClick={() => navigate('/journeys')}
-        className="text-table-cell text-text-muted hover:text-text-primary mb-5 inline-block transition-colors"
+      <Link
+        to="/journeys"
+        className="inline-flex items-center gap-1.5 text-table-cell text-text-muted hover:text-text-primary mb-5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
       >
-        &larr; Back to Journeys
-      </button>
+        <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M15 18l-6-6 6-6" />
+        </svg>
+        Journeys
+      </Link>
 
       {/* Header */}
       <div className="flex justify-between items-start mb-6">
         <div>
-          <h2 className="text-page-title text-text-primary">Journey</h2>
+          <h2 className="text-page-title text-text-primary">
+            Journey
+            {customerLabel && (
+              <>
+                {' — '}
+                <Link
+                  to={`/customers/${journey.customer_id}`}
+                  className="text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                >
+                  {customerLabel}
+                </Link>
+              </>
+            )}
+          </h2>
           <div className="flex items-center gap-4 mt-1.5 text-table-cell text-text-subtle">
             <span className="capitalize">{journey.status}</span>
+            {journey.customer_name && journey.customer_phone && (
+              <span>{formatPhone(journey.customer_phone)}</span>
+            )}
             {journey.branch && (
-              <span className="px-2 py-[2px] rounded bg-primary-light text-pass text-xs font-semibold">
+              <span className="px-2.5 py-[3px] rounded-full text-badge font-semibold bg-table-header text-text-secondary">
                 Branch: {journey.branch}
               </span>
             )}
@@ -85,8 +124,12 @@ export function JourneyDetail() {
         </div>
         {journey.overall_score != null && (
           <div className="flex items-center gap-3">
-            <span className={journey.pass ? 'text-pass font-semibold' : 'text-fail font-semibold'}>
-              {journey.pass ? 'PASS' : 'FAIL'}
+            <span
+              className={`inline-block px-2.5 py-[3px] rounded-full text-badge font-semibold ${
+                journey.pass ? 'bg-pass-bg text-pass' : 'bg-fail-bg text-fail'
+              }`}
+            >
+              {journey.pass ? 'Pass' : 'Fail'}
             </span>
             <ScoreGauge score={Number(journey.overall_score)} size="lg" />
           </div>
@@ -94,14 +137,14 @@ export function JourneyDetail() {
       </div>
 
       {journey.status === 'failed' && journey.error_message && (
-        <div className="bg-fail-bg border-l-[3px] border-l-fail rounded-r-lg p-4 mb-6">
+        <div className="bg-fail-bg border-l-[3px] border-l-fail rounded-card p-4 mb-6">
           <div className="text-table-cell font-semibold text-fail">Scoring failed</div>
-          <div className="text-xs text-flag-text mt-1">{journey.error_message}</div>
+          <div className="text-xs text-fail mt-1">{journey.error_message}</div>
         </div>
       )}
 
       {(journey.status === 'pending' || journey.status === 'scoring') && (
-        <div className="bg-card border border-border rounded-xl p-10 text-center mb-6">
+        <div className="bg-card border border-border rounded-card p-10 text-center mb-6">
           <div className="w-10 h-10 border-[3px] border-border border-t-primary rounded-full animate-spin mx-auto mb-4" />
           <div className="text-base font-semibold text-text-primary">
             {journey.status === 'pending' ? 'Queued for scoring' : 'Scoring the journey'}
@@ -116,6 +159,7 @@ export function JourneyDetail() {
             plan={user?.organization_plan ?? null}
             callStatus="scored"
             isAdmin={user?.role === 'admin'}
+            subject="journey"
           />
         </div>
       )}
@@ -130,6 +174,13 @@ export function JourneyDetail() {
             </div>
           </div>
           <div>
+            {journey.item_scores.length === 0 && (
+              <div className="px-5 py-12 text-center text-text-muted text-table-cell">
+                {journey.status === 'pending' || journey.status === 'scoring'
+                  ? 'Checkpoints appear once scoring completes.'
+                  : 'No checkpoints on this scorecard.'}
+              </div>
+            )}
             {items.map((item) => (
               <div key={item.id} className="border-b border-border-light last:border-0 px-5 py-[11px]">
                 <div className="flex justify-between items-start gap-4">
@@ -161,14 +212,14 @@ export function JourneyDetail() {
                         <button
                           onClick={() => resolve(item.id, 'pass')}
                           disabled={resolvingId === item.id}
-                          className="text-[11px] text-pass hover:text-white hover:bg-pass px-2 py-1 rounded border border-pass/30 hover:border-pass transition-colors disabled:opacity-50"
+                          className="text-badge text-pass hover:text-white hover:bg-pass px-2 py-1 rounded-btn border border-pass/30 hover:border-pass transition-colors disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
                         >
                           Pass
                         </button>
                         <button
                           onClick={() => resolve(item.id, 'fail')}
                           disabled={resolvingId === item.id}
-                          className="text-[11px] text-fail hover:text-white hover:bg-fail px-2 py-1 rounded border border-fail/30 hover:border-fail transition-colors disabled:opacity-50"
+                          className="text-badge text-fail hover:text-white hover:bg-fail px-2 py-1 rounded-btn border border-fail/30 hover:border-fail transition-colors disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
                         >
                           Fail
                         </button>
@@ -188,6 +239,9 @@ export function JourneyDetail() {
               <h3 className="text-section-title text-text-primary">Calls in this journey ({journey.calls.length})</h3>
             </div>
             <div>
+              {journey.calls.length === 0 && (
+                <div className="px-5 py-4 text-table-cell text-text-muted">No calls linked.</div>
+              )}
               {journey.calls.map((c) => (
                 <Link
                   key={c.id}
