@@ -137,13 +137,20 @@ export async function handleZohoSaleTrigger(
       throw new AppError(401, 'Invalid or missing sale-trigger signature');
     }
 
+    // Observability: log every delivery + the payload keys, so it's visible in
+    // the logs whether Zoho is actually calling us and with what (keys only, no
+    // PII values).
+    console.log(`[Zoho] sale-trigger received (org ${orgId}) keys=[${Object.keys(body).join(',')}]`);
+
     const rawPhone = body[conn.sale_phone_field];
     if (typeof rawPhone !== 'string' || !rawPhone.trim()) {
+      console.log(`[Zoho] sale-trigger ignored: no '${conn.sale_phone_field}' field in payload`);
       res.status(202).json({ status: 'ignored', reason: `no ${conn.sale_phone_field} field in payload` });
       return;
     }
     const phone = normalizePhone(rawPhone);
     if (!phone) {
+      console.log(`[Zoho] sale-trigger ignored: could not normalise "${rawPhone}"`);
       res.status(202).json({ status: 'ignored', reason: 'could not normalise phone number' });
       return;
     }
@@ -167,6 +174,7 @@ export async function handleZohoSaleTrigger(
       }
     );
 
+    console.log(`[Zoho] sale-trigger accepted: phone=${phone} recordId=${recordId ?? 'none'} client=${clientName ?? 'none'}`);
     res.status(202).json({ status: 'accepted', phone });
   } catch (err) {
     next(err);
