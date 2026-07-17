@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
@@ -19,6 +19,23 @@ type ScoreWithItems = CallScore & {
   coaching: CallCoaching | null;
   item_scores: (CallItemScore & { label: string; item_description: string; score_type: string })[];
 };
+
+// Journey context attached to a call that belongs to a scored sale journey
+// (per-call scoring doesn't run for these — the score lives on the journey).
+type JourneyContext = {
+  id: string;
+  status: string;
+  branch: string | null;
+  overall_score: string | null;
+  pass: boolean | null;
+  this_call_items: Array<{
+    result: 'pass' | 'fail' | 'na' | 'manual_review';
+    normalized_score: string | null;
+    evidence: string | null;
+    label: string;
+  }>;
+};
+type CallWithJourney = Call & { journey?: JourneyContext | null };
 
 export function CallDetail() {
   const { id } = useParams<{ id: string }>();
@@ -72,11 +89,16 @@ export function CallDetail() {
 
   const { data: call } = useQuery({
     queryKey: ['call', id],
-    queryFn: () => api.get<Call>(`/calls/${id}`),
+    queryFn: () => api.get<CallWithJourney>(`/calls/${id}`),
     refetchInterval: (query) => {
-      const status = query.state.data?.status;
-      // Terminal states: stop polling. 'skipped' is terminal too.
-      return status === 'scored' || status === 'failed' || status === 'skipped' ? false : 3000;
+      const data = query.state.data;
+      const status = data?.status;
+      // Terminal states: stop polling. 'skipped' is terminal too. A journey
+      // call rests at 'transcribed' (scored on the journey, never per-call), so
+      // that's terminal here as well — otherwise it would poll forever.
+      if (status === 'scored' || status === 'failed' || status === 'skipped') return false;
+      if (status === 'transcribed' && data?.journey) return false;
+      return 3000;
     },
   });
 
@@ -189,6 +211,66 @@ export function CallDetail() {
           <div className="text-xs text-text-muted mt-1">
             {call.error_message || 'This call was too short to evaluate against a scorecard and was skipped.'}
           </div>
+        </div>
+      )}
+
+      {/* Journey context: this call is scored as part of a sale journey */}
+      {call.journey && (
+        <div className="bg-card border border-border rounded-card overflow-hidden mb-4">
+          <div className="px-5 py-4 border-b border-border flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <h3 className="text-section-title text-text-primary">Part of a scored sale</h3>
+              <p className="text-xs text-text-muted mt-0.5">
+                This call is scored together with the other calls in the sale
+                {call.journey.branch ? ` (${call.journey.branch})` : ''}, not on its own.
+              </p>
+            </div>
+            <div className="flex items-center gap-3">
+              {call.journey.overall_score != null && (
+                <ScoreGauge score={Number(call.journey.overall_score)} size="lg" />
+              )}
+              <Link
+                to={`/journeys/${call.journey.id}`}
+                className="inline-flex items-center gap-2 bg-primary text-white px-[18px] py-[9px] rounded-btn text-table-cell font-semibold hover:bg-primary-hover transition-colors"
+              >
+                View journey
+              </Link>
+            </div>
+          </div>
+          {call.journey.this_call_items.length > 0 ? (
+            <div className="divide-y divide-border-light">
+              <div className="px-5 pt-3 pb-1 text-table-header uppercase text-text-muted">
+                Checkpoints evidenced in this call
+              </div>
+              {call.journey.this_call_items.map((item, i) => (
+                <div key={i} className="px-5 py-3 flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-table-cell text-text-cell">{item.label}</div>
+                    {item.evidence && (
+                      <div className="text-xs text-text-muted mt-0.5 italic line-clamp-2">"{item.evidence}"</div>
+                    )}
+                  </div>
+                  <span
+                    className={`shrink-0 inline-block px-2.5 py-[3px] rounded-[20px] text-badge font-semibold ${
+                      item.result === 'pass'
+                        ? 'bg-pass-bg text-pass'
+                        : item.result === 'fail'
+                          ? 'bg-fail-bg text-fail'
+                          : item.result === 'manual_review'
+                            ? 'bg-review-bg text-review'
+                            : 'bg-table-header text-text-muted'
+                    }`}
+                  >
+                    {item.result === 'pass' ? 'Pass' : item.result === 'fail' ? 'Fail' : item.result === 'manual_review' ? 'Review' : 'N/A'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="px-5 py-4 text-table-cell text-text-muted">
+              No checkpoints were attributed specifically to this call — see the full journey for the combined score.
+            </div>
+          )}
         </div>
       )}
 

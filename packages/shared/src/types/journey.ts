@@ -1,4 +1,5 @@
 import type { ItemResult } from './scorecard.js';
+import type { CallCoaching } from './coaching.js';
 
 export type JourneyStatus = 'pending' | 'scoring' | 'scored' | 'failed';
 export type JourneyTriggerSource = 'zoho_sale' | 'manual' | 'fallback';
@@ -18,6 +19,9 @@ export interface Journey {
   overall_score: number | null;
   pass: boolean | null;
   model_id: string | null;
+  // Journey-level coaching brief (whole-sale strengths / improvements / next
+  // actions). Null until scored, or if coaching is disabled for the plan.
+  coaching: CallCoaching | null;
   error_message: string | null;
   scored_at: string | null;
   created_at: string;

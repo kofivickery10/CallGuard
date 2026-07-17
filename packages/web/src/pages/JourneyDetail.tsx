@@ -5,6 +5,7 @@ import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { useDialog } from '../components/DialogProvider';
 import { ScoreGauge } from '../components/ScoreGauge';
+import { CoachingPanel } from '../components/CoachingPanel';
 import { ItemResultBadge } from '../components/ItemResultBadge';
 import { SeverityBadge } from '../components/BreachBadges';
 import type { JourneyWithDetail, ItemResult } from '@callguard/shared';
@@ -105,6 +106,17 @@ export function JourneyDetail() {
           <div className="text-base font-semibold text-text-primary">
             {journey.status === 'pending' ? 'Queued for scoring' : 'Scoring the journey'}
           </div>
+        </div>
+      )}
+
+      {journey.status === 'scored' && (
+        <div className="mb-4">
+          <CoachingPanel
+            coaching={journey.coaching}
+            plan={user?.organization_plan ?? null}
+            callStatus="scored"
+            isAdmin={user?.role === 'admin'}
+          />
         </div>
       )}
 
