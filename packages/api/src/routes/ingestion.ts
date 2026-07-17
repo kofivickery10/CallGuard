@@ -134,6 +134,9 @@ const DEFAULT_CLOUDTALK_FIELD_MAP: DialerFieldMap = {
   duration: ['talking_time', 'billsec', 'call_duration', 'duration', 'duration_seconds'],
 };
 const DEFAULT_RECORDING_FETCH_DELAY_SECONDS = 60;
+// Calls shorter than this are dropped at the webhook (no-answers, voicemails,
+// instant hangups) — only when CloudTalk reports a duration; unknown → kept.
+const MIN_CAPTURE_SECONDS = 15;
 
 // Loosely normalise a dialler's direction value. Returns null (not a guess)
 // for anything unrecognised, rather than risk silently mislabelling a call.
@@ -215,6 +218,16 @@ export async function handleCloudTalkWebhook(
         `agent=${agentEmail || agentExternalId || agentName ? 'y' : 'n'} ` +
         `dur=${durationSeconds ?? 'n'} dir=${direction ?? 'n'}`
     );
+
+    // Minimum-duration gate: no-answers, voicemails and instant hangups carry
+    // no compliance content, clutter the list, and would waste transcription
+    // spend if the customer later converts. Drop them before any storage —
+    // only when CloudTalk actually reported a duration (unknown → captured, so
+    // we never silently lose a call we couldn't measure).
+    if (durationSeconds !== null && durationSeconds < MIN_CAPTURE_SECONDS) {
+      res.status(202).json({ status: 'ignored', reason: `call too short (${durationSeconds}s < ${MIN_CAPTURE_SECONDS}s)` });
+      return;
+    }
 
     // CloudTalk fires events before the recording exists too - acknowledge and skip.
     if (!recordingUrl && !cloudtalkCallId) {
