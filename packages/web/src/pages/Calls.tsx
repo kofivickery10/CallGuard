@@ -101,8 +101,16 @@ export function Calls() {
                   <td className="px-5 py-3.5">
                     <CallStatusBadge status={call.status} pass={call.pass} />
                   </td>
-                  <td className="px-5 py-3.5 text-table-cell text-text-cell">
-                    {new Date(call.created_at).toLocaleDateString()}
+                  <td className="px-5 py-3.5 text-table-cell text-text-cell whitespace-nowrap">
+                    {(() => {
+                      const d = new Date(call.call_date ?? call.created_at);
+                      return (
+                        <div className="flex flex-col leading-tight">
+                          <span>{d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+                          <span className="text-text-muted">{d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</span>
+                        </div>
+                      );
+                    })()}
                   </td>
                 </tr>
               ))
