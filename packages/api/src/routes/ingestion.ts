@@ -125,11 +125,13 @@ const DEFAULT_CLOUDTALK_FIELD_MAP: DialerFieldMap = {
   agent_external_id: ['agent_id', 'agent', 'internal_id'],
   agent_name: ['agent_name', 'internal_name'],
   customer_phone: ['external_number', 'public_external_number', 'contact_number', 'phone_number'],
+  customer_name: ['contact_name', 'customer_name', 'client_name', 'name'],
   // Candidate keys only — not confirmed present in CloudTalk's actual payload
   // (their public docs don't spell out the "Call Ended" webhook shape). Tried
   // the same tolerant way as every other field; if none match, direction is
   // just null and ingestion falls back to the org's mono_first_speaker default.
   direction: ['direction', 'type', 'call_type', 'call_direction'],
+  duration: ['talking_time', 'billsec', 'call_duration', 'duration', 'duration_seconds'],
 };
 const DEFAULT_RECORDING_FETCH_DELAY_SECONDS = 60;
 
@@ -199,7 +201,20 @@ export async function handleCloudTalkWebhook(
     const agentExternalId = pickField(body, fieldMap.agent_external_id);
     const agentName = pickField(body, fieldMap.agent_name);
     const customerPhone = pickField(body, fieldMap.customer_phone);
+    const customerName = pickField(body, fieldMap.customer_name ?? []);
     const direction = normalizeCallDirection(pickField(body, fieldMap.direction));
+    const durationRaw = pickField(body, fieldMap.duration ?? []);
+    const durationSeconds = durationRaw && /^\d+$/.test(durationRaw) ? parseInt(durationRaw, 10) : null;
+
+    // One-line diagnostic of what CloudTalk actually sent, so field mapping can
+    // be verified against a real payload without logging PII values. Lists the
+    // top-level keys and which of our fields resolved.
+    console.log(
+      `[CloudTalk] webhook keys=[${Object.keys(body).join(',')}] ` +
+        `resolved: phone=${customerPhone ? 'y' : 'n'} name=${customerName ? 'y' : 'n'} ` +
+        `agent=${agentEmail || agentExternalId || agentName ? 'y' : 'n'} ` +
+        `dur=${durationSeconds ?? 'n'} dir=${direction ?? 'n'}`
+    );
 
     // CloudTalk fires events before the recording exists too - acknowledge and skip.
     if (!recordingUrl && !cloudtalkCallId) {
@@ -239,7 +254,9 @@ export async function handleCloudTalkWebhook(
         agentExternalId,
         agentName,
         customerPhone,
+        customerName,
         direction,
+        durationSeconds,
         dialerConnectionId: conn?.id ?? null,
       });
       if (conn) {

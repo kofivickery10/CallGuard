@@ -36,6 +36,18 @@ function isMfaExempt(originalUrl: string): boolean {
   return MFA_EXEMPT_PREFIXES.some((p) => path === p || path.startsWith(p + '/'));
 }
 
+// Routes an org-less token (a superadmin — no organization_id) is allowed to
+// reach: their own auth/session endpoints, the cross-tenant superadmin API, and
+// the shared support inbox. Everything else is tenant-scoped and would pass an
+// empty organizationId into a UUID-typed WHERE clause (Postgres: "invalid input
+// syntax for type uuid: \"\""). Matched against req.originalUrl.
+const ORG_OPTIONAL_PREFIXES = ['/api/auth', '/api/superadmin', '/api/support'];
+
+function isOrgOptional(originalUrl: string): boolean {
+  const path = originalUrl.split('?')[0] ?? originalUrl;
+  return ORG_OPTIONAL_PREFIXES.some((p) => path === p || path.startsWith(p + '/'));
+}
+
 declare global {
   namespace Express {
     interface Request {
@@ -94,6 +106,15 @@ export function authenticate(
   // enrolment endpoints. API-key sessions are exempt (machine-to-machine).
   if (payload.mfa !== true && payload.role !== 'api' && !isMfaExempt(req.originalUrl)) {
     throw new AppError(403, 'Two-factor enrolment required', 'MFA_ENROLMENT_REQUIRED');
+  }
+
+  // Tenant routes are org-scoped. An org-less token (superadmin, whose
+  // organizationId is '') would otherwise pass an empty string into a UUID
+  // column and surface as a cryptic DB error on every query the page fires.
+  // Superadmins belong in the admin console (/api/superadmin, /api/support), so
+  // reject them from tenant routes cleanly rather than letting the query blow up.
+  if (!payload.organizationId && payload.role !== 'api' && !isOrgOptional(req.originalUrl)) {
+    throw new AppError(403, 'This account has no organisation context; use the admin console', 'NO_ORG_CONTEXT');
   }
 
   req.user = payload;

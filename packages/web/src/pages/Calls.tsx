@@ -14,12 +14,14 @@ export function Calls() {
   const canUpload = ['admin', 'supervisor', 'adviser'].includes(user?.role ?? '');
   const [page, setPage] = useState(1);
   const [agentFilter, setAgentFilter] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<string>('');
 
   const queryParams = new URLSearchParams({ page: String(page), limit: '20' });
   if (agentFilter) queryParams.set('agent_id', agentFilter);
+  if (statusFilter) queryParams.set('status', statusFilter);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['calls', page, agentFilter],
+    queryKey: ['calls', page, agentFilter, statusFilter],
     queryFn: () =>
       api.get<PaginatedResponse<Call & { resolved_agent_name: string | null; overall_score?: number; pass?: boolean }>>(
         `/calls?${queryParams.toString()}`
@@ -38,6 +40,20 @@ export function Calls() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <select
+            value={statusFilter}
+            onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
+            aria-label="Filter calls by status"
+            className="bg-card border border-border rounded-btn px-3 py-2 text-table-cell text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/40"
+          >
+            <option value="">All statuses</option>
+            <option value="captured">Awaiting sale</option>
+            <option value="transcribed">Transcribed</option>
+            <option value="scored">Scored</option>
+            <option value="transcribing">Processing</option>
+            <option value="skipped">Too short</option>
+            <option value="failed">Failed</option>
+          </select>
           {isAdmin && <AgentFilter value={agentFilter} onChange={(v) => { setAgentFilter(v); setPage(1); }} />}
           {canUpload && (
             <Link
@@ -101,8 +117,16 @@ export function Calls() {
                   <td className="px-5 py-3.5">
                     <CallStatusBadge status={call.status} pass={call.pass} />
                   </td>
-                  <td className="px-5 py-3.5 text-table-cell text-text-cell">
-                    {new Date(call.created_at).toLocaleDateString()}
+                  <td className="px-5 py-3.5 text-table-cell text-text-cell whitespace-nowrap">
+                    {(() => {
+                      const d = new Date(call.call_date ?? call.created_at);
+                      return (
+                        <div className="flex flex-col leading-tight">
+                          <span>{d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+                          <span className="text-text-muted">{d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</span>
+                        </div>
+                      );
+                    })()}
                   </td>
                 </tr>
               ))
