@@ -7,7 +7,7 @@ const statusConfig: Record<CallStatus, { label: string; className: string }> = {
   },
   uploaded: {
     label: 'Uploaded',
-    className: 'bg-primary-light text-text-secondary',
+    className: 'bg-processing-bg text-processing',
   },
   transcribing: {
     label: 'Processing',
@@ -56,7 +56,7 @@ export function CallStatusBadge({ status, pass }: { status: CallStatus; pass?: b
   }
 
   return (
-    <span className={`inline-block px-2.5 py-[3px] rounded-[20px] text-badge font-semibold ${config.className}`}>
+    <span className={`inline-block px-2.5 py-[3px] rounded-full text-badge font-semibold ${config.className}`}>
       {config.label}
     </span>
   );

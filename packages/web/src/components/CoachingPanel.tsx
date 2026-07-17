@@ -8,9 +8,12 @@ interface CoachingPanelProps {
   callStatus: string;
   isAdmin: boolean;
   priorCoachingCount?: number;
+  // What the coaching is about — journeys reuse this panel and the copy must
+  // not say "this call" on a journey page.
+  subject?: 'call' | 'journey';
 }
 
-export function CoachingPanel({ coaching, plan, callStatus, isAdmin, priorCoachingCount }: CoachingPanelProps) {
+export function CoachingPanel({ coaching, plan, callStatus, isAdmin, priorCoachingCount, subject = 'call' }: CoachingPanelProps) {
   // Coaching ships on every plan (see FEATURES.coaching in shared) — hasFeature
   // only returns false here while `plan` hasn't loaded yet, never because a
   // real plan lacks it. Show the upgrade prompt only for an actual gated
@@ -23,14 +26,14 @@ export function CoachingPanel({ coaching, plan, callStatus, isAdmin, priorCoachi
         <div className="px-5 py-4 border-b border-border flex items-center justify-between">
           <h3 className="text-section-title text-text-primary flex items-center gap-2">
             Coaching
-            <span className="text-[10px] font-semibold uppercase tracking-wider bg-secondary/20 text-secondary px-1.5 py-0.5 rounded">
+            <span className="text-badge font-semibold uppercase tracking-wider bg-secondary/20 text-secondary px-2 py-0.5 rounded-full">
               Premium
             </span>
           </h3>
         </div>
         <div className="p-6 text-center">
           <p className="text-table-cell text-text-subtle mb-3">
-            AI-generated coaching - strengths, improvements, and next actions for every call - is available on the {PLAN_LABELS.professional} plan and above.
+            AI-generated coaching - strengths, improvements, and next actions for every {subject === 'journey' ? 'sale' : 'call'} - is available on the {PLAN_LABELS.professional} plan and above.
           </p>
           {isAdmin ? (
             <Link
@@ -58,8 +61,12 @@ export function CoachingPanel({ coaching, plan, callStatus, isAdmin, priorCoachi
         </div>
         <div className="p-6 text-center text-table-cell text-text-muted">
           {callStatus === 'scored'
-            ? 'No coaching generated for this call. Re-score it to produce coaching.'
-            : 'Coaching will appear here once the call is scored.'}
+            ? subject === 'journey'
+              ? 'No coaching was generated for this journey. Coaching is produced when the journey is scored.'
+              : 'No coaching generated for this call. Re-score it to produce coaching.'
+            : subject === 'journey'
+              ? 'Coaching will appear here once the journey is scored.'
+              : 'Coaching will appear here once the call is scored.'}
         </div>
       </div>
     );
@@ -71,7 +78,7 @@ export function CoachingPanel({ coaching, plan, callStatus, isAdmin, priorCoachi
         <h3 className="text-section-title text-text-primary flex items-center gap-2">
           Coaching
           <span className="text-[10px] font-semibold uppercase tracking-wider text-text-muted flex items-center gap-1">
-            <svg viewBox="0 0 24 24" className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="2">
+            <svg viewBox="0 0 24 24" className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 2l3 7h7l-5.5 4 2 7L12 16l-6.5 4 2-7L2 9h7z" />
             </svg>
             AI-generated
@@ -108,7 +115,7 @@ export function CoachingPanel({ coaching, plan, callStatus, isAdmin, priorCoachi
 
         {priorCoachingCount && priorCoachingCount > 0 ? (
           <div className="pt-3 border-t border-border-light flex items-center gap-1.5 text-[11px] text-text-muted">
-            <svg viewBox="0 0 24 24" className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="2">
+            <svg viewBox="0 0 24 24" className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 8v4l3 3" />
               <circle cx="12" cy="12" r="10" />
             </svg>
@@ -145,7 +152,7 @@ function CoachingList({
   return (
     <div>
       <div className={`flex items-center gap-1.5 mb-2 ${textClass}`}>
-        <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5">
+        <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
           {icon === 'check' && <path d="M5 13l4 4L19 7" />}
           {icon === 'target' && (
             <>

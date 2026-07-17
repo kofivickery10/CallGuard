@@ -107,9 +107,9 @@ export function Alerts() {
                   </td>
                   <td className="px-5 py-3.5">
                     {rule.is_active ? (
-                      <span className="px-2.5 py-[3px] rounded-[20px] text-badge font-semibold bg-pass-bg text-pass">Active</span>
+                      <span className="px-2.5 py-[3px] rounded-full text-badge font-semibold bg-pass-bg text-pass">Active</span>
                     ) : (
-                      <span className="px-2.5 py-[3px] rounded-[20px] text-badge font-semibold bg-table-header text-text-muted">Paused</span>
+                      <span className="px-2.5 py-[3px] rounded-full text-badge font-semibold bg-table-header text-text-muted">Paused</span>
                     )}
                   </td>
                   <td className="px-5 py-3.5 text-right">

@@ -28,7 +28,7 @@ export function Welcome() {
 
       {/* Hero */}
       <section className="max-w-4xl mx-auto px-6 py-24 text-center">
-        <div className="inline-block px-3 py-1 rounded-[20px] bg-primary-light text-pass text-xs font-semibold uppercase tracking-wider mb-6">
+        <div className="inline-block px-3 py-1 rounded-full bg-primary-light text-pass text-xs font-semibold uppercase tracking-wider mb-6">
           AI-Powered Call Quality Assurance
         </div>
         <h1 className="text-[40px] md:text-[56px] font-bold text-text-primary leading-[1.1] tracking-tight">

@@ -34,7 +34,7 @@ export function SeverityBadge({ severity }: { severity: BreachSeverity }) {
 export function StatusBadge({ status }: { status: BreachStatus }) {
   return (
     <span
-      className={`px-2.5 py-[3px] rounded-[20px] text-badge font-semibold ${statusClass[status]}`}
+      className={`px-2.5 py-[3px] rounded-full text-badge font-semibold ${statusClass[status]}`}
     >
       {BREACH_STATUS_LABELS[status]}
     </span>

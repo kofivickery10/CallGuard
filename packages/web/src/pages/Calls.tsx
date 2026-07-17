@@ -1,14 +1,16 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { CallStatusBadge } from '../components/CallStatusBadge';
 import { ScoreGauge } from '../components/ScoreGauge';
 import { AgentFilter } from '../components/AgentFilter';
+import { formatDuration } from '../lib/format';
 import type { Call, PaginatedResponse } from '@callguard/shared';
 
 export function Calls() {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
   const canUpload = ['admin', 'supervisor', 'adviser'].includes(user?.role ?? '');
@@ -20,7 +22,7 @@ export function Calls() {
   if (agentFilter) queryParams.set('agent_id', agentFilter);
   if (statusFilter) queryParams.set('status', statusFilter);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError } = useQuery({
     queryKey: ['calls', page, agentFilter, statusFilter],
     queryFn: () =>
       api.get<PaginatedResponse<Call & { resolved_agent_name: string | null; overall_score?: number; pass?: boolean }>>(
@@ -44,13 +46,13 @@ export function Calls() {
             value={statusFilter}
             onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
             aria-label="Filter calls by status"
-            className="bg-card border border-border rounded-btn px-3 py-2 text-table-cell text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/40"
+            className="bg-card border border-border rounded-btn px-3 py-2 text-table-cell text-text-primary focus:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
           >
             <option value="">All statuses</option>
             <option value="captured">Awaiting sale</option>
+            <option value="uploaded,transcribing,scoring">Processing</option>
             <option value="transcribed">Transcribed</option>
             <option value="scored">Scored</option>
-            <option value="transcribing">Processing</option>
             <option value="skipped">Too short</option>
             <option value="failed">Failed</option>
           </select>
@@ -58,7 +60,7 @@ export function Calls() {
           {canUpload && (
             <Link
               to="/calls/upload"
-              className="inline-flex items-center gap-2 bg-primary text-white px-[18px] py-[9px] rounded-btn text-table-cell font-semibold hover:bg-primary-hover transition-colors"
+              className="inline-flex items-center gap-2 bg-primary text-white px-[18px] py-[9px] rounded-btn text-table-cell font-semibold hover:bg-primary-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
             >
               Upload Call
             </Link>
@@ -66,7 +68,8 @@ export function Calls() {
         </div>
       </div>
 
-      <div className="bg-card border border-border rounded-card overflow-x-auto">
+      <div className="bg-card border border-border rounded-card overflow-hidden">
+        <div className="overflow-x-auto">
         <table className="w-full min-w-[680px]">
           <thead>
             <tr>
@@ -78,7 +81,15 @@ export function Calls() {
             </tr>
           </thead>
           <tbody>
-            {isLoading ? (
+            {isError ? (
+              <tr>
+                <td colSpan={6} className="px-5 py-5">
+                  <div className="bg-fail-bg text-fail px-3 py-2 rounded-btn text-table-cell">
+                    Could not load calls — try refreshing.
+                  </div>
+                </td>
+              </tr>
+            ) : isLoading ? (
               Array.from({ length: 8 }).map((_, i) => (
                 <tr key={`skeleton-${i}`} className="border-b border-border-light last:border-0">
                   {Array.from({ length: 6 }).map((__, j) => (
@@ -95,9 +106,31 @@ export function Calls() {
                   ))}
                 </tr>
               ))
+            ) : data?.data.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="px-5 py-12 text-center text-text-muted text-table-cell">
+                  {statusFilter ? (
+                    <>
+                      No calls match this filter.{' '}
+                      <button
+                        onClick={() => { setStatusFilter(''); setPage(1); }}
+                        className="text-primary font-semibold hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                      >
+                        Clear filter
+                      </button>
+                    </>
+                  ) : (
+                    'No calls yet — upload your first call or connect your dialler.'
+                  )}
+                </td>
+              </tr>
             ) : (
               data?.data.map((call) => (
-                <tr key={call.id} className="hover:bg-table-header transition-colors cursor-pointer border-b border-border-light last:border-0">
+                <tr
+                  key={call.id}
+                  onClick={() => navigate(`/calls/${call.id}`)}
+                  className="hover:bg-table-header transition-colors cursor-pointer border-b border-border-light last:border-0"
+                >
                   <td className="px-5 py-3.5">
                     <Link to={`/calls/${call.id}`} className="text-primary font-semibold text-table-cell hover:underline">
                       {call.file_name}
@@ -107,12 +140,19 @@ export function Calls() {
                     {('resolved_agent_name' in call ? (call as { resolved_agent_name: string }).resolved_agent_name : null) || call.agent_name || '--'}
                   </td>
                   <td className="px-5 py-3.5 text-table-cell text-text-cell">
-                    {call.duration_seconds
-                      ? `${Math.floor(call.duration_seconds / 60)}:${String(Math.floor(call.duration_seconds % 60)).padStart(2, '0')}`
-                      : '--'}
+                    {formatDuration(call.duration_seconds)}
                   </td>
                   <td className="px-5 py-3.5">
-                    {call.overall_score != null ? <ScoreGauge score={call.overall_score} showBar /> : <span className="text-text-muted">--</span>}
+                    {call.overall_score != null ? (
+                      <ScoreGauge score={call.overall_score} showBar />
+                    ) : (
+                      <span
+                        className="text-text-muted"
+                        title={call.status === 'captured' ? 'Scored when the sale completes' : undefined}
+                      >
+                        --
+                      </span>
+                    )}
                   </td>
                   <td className="px-5 py-3.5">
                     <CallStatusBadge status={call.status} pass={call.pass} />
@@ -133,14 +173,15 @@ export function Calls() {
             )}
           </tbody>
         </table>
+        </div>
 
         {totalPages > 1 && (
           <div className="flex items-center justify-between px-5 py-3 border-t border-border bg-table-header">
-            <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="text-table-cell text-text-secondary hover:text-text-primary disabled:opacity-40 transition-colors">
+            <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="text-table-cell text-text-secondary hover:text-text-primary disabled:opacity-40 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40">
               Previous
             </button>
             <span className="text-xs text-text-muted">{page} / {totalPages}</span>
-            <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="text-table-cell text-text-secondary hover:text-text-primary disabled:opacity-40 transition-colors">
+            <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="text-table-cell text-text-secondary hover:text-text-primary disabled:opacity-40 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40">
               Next
             </button>
           </div>

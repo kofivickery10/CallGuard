@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { authenticate, requireOrgView } from '../middleware/auth.js';
 import { query, queryOne } from '../db/client.js';
 import { AppError } from '../middleware/errors.js';
+import { normalizePhone } from '../services/ingestion.js';
 import { hasFeature, effectivePlan } from '@callguard/shared';
 import type { Plan } from '@callguard/shared';
 
@@ -57,9 +58,15 @@ customersRouter.get('/', async (req, res, next) => {
     }
 
     if (search) {
-      params.push(`%${search}%`);
-      const idx = params.length;
-      conditions.push(`(c.name ILIKE $${idx} OR c.phone_normalized ILIKE $${idx})`);
+      // Phone-ish input ("07700 900123", "+44 7700…") is normalised to match
+      // the stored E.164 form — a raw ILIKE on "07700" would never match
+      // "+447700…". Name searches pass through untouched.
+      const digits = search.replace(/[\s()-]/g, '');
+      const phoneSearch = /^\+?\d[\d\s()-]*$/.test(search.trim())
+        ? (normalizePhone(digits) ?? digits)
+        : search;
+      params.push(`%${search}%`, `%${phoneSearch}%`);
+      conditions.push(`(c.name ILIKE $${params.length - 1} OR c.phone_normalized ILIKE $${params.length})`);
     }
 
     const where = conditions.join(' AND ');
@@ -72,18 +79,33 @@ customersRouter.get('/', async (req, res, next) => {
       first_seen_at: string;
       last_seen_at: string;
       call_count: number;
-      avg_score: string | null;
+      journey_count: number;
+      last_journey_score: string | null;
+      last_journey_pass: boolean | null;
+      last_journey_at: string | null;
     }>(
       // call_count is computed live rather than read from the denormalised
       // customers.call_count column: under the capture/journey model calls stay
       // 'captured'/'transcribed' (never per-call 'scored'), and that column is
       // only ever recomputed by the per-call scorer — so it reads 0 for
       // sales-only tenants. Count every real (non-failed) call instead.
+      // Likewise customers.avg_score is dead under the journey model (scores
+      // live on journeys) — surface the latest scored journey instead.
       `SELECT c.id, c.phone_normalized, c.name, c.external_crm_id,
-              c.first_seen_at, c.last_seen_at, c.avg_score,
+              c.first_seen_at, c.last_seen_at,
               (SELECT COUNT(*) FROM calls ca
-                WHERE ca.customer_id = c.id AND ca.status <> 'failed')::int AS call_count
+                WHERE ca.customer_id = c.id AND ca.status <> 'failed')::int AS call_count,
+              (SELECT COUNT(*) FROM journeys j
+                WHERE j.customer_id = c.id AND j.status = 'scored')::int AS journey_count,
+              lj.overall_score AS last_journey_score,
+              lj.pass          AS last_journey_pass,
+              lj.scored_at     AS last_journey_at
          FROM customers c
+         LEFT JOIN LATERAL (
+           SELECT overall_score, pass, scored_at FROM journeys
+            WHERE customer_id = c.id AND status = 'scored'
+            ORDER BY scored_at DESC LIMIT 1
+         ) lj ON true
         WHERE ${where}
         ORDER BY c.last_seen_at DESC
         LIMIT $${params.push(Number(limit))} OFFSET $${params.push(offset)}`,
@@ -124,13 +146,24 @@ customersRouter.get('/:id', async (req, res, next) => {
       call_count: number;
       avg_score: string | null;
     }>(
-      // Live call_count (see the list query above for why the denormalised
-      // column is unreliable under the capture/journey model).
+      // Live call_count + journey outcomes (see the list query above for why
+      // the denormalised call_count/avg_score columns are unreliable under the
+      // capture/journey model).
       `SELECT c.id, c.organization_id, c.phone_normalized, c.name, c.external_crm_id,
-              c.first_seen_at, c.last_seen_at, c.avg_score,
+              c.first_seen_at, c.last_seen_at,
               (SELECT COUNT(*) FROM calls ca
-                WHERE ca.customer_id = c.id AND ca.status <> 'failed')::int AS call_count
+                WHERE ca.customer_id = c.id AND ca.status <> 'failed')::int AS call_count,
+              (SELECT COUNT(*) FROM journeys j
+                WHERE j.customer_id = c.id AND j.status = 'scored')::int AS journey_count,
+              lj.overall_score AS last_journey_score,
+              lj.pass          AS last_journey_pass,
+              lj.scored_at     AS last_journey_at
          FROM customers c
+         LEFT JOIN LATERAL (
+           SELECT overall_score, pass, scored_at FROM journeys
+            WHERE customer_id = c.id AND status = 'scored'
+            ORDER BY scored_at DESC LIMIT 1
+         ) lj ON true
         WHERE c.id = $1 AND c.organization_id = $2`,
       [req.params.id, orgId]
     );
@@ -180,6 +213,8 @@ customersRouter.get('/:id/journey', requireOrgView, async (req, res, next) => {
          ca.call_date,
          ca.created_at,
          ca.agent_name,
+         ca.status,
+         ca.duration_seconds,
          cs.overall_score,
          cs.pass,
          cs.coaching->>'summary' AS coaching_summary,
@@ -189,8 +224,8 @@ customersRouter.get('/:id/journey', requireOrgView, async (req, res, next) => {
        LEFT JOIN breaches b     ON b.call_id = ca.id AND b.is_false_positive = false
        WHERE ca.customer_id = $1
          AND ca.organization_id = $2
-       GROUP BY ca.id, ca.call_date, ca.created_at, ca.agent_name,
-                cs.overall_score, cs.pass, cs.coaching
+       GROUP BY ca.id, ca.call_date, ca.created_at, ca.agent_name, ca.status,
+                ca.duration_seconds, cs.overall_score, cs.pass, cs.coaching
        ORDER BY COALESCE(ca.call_date::timestamptz, ca.created_at) ASC`,
       [req.params.id, orgId]
     );
@@ -209,12 +244,15 @@ customersRouter.put('/:id', requireOrgView, async (req, res, next) => {
     const { name, external_crm_id } = req.body as { name?: string; external_crm_id?: string };
 
     const rows = await query<{ id: string; name: string | null; external_crm_id: string | null }>(
+      // Distinguish "field not sent" (undefined → keep current) from an
+      // explicit empty string (→ clear to NULL). Without this a wrongly
+      // backfilled name could never be removed from the UI.
       `UPDATE customers
-       SET name            = COALESCE($3, name),
-           external_crm_id = COALESCE($4, external_crm_id)
+       SET name            = CASE WHEN $3::boolean THEN NULLIF($4, '') ELSE name END,
+           external_crm_id = CASE WHEN $5::boolean THEN NULLIF($6, '') ELSE external_crm_id END
        WHERE id = $1 AND organization_id = $2
        RETURNING id, name, external_crm_id`,
-      [req.params.id, orgId, name ?? null, external_crm_id ?? null]
+      [req.params.id, orgId, name !== undefined, name ?? '', external_crm_id !== undefined, external_crm_id ?? '']
     );
 
     if (!rows.length) throw new AppError(404, 'Customer not found');

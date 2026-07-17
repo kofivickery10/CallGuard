@@ -84,7 +84,20 @@ journeysRouter.get('/:id', requireOrgView, async (req, res, next) => {
       [journey.id]
     );
 
-    res.json({ ...journey, calls, item_scores: itemScores });
+    // Whose journey this is — the detail page titles itself with the customer
+    // and links back to the profile.
+    const customer = await queryOne<{ name: string | null; phone_normalized: string }>(
+      'SELECT name, phone_normalized FROM customers WHERE id = $1',
+      [journey.customer_id]
+    );
+
+    res.json({
+      ...journey,
+      calls,
+      item_scores: itemScores,
+      customer_name: customer?.name ?? null,
+      customer_phone: customer?.phone_normalized ?? null,
+    });
   } catch (err) {
     next(err);
   }

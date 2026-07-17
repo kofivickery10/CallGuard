@@ -107,9 +107,9 @@ function DialerConnectionSection() {
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
               {conn.is_active ? (
-                <span className="px-2.5 py-[3px] rounded-[20px] text-badge font-semibold bg-pass-bg text-pass">Active</span>
+                <span className="px-2.5 py-[3px] rounded-full text-badge font-semibold bg-pass-bg text-pass">Active</span>
               ) : (
-                <span className="px-2.5 py-[3px] rounded-[20px] text-badge font-semibold bg-table-header text-text-muted">Paused</span>
+                <span className="px-2.5 py-[3px] rounded-full text-badge font-semibold bg-table-header text-text-muted">Paused</span>
               )}
               <span className="text-table-cell text-text-cell">
                 {conn.recording_fetch_delay_seconds}s fetch delay · {conn.history_window_days}d journey window
@@ -343,9 +343,9 @@ function ApiKeysSection() {
                   </td>
                   <td className="px-5 py-3.5">
                     {key.revoked_at ? (
-                      <span className="px-2.5 py-[3px] rounded-[20px] text-badge font-semibold bg-fail-bg text-fail">Revoked</span>
+                      <span className="px-2.5 py-[3px] rounded-full text-badge font-semibold bg-fail-bg text-fail">Revoked</span>
                     ) : (
-                      <span className="px-2.5 py-[3px] rounded-[20px] text-badge font-semibold bg-pass-bg text-pass">Active</span>
+                      <span className="px-2.5 py-[3px] rounded-full text-badge font-semibold bg-pass-bg text-pass">Active</span>
                     )}
                   </td>
                   <td className="px-5 py-3.5 text-right">
@@ -557,11 +557,11 @@ function SFTPSourcesSection() {
                   </td>
                   <td className="px-5 py-3.5">
                     {src.last_error ? (
-                      <span className="px-2.5 py-[3px] rounded-[20px] text-badge font-semibold bg-fail-bg text-fail" title={src.last_error}>Error</span>
+                      <span className="px-2.5 py-[3px] rounded-full text-badge font-semibold bg-fail-bg text-fail" title={src.last_error}>Error</span>
                     ) : src.is_active ? (
-                      <span className="px-2.5 py-[3px] rounded-[20px] text-badge font-semibold bg-pass-bg text-pass">Active</span>
+                      <span className="px-2.5 py-[3px] rounded-full text-badge font-semibold bg-pass-bg text-pass">Active</span>
                     ) : (
-                      <span className="px-2.5 py-[3px] rounded-[20px] text-badge font-semibold bg-table-header text-text-muted">Paused</span>
+                      <span className="px-2.5 py-[3px] rounded-full text-badge font-semibold bg-table-header text-text-muted">Paused</span>
                     )}
                   </td>
                   <td className="px-5 py-3.5 text-right">
@@ -846,11 +846,11 @@ function ZohoSection() {
   };
 
   const statusBadge = !conn ? null : conn.status === 'active' ? (
-    <span className="px-2.5 py-[3px] rounded-[20px] text-badge font-semibold bg-pass-bg text-pass">Active</span>
+    <span className="px-2.5 py-[3px] rounded-full text-badge font-semibold bg-pass-bg text-pass">Active</span>
   ) : conn.status === 'pending' ? (
-    <span className="px-2.5 py-[3px] rounded-[20px] text-badge font-semibold bg-review-bg text-review">Awaiting authorization</span>
+    <span className="px-2.5 py-[3px] rounded-full text-badge font-semibold bg-review-bg text-review">Awaiting authorization</span>
   ) : (
-    <span className="px-2.5 py-[3px] rounded-[20px] text-badge font-semibold bg-table-header text-text-muted">Disabled</span>
+    <span className="px-2.5 py-[3px] rounded-full text-badge font-semibold bg-table-header text-text-muted">Disabled</span>
   );
 
   return (

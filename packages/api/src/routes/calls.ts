@@ -40,8 +40,11 @@ callRouter.get('/', async (req, res, next) => {
     }
 
     if (status) {
-      params.push(status);
-      whereClause += ` AND c.status = $${params.length}`;
+      // Comma-separated group supported so the UI's "Processing" filter can
+      // cover uploaded+transcribing+scoring in one option.
+      const statuses = status.split(',').map((s) => s.trim()).filter(Boolean);
+      params.push(statuses);
+      whereClause += ` AND c.status = ANY($${params.length})`;
     }
 
     const countResult = await queryOne<{ count: string }>(

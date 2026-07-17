@@ -12,6 +12,8 @@ import { ShareLinksPanel } from '../components/ShareLinksPanel';
 import { CoachingPanel } from '../components/CoachingPanel';
 import { ScoreCorrectionModal } from '../components/ScoreCorrectionModal';
 import { useDialog } from '../components/DialogProvider';
+import { ItemResultBadge } from '../components/ItemResultBadge';
+import { formatDuration } from '../lib/format';
 import { hasFeature, isItemPass } from '@callguard/shared';
 import type { Call, CallScore, CallItemScore, CallCoaching } from '@callguard/shared';
 
@@ -87,7 +89,7 @@ export function CallDetail() {
     }
   };
 
-  const { data: call } = useQuery({
+  const { data: call, isLoading: callLoading, isError: callError } = useQuery({
     queryKey: ['call', id],
     queryFn: () => api.get<CallWithJourney>(`/calls/${id}`),
     refetchInterval: (query) => {
@@ -108,10 +110,26 @@ export function CallDetail() {
     enabled: call?.status === 'scored',
   });
 
+  if (callError || (!callLoading && !call)) {
+    return (
+      <div>
+        <div className="bg-fail-bg text-fail px-3 py-2 rounded-btn text-table-cell">
+          Could not load this call.{' '}
+          <Link
+            to="/calls"
+            className="text-primary underline font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+          >
+            Back to Calls
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   if (!call) {
     return (
       <div className="flex items-center justify-center h-64 text-text-muted">
-        <div className="w-10 h-10 border-3 border-border border-t-primary rounded-full animate-spin mr-3" />
+        <div className="w-10 h-10 border-[3px] border-border border-t-primary rounded-full animate-spin mr-3" />
         Loading...
       </div>
     );
@@ -129,10 +147,13 @@ export function CallDetail() {
             <h2 className="text-page-title text-text-primary">{call.file_name}</h2>
             {call.is_exemplar && (
               <span
-                className="text-secondary text-lg"
+                className="text-secondary"
                 title={call.exemplar_reason || 'Exemplar call'}
+                aria-label="Exemplar call"
               >
-                ★
+                <svg className="w-4 h-4 inline-block" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <path d="M12 2l3 7h7l-5.5 4 2 7L12 16l-6.5 4 2-7L2 9h7z" />
+                </svg>
               </span>
             )}
           </div>
@@ -143,27 +164,43 @@ export function CallDetail() {
             ) : call.agent_name && (
               <span>Agent: {call.agent_name}</span>
             )}
-            {call.duration_seconds && (
-              <span>
-                {Math.floor(call.duration_seconds / 60)}:{String(Math.floor(call.duration_seconds % 60)).padStart(2, '0')}
-              </span>
-            )}
+            {call.duration_seconds != null && call.duration_seconds > 0 ? (
+              <span>{formatDuration(call.duration_seconds)}</span>
+            ) : null}
             {canAction && call.status === 'scored' && (
               <button
                 onClick={handleToggleReviewed}
-                className={`text-xs font-semibold transition-colors ${call.reviewed_at ? 'text-pass' : 'text-text-muted hover:text-text-secondary'}`}
+                className={`inline-flex items-center gap-1 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${call.reviewed_at ? 'text-pass' : 'text-text-muted hover:text-text-secondary'}`}
                 title={call.reviewed_at ? 'Reviewed - click to clear' : 'Mark this call reviewed (feeds calibration / agreement tracking)'}
               >
-                {call.reviewed_at ? '✓ Reviewed' : 'Mark reviewed'}
+                {call.reviewed_at ? (
+                  <>
+                    <svg className="w-4 h-4 inline-block" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M5 13l4 4L19 7" />
+                    </svg>
+                    Reviewed
+                  </>
+                ) : (
+                  'Mark reviewed'
+                )}
               </button>
             )}
             {canAction && call.status === 'scored' && canLearn && (
               <button
                 onClick={handleToggleExemplar}
-                className="text-xs text-text-muted hover:text-secondary font-semibold transition-colors"
+                className="inline-flex items-center gap-1 text-xs text-text-muted hover:text-secondary font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
                 title={call.is_exemplar ? 'Remove exemplar flag' : 'Mark as firm exemplar - feeds the AI learning system'}
               >
-                {call.is_exemplar ? '★ Exemplar' : '☆ Mark as exemplar'}
+                {call.is_exemplar ? (
+                  <svg className="w-4 h-4 inline-block text-secondary" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                    <path d="M12 2l3 7h7l-5.5 4 2 7L12 16l-6.5 4 2-7L2 9h7z" />
+                  </svg>
+                ) : (
+                  <svg className="w-4 h-4 inline-block" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M12 2l3 7h7l-5.5 4 2 7L12 16l-6.5 4 2-7L2 9h7z" />
+                  </svg>
+                )}
+                {call.is_exemplar ? 'Exemplar' : 'Mark as exemplar'}
               </button>
             )}
           </div>
@@ -187,7 +224,7 @@ export function CallDetail() {
 
       {/* Processing state */}
       {(call.status === 'uploaded' || call.status === 'transcribing' || call.status === 'scoring') && (
-        <div className="bg-card border border-border rounded-xl p-10 text-center mb-6">
+        <div className="bg-card border border-border rounded-card p-10 text-center mb-6">
           <div className="w-10 h-10 border-[3px] border-border border-t-primary rounded-full animate-spin mx-auto mb-4" />
           <div className="text-base font-semibold text-text-primary mb-1">
             {call.status === 'uploaded' && 'Queued for processing'}
@@ -199,14 +236,14 @@ export function CallDetail() {
       )}
 
       {call.status === 'failed' && (
-        <div className="bg-fail-bg border-l-[3px] border-l-fail rounded-r-lg p-4 mb-6">
+        <div className="bg-fail-bg border-l-[3px] border-l-fail rounded-card p-4 mb-6">
           <div className="text-table-cell font-semibold text-fail">Processing failed</div>
           {call.error_message && <div className="text-xs text-flag-text mt-1">{call.error_message}</div>}
         </div>
       )}
 
       {call.status === 'skipped' && (
-        <div className="bg-table-header border-l-[3px] border-l-text-muted rounded-r-lg p-4 mb-6">
+        <div className="bg-table-header border-l-[3px] border-l-text-muted rounded-card p-4 mb-6">
           <div className="text-table-cell font-semibold text-text-secondary">Not scored — call too short</div>
           <div className="text-xs text-text-muted mt-1">
             {call.error_message || 'This call was too short to evaluate against a scorecard and was skipped.'}
@@ -229,9 +266,18 @@ export function CallDetail() {
               {call.journey.overall_score != null && (
                 <ScoreGauge score={Number(call.journey.overall_score)} size="lg" />
               )}
+              {call.journey.status === 'scored' && (
+                call.journey.pass === true ? (
+                  <span className="inline-block px-2.5 py-[3px] rounded-full text-badge font-semibold bg-pass-bg text-pass">Pass</span>
+                ) : call.journey.pass === false ? (
+                  <span className="inline-block px-2.5 py-[3px] rounded-full text-badge font-semibold bg-fail-bg text-fail">Fail</span>
+                ) : (
+                  <span className="inline-block px-2.5 py-[3px] rounded-full text-badge font-semibold bg-review-bg text-review">Review</span>
+                )
+              )}
               <Link
                 to={`/journeys/${call.journey.id}`}
-                className="inline-flex items-center gap-2 bg-primary text-white px-[18px] py-[9px] rounded-btn text-table-cell font-semibold hover:bg-primary-hover transition-colors"
+                className="inline-flex items-center gap-2 bg-primary text-white px-[18px] py-[9px] rounded-btn text-table-cell font-semibold hover:bg-primary-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
               >
                 View journey
               </Link>
@@ -243,25 +289,15 @@ export function CallDetail() {
                 Checkpoints evidenced in this call
               </div>
               {call.journey.this_call_items.map((item, i) => (
-                <div key={i} className="px-5 py-3 flex items-start justify-between gap-3">
+                <div key={`${item.label}-${i}`} className="px-5 py-3 flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="text-table-cell text-text-cell">{item.label}</div>
                     {item.evidence && (
                       <div className="text-xs text-text-muted mt-0.5 italic line-clamp-2">"{item.evidence}"</div>
                     )}
                   </div>
-                  <span
-                    className={`shrink-0 inline-block px-2.5 py-[3px] rounded-[20px] text-badge font-semibold ${
-                      item.result === 'pass'
-                        ? 'bg-pass-bg text-pass'
-                        : item.result === 'fail'
-                          ? 'bg-fail-bg text-fail'
-                          : item.result === 'manual_review'
-                            ? 'bg-review-bg text-review'
-                            : 'bg-table-header text-text-muted'
-                    }`}
-                  >
-                    {item.result === 'pass' ? 'Pass' : item.result === 'fail' ? 'Fail' : item.result === 'manual_review' ? 'Review' : 'N/A'}
+                  <span className="shrink-0">
+                    <ItemResultBadge result={item.result} />
                   </span>
                 </div>
               ))}

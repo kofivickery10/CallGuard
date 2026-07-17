@@ -154,7 +154,7 @@ export function Upload() {
           <select
             value={agentId}
             onChange={(e) => { setAgentId(e.target.value); if (e.target.value) setAgentName(''); }}
-            className="w-full border border-border rounded-btn px-3 py-2 text-table-cell text-text-primary focus:outline-none focus:border-primary transition-colors bg-card mb-2.5"
+            className="w-full border border-border rounded-btn px-3 py-2 text-table-cell text-text-primary focus:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 transition-colors bg-card mb-2.5"
           >
             <option value="">Select an agent or type below</option>
             {agents?.data.map((agent) => (
@@ -167,7 +167,7 @@ export function Upload() {
               value={agentName}
               onChange={(e) => setAgentName(e.target.value)}
               placeholder="Or type agent name"
-              className="w-full border border-border rounded-btn px-3 py-2 text-table-cell text-text-primary placeholder:text-text-muted focus:outline-none focus:border-primary transition-colors"
+              className="w-full border border-border rounded-btn px-3 py-2 text-table-cell text-text-primary placeholder:text-text-muted focus:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 transition-colors"
             />
           )}
 
@@ -179,7 +179,7 @@ export function Upload() {
               <select
                 value={scorecardId}
                 onChange={(e) => setScorecardId(e.target.value)}
-                className="w-full border border-border rounded-btn px-3 py-2 text-table-cell text-text-primary focus:outline-none focus:border-primary transition-colors bg-card"
+                className="w-full border border-border rounded-btn px-3 py-2 text-table-cell text-text-primary focus:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 transition-colors bg-card"
               >
                 <option value="">Use the active scorecard</option>
                 {scorecards.data.map((s) => (
@@ -202,7 +202,7 @@ export function Upload() {
             value={customerPhone}
             onChange={(e) => setCustomerPhone(e.target.value)}
             placeholder="e.g. 07473 123456"
-            className="w-full border border-border rounded-btn px-3 py-2 text-table-cell text-text-primary placeholder:text-text-muted focus:outline-none focus:border-primary transition-colors"
+            className="w-full border border-border rounded-btn px-3 py-2 text-table-cell text-text-primary placeholder:text-text-muted focus:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 transition-colors"
           />
           <p className="text-xs text-text-muted mt-1.5">
             Needed to match this call to the customer's other calls (journey scoring, sale flag below).
@@ -214,7 +214,7 @@ export function Upload() {
                 type="checkbox"
                 checked={markAsSale}
                 onChange={(e) => setMarkAsSale(e.target.checked)}
-                className="mt-0.5"
+                className="mt-0.5 accent-primary"
               />
               <span>
                 This call resulted in a sale
@@ -228,7 +228,7 @@ export function Upload() {
       )}
 
       {!isAdmin && (
-        <div className="bg-primary-light border border-border rounded-btn px-4 py-3 mb-5 text-table-cell text-pass">
+        <div className="bg-primary-light border border-border rounded-btn px-4 py-3 mb-5 text-table-cell text-text-secondary">
           This call will be assigned to you ({user?.name})
         </div>
       )}
@@ -236,7 +236,7 @@ export function Upload() {
       <FileDropzone onFileSelected={handleFileSelected} disabled={uploading} />
 
       {uploading && (
-        <div className="mt-6 bg-card border border-border rounded-xl p-10 text-center">
+        <div className="mt-6 bg-card border border-border rounded-card p-10 text-center">
           <div className="w-10 h-10 border-[3px] border-border border-t-primary rounded-full animate-spin mx-auto mb-4" />
           <div className="text-base font-semibold text-text-primary">Processing your call...</div>
           <div className="text-table-cell text-text-muted mt-1">Uploading and preparing for analysis</div>
@@ -247,7 +247,9 @@ export function Upload() {
         <div className="mt-8 bg-card border border-border rounded-card overflow-hidden">
           <button
             onClick={() => setBulkOpen((v) => !v)}
-            className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-table-header transition-colors"
+            aria-expanded={bulkOpen}
+            aria-controls="bulk-import-panel"
+            className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-table-header transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
           >
             <div>
               <div className="text-section-title text-text-primary">Bulk import from URLs</div>
@@ -255,11 +257,24 @@ export function Upload() {
                 Paste a CSV of recording URLs to ingest many historical calls at once. Up to 200 per batch.
               </div>
             </div>
-            <span className="text-text-muted text-lg">{bulkOpen ? '−' : '+'}</span>
+            <span className="text-text-muted">
+              <svg
+                className={`w-4 h-4 transition-transform ${bulkOpen ? 'rotate-180' : ''}`}
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M6 9l6 6 6-6" />
+              </svg>
+            </span>
           </button>
 
           {bulkOpen && (
-            <div className="px-5 py-5 border-t border-border space-y-4">
+            <div id="bulk-import-panel" className="px-5 py-5 border-t border-border space-y-4">
               <div>
                 <label className="block text-table-cell font-medium text-text-secondary mb-1.5">
                   CSV (header row required)
@@ -270,7 +285,7 @@ export function Upload() {
                   rows={8}
                   spellCheck={false}
                   placeholder={`audio_url,agent_name,customer_phone,call_date,external_id,tags,scorecard_id\nhttps://your-archive.example.com/call-001.mp3,Marcus Webb,+44 7468 432 368,2026-04-29,crm-12345,suitability,\nhttps://your-archive.example.com/call-002.mp3,Tina Lee,+44 7468 432 368,2026-04-30,crm-12346,vulnerability,`}
-                  className="w-full border border-border rounded-btn px-3 py-2 text-xs font-mono text-text-primary placeholder:text-text-muted focus:outline-none focus:border-primary transition-colors bg-page"
+                  className="w-full border border-border rounded-btn px-3 py-2 text-xs font-mono text-text-primary placeholder:text-text-muted focus:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 transition-colors bg-page"
                 />
                 <div className="text-[11px] text-text-muted mt-1.5">
                   Required: <code>audio_url</code>. Optional: <code>agent_name</code>, <code>customer_phone</code>, <code>call_date</code> (ISO), <code>external_id</code> (your CRM id, used for deduplication), <code>tags</code> (comma-separated), <code>scorecard_id</code> (UUID of a scorecard from <a href="/scorecards" className="text-primary hover:underline">Scorecards</a>; leave blank to use the active one).

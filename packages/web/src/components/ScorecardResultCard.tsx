@@ -70,7 +70,7 @@ export function ScorecardResultCard({
             </button>
           )}
           {isScored && scoreType !== 'binary' ? (
-            <span className={`px-2.5 py-[3px] rounded-[20px] text-badge font-semibold ${
+            <span className={`px-2.5 py-[3px] rounded-full text-badge font-semibold ${
               passed ? 'bg-pass-bg text-pass' : (normalizedScore ?? 0) >= 50 ? 'bg-review-bg text-review' : 'bg-fail-bg text-fail'
             }`}>
               {score}/{scoreType === 'scale_1_5' ? '5' : '10'}
