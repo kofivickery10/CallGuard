@@ -260,8 +260,10 @@ export interface CaptureCallParams {
   agentExternalId?: string | null;
   agentName?: string | null;
   customerPhone?: string | null;
+  customerName?: string | null;
   callDate?: string | null;
   direction?: 'inbound' | 'outbound' | null;
+  durationSeconds?: number | null;
   dialerConnectionId?: string | null;
 }
 
@@ -287,7 +289,7 @@ export async function captureCallMetadata(
   if (params.customerPhone) {
     const normalised = normalizePhone(params.customerPhone);
     if (normalised) {
-      customerId = await upsertCustomer(params.organizationId, normalised, null, null);
+      customerId = await upsertCustomer(params.organizationId, normalised, params.customerName ?? null, null);
     }
   }
 
@@ -298,10 +300,10 @@ export async function captureCallMetadata(
          id, organization_id, uploaded_by, file_name, file_key,
          mime_type, agent_id, agent_name, customer_phone, customer_id,
          call_date, status, external_id, ingestion_source, encrypted_at_rest,
-         dialer_connection_id, direction, recording_pointer
+         dialer_connection_id, direction, recording_pointer, duration_seconds
        )
        VALUES ($1, $2, NULL, $3, NULL, NULL, $4, $5, $6, $7, $8,
-               'captured', $9, 'dialer_webhook', false, $10, $11, $12)
+               'captured', $9, 'dialer_webhook', false, $10, $11, $12, $13)
        RETURNING *`,
       [
         callId,
@@ -316,6 +318,7 @@ export async function captureCallMetadata(
         params.dialerConnectionId ?? null,
         params.direction ?? null,
         params.recordingPointer ?? null,
+        params.durationSeconds ?? null,
       ]
     );
     return { call: rows[0]!, isDuplicate: false };

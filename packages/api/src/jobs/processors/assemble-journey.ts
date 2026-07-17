@@ -1,5 +1,5 @@
 import { Job } from 'bullmq';
-import { queryOne } from '../../db/client.js';
+import { query, queryOne } from '../../db/client.js';
 import { assembleJourney } from '../../services/journey.js';
 
 export interface AssembleJourneyJobData {
@@ -27,6 +27,13 @@ export async function processAssembleJourney(job: Job<AssembleJourneyJobData>) {
   if (!customer) {
     console.log(`[AssembleJourney] No captured calls for ${phone} (org ${organizationId}) — nothing to score`);
     return;
+  }
+
+  // Backfill the customer's real name from the CRM. CloudTalk dials often carry
+  // only a number (customer shows as "Unknown" until conversion); the sold-
+  // customer record in Zoho is the authoritative name, so set it here.
+  if (clientName) {
+    await query('UPDATE customers SET name = $1 WHERE id = $2', [clientName, customer.id]);
   }
 
   const journeyId = await assembleJourney({

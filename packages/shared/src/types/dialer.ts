@@ -10,12 +10,20 @@ export interface DialerFieldMap {
   agent_external_id: string[];
   agent_name: string[];
   customer_phone: string[];
+  // Candidate keys for the customer/contact display name. Often absent on raw
+  // outbound dials (just a number); the authoritative name is backfilled from
+  // the CRM at sale time. Optional so existing stored field maps stay valid.
+  customer_name?: string[];
   // Candidate keys for call direction (inbound/outbound). Values are
   // normalised loosely (e.g. "incoming"/"in" -> inbound) — see
   // normalizeCallDirection in routes/ingestion.ts. Not confirmed present in
   // CloudTalk's payload for every tenant; absent/unrecognised values just
   // fall back to the org's mono_first_speaker default.
   direction: string[];
+  // Candidate keys for the call duration in seconds (CloudTalk "Call Ended"
+  // reports e.g. talking_time / billsec). Optional; absent → duration stays
+  // null until transcription derives it. Existing stored maps stay valid.
+  duration?: string[];
 }
 
 // Public shape returned to the admin UI — never includes encrypted secrets.
