@@ -411,8 +411,24 @@ export async function fetchRemoteAudio(
 
   const pathParts = url.pathname.split('/');
   const lastPart = pathParts[pathParts.length - 1] || 'call.mp3';
-  const fileName = lastPart.includes('.') ? lastPart : `${lastPart}.mp3`;
-  const mimeType = res.headers.get('content-type')?.split(';')[0]?.trim() || inferMimeType(fileName);
+  let fileName = lastPart.includes('.') ? lastPart : `${lastPart}.mp3`;
+  let mimeType = res.headers.get('content-type')?.split(';')[0]?.trim() || inferMimeType(fileName);
+
+  // Some sources (e.g. CloudTalk's recording endpoint, whose URL ends '.json')
+  // stream audio as a generic binary type. Sniff the real format from the magic
+  // bytes so storage + transcription get a correct audio type/extension rather
+  // than 'binary/octet-stream' + a '.json' name.
+  if (/octet-stream|binary/i.test(mimeType)) {
+    const sig = buffer.subarray(0, 4).toString('hex').toLowerCase();
+    const base = fileName.replace(/\.[^.]*$/, '');
+    if (sig.startsWith('52494646')) {
+      mimeType = 'audio/wav'; // RIFF….WAVE
+      fileName = `${base}.wav`;
+    } else if (sig.startsWith('494433') || sig.startsWith('fffb') || sig.startsWith('fff3') || sig.startsWith('fff2')) {
+      mimeType = 'audio/mpeg'; // ID3 / MPEG frame sync
+      fileName = `${base}.mp3`;
+    }
+  }
 
   return { buffer, fileName, mimeType };
 }

@@ -15,32 +15,19 @@ export function cloudTalkBasicAuthHeader(conn: DialerConnectionRow): Record<stri
   return { Authorization: `Basic ${token}` };
 }
 
-interface CloudTalkRecordingResponse {
-  data?: { call?: { vcc_recording_url?: string } };
-  vcc_recording_url?: string;
-}
-
 /**
- * GET /calls/recording/{callId}.json — pull the recording URL for a call
- * that didn't arrive with a usable one in the webhook payload. Requires the
- * connection's API credentials; returns null if not configured or not found.
+ * Build the direct download URL for a call's recording. CloudTalk's
+ * GET /calls/recording/{id}.json endpoint STREAMS the audio bytes directly
+ * (WAV/MP3) — it is not a JSON document — so its URL *is* the download URL,
+ * fetched with Basic auth by the caller (fetchRemoteAudio passes the header).
+ * Returns null only if the connection has no API credentials configured.
  */
-export async function fetchRecordingUrlByCallId(
+export function fetchRecordingUrlByCallId(
   conn: DialerConnectionRow,
   callId: string
-): Promise<string | null> {
-  const headers = cloudTalkBasicAuthHeader(conn);
-  if (!headers) return null;
-
-  const res = await fetch(`${conn.api_base_url}/calls/recording/${encodeURIComponent(callId)}.json`, {
-    headers,
-  });
-  if (!res.ok) {
-    console.warn(`[CloudTalk] recording fetch for call ${callId} returned ${res.status}`);
-    return null;
-  }
-  const body = (await res.json().catch(() => null)) as CloudTalkRecordingResponse | null;
-  return body?.data?.call?.vcc_recording_url ?? body?.vcc_recording_url ?? null;
+): string | null {
+  if (!conn.api_key_id_encrypted || !conn.api_secret_encrypted) return null;
+  return `${conn.api_base_url}/calls/recording/${encodeURIComponent(callId)}.json`;
 }
 
 // Parsed from a CloudTalk /calls/index.json item (Cdr + Agent + Contact),
