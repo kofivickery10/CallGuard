@@ -26,7 +26,7 @@
 import fs from 'fs';
 import { queryOne } from '../db/client.js';
 import { getDialerConnection } from '../services/tenant-settings.js';
-import { fetchCallHistoryByPhone } from '../services/cloudtalk.js';
+import { fetchCallsInWindow, natSig, type CloudTalkHistoryEntry } from '../services/cloudtalk.js';
 import { captureCallMetadata, normalizePhone } from '../services/ingestion.js';
 import { assembleJourney } from '../services/journey.js';
 
@@ -66,6 +66,20 @@ async function run() {
     `[Backfill] org=${orgId} phones=${phones.length} window=${windowDays}d${dryRun ? ' (DRY RUN)' : ''}`
   );
 
+  // CloudTalk's server-side filters don't work, so page the whole window ONCE
+  // and index every call by its (national-significant) external number. All the
+  // requested phones are then matched against this single in-memory index —
+  // rather than paging the window per phone.
+  console.log(`[Backfill] fetching CloudTalk calls for the last ${windowDays}d (this can take a minute)…`);
+  const allCalls = await fetchCallsInWindow(conn, windowDays);
+  const byNumber = new Map<string, CloudTalkHistoryEntry[]>();
+  for (const e of allCalls) {
+    const k = natSig(e.externalNumber);
+    if (!k) continue;
+    (byNumber.get(k) ?? byNumber.set(k, []).get(k)!).push(e);
+  }
+  console.log(`[Backfill] indexed ${allCalls.length} call(s) across ${byNumber.size} distinct number(s)`);
+
   let assembled = 0;
   let noCalls = 0;
   for (const rawPhone of phones) {
@@ -75,15 +89,29 @@ async function run() {
       continue;
     }
 
-    const history = await fetchCallHistoryByPhone(conn, phone, windowDays);
+    const history = byNumber.get(natSig(phone)) ?? [];
     if (history.length === 0) {
-      console.log(`[Backfill] ${phone} — no CloudTalk calls in window (retention? wrong number?)`);
+      console.log(`[Backfill] ${phone} — no matching CloudTalk calls in window (retention? number not in CloudTalk?)`);
       noCalls++;
       continue;
     }
 
+    // Skip sub-15s calls (no-answers / voicemails) — same threshold as the live
+    // capture webhook.
+    const usable = history.filter((e) => e.durationSeconds == null || e.durationSeconds >= 15);
+    const contactName = history.find((e) => e.contactName)?.contactName ?? null;
+
     if (dryRun) {
-      console.log(`[Backfill] ${phone} — ${history.length} CloudTalk call(s) found (dry run, not ingesting)`);
+      console.log(
+        `[Backfill] ${phone} — ${history.length} matched call(s), ${usable.length} ≥15s` +
+          `${contactName ? ` (contact: ${contactName})` : ''} (dry run, not ingesting)`
+      );
+      continue;
+    }
+
+    if (usable.length === 0) {
+      console.log(`[Backfill] ${phone} — matched calls all <15s, nothing to score`);
+      noCalls++;
       continue;
     }
 
@@ -91,23 +119,27 @@ async function run() {
     // org+external_id). recording_pointer is left null — hydration fetches a
     // fresh URL by the call id, dodging any expired URL in the history entry.
     let customerId: string | null = null;
-    for (const entry of history) {
-      const callId = entry.uuid || (entry.id != null ? String(entry.id) : null);
-      if (!callId) continue;
+    for (const entry of usable) {
       const { call } = await captureCallMetadata({
         organizationId: orgId as string,
-        externalId: callId,
-        cloudtalkCallId: callId,
+        externalId: entry.id,
+        cloudtalkCallId: entry.id,
         recordingPointer: null,
+        agentEmail: entry.agentEmail,
+        agentExternalId: entry.agentExternalId,
+        agentName: entry.agentName,
         customerPhone: phone,
-        callDate: entry.started_at ?? null,
+        customerName: entry.contactName,
+        callDate: entry.startedAt,
+        direction: entry.direction,
+        durationSeconds: entry.durationSeconds,
         dialerConnectionId: conn.id,
       });
       customerId = (call as typeof call & { customer_id?: string | null }).customer_id ?? customerId;
     }
 
     if (!customerId) {
-      console.warn(`[Backfill] ${phone} — captured no calls (missing ids), skipping`);
+      console.warn(`[Backfill] ${phone} — captured no calls, skipping`);
       noCalls++;
       continue;
     }
@@ -118,7 +150,7 @@ async function run() {
       triggerSource: 'manual',
     });
     if (journeyId) {
-      console.log(`[Backfill] ${phone} — ${history.length} call(s) → journey ${journeyId} (scoring async)`);
+      console.log(`[Backfill] ${phone} — ${usable.length} call(s) → journey ${journeyId} (scoring async)`);
       assembled++;
     } else {
       console.log(`[Backfill] ${phone} — nothing to assemble (no active scorecard?)`);
