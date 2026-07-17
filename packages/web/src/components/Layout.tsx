@@ -306,7 +306,7 @@ export function Layout({ children }: { children: ReactNode }) {
         <AppBanners />
 
         {/* Content: fills the viewport width, gently capped only on ultra-wide. */}
-        <div className="py-6 px-4 sm:px-6 lg:px-8 w-full max-w-[1760px] mx-auto">
+        <div className="pt-6 pb-28 px-4 sm:px-6 lg:px-8 w-full max-w-[1760px] mx-auto">
           {/* Desktop notification bell (lg+ only). In normal flow and aligned to
               the content's right edge so it reserves its own space — an absolute
               overlay here would sit on top of each page's top-right controls. */}
