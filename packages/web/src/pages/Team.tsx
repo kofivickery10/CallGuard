@@ -62,7 +62,7 @@ export function Team() {
                 <tr key={agent.id} className="hover:bg-table-header transition-colors border-b border-border-light last:border-0">
                   <td className="px-5 py-3.5">
                     <div className="text-table-cell font-medium text-text-primary">{agent.name}</div>
-                    <div className="text-[12px] text-text-muted">{agent.email}</div>
+                    <div className="text-xs text-text-muted">{agent.email}</div>
                   </td>
                   <td className="px-5 py-3.5 text-table-cell text-text-cell">{agent.total_calls}</td>
                   <td className="px-5 py-3.5 text-table-cell text-text-cell">{agent.scored_calls}</td>

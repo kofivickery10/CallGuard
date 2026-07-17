@@ -244,8 +244,8 @@ export function Layout({ children }: { children: ReactNode }) {
 
         {/* Footer */}
         <div className="px-4 py-3 border-t border-sidebar-border flex-shrink-0">
-          <div className="text-[13px] font-semibold text-text-primary">{user?.name}</div>
-          <div className="text-[12px] text-text-muted mt-0.5">{user?.email}</div>
+          <div className="text-table-cell font-semibold text-text-primary">{user?.name}</div>
+          <div className="text-xs text-text-muted mt-0.5">{user?.email}</div>
           {user?.organization_plan && (
             <Link
               to="/settings/organization"
@@ -263,7 +263,7 @@ export function Layout({ children }: { children: ReactNode }) {
           )}
           <Link
             to="/account"
-            className="flex items-center gap-1 text-text-muted hover:text-text-secondary transition-colors text-[12px] mt-2"
+            className="flex items-center gap-1 text-text-muted hover:text-text-secondary transition-colors text-xs mt-2"
           >
             <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.8">
               <circle cx="12" cy="8" r="4" />
@@ -273,7 +273,7 @@ export function Layout({ children }: { children: ReactNode }) {
           </Link>
           <button
             onClick={logout}
-            className="flex items-center gap-1 text-text-muted hover:text-text-secondary transition-colors text-[12px] mt-1"
+            className="flex items-center gap-1 text-text-muted hover:text-text-secondary transition-colors text-xs mt-1"
           >
             <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="1.8">
               <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" />

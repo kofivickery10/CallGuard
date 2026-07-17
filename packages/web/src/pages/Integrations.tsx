@@ -84,7 +84,7 @@ function DialerConnectionSection() {
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-[15px] font-semibold text-text-primary">CloudTalk</h3>
+        <h3 className="text-section-title text-text-primary">CloudTalk</h3>
         <button
           onClick={() => setEditing(true)}
           className="bg-primary text-white px-[18px] py-[9px] rounded-btn text-table-cell font-semibold hover:bg-primary-hover transition-colors"
@@ -115,7 +115,7 @@ function DialerConnectionSection() {
                 {conn.recording_fetch_delay_seconds}s fetch delay · {conn.history_window_days}d journey window
               </span>
             </div>
-            <button onClick={handleDelete} className="text-[12px] text-text-muted hover:text-fail">Remove</button>
+            <button onClick={handleDelete} className="text-xs text-text-muted hover:text-fail">Remove</button>
           </div>
           <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-table-cell">
             <div className="flex justify-between border-b border-border-light py-1">
@@ -204,7 +204,7 @@ function DialerConnectionModal({ initial, onClose }: { initial: DialerFormState;
     <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto py-8">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <div className="relative bg-card border border-border rounded-card w-full max-w-2xl p-6 shadow-lg my-auto">
-        <h3 className="text-[15px] font-semibold text-text-primary mb-1">Configure CloudTalk</h3>
+        <h3 className="text-section-title text-text-primary mb-1">Configure CloudTalk</h3>
         <p className="text-table-cell text-text-subtle mb-4">
           Point CloudTalk's "Call Ended" webhook at your CallGuard API key. These settings tune how
           CallGuard verifies and processes it.
@@ -302,7 +302,7 @@ function ApiKeysSection() {
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-[15px] font-semibold text-text-primary">API Keys</h3>
+        <h3 className="text-section-title text-text-primary">API Keys</h3>
         <button
           onClick={() => setCreateOpen(true)}
           className="bg-primary text-white px-[18px] py-[9px] rounded-btn text-table-cell font-semibold hover:bg-primary-hover transition-colors"
@@ -315,7 +315,7 @@ function ApiKeysSection() {
         <div className="bg-card border border-dashed border-border rounded-card p-8 text-center">
           <p className="text-text-secondary font-semibold mb-1">No API keys yet</p>
           <p className="text-table-cell text-text-muted">
-            Generate a key to let external systems POST calls to <code className="font-mono text-[12px] bg-table-header px-1.5 py-0.5 rounded">/api/ingestion/calls</code>
+            Generate a key to let external systems POST calls to <code className="font-mono text-xs bg-table-header px-1.5 py-0.5 rounded">/api/ingestion/calls</code>
           </p>
         </div>
       ) : (
@@ -352,7 +352,7 @@ function ApiKeysSection() {
                     {!key.revoked_at && (
                       <button
                         onClick={() => handleRevoke(key.id)}
-                        className="text-[12px] text-text-muted hover:text-fail"
+                        className="text-xs text-text-muted hover:text-fail"
                       >
                         Revoke
                       </button>
@@ -373,7 +373,7 @@ function ApiKeysSection() {
         <div className="mt-4 space-y-4 text-table-cell">
           <div>
             <p className="text-text-secondary mb-2">POST a call via JSON (audio_url):</p>
-            <pre className="bg-table-header border border-border-light rounded-btn p-3 font-mono text-[12px] overflow-x-auto">{`curl -X POST ${window.location.origin}/api/ingestion/calls \\
+            <pre className="bg-table-header border border-border-light rounded-btn p-3 font-mono text-xs overflow-x-auto">{`curl -X POST ${window.location.origin}/api/ingestion/calls \\
   -H "X-API-Key: cg_live_..." \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -385,13 +385,13 @@ function ApiKeysSection() {
           </div>
           <div>
             <p className="text-text-secondary mb-2">POST a call via multipart (file upload):</p>
-            <pre className="bg-table-header border border-border-light rounded-btn p-3 font-mono text-[12px] overflow-x-auto">{`curl -X POST ${window.location.origin}/api/ingestion/calls \\
+            <pre className="bg-table-header border border-border-light rounded-btn p-3 font-mono text-xs overflow-x-auto">{`curl -X POST ${window.location.origin}/api/ingestion/calls \\
   -H "X-API-Key: cg_live_..." \\
   -F "audio=@call.mp3" \\
   -F "agent_name=John Smith" \\
   -F "external_id=TEL-12345"`}</pre>
           </div>
-          <p className="text-[12px] text-text-muted">
+          <p className="text-xs text-text-muted">
             <strong>external_id</strong> makes ingestion idempotent - re-posting with the same value returns the existing call instead of duplicating.
           </p>
         </div>
@@ -404,7 +404,7 @@ function ApiKeysSection() {
           <div className="relative bg-card border border-border rounded-card w-full max-w-lg p-6 shadow-lg">
             {newKey ? (
               <div>
-                <h3 className="text-[15px] font-semibold text-text-primary mb-1">API Key Created</h3>
+                <h3 className="text-section-title text-text-primary mb-1">API Key Created</h3>
                 <div className="bg-review-bg border border-review/20 text-review px-3 py-2 rounded-btn text-table-cell mb-4">
                   Copy this key now - you won't be able to see it again.
                 </div>
@@ -428,7 +428,7 @@ function ApiKeysSection() {
               </div>
             ) : (
               <form onSubmit={handleCreate}>
-                <h3 className="text-[15px] font-semibold text-text-primary mb-1">Generate API Key</h3>
+                <h3 className="text-section-title text-text-primary mb-1">Generate API Key</h3>
                 <p className="text-table-cell text-text-subtle mb-4">
                   Give this key a name so you can identify it later (e.g. "RingCentral", "Twilio webhook").
                 </p>
@@ -518,7 +518,7 @@ function SFTPSourcesSection() {
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-[15px] font-semibold text-text-primary">SFTP Sources</h3>
+        <h3 className="text-section-title text-text-primary">SFTP Sources</h3>
         <button
           onClick={() => setEditing(emptyForm)}
           className="bg-primary text-white px-[18px] py-[9px] rounded-btn text-table-cell font-semibold hover:bg-primary-hover transition-colors"
@@ -565,7 +565,7 @@ function SFTPSourcesSection() {
                     )}
                   </td>
                   <td className="px-5 py-3.5 text-right">
-                    <div className="flex items-center justify-end gap-3 text-[12px]">
+                    <div className="flex items-center justify-end gap-3 text-xs">
                       <button onClick={() => handlePollNow(src.id)} className="text-text-muted hover:text-text-primary">Poll Now</button>
                       <button onClick={() => setLogsForId(src.id)} className="text-text-muted hover:text-text-primary">Logs</button>
                       <button onClick={() => setEditing({
@@ -667,7 +667,7 @@ function SFTPSourceModal({ initial, onClose }: { initial: SFTPFormState; onClose
     <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto py-8">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <div className="relative bg-card border border-border rounded-card w-full max-w-2xl p-6 shadow-lg my-auto">
-        <h3 className="text-[15px] font-semibold text-text-primary mb-4">
+        <h3 className="text-section-title text-text-primary mb-4">
           {isEdit ? 'Edit SFTP Source' : 'Add SFTP Source'}
         </h3>
 
@@ -757,7 +757,7 @@ function SFTPLogsModal({ sourceId, onClose }: { sourceId: string; onClose: () =>
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <div className="relative bg-card border border-border rounded-card w-full max-w-2xl p-6 shadow-lg max-h-[80vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-[15px] font-semibold text-text-primary">Poll Logs</h3>
+          <h3 className="text-section-title text-text-primary">Poll Logs</h3>
           <button onClick={onClose} className="text-text-muted hover:text-text-primary">Close</button>
         </div>
         {!data?.data.length ? (
@@ -856,7 +856,7 @@ function ZohoSection() {
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-[15px] font-semibold text-text-primary">Zoho CRM</h3>
+        <h3 className="text-section-title text-text-primary">Zoho CRM</h3>
         {!conn && (
           <button
             onClick={() => setEditing(true)}
@@ -889,7 +889,7 @@ function ZohoSection() {
                 Module <span className="font-medium text-text-primary">{conn.module}</span> · Region <span className="font-mono">{conn.dc_region}</span>
               </span>
             </div>
-            <div className="flex items-center gap-3 text-[12px]">
+            <div className="flex items-center gap-3 text-xs">
               {conn.status === 'active' && (
                 <button onClick={handleTest} className="text-text-muted hover:text-text-primary">Test</button>
               )}
@@ -997,7 +997,7 @@ function ZohoConnectModal({ initial, onClose }: { initial: ZohoConnection | null
     <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto py-8">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <div className="relative bg-card border border-border rounded-card w-full max-w-lg p-6 shadow-lg my-auto">
-        <h3 className="text-[15px] font-semibold text-text-primary mb-1">
+        <h3 className="text-section-title text-text-primary mb-1">
           {initial ? 'Edit Zoho Connection' : 'Connect Zoho CRM'}
         </h3>
         <p className="text-table-cell text-text-subtle mb-4">
@@ -1028,7 +1028,7 @@ function ZohoConnectModal({ initial, onClose }: { initial: ZohoConnection | null
           </Field>
 
           <div className="col-span-2 border-t border-border-light pt-3 mt-1">
-            <p className="text-[12px] font-semibold text-text-primary mb-2">Sale trigger</p>
+            <p className="text-xs font-semibold text-text-primary mb-2">Sale trigger</p>
           </div>
           <Field label="Sale phone field" hint="The field on the inbound sale record carrying the customer's phone number.">
             <input type="text" value={salePhoneField} onChange={(e) => setSalePhoneField(e.target.value)} className={inputCls} placeholder="Phone" />
@@ -1052,7 +1052,7 @@ function ZohoConnectModal({ initial, onClose }: { initial: ZohoConnection | null
           </div>
 
           <div className="col-span-2 border-t border-border-light pt-3 mt-1">
-            <p className="text-[12px] font-semibold text-text-primary mb-2">QA module (optional)</p>
+            <p className="text-xs font-semibold text-text-primary mb-2">QA module (optional)</p>
             <p className="text-[11px] text-text-muted mb-2">
               On a sale, CallGuard writes its AI compliance score into the tenant's QA module, linked to the
               sold-customer record. It fills only the AI score (and an optional summary) — the tenant's own
@@ -1102,7 +1102,7 @@ const inputCls = "w-full border border-border rounded-btn px-3 py-2 text-table-c
 function Field({ label, hint, full, children }: { label: string; hint?: string; full?: boolean; children: React.ReactNode }) {
   return (
     <div className={full ? 'col-span-2' : ''}>
-      <label className="block text-[12px] text-text-muted mb-1">{label}</label>
+      <label className="block text-xs text-text-muted mb-1">{label}</label>
       {children}
       {hint && <p className="text-[11px] text-text-muted mt-1">{hint}</p>}
     </div>

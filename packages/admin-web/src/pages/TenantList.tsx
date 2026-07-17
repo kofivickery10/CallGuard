@@ -41,7 +41,7 @@ export default function TenantList() {
   return (
     <div className="p-6 space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-bold text-text-primary">Tenants</h1>
+        <h2 className="text-page-title text-text-primary">Tenants</h2>
         <button
           onClick={() => setShowModal(true)}
           className="bg-primary hover:bg-primary-hover text-white text-sm font-semibold px-4 py-2 rounded-btn transition-colors"

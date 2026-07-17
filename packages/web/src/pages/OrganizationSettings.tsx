@@ -101,22 +101,22 @@ export function OrganizationSettings() {
       </div>
 
       <div className="bg-card border border-border rounded-card p-5 mb-5">
-        <h3 className="text-[13px] uppercase tracking-wider text-text-muted font-semibold mb-2">
+        <h3 className="text-table-cell uppercase tracking-wider text-text-muted font-semibold mb-2">
           Organisation
         </h3>
         <p className="text-table-cell text-text-primary font-semibold">{user?.organization_name}</p>
       </div>
 
       <div className="bg-card border border-border rounded-card p-5 mb-5">
-        <h3 className="text-[13px] uppercase tracking-wider text-text-muted font-semibold mb-1">
+        <h3 className="text-table-cell uppercase tracking-wider text-text-muted font-semibold mb-1">
           Industry / advice domain
         </h3>
-        <p className="text-[12px] text-text-subtle mb-3">
+        <p className="text-xs text-text-subtle mb-3">
           Describe what this organisation does (e.g. “FCA-regulated protection insurance advice”). The
           AI uses this to score calls in the right regulatory and commercial context.
         </p>
         {industry === undefined ? (
-          <p className="text-[12px] text-text-muted">Loading…</p>
+          <p className="text-xs text-text-muted">Loading…</p>
         ) : (
           <div className="flex flex-wrap items-center gap-2">
             <input
@@ -146,19 +146,19 @@ export function OrganizationSettings() {
 
       {isAdmin && seats && (
         <div className="bg-card border border-border rounded-card p-5 mb-5">
-          <h3 className="text-[13px] uppercase tracking-wider text-text-muted font-semibold mb-1">
+          <h3 className="text-table-cell uppercase tracking-wider text-text-muted font-semibold mb-1">
             Active seats
           </h3>
-          <p className="text-[12px] text-text-subtle mb-3">
+          <p className="text-xs text-text-subtle mb-3">
             Advisers with at least one scored call in the month. This is the basis for per-seat billing.
           </p>
           <div className="flex gap-8">
             <div>
-              <div className="text-[28px] font-bold text-text-primary leading-none">{seats.current_active_seats}</div>
+              <div className="text-card-value text-text-primary leading-none">{seats.current_active_seats}</div>
               <div className="text-[11px] text-text-muted mt-1">This month ({seats.current_month})</div>
             </div>
             <div>
-              <div className="text-[28px] font-bold text-text-muted leading-none">{seats.previous_active_seats}</div>
+              <div className="text-card-value text-text-muted leading-none">{seats.previous_active_seats}</div>
               <div className="text-[11px] text-text-muted mt-1">Last month ({seats.previous_month})</div>
             </div>
           </div>
@@ -183,10 +183,10 @@ export function OrganizationSettings() {
       <div className="bg-card border border-border rounded-card p-5 mb-5">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h3 className="text-[13px] uppercase tracking-wider text-text-muted font-semibold mb-1">
+            <h3 className="text-table-cell uppercase tracking-wider text-text-muted font-semibold mb-1">
               Help improve CallGuard
             </h3>
-            <p className="text-[12px] text-text-subtle max-w-xl">
+            <p className="text-xs text-text-subtle max-w-xl">
               Off by default. When on, you allow CallGuard to use{' '}
               <strong>irreversibly anonymised</strong> data derived from your calls to improve our
               scoring and calibration models. Your raw audio, transcripts and identifiable data are{' '}
@@ -231,9 +231,9 @@ export function OrganizationSettings() {
       </div>
 
       <div className="mb-3 flex items-center justify-between">
-        <h3 className="text-[15px] font-semibold text-text-primary">Plan</h3>
+        <h3 className="text-section-title text-text-primary">Plan</h3>
         {currentPlan && (
-          <span className="text-[12px] text-text-muted">
+          <span className="text-xs text-text-muted">
             Current: <strong className="text-text-primary uppercase">{currentPlan}</strong>
           </span>
         )}
@@ -258,9 +258,9 @@ export function OrganizationSettings() {
                   Current plan
                 </div>
               )}
-              <h4 className="text-[18px] font-bold text-text-primary">{PLAN_LABELS[p]}</h4>
+              <h4 className="text-lg font-bold text-text-primary">{PLAN_LABELS[p]}</h4>
               <p className="text-table-cell text-text-subtle mt-1">{PLAN_DESCRIPTIONS[p]}</p>
-              <ul className="mt-4 space-y-1.5 text-[12px] text-text-cell">
+              <ul className="mt-4 space-y-1.5 text-xs text-text-cell">
                 <li className="flex items-center gap-1.5">
                   <Check /> Scoring & breach register
                 </li>
@@ -276,7 +276,7 @@ export function OrganizationSettings() {
         })}
       </div>
 
-      <p className="text-[12px] text-text-muted mt-4 text-center">
+      <p className="text-xs text-text-muted mt-4 text-center">
         To change your organisation's plan, contact CallGuard support.
       </p>
     </div>

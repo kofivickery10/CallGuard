@@ -1,6 +1,8 @@
 {
   "name": "callguard",
   "version": "0.1.0",
+  "description": "CallGuard AI — live AI compliance scoring for every sales conversation. Smarter calls, safer business.",
+  "license": "UNLICENSED",
   "private": true,
   "workspaces": [
     "packages/shared",

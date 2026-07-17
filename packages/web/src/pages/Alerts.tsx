@@ -92,7 +92,7 @@ export function Alerts() {
                 <tr key={rule.id} className="border-b border-border-light last:border-0">
                   <td className="px-5 py-3.5">
                     <div className="text-table-cell font-medium text-text-primary">{rule.name}</div>
-                    {rule.description && <div className="text-[12px] text-text-muted mt-0.5">{rule.description}</div>}
+                    {rule.description && <div className="text-xs text-text-muted mt-0.5">{rule.description}</div>}
                   </td>
                   <td className="px-5 py-3.5 text-table-cell text-text-cell">
                     {ALERT_TRIGGER_LABELS[rule.trigger_type]}
@@ -113,7 +113,7 @@ export function Alerts() {
                     )}
                   </td>
                   <td className="px-5 py-3.5 text-right">
-                    <div className="flex items-center justify-end gap-3 text-[12px]">
+                    <div className="flex items-center justify-end gap-3 text-xs">
                       <button onClick={() => handleTest(rule.id)} className="text-text-muted hover:text-text-primary">Test</button>
                       <button onClick={() => handleToggle(rule)} className="text-text-muted hover:text-text-primary">
                         {rule.is_active ? 'Pause' : 'Activate'}

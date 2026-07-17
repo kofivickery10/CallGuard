@@ -64,7 +64,7 @@ export default function TwoFactorEnroll() {
                 <img src={setup.qr_data_url} alt="Authenticator QR code" className="w-44 h-44 border border-border rounded-card bg-white p-2" />
                 <details className="w-full text-center">
                   <summary className="text-xs text-text-muted cursor-pointer">Can't scan? Enter this key manually</summary>
-                  <code className="block mt-2 text-[13px] break-all bg-page rounded-btn px-3 py-2 text-text-primary">{setup.secret}</code>
+                  <code className="block mt-2 text-table-cell break-all bg-page rounded-btn px-3 py-2 text-text-primary">{setup.secret}</code>
                 </details>
               </div>
             ) : (
@@ -93,13 +93,13 @@ export default function TwoFactorEnroll() {
 
         {step === 'backup' && (
           <>
-            <h2 className="text-[15px] font-semibold text-text-primary mb-2">Save your backup codes</h2>
+            <h2 className="text-section-title text-text-primary mb-2">Save your backup codes</h2>
             <p className="text-sm text-text-secondary mb-3">
               Store these somewhere safe. Each can be used once if you lose your authenticator. They won't be shown again.
             </p>
             <div className="grid grid-cols-2 gap-2 bg-page rounded-card p-4 mb-4">
               {backupCodes.map((c) => (
-                <code key={c} className="text-[13px] text-text-primary text-center py-1">{c}</code>
+                <code key={c} className="text-table-cell text-text-primary text-center py-1">{c}</code>
               ))}
             </div>
             <button

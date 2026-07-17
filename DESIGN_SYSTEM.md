@@ -78,7 +78,8 @@ className="w-10 h-10 rounded-full hover:bg-sidebar-hover flex items-center justi
 - **Stat card:** `bg-card border border-border rounded-card p-5`; label `text-card-label uppercase text-text-muted`; value `text-card-value` (never `text-2xl font-bold`); optional change indicator `text-[12px]` in `text-pass`/`text-fail`.
 - **Panel header row:** `px-5 py-4 border-b border-border flex justify-between items-center`, title `text-[15px] font-semibold text-text-primary`, optional `text-primary hover:underline` link on the right.
 
-> **Missing token:** the `text-[15px] font-semibold` section/panel title recurs 50+ times as an arbitrary value. It should become a real type token (e.g. `text-section-title` = 15px/600) so it stops being hand-typed. Until then, keep using `text-[15px] font-semibold` verbatim for panel titles so at least they match.
+> **Section/panel titles:** use the `text-section-title` token (15px/600) — it replaced the
+> ~50 hand-typed `text-[15px] font-semibold` panel titles. Don't reintroduce the arbitrary value.
 
 ### Checkboxes / toggles
 Native checkboxes must be branded: add `accent-primary` (only one place does today) and an
@@ -177,9 +178,9 @@ The biggest source of drift is that these are hand-rolled on every page. Extract
 `Modal` (with focus-trap + a11y), `EmptyState`, `Spinner`, and a `Toast`/inline-error
 provider to replace `alert()`. (Status badges already exist — reuse them.) Treat §4 as the spec for each.
 
-Two token additions would also cut drift: a **`section-title`** type token (15px/600, used 50+×
-as `text-[15px]`) and **z-index tokens** (`z-overlay`/`z-modal`) to replace the raw
-`z-20/30/40/50` layering that's ordered only by convention today.
+One token addition would also cut drift: **z-index tokens** (`z-overlay`/`z-modal`) to
+replace the raw `z-20/30/40/50` layering that's ordered only by convention today. (The
+**`section-title`** type token, 15px/600, has since been added and adopted.)
 
 ## 10. Known drift / remediation backlog
 Current inconsistencies to converge on the rules above (don't copy these; fix opportunistically):
@@ -196,7 +197,7 @@ Current inconsistencies to converge on the rules above (don't copy these; fix op
 | Pagination | 1-indexed Prev/Next + counter | 0-indexed (`AuditLog`); none (`ReviewQueue`, `CustomerProfile`, admin) |
 | Focus | `focus-visible:ring-2 ring-primary/40` | `focus:border-primary` vs `focus:ring-*` split; `focus-visible` never used |
 | Admin loading | react-query + skeletons (like web) | admin uses `useEffect`+fetch, renders nothing while loading |
-| **Font sizes (biggest drift)** | named type tokens | arbitrary px app-wide: `text-[12px]`×130, `text-[11px]`×63, `text-[15px]`×54, `text-[13px]`×27 |
+| Font sizes | named type tokens / standard `text-xs`–`text-lg` | mostly converged (12/13/14/15/16/18px → tokens; KPI values → `text-card-value`). Residual: `text-[11px]`/`text-[10px]` captions have no 400-weight token yet, and a few display sizes on `Welcome` |
 | Button padding | one recipe (§4) | 6+ paddings (`px-3 py-1.5`, `px-6 py-3`, `px-[14px] py-[7px]`…); some primaries have no `disabled:` state |
 | Pill radius | `rounded-full` + `text-badge` | `rounded-[20px]` everywhere; `SeverityBadge` uses plain `rounded` + `text-[11px]` |
 | Callout banners | `rounded-card` | `rounded-r-lg` (JourneyDetail, CallDetail, AIInsights) |

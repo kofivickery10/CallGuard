@@ -38,7 +38,7 @@ export default function Billing() {
   return (
     <div className="p-6 space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <h1 className="text-xl font-bold text-text-primary">Billing Overview</h1>
+        <h2 className="text-page-title text-text-primary">Billing Overview</h2>
         <div className="flex items-center gap-2">
           <label className="text-sm text-text-muted">Month</label>
           <input
@@ -62,7 +62,7 @@ export default function Billing() {
         ].map(({ label, value, accent }) => (
           <div key={label} className={`bg-card rounded-card p-4 border ${accent ? 'border-primary' : 'border-border'}`}>
             <p className="text-xs font-semibold uppercase tracking-wider text-text-muted mb-1">{label}</p>
-            <p className={`text-2xl font-bold ${accent ? 'text-primary' : 'text-text-primary'}`}>{value}</p>
+            <p className={`text-card-value ${accent ? 'text-primary' : 'text-text-primary'}`}>{value}</p>
           </div>
         ))}
       </div>

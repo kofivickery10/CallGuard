@@ -89,7 +89,7 @@ export function Notifications() {
                   {n.call_id && (
                     <Link
                       to={`/calls/${n.call_id}`}
-                      className="inline-block mt-2 text-[12px] text-primary font-semibold hover:underline"
+                      className="inline-block mt-2 text-xs text-primary font-semibold hover:underline"
                     >
                       View call &rarr;
                     </Link>

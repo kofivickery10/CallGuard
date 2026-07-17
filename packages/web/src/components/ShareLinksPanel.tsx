@@ -55,8 +55,8 @@ export function ShareLinksPanel({ callId }: Props) {
   return (
     <div className="bg-card border border-border rounded-card overflow-hidden">
       <div className="px-5 py-4 border-b border-border">
-        <h3 className="text-[15px] font-semibold text-text-primary">Share with Client</h3>
-        <p className="text-[12px] text-text-muted mt-0.5">
+        <h3 className="text-section-title text-text-primary">Share with Client</h3>
+        <p className="text-xs text-text-muted mt-0.5">
           Generate a secure link so your client can see their call's quality summary
         </p>
       </div>
@@ -64,7 +64,7 @@ export function ShareLinksPanel({ callId }: Props) {
       <div className="p-5">
         {justCreated ? (
           <div className="bg-pass-bg border border-pass/20 rounded-btn p-4 mb-4">
-            <div className="text-[13px] font-semibold text-pass mb-2">Share link created</div>
+            <div className="text-table-cell font-semibold text-pass mb-2">Share link created</div>
             <div className="flex items-center gap-2">
               <input
                 readOnly
@@ -74,13 +74,13 @@ export function ShareLinksPanel({ callId }: Props) {
               />
               <button
                 onClick={() => handleCopy(justCreated.url)}
-                className="bg-primary text-white px-3 py-1.5 rounded-btn text-[12px] font-semibold hover:bg-primary-hover transition-colors"
+                className="bg-primary text-white px-3 py-1.5 rounded-btn text-xs font-semibold hover:bg-primary-hover transition-colors"
               >
                 {copied ? 'Copied!' : 'Copy'}
               </button>
               <button
                 onClick={() => setJustCreated(null)}
-                className="px-3 py-1.5 rounded-btn border border-border text-text-cell text-[12px] font-semibold hover:bg-sidebar-hover transition-colors"
+                className="px-3 py-1.5 rounded-btn border border-border text-text-cell text-xs font-semibold hover:bg-sidebar-hover transition-colors"
               >
                 Done
               </button>
@@ -130,7 +130,7 @@ export function ShareLinksPanel({ callId }: Props) {
         )}
 
         {activeLinks.length === 0 && revokedLinks.length === 0 && (
-          <div className="text-[12px] text-text-muted text-center py-3">
+          <div className="text-xs text-text-muted text-center py-3">
             No share links created yet
           </div>
         )}

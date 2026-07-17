@@ -48,10 +48,10 @@ export function FileDropzone({ onFileSelected, disabled }: FileDropzoneProps) {
         </svg>
       </div>
       {isDragActive ? (
-        <div className="text-[16px] font-semibold text-text-primary">Drop audio files here</div>
+        <div className="text-base font-semibold text-text-primary">Drop audio files here</div>
       ) : (
         <>
-          <div className="text-[16px] font-semibold text-text-primary mb-1.5">
+          <div className="text-base font-semibold text-text-primary mb-1.5">
             Drop audio files here or click to upload
           </div>
           <div className="text-table-cell text-text-muted">

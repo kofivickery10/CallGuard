@@ -112,7 +112,7 @@ The "Book a demo" CTAs all `mailto:` `hello@callguardai.co.uk`. Set up the inbox
 1. In cPanel, open **Email Accounts** → **Create**
 2. Email: `hello@callguardai.co.uk`
 3. Either set a password and check via webmail, OR
-4. Delete the mailbox and instead create a **Forwarder** (under Email → Forwarders) sending `hello@callguardai.co.uk` → your real inbox (e.g., `kofi@properleads.co.uk`)
+4. Delete the mailbox and instead create a **Forwarder** (under Email → Forwarders) sending `hello@callguardai.co.uk` → your real inbox (e.g., `you@yourdomain.com`)
 
 Repeat for `privacy@callguardai.co.uk` and `procurement@callguardai.co.uk` (forwarders to the same place is fine).
 

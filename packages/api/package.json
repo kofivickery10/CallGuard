@@ -1,6 +1,8 @@
 {
   "name": "@callguard/api",
   "version": "0.1.0",
+  "description": "CallGuard AI API — Express + Postgres + BullMQ backend for call scoring and integrations.",
+  "license": "UNLICENSED",
   "private": true,
   "main": "./dist/index.js",
   "scripts": {

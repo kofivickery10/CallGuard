@@ -345,7 +345,7 @@ export default function TenantDetail() {
     <div className="p-6 space-y-6">
       <div className="flex items-center gap-3">
         <Link to="/tenants" className="text-sm text-primary hover:underline">← Tenants</Link>
-        <h1 className="text-xl font-bold text-text-primary">{org.name}</h1>
+        <h2 className="text-page-title text-text-primary">{org.name}</h2>
       </div>
 
       {/* Stats */}
@@ -358,7 +358,7 @@ export default function TenantDetail() {
         ].map(({ label, value }) => (
           <div key={label} className="bg-card rounded-card p-4 border border-border">
             <p className="text-xs font-semibold uppercase tracking-wider text-text-muted mb-1">{label}</p>
-            <p className="text-2xl font-bold text-text-primary">{value}</p>
+            <p className="text-card-value text-text-primary">{value}</p>
           </div>
         ))}
       </div>
@@ -771,7 +771,7 @@ export default function TenantDetail() {
 
       {seedOpen && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-card shadow-lg w-full max-w-md p-6 space-y-4">
+          <div className="bg-card border border-border rounded-card shadow-lg w-full max-w-md p-6 space-y-4">
             <h3 className="text-lg font-semibold text-text-primary">Seed an admin login</h3>
             {seedResult ? (
               <>
@@ -830,7 +830,7 @@ export default function TenantDetail() {
 
       {deleteOpen && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-card shadow-lg w-full max-w-md p-6 space-y-4">
+          <div className="bg-card border border-border rounded-card shadow-lg w-full max-w-md p-6 space-y-4">
             <h3 className="text-lg font-semibold text-text-primary">Delete this tenant?</h3>
             <p className="text-sm text-text-secondary">
               This permanently removes <span className="font-semibold">{org.name}</span> and everything

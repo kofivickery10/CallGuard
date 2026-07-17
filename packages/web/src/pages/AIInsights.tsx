@@ -67,8 +67,11 @@ export function AIInsights() {
           </p>
         </div>
         <div className="bg-card border border-border rounded-card p-10 text-center">
-          <div className="text-[32px] mb-2">✨</div>
-          <h3 className="text-[18px] font-semibold text-text-primary mb-2">
+          <svg className="w-10 h-10 mx-auto mb-3 stroke-text-muted" viewBox="0 0 24 24" fill="none" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M12 3l1.9 4.6L18.5 9.5l-4.6 1.9L12 16l-1.9-4.6L5.5 9.5l4.6-1.9L12 3Z" />
+            <path d="M19 14l.6 1.6 1.6.6-1.6.6L19 19l-.6-1.6-1.6-.6 1.6-.6L19 14Z" />
+          </svg>
+          <h3 className="text-lg font-semibold text-text-primary mb-2">
             AI Insights isn't available on your plan
           </h3>
           <p className="text-table-cell text-text-muted max-w-md mx-auto mb-4">
@@ -77,7 +80,7 @@ export function AIInsights() {
           </p>
           <Link
             to="/settings/organization"
-            className="inline-block px-4 py-2 bg-primary hover:bg-primary-hover text-white rounded-btn text-[13px] font-semibold transition-colors"
+            className="inline-block px-4 py-2 bg-primary hover:bg-primary-hover text-white rounded-btn text-table-cell font-semibold transition-colors"
           >
             Upgrade to {PLAN_LABELS.core}
           </Link>
@@ -101,7 +104,7 @@ export function AIInsights() {
               <button
                 key={opt.days}
                 onClick={() => setDays(opt.days)}
-                className={`px-3 py-1.5 rounded-btn text-[12px] font-semibold transition-colors ${
+                className={`px-3 py-1.5 rounded-btn text-xs font-semibold transition-colors ${
                   days === opt.days
                     ? 'bg-primary-light text-pass'
                     : 'text-text-muted hover:text-text-primary'
@@ -114,7 +117,7 @@ export function AIInsights() {
           <button
             onClick={() => generate.mutate()}
             disabled={generate.isPending}
-            className="px-4 py-2 bg-primary hover:bg-primary-hover disabled:opacity-60 disabled:cursor-not-allowed text-white rounded-btn text-[13px] font-semibold transition-colors"
+            className="px-4 py-2 bg-primary hover:bg-primary-hover disabled:opacity-60 disabled:cursor-not-allowed text-white rounded-btn text-table-cell font-semibold transition-colors"
           >
             {generate.isPending ? 'Generating...' : 'Generate new insights'}
           </button>
@@ -126,7 +129,7 @@ export function AIInsights() {
           <div className="text-table-cell font-semibold text-fail">
             Failed to generate insights
           </div>
-          <div className="text-[12px] text-flag-text mt-1">
+          <div className="text-xs text-flag-text mt-1">
             {(generate.error as Error).message}
           </div>
         </div>
@@ -140,8 +143,13 @@ export function AIInsights() {
             </div>
           ) : !activeDigest ? (
             <div className="bg-card border border-border rounded-card p-10 text-center">
-              <div className="text-[32px] mb-2">📊</div>
-              <h3 className="text-[16px] font-semibold text-text-primary mb-2">
+              <svg className="w-10 h-10 mx-auto mb-3 stroke-text-muted" viewBox="0 0 24 24" fill="none" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M4 4v16h16" />
+                <path d="M9 17v-5" />
+                <path d="M14 17V9" />
+                <path d="M19 17v-3" />
+              </svg>
+              <h3 className="text-base font-semibold text-text-primary mb-2">
                 No insights yet
               </h3>
               <p className="text-table-cell text-text-muted max-w-md mx-auto">
@@ -157,12 +165,12 @@ export function AIInsights() {
         <div>
           <div className="bg-card border border-border rounded-card overflow-hidden">
             <div className="px-4 py-3 border-b border-border">
-              <h3 className="text-[13px] font-semibold text-text-primary uppercase tracking-wider">
+              <h3 className="text-table-cell font-semibold text-text-primary uppercase tracking-wider">
                 History
               </h3>
             </div>
             {digests.length === 0 ? (
-              <div className="px-4 py-6 text-[12px] text-text-muted text-center">
+              <div className="px-4 py-6 text-xs text-text-muted text-center">
                 No digests yet
               </div>
             ) : (
@@ -175,7 +183,7 @@ export function AIInsights() {
                       (activeDigest?.id === d.id) ? 'bg-primary-light' : ''
                     }`}
                   >
-                    <div className="text-[13px] font-semibold text-text-primary">
+                    <div className="text-table-cell font-semibold text-text-primary">
                       {formatRange(d.period_start, d.period_end)}
                     </div>
                     <div className="text-[11px] text-text-muted mt-0.5">
@@ -208,7 +216,7 @@ function DigestView({ digest }: { digest: InsightDigest }) {
       <div className="bg-card border border-border rounded-card overflow-hidden">
         <div className="px-5 py-4 border-b border-border flex items-center justify-between">
           <div>
-            <h3 className="text-[15px] font-semibold text-text-primary">
+            <h3 className="text-section-title text-text-primary">
               {formatRange(digest.period_start, digest.period_end)}
             </h3>
             <div className="text-[11px] text-text-muted mt-0.5">
@@ -249,7 +257,7 @@ function DigestView({ digest }: { digest: InsightDigest }) {
       {/* Recommendations */}
       <div className="bg-card border border-border rounded-card overflow-hidden">
         <div className="px-5 py-4 border-b border-border">
-          <h3 className="text-[15px] font-semibold text-text-primary">
+          <h3 className="text-section-title text-text-primary">
             Recommendations
           </h3>
         </div>
@@ -268,7 +276,7 @@ function DigestView({ digest }: { digest: InsightDigest }) {
                   {PRIORITY_LABELS[rec.priority] || rec.priority}
                 </span>
                 <div className="flex-1 min-w-0">
-                  <div className="text-[14px] font-semibold text-text-primary">
+                  <div className="text-sm font-semibold text-text-primary">
                     {rec.title}
                   </div>
                   <div className="text-table-cell text-text-cell mt-1 leading-relaxed">
@@ -277,7 +285,7 @@ function DigestView({ digest }: { digest: InsightDigest }) {
                   {rec.cta && (
                     <Link
                       to={rec.cta.href}
-                      className="inline-block mt-2 text-[12px] text-primary hover:text-primary-hover font-semibold"
+                      className="inline-block mt-2 text-xs text-primary hover:text-primary-hover font-semibold"
                     >
                       {rec.cta.label} →
                     </Link>
@@ -298,7 +306,7 @@ function MetricCell({ label, value }: { label: string; value: string | number })
       <div className="text-[10px] uppercase tracking-wider text-text-muted font-semibold">
         {label}
       </div>
-      <div className="text-[18px] font-bold text-text-primary font-mono mt-0.5">
+      <div className="text-lg font-bold text-text-primary font-mono mt-0.5">
         {value}
       </div>
     </div>

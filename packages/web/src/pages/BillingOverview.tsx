@@ -41,7 +41,7 @@ export default function BillingOverview() {
       {/* Plan */}
       <div className="bg-card rounded-card border border-border p-5 space-y-1">
         <p className="text-table-cell text-text-muted font-semibold uppercase tracking-wider text-xs">Current plan</p>
-        <p className="text-xl font-bold text-text-primary">{planLabel}</p>
+        <p className="text-card-value text-text-primary">{planLabel}</p>
         <p className="text-table-cell text-text-muted text-xs mt-1">To change your plan, contact CallGuard support.</p>
       </div>
 
@@ -51,14 +51,14 @@ export default function BillingOverview() {
           <p className="text-xs font-semibold uppercase tracking-wider text-text-muted mb-1">
             Active seats — {seatsData?.current_month ?? '—'}
           </p>
-          <p className="text-3xl font-bold text-text-primary">{seatsData?.current_active_seats ?? '—'}</p>
+          <p className="text-card-value text-text-primary">{seatsData?.current_active_seats ?? '—'}</p>
           <p className="text-xs text-text-muted mt-1">Billable this month</p>
         </div>
         <div className="bg-card rounded-card border border-border p-5">
           <p className="text-xs font-semibold uppercase tracking-wider text-text-muted mb-1">
             Active seats — {seatsData?.previous_month ?? '—'}
           </p>
-          <p className="text-3xl font-bold text-text-primary">{seatsData?.previous_active_seats ?? '—'}</p>
+          <p className="text-card-value text-text-primary">{seatsData?.previous_active_seats ?? '—'}</p>
           <p className="text-xs text-text-muted mt-1">Previous month (invoiced)</p>
         </div>
       </div>
@@ -67,7 +67,7 @@ export default function BillingOverview() {
       {seatsData && seatsData.current_advisers.length > 0 && (
         <div className="bg-card rounded-card border border-border overflow-hidden">
           <div className="px-5 py-3 border-b border-border">
-            <h2 className="text-[15px] font-semibold text-text-primary">
+            <h2 className="text-section-title text-text-primary">
               Active advisers this month ({seatsData.current_advisers.length})
             </h2>
           </div>

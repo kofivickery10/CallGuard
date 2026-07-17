@@ -60,7 +60,7 @@ export function AdviserRiskPage() {
             <button
               key={w}
               onClick={() => setWindow(w)}
-              className={`px-3 py-1.5 rounded-btn text-[12px] font-semibold transition-colors ${
+              className={`px-3 py-1.5 rounded-btn text-xs font-semibold transition-colors ${
                 window === w
                   ? 'bg-primary-light text-pass'
                   : 'text-text-muted hover:text-text-primary'
@@ -80,7 +80,7 @@ export function AdviserRiskPage() {
               <div className="text-[11px] uppercase tracking-wider text-text-muted font-semibold">
                 {RISK_LEVEL_LABELS[level]}
               </div>
-              <div className={`text-[24px] font-bold mt-1 font-mono ${riskTextColor(level)}`}>
+              <div className={`text-card-value mt-1 font-mono ${riskTextColor(level)}`}>
                 {counts[level]}
               </div>
             </div>

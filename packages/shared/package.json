@@ -1,6 +1,8 @@
 {
   "name": "@callguard/shared",
   "version": "0.1.0",
+  "description": "CallGuard AI shared types and constants used across the API and web apps.",
+  "license": "UNLICENSED",
   "private": true,
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

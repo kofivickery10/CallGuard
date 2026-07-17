@@ -94,7 +94,7 @@ export default function Account() {
 
       {/* Profile */}
       <div className="bg-card rounded-card border border-border p-5 space-y-4">
-        <h2 className="text-[15px] font-semibold text-text-primary">Profile</h2>
+        <h2 className="text-section-title text-text-primary">Profile</h2>
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-table-cell text-text-muted w-24">Name</span>
@@ -130,7 +130,7 @@ export default function Account() {
 
       {/* Change password */}
       <div className="bg-card rounded-card border border-border p-5 space-y-4">
-        <h2 className="text-[15px] font-semibold text-text-primary">Change Password</h2>
+        <h2 className="text-section-title text-text-primary">Change Password</h2>
         <form onSubmit={handlePwSubmit} className="space-y-3">
           {[
             { label: 'Current password', value: currentPw, set: setCurrentPw },
@@ -192,7 +192,7 @@ function TwoFactorSection() {
 
   return (
     <div className="bg-card rounded-card border border-border p-5 space-y-4">
-      <h2 className="text-[15px] font-semibold text-text-primary">Two-Factor Authentication</h2>
+      <h2 className="text-section-title text-text-primary">Two-Factor Authentication</h2>
       <div className="flex items-center gap-2">
         <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${data?.enabled ? 'bg-pass-bg text-pass' : 'bg-fail-bg text-fail'}`}>
           {data?.enabled ? 'Enabled' : 'Not enabled'}
@@ -215,7 +215,7 @@ function TwoFactorSection() {
               <p className="text-table-cell text-text-secondary">Your new backup codes — save them now, they won't be shown again:</p>
               <div className="grid grid-cols-2 gap-2 bg-page rounded-card p-4">
                 {newCodes.map((c) => (
-                  <code key={c} className="text-[13px] text-text-primary text-center py-1">{c}</code>
+                  <code key={c} className="text-table-cell text-text-primary text-center py-1">{c}</code>
                 ))}
               </div>
             </div>

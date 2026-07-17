@@ -29,12 +29,12 @@ export function AssignAgentDropdown({ callId, currentAgentId }: AssignAgentDropd
 
   return (
     <span className="inline-flex items-center gap-1.5">
-      <span className="text-text-muted text-[12px]">Agent:</span>
+      <span className="text-text-muted text-xs">Agent:</span>
       <select
         value={currentAgentId || ''}
         onChange={(e) => handleChange(e.target.value)}
         disabled={saving}
-        className="border border-border rounded-btn px-2 py-1 text-[12px] text-text-primary focus:outline-none focus:border-primary transition-colors bg-card disabled:opacity-50"
+        className="border border-border rounded-btn px-2 py-1 text-xs text-text-primary focus:outline-none focus:border-primary transition-colors bg-card disabled:opacity-50"
       >
         <option value="">Unassigned</option>
         {data?.data.map((agent) => (

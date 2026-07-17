@@ -54,7 +54,7 @@ export function Login() {
           />
         ) : (
           <form onSubmit={handleSubmit} className="bg-card border border-border rounded-card p-8 space-y-5">
-            <h2 className="text-[18px] font-semibold text-text-primary">Welcome back</h2>
+            <h2 className="text-lg font-semibold text-text-primary">Welcome back</h2>
 
             {error && (
               <div className="bg-fail-bg text-fail px-4 py-2.5 rounded-btn text-table-cell">{error}</div>
@@ -92,7 +92,7 @@ export function Login() {
               {loading ? 'Loading...' : 'Sign In'}
             </button>
 
-            <p className="text-center text-[12px] text-text-muted">
+            <p className="text-center text-xs text-text-muted">
               Need an account? Contact your CallGuard administrator.
             </p>
           </form>
@@ -155,7 +155,7 @@ function TwoFactorChallenge({
 
   return (
     <form onSubmit={submit} className="bg-card border border-border rounded-card p-8 space-y-5">
-      <h2 className="text-[18px] font-semibold text-text-primary">Two-factor verification</h2>
+      <h2 className="text-lg font-semibold text-text-primary">Two-factor verification</h2>
 
       {error && (
         <div className="bg-fail-bg text-fail px-4 py-2.5 rounded-btn text-table-cell">{error}</div>
@@ -204,7 +204,7 @@ function TwoFactorChallenge({
         </>
       )}
 
-      <div className="flex flex-wrap justify-center gap-x-4 gap-y-1 text-[12px] text-text-muted">
+      <div className="flex flex-wrap justify-center gap-x-4 gap-y-1 text-xs text-text-muted">
         {challenge.methods.includes('totp') && method !== 'totp' && (
           <button type="button" onClick={() => { setMethod('totp'); setCode(''); }} className="hover:text-text-secondary">
             Use authenticator

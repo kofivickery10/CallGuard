@@ -149,7 +149,7 @@ export function Dashboard() {
               <div className={`text-card-value mt-2.5 ${valueColor}`}>
                 <StatValue raw={stat.value as number | string | null | undefined} />
               </div>
-              {stat.change && <div className={`text-[12px] mt-1 ${changeColor}`}>{stat.change}</div>}
+              {stat.change && <div className={`text-xs mt-1 ${changeColor}`}>{stat.change}</div>}
             </div>
           );
         })}
@@ -162,7 +162,7 @@ export function Dashboard() {
       {isAdmin && leaderboard?.data && leaderboard.data.length > 0 && !agentFilter && (
         <div className="bg-card border border-border rounded-card overflow-hidden mb-5">
           <div className="px-5 py-4 border-b border-border flex justify-between items-center">
-            <h3 className="text-[15px] font-semibold text-text-primary">Agent Leaderboard</h3>
+            <h3 className="text-section-title text-text-primary">Agent Leaderboard</h3>
             <Link to="/team" className="text-table-cell text-primary font-medium hover:underline">View team</Link>
           </div>
           <div className="overflow-x-auto">
@@ -199,7 +199,7 @@ export function Dashboard() {
       {/* Recent calls */}
       <div className="bg-card border border-border rounded-card overflow-hidden">
         <div className="px-5 py-4 border-b border-border flex justify-between items-center">
-          <h3 className="text-[15px] font-semibold text-text-primary">Recent Calls</h3>
+          <h3 className="text-section-title text-text-primary">Recent Calls</h3>
           <Link to="/calls" className="text-table-cell text-primary font-medium hover:underline">View all</Link>
         </div>
         <div className="overflow-x-auto">

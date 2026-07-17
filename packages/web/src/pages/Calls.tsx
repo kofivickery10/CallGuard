@@ -115,7 +115,7 @@ export function Calls() {
             <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="text-table-cell text-text-secondary hover:text-text-primary disabled:opacity-40 transition-colors">
               Previous
             </button>
-            <span className="text-[12px] text-text-muted">{page} / {totalPages}</span>
+            <span className="text-xs text-text-muted">{page} / {totalPages}</span>
             <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="text-table-cell text-text-secondary hover:text-text-primary disabled:opacity-40 transition-colors">
               Next
             </button>

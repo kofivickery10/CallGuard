@@ -41,7 +41,7 @@ function StatCard({ label, value, sub }: { label: string; value: string | number
   return (
     <div className="bg-card rounded-card p-5 shadow-sm border border-border">
       <p className="text-xs font-semibold uppercase tracking-wider text-text-muted mb-1">{label}</p>
-      <p className="text-3xl font-bold text-text-primary">{value}</p>
+      <p className="text-card-value text-text-primary">{value}</p>
       {sub && <p className="text-xs text-text-muted mt-1">{sub}</p>}
     </div>
   );
@@ -86,7 +86,7 @@ export default function Dashboard() {
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-bold text-text-primary">Live Dashboard</h1>
+        <h2 className="text-page-title text-text-primary">Live Dashboard</h2>
         <p className="text-xs text-text-muted">Refreshes every 30 s</p>
       </div>
 
@@ -94,7 +94,7 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-card rounded-card p-5 border border-primary">
           <p className="text-xs font-semibold uppercase tracking-wider text-text-muted mb-1">Monthly recurring revenue</p>
-          <p className="text-3xl font-bold text-primary">£{data.platform_mrr.toFixed(2)}</p>
+          <p className="text-card-value text-primary">£{data.platform_mrr.toFixed(2)}</p>
           <p className="text-xs text-text-muted mt-1">Active seats × tier/override price</p>
         </div>
         <StatCard label="AI + transcription (MTD)" value={`£${totalCostMtd.toFixed(2)}`} sub="Claude + Deepgram estimate" />
