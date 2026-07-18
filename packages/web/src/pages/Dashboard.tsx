@@ -79,7 +79,13 @@ export function Dashboard() {
 
   const baseStats = [
     { label: 'Total Calls', value: summary?.total_calls ?? '-', change: '' },
-    { label: 'Scored', value: summary?.scored_calls ?? '-', change: '' },
+    {
+      label: 'Scored',
+      value: summary?.scored_calls ?? '-',
+      // Under sale (journey) scoring the meaningful unit is the sale — show it
+      // alongside the covered-calls count.
+      change: summary?.scored_sales ? `${summary.scored_sales} sale${summary.scored_sales === 1 ? '' : 's'}` : '',
+    },
     {
       label: 'Avg Score',
       value: summary?.average_score != null ? `${Math.round(summary.average_score)}%` : '-',
