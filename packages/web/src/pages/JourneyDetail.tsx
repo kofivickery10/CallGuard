@@ -57,14 +57,14 @@ export function JourneyDetail() {
     return (
       <div className="bg-card border border-border rounded-card p-10 text-center">
         <div className="bg-fail-bg text-fail px-3 py-2 rounded-btn inline-block">
-          Could not load this journey — it may have been removed.
+          Could not load this sale — it may have been removed.
         </div>
         <div className="mt-4">
           <Link
             to="/journeys"
             className="text-primary text-table-cell font-semibold hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
           >
-            Back to Journeys
+            Back to Sales
           </Link>
         </div>
       </div>
@@ -88,14 +88,14 @@ export function JourneyDetail() {
         <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
           <path d="M15 18l-6-6 6-6" />
         </svg>
-        Journeys
+        Sales
       </Link>
 
       {/* Header */}
       <div className="flex justify-between items-start mb-6">
         <div>
           <h2 className="text-page-title text-text-primary">
-            Journey
+            Sale
             {customerLabel && (
               <>
                 {' — '}
@@ -147,7 +147,7 @@ export function JourneyDetail() {
         <div className="bg-card border border-border rounded-card p-10 text-center mb-6">
           <div className="w-10 h-10 border-[3px] border-border border-t-primary rounded-full animate-spin mx-auto mb-4" />
           <div className="text-base font-semibold text-text-primary">
-            {journey.status === 'pending' ? 'Queued for scoring' : 'Scoring the journey'}
+            {journey.status === 'pending' ? 'Queued for scoring' : 'Scoring the sale'}
           </div>
         </div>
       )}
@@ -236,7 +236,7 @@ export function JourneyDetail() {
         <div className="space-y-4">
           <div className="bg-card border border-border rounded-card overflow-hidden">
             <div className="px-5 py-4 border-b border-border">
-              <h3 className="text-section-title text-text-primary">Calls in this journey ({journey.calls.length})</h3>
+              <h3 className="text-section-title text-text-primary">Calls in this sale ({journey.calls.length})</h3>
             </div>
             <div>
               {journey.calls.length === 0 && (

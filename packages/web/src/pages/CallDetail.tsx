@@ -279,7 +279,7 @@ export function CallDetail() {
                 to={`/journeys/${call.journey.id}`}
                 className="inline-flex items-center gap-2 bg-primary text-white px-[18px] py-[9px] rounded-btn text-table-cell font-semibold hover:bg-primary-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
               >
-                View journey
+                View sale
               </Link>
             </div>
           </div>
@@ -304,7 +304,7 @@ export function CallDetail() {
             </div>
           ) : (
             <div className="px-5 py-4 text-table-cell text-text-muted">
-              No checkpoints were attributed specifically to this call — see the full journey for the combined score.
+              No checkpoints were attributed specifically to this call — see the full sale for the combined score.
             </div>
           )}
         </div>

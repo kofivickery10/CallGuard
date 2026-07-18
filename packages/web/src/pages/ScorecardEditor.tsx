@@ -419,7 +419,7 @@ export function ScorecardEditor() {
           <div>
             <label className="block text-table-cell font-medium text-text-secondary mb-1">Scoring Mode</label>
             <select value={scoringMode} onChange={(e) => setScoringMode(e.target.value as 'per_call' | 'journey')} className={selectClass}>
-              <option value="journey">Journey (all calls for a sale scored together)</option>
+              <option value="journey">Sale (all of a sale's calls scored together)</option>
               <option value="per_call">Per call (each call scored on its own)</option>
             </select>
           </div>

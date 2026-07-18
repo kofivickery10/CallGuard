@@ -205,7 +205,7 @@ export function Upload() {
             className="w-full border border-border rounded-btn px-3 py-2 text-table-cell text-text-primary placeholder:text-text-muted focus:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 transition-colors"
           />
           <p className="text-xs text-text-muted mt-1.5">
-            Needed to match this call to the customer's other calls (journey scoring, sale flag below).
+            Needed to match this call to the customer's other calls (sale scoring, sale flag below).
           </p>
 
           {isSalesOnly && (
@@ -219,7 +219,7 @@ export function Upload() {
               <span>
                 This call resulted in a sale
                 <span className="block text-xs text-text-muted font-normal">
-                  Scores this customer's journey immediately once transcribed, instead of waiting for a CRM sale trigger. Requires the customer phone above.
+                  Scores this customer's sale immediately once transcribed, instead of waiting for a CRM sale trigger. Requires the customer phone above.
                 </span>
               </span>
             </label>
