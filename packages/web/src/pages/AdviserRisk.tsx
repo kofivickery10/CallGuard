@@ -104,7 +104,11 @@ export function AdviserRiskPage() {
             {isLoading ? (
               <tr><td colSpan={7} className="px-5 py-12 text-center text-text-muted">Loading...</td></tr>
             ) : !data?.data.length ? (
-              <tr><td colSpan={7} className="px-5 py-12 text-center text-text-muted">No agents in this organization yet</td></tr>
+              <tr><td colSpan={7} className="px-5 py-12 text-center text-text-muted text-table-cell">
+                No advisers to profile yet. Risk profiles are built per adviser, so invite your
+                advisers as users on the <span className="text-text-secondary font-semibold">Team</span> page
+                — with emails matching your dialler — so their calls attribute to them.
+              </td></tr>
             ) : (
               data.data.map((row) => (
                 <tr

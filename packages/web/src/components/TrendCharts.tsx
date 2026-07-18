@@ -119,14 +119,19 @@ function CallsPerDayChart({ agentFilter }: { agentFilter: string | null }) {
 
   const hasData = data?.data.some((d) => d.total > 0);
   const { grid, tick, primary, neutral } = useChartColors();
+  // One stacked bar per day whose full height is the total call volume:
+  // the scored portion is highlighted, the rest ('captured'/unscored) is
+  // neutral. The old chart drew only 'scored' and hid 'total' (opacity 0), so
+  // a capture tenant — most calls unscored until a sale — saw an empty chart.
+  const chartData = data?.data.map((d) => ({ ...d, unscored: Math.max(0, d.total - d.scored) }));
 
   return (
-    <ChartCard title="Calls Per Day" subtitle="Last 30 days">
+    <ChartCard title="Calls Per Day" subtitle="Last 30 days · scored highlighted">
       {!hasData ? (
         <EmptyState message="No calls yet in the last 30 days" />
       ) : (
         <ResponsiveContainer width="100%" height={220}>
-          <BarChart data={data?.data} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
+          <BarChart data={chartData} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke={grid} vertical={false} />
             <XAxis
               dataKey="date"
@@ -141,7 +146,7 @@ function CallsPerDayChart({ agentFilter }: { agentFilter: string | null }) {
               labelFormatter={(v) => new Date(v).toLocaleDateString('en-GB')}
             />
             <Bar dataKey="scored" stackId="a" fill={primary} name="Scored" />
-            <Bar dataKey="total" stackId="b" fill={neutral} name="Total" opacity={0} />
+            <Bar dataKey="unscored" stackId="a" fill={neutral} name="Not yet scored" />
           </BarChart>
         </ResponsiveContainer>
       )}
