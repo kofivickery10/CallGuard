@@ -54,7 +54,11 @@ export interface TwoFactorSetupResponse {
 
 export interface DashboardSummary {
   total_calls: number;
+  // Calls covered by scoring: per-call scored OR part of a scored sale.
   scored_calls: number;
+  // Scored sales (journeys) — the scoring unit under the sales_only model.
+  scored_sales: number;
+  // Computed across all scored units (latest per-call scores + scored sales).
   average_score: number | null;
   pass_rate: number | null;
 }
