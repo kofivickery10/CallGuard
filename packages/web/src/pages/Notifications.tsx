@@ -86,12 +86,12 @@ export function Notifications() {
                     </span>
                   </div>
                   {n.body && <p className="text-table-cell text-text-secondary mt-1">{n.body}</p>}
-                  {n.call_id && (
+                  {(n.action_url || n.call_id) && (
                     <Link
-                      to={`/calls/${n.call_id}`}
+                      to={n.action_url ?? `/calls/${n.call_id}`}
                       className="inline-block mt-2 text-xs text-primary font-semibold hover:underline"
                     >
-                      View call &rarr;
+                      {n.action_url ? 'View' : 'View call'} &rarr;
                     </Link>
                   )}
                 </div>

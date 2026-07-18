@@ -7,6 +7,7 @@ import { processIngestCall } from './processors/ingest-call.js';
 import { processHydrateCall } from './processors/hydrate-call.js';
 import { processAssembleJourney } from './processors/assemble-journey.js';
 import { processAlertDelivery } from './processors/alert-deliver.js';
+import { processNotifyEmail } from './processors/notify-email.js';
 import { processScoreJourney } from './processors/score-journey.js';
 import { processRetentionPurge } from './processors/retention-purge.js';
 import { processStuckRepair } from './processors/stuck-repair.js';
@@ -54,7 +55,15 @@ const ingestionWorker = new Worker('ingestion', dispatchIngestion, {
   concurrency: 2,
 });
 
-const alertsWorker = new Worker('alerts', processAlertDelivery, {
+// The alerts queue carries alert-rule deliveries (email/slack/in-app fan-out
+// from services/alert-evaluator.ts) and 'notify-email' (the email side of a
+// directed system notification raised via services/notify.ts) — dispatch by name.
+async function dispatchAlerts(job: Job) {
+  if (job.name === 'notify-email') return processNotifyEmail(job);
+  return processAlertDelivery(job);
+}
+
+const alertsWorker = new Worker('alerts', dispatchAlerts, {
   connection,
   concurrency: 4,
 });
