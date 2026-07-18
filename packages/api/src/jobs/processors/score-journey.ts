@@ -90,9 +90,19 @@ export async function processScoreJourney(job: Job<{ journeyId: string }>) {
       .filter((c): c is number => c !== null);
     const journeySpeakerConfidence = confidences.length > 0 ? Math.min(...confidences) : null;
 
-    const { scoreable, na, manualReview } = classifyItems(items, branch, journeySpeakerConfidence);
-    if (scoreable.length === 0) {
+    const { scoreable, na, manualReview, provisional } = classifyItems(items, branch, journeySpeakerConfidence);
+    // Provisional items (consent gates under the speaker-confidence floor) are
+    // AI-scored alongside the rest — the verdict is stored on their
+    // manual_review row so the reviewer confirms instead of scoring blind.
+    const aiItems = [...scoreable, ...provisional];
+    if (aiItems.length === 0) {
       throw new Error(`No AI-scoreable items for branch "${branch ?? 'default'}"`);
+    }
+    if (provisional.length > 0) {
+      console.log(
+        `[ScoreJourney] ${journeyId}: ${provisional.length} consent gate(s) scored provisionally ` +
+          `(speaker confidence ${journeySpeakerConfidence} < floor)`
+      );
     }
 
     const org = await queryOne<{ plan: import('@callguard/shared').Plan; industry: string | null }>(
@@ -112,7 +122,7 @@ export async function processScoreJourney(job: Job<{ journeyId: string }>) {
     // the useful unit is the sale as a whole.
     const { output, usage, model } = await scoreTranscript(
       combinedTranscript,
-      scoreable.map((i) => ({
+      aiItems.map((i) => ({
         id: i.id,
         label: i.label,
         description: i.description,
@@ -181,8 +191,8 @@ export async function processScoreJourney(job: Job<{ journeyId: string }>) {
     }
 
     const scoredIds = new Set(output.items.map((it) => it.scorecard_item_id));
-    const expectedIds = new Set(scoreable.map((i) => i.id));
-    const missing = scoreable.filter((i) => !scoredIds.has(i.id));
+    const expectedIds = new Set(aiItems.map((i) => i.id));
+    const missing = aiItems.filter((i) => !scoredIds.has(i.id));
     const unknown = output.items.filter((it) => !expectedIds.has(it.scorecard_item_id));
     if (missing.length > 0 || output.items.length !== scoredIds.size || unknown.length > 0) {
       throw new Error(
@@ -202,12 +212,22 @@ export async function processScoreJourney(job: Job<{ journeyId: string }>) {
       sourceCallId: string | null;
     }> = [];
 
+    // Provisional consent gates: AI verdict is recorded for the reviewer but
+    // stays out of the weighted score and the breach register until a human
+    // confirms it (see checkpoint-classification.ts).
+    const provisionalIds = new Set(provisional.map((i) => i.id));
+    const provisionalWrites: typeof itemWrites = [];
+
     for (const itemScore of output.items) {
-      const item = scoreable.find((i) => i.id === itemScore.scorecard_item_id)!;
+      const item = aiItems.find((i) => i.id === itemScore.scorecard_item_id)!;
       const normalized = normalizeScore(itemScore.score, item.score_type);
       const markerMatch = itemScore.evidence?.match(CALL_MARKER);
       const callIndex = markerMatch ? Number(markerMatch[1]) - 1 : -1;
       const sourceCallId = callIndex >= 0 && callIndex < callIdsInOrder.length ? callIdsInOrder[callIndex]! : null;
+      if (provisionalIds.has(item.id)) {
+        provisionalWrites.push({ item, itemScore, normalized, sourceCallId });
+        continue;
+      }
       itemWrites.push({ item, itemScore, normalized, sourceCallId });
       const weight = Number(item.weight);
       totalWeightedScore += normalized * weight;
@@ -270,6 +290,21 @@ export async function processScoreJourney(job: Job<{ journeyId: string }>) {
            VALUES ($1, $2, 'manual_review')
            ON CONFLICT (journey_id, scorecard_item_id) DO UPDATE SET result = 'manual_review'`,
           [journeyId, item.id]
+        );
+      }
+      // Provisional consent gates: manual_review WITH the AI's suggested
+      // verdict/evidence stored, so the reviewer confirms rather than scoring
+      // blind. No breach until a human fails it.
+      for (const { item, itemScore, normalized, sourceCallId } of provisionalWrites) {
+        await tx.query(
+          `INSERT INTO journey_item_scores
+             (journey_id, scorecard_item_id, result, score, normalized_score, confidence, evidence, reasoning, source_call_id)
+           VALUES ($1, $2, 'manual_review', $3, $4, $5, $6, $7, $8)
+           ON CONFLICT (journey_id, scorecard_item_id) DO UPDATE SET
+             result = 'manual_review', score = EXCLUDED.score, normalized_score = EXCLUDED.normalized_score,
+             confidence = EXCLUDED.confidence, evidence = EXCLUDED.evidence, reasoning = EXCLUDED.reasoning,
+             source_call_id = EXCLUDED.source_call_id`,
+          [journeyId, item.id, itemScore.score, normalized, itemScore.confidence, itemScore.evidence, itemScore.reasoning, sourceCallId]
         );
       }
 

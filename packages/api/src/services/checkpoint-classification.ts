@@ -8,14 +8,20 @@ import type { ScorecardItem } from '@callguard/shared';
 export const CONSENT_SPEAKER_CONFIDENCE_FLOOR = 0.5;
 
 export interface ClassifiedItems {
-  // Sent to Claude for scoring.
+  // Sent to Claude and auto-scored normally.
   scoreable: ScorecardItem[];
   // Branch-excluded — never scored, excluded from the denominator.
   na: ScorecardItem[];
-  // item_type='manual', or a consent_gate item whose speaker attribution is
-  // too unreliable to trust — never auto-scored, excluded from the AI-scored
-  // denominator, surfaced for a human reviewer instead.
+  // item_type='manual' — never auto-scored, excluded from the AI-scored
+  // denominator, surfaced for a human reviewer.
   manualReview: ScorecardItem[];
+  // consent_gate items whose speaker attribution is below the floor: still
+  // sent to Claude (score everything we can), but the result is stored as
+  // manual_review WITH the AI's provisional verdict/evidence attached — the
+  // human confirms rather than scoring from scratch. Excluded from the
+  // auto-score denominator and the breach register until confirmed, so an
+  // unreliable speaker split can't mint a false consent pass on its own.
+  provisional: ScorecardItem[];
 }
 
 /**
@@ -30,6 +36,7 @@ export function classifyItems(
 ): ClassifiedItems {
   const na: ScorecardItem[] = [];
   const manualReview: ScorecardItem[] = [];
+  const provisional: ScorecardItem[] = [];
   const scoreable: ScorecardItem[] = [];
 
   for (const item of items) {
@@ -46,11 +53,11 @@ export function classifyItems(
       speakerAttributionConfidence !== null &&
       speakerAttributionConfidence < confidenceFloor;
     if (unreliableSpeakerSplit) {
-      manualReview.push(item);
+      provisional.push(item);
       continue;
     }
     scoreable.push(item);
   }
 
-  return { scoreable, na, manualReview };
+  return { scoreable, na, manualReview, provisional };
 }
