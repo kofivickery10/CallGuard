@@ -9,6 +9,7 @@ import { CoachingPanel } from '../components/CoachingPanel';
 import { ItemResultBadge } from '../components/ItemResultBadge';
 import { SeverityBadge } from '../components/BreachBadges';
 import { formatPhone } from '../lib/format';
+import { isItemPass } from '@callguard/shared';
 import type { JourneyWithDetail, ItemResult } from '@callguard/shared';
 
 const RESULT_ORDER: Record<ItemResult, number> = { fail: 0, manual_review: 1, pass: 2, na: 3 };
@@ -191,6 +192,14 @@ export function JourneyDetail() {
                       </div>
                     )}
                     <div className="text-table-cell text-text-secondary">{item.label}</div>
+                    {item.result === 'manual_review' && item.normalized_score != null && (
+                      <div className="text-xs mt-1">
+                        <span className={`font-semibold ${isItemPass(Number(item.normalized_score)) ? 'text-pass' : 'text-fail'}`}>
+                          AI suggests: {isItemPass(Number(item.normalized_score)) ? 'Pass' : 'Fail'}
+                        </span>
+                        <span className="text-text-muted"> — unconfirmed (low speaker-attribution confidence). Check the quote and confirm.</span>
+                      </div>
+                    )}
                     {item.evidence && (
                       <blockquote className="text-xs text-text-muted italic border-l-2 border-border pl-2.5 mt-1.5 leading-relaxed">
                         {item.evidence}

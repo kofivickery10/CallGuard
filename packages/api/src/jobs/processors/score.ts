@@ -113,13 +113,17 @@ export async function processScoring(job: Job<{ callId: string }>) {
     // manual (item_type='manual', or a consent_gate item whose speaker
     // attribution is too unreliable to trust) are never auto-scored and are
     // excluded from the weighted denominator.
-    const { scoreable, na, manualReview } = classifyItems(
+    const { scoreable, na, manualReview, provisional } = classifyItems(
       items,
       branch,
       call.speaker_attribution_confidence
     );
+    // Provisional items (consent gates under the speaker-confidence floor) are
+    // AI-scored alongside the rest; their verdict is stored on the
+    // manual_review row for the reviewer to confirm (never auto-passed).
+    const aiItems = [...scoreable, ...provisional];
 
-    if (scoreable.length === 0) {
+    if (aiItems.length === 0) {
       throw new Error(
         `No AI-scoreable items for branch "${branch ?? 'default'}" (${na.length} na, ${manualReview.length} manual)`
       );
@@ -145,7 +149,7 @@ export async function processScoring(job: Job<{ callId: string }>) {
 
     const { output, usage, model } = await scoreTranscript(
       call.transcript_text,
-      scoreable.map((i) => ({
+      aiItems.map((i) => ({
         id: i.id,
         label: i.label,
         description: i.description,
@@ -234,8 +238,8 @@ export async function processScoring(job: Job<{ callId: string }>) {
     // would trip the call_item_scores unique constraint below). Fail loudly
     // and let BullMQ retry rather than persist a partial score.
     const scoredIds = new Set(output.items.map((it) => it.scorecard_item_id));
-    const expectedIds = new Set(scoreable.map((i) => i.id));
-    const missing = scoreable.filter((i) => !scoredIds.has(i.id));
+    const expectedIds = new Set(aiItems.map((i) => i.id));
+    const missing = aiItems.filter((i) => !scoredIds.has(i.id));
     const duplicateCount = output.items.length - scoredIds.size;
     const unknown = output.items.filter((it) => !expectedIds.has(it.scorecard_item_id));
     if (missing.length > 0 || duplicateCount > 0 || unknown.length > 0) {
@@ -256,9 +260,18 @@ export async function processScoring(job: Job<{ callId: string }>) {
       normalized: number;
     }> = [];
 
+    // Provisional consent gates: AI verdict recorded for the reviewer, but
+    // excluded from the weighted score and breach register until confirmed.
+    const provisionalIds = new Set(provisional.map((i) => i.id));
+    const provisionalWrites: typeof itemWrites = [];
+
     for (const itemScore of output.items) {
-      const item = scoreable.find((i) => i.id === itemScore.scorecard_item_id)!;
+      const item = aiItems.find((i) => i.id === itemScore.scorecard_item_id)!;
       const normalized = normalizeScore(itemScore.score, item.score_type);
+      if (provisionalIds.has(item.id)) {
+        provisionalWrites.push({ item, itemScore, normalized });
+        continue;
+      }
       itemWrites.push({ item, itemScore, normalized });
       const weight = Number(item.weight);
       totalWeightedScore += normalized * weight;
@@ -357,6 +370,16 @@ export async function processScoring(job: Job<{ callId: string }>) {
           `INSERT INTO call_item_scores (call_score_id, scorecard_item_id, score, normalized_score, result)
            VALUES ($1, $2, NULL, NULL, 'manual_review')`,
           [callScoreId, item.id]
+        );
+      }
+      // Provisional consent gates: manual_review WITH the AI's suggested
+      // verdict/evidence, so the reviewer confirms rather than scoring blind.
+      for (const { item, itemScore, normalized } of provisionalWrites) {
+        await tx.query(
+          `INSERT INTO call_item_scores
+             (call_score_id, scorecard_item_id, score, normalized_score, confidence, evidence, reasoning, result)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, 'manual_review')`,
+          [callScoreId, item.id, itemScore.score, normalized, itemScore.confidence, itemScore.evidence, itemScore.reasoning]
         );
       }
 
