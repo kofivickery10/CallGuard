@@ -27,7 +27,7 @@ interface CustomersResponse {
   limit: number;
 }
 
-const COLUMNS = ['Customer', 'CRM ID', 'Calls', 'Journeys', 'Last journey', 'Last seen'];
+const COLUMNS = ['Customer', 'CRM ID', 'Calls', 'Sales', 'Last sale', 'Last seen'];
 
 function LastJourneyCell({ customer }: { customer: Customer }) {
   if (customer.last_journey_score == null) {
@@ -70,7 +70,7 @@ export default function Customers() {
   if (!enabled) {
     return (
       <div className="bg-card border border-border rounded-card p-8 text-center max-w-md mx-auto">
-        <p className="text-text-subtle text-table-cell mb-2">Customer journey tracking is available on the Core plan and above.</p>
+        <p className="text-text-subtle text-table-cell mb-2">Customer tracking is available on the Core plan and above.</p>
         {user?.role === 'admin' && (
           <Link to="/settings/organization" className="text-primary font-medium hover:underline text-table-cell focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40">Upgrade plan</Link>
         )}

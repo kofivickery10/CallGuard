@@ -38,7 +38,7 @@ export function Journeys() {
     <div>
       <div className="flex items-center justify-between mb-7">
         <div>
-          <h2 className="text-page-title text-text-primary">Journeys</h2>
+          <h2 className="text-page-title text-text-primary">Sales</h2>
           <p className="text-page-sub text-text-subtle mt-1">
             Multi-call sales scored as one unit — a statement or consent counts if it happened on any call in the sale.
           </p>
@@ -99,7 +99,7 @@ export function Journeys() {
                 <tr>
                   <td colSpan={8} className="px-5 py-6 text-center">
                     <div className="bg-fail-bg text-fail px-3 py-2 rounded-btn inline-block">
-                      Could not load journeys — try refreshing.
+                      Could not load sales — try refreshing.
                     </div>
                   </td>
                 </tr>
@@ -108,8 +108,8 @@ export function Journeys() {
               {!isLoading && !isError && journeys.length === 0 && (
                 <tr>
                   <td colSpan={8} className="px-5 py-12 text-center text-text-muted text-table-cell">
-                    No journeys yet. Journeys are assembled when a sale closes (Zoho trigger) or via
-                    “Score journey” on a customer.
+                    No scored sales yet. A sale is scored when it closes in your CRM, or via
+                    “Score sale” on a customer.
                   </td>
                 </tr>
               )}

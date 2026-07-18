@@ -102,7 +102,7 @@ export function BreachDetailDrawer({ breachId, onClose }: BreachDetailDrawerProp
 
             <div className="p-6 space-y-5">
               {/* Call / journey context */}
-              <Section title={breach.journey_id ? 'Journey' : 'Call'}>
+              <Section title={breach.journey_id ? 'Sale' : 'Call'}>
                 <div className="text-table-cell">
                   <Link
                     to={breach.journey_id ? `/journeys/${breach.journey_id}` : `/calls/${breach.call_id}`}

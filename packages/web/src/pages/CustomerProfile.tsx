@@ -82,7 +82,7 @@ export default function CustomerProfile() {
       queryClient.invalidateQueries({ queryKey: ['customer-journeys', id] });
       if (!res.journey_id && res.message) void notify(res.message);
     },
-    onError: (err) => void notify('Failed to trigger journey: ' + (err instanceof Error ? err.message : 'unknown error')),
+    onError: (err) => void notify('Failed to score the sale: ' + (err instanceof Error ? err.message : 'unknown error')),
   });
 
   const updateMutation = useMutation({
@@ -238,9 +238,9 @@ export default function CustomerProfile() {
                   onClick={() => triggerMutation.mutate()}
                   disabled={triggerMutation.isPending}
                   className="px-[18px] py-[9px] rounded-btn text-table-cell font-semibold bg-primary text-white hover:bg-primary-hover disabled:opacity-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
-                  title="Assemble this customer's calls into a journey and score them together"
+                  title="Score this customer's calls together as one sale"
                 >
-                  {triggerMutation.isPending ? 'Scoring…' : 'Score journey'}
+                  {triggerMutation.isPending ? 'Scoring…' : 'Score sale'}
                 </button>
               )}
             </div>
@@ -260,11 +260,11 @@ export default function CustomerProfile() {
             <p className="text-card-value text-text-primary">{customer.call_count}</p>
           </div>
           <div>
-            <p className="text-card-label uppercase text-text-muted">Journeys scored</p>
+            <p className="text-card-label uppercase text-text-muted">Sales scored</p>
             <p className="text-card-value text-text-primary">{customer.journey_count}</p>
           </div>
           <div>
-            <p className="text-card-label uppercase text-text-muted">Last journey</p>
+            <p className="text-card-label uppercase text-text-muted">Last sale</p>
             {lastJourneyScore !== null ? (
               <p className="text-card-value text-text-primary">
                 {lastJourneyScore}%{' '}
@@ -294,7 +294,7 @@ export default function CustomerProfile() {
       {chartData.length > 1 && (
         <div className="bg-card border border-border rounded-card p-5">
           <h3 className="text-section-title text-text-primary mb-4">
-            Score trend {usingJourneyChart ? '(journeys)' : '(calls)'}
+            Score trend {usingJourneyChart ? '(sales)' : '(calls)'}
           </h3>
           <ResponsiveContainer width="100%" height={160}>
             <LineChart data={chartData}>
@@ -304,7 +304,7 @@ export default function CustomerProfile() {
                 contentStyle={{ background: 'rgb(var(--cg-card))', border: '1px solid rgb(var(--cg-border))', borderRadius: 6, fontSize: 12 }}
                 labelStyle={{ color: 'rgb(var(--cg-text-primary))' }}
                 formatter={(v) => [`${Number(v).toFixed(1)}%`, 'Score']}
-                labelFormatter={(l) => `${usingJourneyChart ? 'Journey' : 'Call'} ${l}`}
+                labelFormatter={(l) => `${usingJourneyChart ? 'Sale' : 'Call'} ${l}`}
               />
               <ReferenceLine y={PASS_THRESHOLD} stroke={chartColors.fail} strokeDasharray="3 3" />
               <Line type="monotone" dataKey="score" stroke={chartColors.primary} strokeWidth={2} dot={{ r: 3 }} />
@@ -317,11 +317,11 @@ export default function CustomerProfile() {
       {canAction && (
         <div className="bg-card border border-border rounded-card overflow-hidden">
           <div className="px-5 py-4 border-b border-border">
-            <h3 className="text-section-title text-text-primary">Journeys ({journeys.length})</h3>
+            <h3 className="text-section-title text-text-primary">Sales ({journeys.length})</h3>
           </div>
           {journeys.length === 0 ? (
             <p className="px-5 py-12 text-center text-text-muted text-table-cell">
-              No scored journeys yet — journeys assemble when a sale completes in your CRM, or use Score journey above.
+              No scored sales yet — a sale is scored when it completes in your CRM, or use Score sale above.
             </p>
           ) : (
             <div className="overflow-x-auto">
@@ -371,7 +371,7 @@ export default function CustomerProfile() {
       {user?.role !== 'adviser' && (
         <div className="bg-card border border-border rounded-card overflow-hidden">
           <div className="px-5 py-4 border-b border-border">
-            <h3 className="text-section-title text-text-primary">Call journey ({calls.length})</h3>
+            <h3 className="text-section-title text-text-primary">Call history ({calls.length})</h3>
           </div>
           {calls.length === 0 ? (
             <p className="px-5 py-12 text-center text-text-muted text-table-cell">No calls yet</p>

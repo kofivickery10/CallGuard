@@ -104,7 +104,7 @@ const NAV_SECTIONS: NavSection[] = [
   {
     label: 'Quality',
     items: [
-      { path: '/journeys', label: 'Journeys', icon: 'M4 17l6-6-6-6M12 19h8', roles: ORG_VIEW },
+      { path: '/journeys', label: 'Sales', icon: 'M4 17l6-6-6-6M12 19h8', roles: ORG_VIEW },
       { path: '/review-queue', label: 'Review Queue', icon: 'M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11', roles: ORG_VIEW },
       { path: '/breaches', label: 'Breaches', icon: 'M12 2L3 7v5c0 5 3.5 9.5 9 11 5.5-1.5 9-6 9-11V7l-9-5z', roles: ORG_VIEW },
       { path: '/adviser-risk', label: 'Adviser Risk', icon: 'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z', roles: ORG_VIEW },

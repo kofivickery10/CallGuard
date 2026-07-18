@@ -62,10 +62,10 @@ export function CoachingPanel({ coaching, plan, callStatus, isAdmin, priorCoachi
         <div className="p-6 text-center text-table-cell text-text-muted">
           {callStatus === 'scored'
             ? subject === 'journey'
-              ? 'No coaching was generated for this journey. Coaching is produced when the journey is scored.'
+              ? 'No coaching was generated for this sale. Coaching is produced when the sale is scored.'
               : 'No coaching generated for this call. Re-score it to produce coaching.'
             : subject === 'journey'
-              ? 'Coaching will appear here once the journey is scored.'
+              ? 'Coaching will appear here once the sale is scored.'
               : 'Coaching will appear here once the call is scored.'}
         </div>
       </div>

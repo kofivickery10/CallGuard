@@ -99,7 +99,7 @@ function DialerConnectionSection() {
           <p className="text-table-cell text-text-muted">
             Without a connection, the CloudTalk webhook still works (using an API key), but with no
             signature verification and a fixed 60s recording-fetch delay. Configure one for signed
-            webhooks, a tunable delay, and journey scoring windows.
+            webhooks, a tunable delay, and sale scoring windows.
           </p>
         </div>
       ) : (
@@ -112,7 +112,7 @@ function DialerConnectionSection() {
                 <span className="px-2.5 py-[3px] rounded-full text-badge font-semibold bg-table-header text-text-muted">Paused</span>
               )}
               <span className="text-table-cell text-text-cell">
-                {conn.recording_fetch_delay_seconds}s fetch delay · {conn.history_window_days}d journey window
+                {conn.recording_fetch_delay_seconds}s fetch delay · {conn.history_window_days}d sale window
               </span>
             </div>
             <button onClick={handleDelete} className="text-xs text-text-muted hover:text-fail">Remove</button>
