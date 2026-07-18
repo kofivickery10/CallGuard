@@ -9,9 +9,9 @@ export const PLAN_LABELS: Record<Plan, string> = {
 };
 
 export const PLAN_DESCRIPTIONS: Record<Plan, string> = {
-  core: 'Scoring, coaching, AI insights, compliance docs, customer journey, SFTP',
-  professional: 'Core + live streaming + live coaching',
-  enterprise: 'Professional + dedicated support & white-label',
+  core: 'Everything you need for AI compliance QA',
+  professional: 'Adds real-time call monitoring and live coaching',
+  enterprise: 'Adds dedicated support and white-label branding',
 };
 
 export interface CallCoaching {

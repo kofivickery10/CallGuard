@@ -261,15 +261,17 @@ export function OrganizationSettings() {
               <h4 className="text-lg font-bold text-text-primary">{PLAN_LABELS[p]}</h4>
               <p className="text-table-cell text-text-subtle mt-1">{PLAN_DESCRIPTIONS[p]}</p>
               <ul className="mt-4 space-y-1.5 text-xs text-text-cell">
-                <li className="flex items-center gap-1.5">
-                  <Check /> Scoring & breach register
-                </li>
-                <li className={`flex items-center gap-1.5 ${hasFeature(p, 'coaching') ? '' : 'text-text-muted line-through'}`}>
-                  {hasFeature(p, 'coaching') ? <Check /> : <Cross />} AI coaching per call
-                </li>
-                <li className={`flex items-center gap-1.5 ${p === 'enterprise' ? '' : 'text-text-muted line-through'}`}>
-                  {p === 'enterprise' ? <Check /> : <Cross />} Dedicated support & white-label
-                </li>
+                {PLAN_FEATURE_MATRIX.map(({ label, has }) => {
+                  const included = has(p);
+                  return (
+                    <li
+                      key={label}
+                      className={`flex items-center gap-1.5 ${included ? '' : 'text-text-muted line-through'}`}
+                    >
+                      {included ? <Check /> : <Cross />} {label}
+                    </li>
+                  );
+                })}
               </ul>
             </div>
           );
@@ -283,9 +285,29 @@ export function OrganizationSettings() {
   );
 }
 
+// What each tier includes, in ladder order (base capabilities first, then the
+// Professional and Enterprise adds). Flag-gated rows read the real gates in
+// shared FEATURES via hasFeature, so the cards can never drift from what the
+// product actually enforces; always-included capabilities have no flag.
+const PLAN_FEATURE_MATRIX: Array<{ label: string; has: (p: Plan) => boolean }> = [
+  { label: 'AI scoring & breach register', has: () => true },
+  { label: 'Multi-call sale scoring', has: () => true },
+  { label: 'AI coaching', has: (p) => hasFeature(p, 'coaching') },
+  { label: 'AI insights & trends', has: (p) => hasFeature(p, 'insights') },
+  { label: 'Customer tracking', has: (p) => hasFeature(p, 'customer_journey') },
+  { label: 'AI learning (corrections & exemplars)', has: (p) => hasFeature(p, 'ai_learning') },
+  { label: 'CRM & dialler integrations', has: () => true },
+  { label: 'Compliance document pack', has: () => true },
+  { label: 'SFTP ingestion', has: () => true },
+  { label: 'Live call streaming', has: (p) => hasFeature(p, 'live_streaming') },
+  { label: 'Live coaching', has: (p) => hasFeature(p, 'live_coaching') },
+  { label: 'Dedicated support', has: (p) => hasFeature(p, 'dedicated_support') },
+  { label: 'White-label branding', has: (p) => hasFeature(p, 'white_label') },
+];
+
 function Check() {
   return (
-    <svg viewBox="0 0 24 24" className="w-4 h-4 text-primary flex-shrink-0" fill="none" stroke="currentColor" strokeWidth="2.5">
+    <svg viewBox="0 0 24 24" className="w-4 h-4 text-primary flex-shrink-0" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       <path d="M5 13l4 4L19 7" />
     </svg>
   );
@@ -293,7 +315,7 @@ function Check() {
 
 function Cross() {
   return (
-    <svg viewBox="0 0 24 24" className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth="2">
+    <svg viewBox="0 0 24 24" className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       <path d="M18 6L6 18M6 6l12 12" />
     </svg>
   );
