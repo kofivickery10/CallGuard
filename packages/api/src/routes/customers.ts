@@ -180,7 +180,39 @@ customersRouter.get('/:id', async (req, res, next) => {
       if (!linked) throw new AppError(403, 'Access denied');
     }
 
-    res.json({ customer });
+    // Compliance snapshot: this customer's breaches by severity + how many are
+    // still open (not resolved), across both per-call and sale (journey)
+    // breaches. Powers the profile's compliance summary.
+    const breaches = await queryOne<{
+      total: string; open: string;
+      critical: string; high: string; medium: string; low: string;
+    }>(
+      `SELECT
+         COUNT(*)::text AS total,
+         COUNT(*) FILTER (WHERE b.status <> 'resolved')::text AS open,
+         COUNT(*) FILTER (WHERE b.severity = 'critical')::text AS critical,
+         COUNT(*) FILTER (WHERE b.severity = 'high')::text AS high,
+         COUNT(*) FILTER (WHERE b.severity = 'medium')::text AS medium,
+         COUNT(*) FILTER (WHERE b.severity = 'low')::text AS low
+       FROM breaches b
+       LEFT JOIN calls c ON c.id = b.call_id
+       LEFT JOIN journeys j ON j.id = b.journey_id
+       WHERE b.organization_id = $2
+         AND (c.customer_id = $1 OR j.customer_id = $1)`,
+      [customer.id, orgId]
+    );
+
+    res.json({
+      customer,
+      breaches: {
+        total: Number(breaches?.total ?? 0),
+        open: Number(breaches?.open ?? 0),
+        critical: Number(breaches?.critical ?? 0),
+        high: Number(breaches?.high ?? 0),
+        medium: Number(breaches?.medium ?? 0),
+        low: Number(breaches?.low ?? 0),
+      },
+    });
   } catch (err) {
     next(err);
   }
@@ -221,7 +253,7 @@ customersRouter.get('/:id/journey', requireOrgView, async (req, res, next) => {
          COUNT(b.id)::text       AS breach_count
        FROM calls ca
        LEFT JOIN call_scores cs ON cs.call_id = ca.id
-       LEFT JOIN breaches b     ON b.call_id = ca.id AND b.is_false_positive = false
+       LEFT JOIN breaches b     ON b.call_id = ca.id
        WHERE ca.customer_id = $1
          AND ca.organization_id = $2
        GROUP BY ca.id, ca.call_date, ca.created_at, ca.agent_name, ca.status,
