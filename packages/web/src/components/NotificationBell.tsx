@@ -81,9 +81,9 @@ export function NotificationBell() {
                       {n.body && <div className="text-xs text-text-secondary mt-0.5 line-clamp-2">{n.body}</div>}
                       <div className="text-[11px] text-text-muted mt-1">{timeAgo(n.created_at)}</div>
                     </div>
-                    {n.call_id && (
+                    {(n.action_url || n.call_id) && (
                       <Link
-                        to={`/calls/${n.call_id}`}
+                        to={n.action_url ?? `/calls/${n.call_id}`}
                         onClick={(e) => {
                           e.stopPropagation();
                           setOpen(false);

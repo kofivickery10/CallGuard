@@ -13,6 +13,16 @@ export interface CleanupResult {
   speakerLabelsSwapped: boolean;
 }
 
+// Mechanically flip every Agent:/Customer: turn label. Used when the model's
+// one-time swap decision is known but its cleaned output can't be trusted
+// (truncated at max_tokens) — a raw-but-correctly-attributed transcript beats
+// a cleaned-but-inverted one for scoring.
+function swapSpeakerLabels(transcript: string): string {
+  return transcript.replace(/^(Agent|Customer):/gm, (_m, who: string) =>
+    who === 'Agent' ? 'Customer:' : 'Agent:'
+  );
+}
+
 export async function cleanupTranscript(
   rawTranscript: string,
   organizationId?: string,
@@ -121,9 +131,14 @@ ${needsSpeakerCheck
 
   let response;
   try {
-    response = await client.messages.create({
+    // Streamed with a 64k output ceiling (Haiku 4.5's max): the cleaned
+    // transcript is roughly as long as the input, and long fact-find calls
+    // (45+ min ≈ 13k+ tokens) blew straight past the old 8192 cap — every
+    // such call silently lost both the cleanup and the speaker-label repair.
+    // Streaming is required above ~16k max_tokens to avoid SDK HTTP timeouts.
+    const stream = client.messages.stream({
       model: CLAUDE_MODELS.HAIKU,
-      max_tokens: 8192,
+      max_tokens: 64000,
       messages: [
         {
           role: 'user',
@@ -134,6 +149,7 @@ ${needsSpeakerCheck
         },
       ],
     }, CACHE_TTL_HEADERS);
+    response = await stream.finalMessage();
   } catch (err) {
     console.error(`[TranscriptCleanup] Claude request failed for call ${callId ?? 'unknown'}, using raw transcript:`, (err as Error).message);
     return { text: rawTranscript, speakerLabelsSwapped: false };
@@ -153,8 +169,20 @@ ${needsSpeakerCheck
 
   // A truncated "cleaned" transcript (hit the output token cap) is worse than
   // the untruncated raw one — it reads as if the call simply ended early, and
-  // scoring against it can miss end-of-call disclosures entirely.
+  // scoring against it can miss end-of-call disclosures entirely. But the
+  // SPEAKER_LABELS verdict is the FIRST line of the output, so it survives any
+  // truncation — salvage it and apply the swap mechanically to the raw
+  // transcript rather than discarding the one decision that matters most.
   if (response.stop_reason === 'max_tokens') {
+    const partial = response.content.find((b) => b.type === 'text');
+    const swappedVerdict =
+      needsSpeakerCheck &&
+      partial?.type === 'text' &&
+      /^SPEAKER_LABELS:\s*swapped/i.test(partial.text.trimStart());
+    if (swappedVerdict) {
+      console.error(`[TranscriptCleanup] Cleanup output truncated at max_tokens for call ${callId ?? 'unknown'}, but SPEAKER_LABELS verdict was 'swapped' — using raw transcript with labels swapped`);
+      return { text: swapSpeakerLabels(rawTranscript), speakerLabelsSwapped: true };
+    }
     console.error(`[TranscriptCleanup] Cleanup output truncated at max_tokens for call ${callId ?? 'unknown'}, using raw transcript`);
     return { text: rawTranscript, speakerLabelsSwapped: false };
   }

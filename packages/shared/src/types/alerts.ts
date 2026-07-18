@@ -54,14 +54,25 @@ export interface UpsertAlertRuleInput {
   is_active?: boolean;
 }
 
+// Notification "type" (event kind). 'alert' covers rows sourced from an alert
+// rule; the rest are directed system events. Legacy rows written before
+// migration 056 have a null type and are treated as 'alert' by the UI.
+export type NotificationType =
+  | 'alert'
+  | 'breach.assigned'
+  | 'breach.escalated';
+
 export interface Notification {
   id: string;
   user_id: string;
+  type: NotificationType | null;
   title: string;
   body: string | null;
   severity: AlertSeverity;
   call_id: string | null;
+  breach_id: string | null;
   rule_id: string | null;
+  action_url: string | null;
   read_at: string | null;
   created_at: string;
 }

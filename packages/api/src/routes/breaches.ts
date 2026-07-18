@@ -3,6 +3,7 @@ import { authenticate, requireOrgView, requireActioner } from '../middleware/aut
 import { query, queryOne } from '../db/client.js';
 import { AppError } from '../middleware/errors.js';
 import { recordAuditEvent } from '../services/audit.js';
+import { notifyBreachAssigned, notifyBreachEscalated } from '../services/breach-notifications.js';
 import {
   BREACH_SEVERITIES,
   BREACH_STATUSES,
@@ -470,8 +471,8 @@ breachesRouter.post('/:id/status', requireActioner, async (req, res, next) => {
       throw new AppError(400, `Invalid status: ${status}`);
     }
 
-    const existing = await queryOne<{ id: string; status: BreachStatus }>(
-      'SELECT id, status FROM breaches WHERE id = $1 AND organization_id = $2',
+    const existing = await queryOne<{ id: string; status: BreachStatus; assigned_to: string | null }>(
+      'SELECT id, status, assigned_to FROM breaches WHERE id = $1 AND organization_id = $2',
       [req.params.id, req.user!.organizationId]
     );
     if (!existing) throw new AppError(404, 'Breach not found');
@@ -503,6 +504,14 @@ breachesRouter.post('/:id/status', requireActioner, async (req, res, next) => {
       metadata: { from: existing.status, to: status },
       req,
     });
+
+    // Escalation is the one status change worth pushing: alert the org's
+    // managers (and the assignee, if any) rather than waiting for them to
+    // notice it in the queue. Fire-and-forget — notification failure must not
+    // fail the status change.
+    if (status === 'escalated') {
+      void notifyBreachEscalated(existing.id, req.user!.userId, req.user!.organizationId, existing.assigned_to);
+    }
 
     res.json({ message: 'Status updated' });
   } catch (err) {
@@ -542,6 +551,13 @@ breachesRouter.post('/:id/assign', requireActioner, async (req, res, next) => {
        VALUES ($1, $2, 'assigned', $3, $4)`,
       [existing.id, req.user!.userId, existing.assigned_to || null, assigned_to || null]
     );
+
+    // Tell the newly-assigned person it's theirs — the gap that made assignment
+    // silent. Skip a no-op re-assign and self-assignment (you know you did it).
+    // Fire-and-forget: notification failure must not fail the assignment.
+    if (assigned_to && assigned_to !== existing.assigned_to && assigned_to !== req.user!.userId) {
+      void notifyBreachAssigned(existing.id, assigned_to, req.user!.userId, req.user!.organizationId);
+    }
 
     res.json({ message: 'Assignment updated' });
   } catch (err) {

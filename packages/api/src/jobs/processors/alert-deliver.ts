@@ -168,9 +168,18 @@ async function deliverInApp(
     }
 
     await query(
-      `INSERT INTO notifications (organization_id, user_id, title, body, severity, call_id, rule_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [user[0]!.organization_id, userId, payload.title, payload.body, payload.severity, callId, ruleId]
+      `INSERT INTO notifications (organization_id, user_id, type, title, body, severity, call_id, rule_id, action_url)
+       VALUES ($1, $2, 'alert', $3, $4, $5, $6, $7, $8)`,
+      [
+        user[0]!.organization_id,
+        userId,
+        payload.title,
+        payload.body,
+        payload.severity,
+        callId,
+        ruleId,
+        callId ? `/calls/${callId}` : null,
+      ]
     );
     return { ok: true };
   } catch (err) {
