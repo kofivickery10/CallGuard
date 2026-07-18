@@ -26,6 +26,16 @@ interface Customer {
   last_journey_at: string | null;
 }
 
+// Compliance snapshot for this customer, aggregated across their calls + sales.
+interface CustomerBreaches {
+  total: number;
+  open: number;
+  critical: number;
+  high: number;
+  medium: number;
+  low: number;
+}
+
 interface JourneyCall {
   id: string;
   call_date: string | null;
@@ -42,6 +52,31 @@ interface JourneyCall {
 const inputClass =
   'px-3 py-2 rounded-btn border border-border bg-card text-table-cell text-text-primary disabled:opacity-60 focus:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40';
 
+const primaryBtn =
+  'px-[18px] py-[9px] rounded-btn text-table-cell font-semibold bg-primary text-white hover:bg-primary-hover disabled:opacity-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40';
+
+const fmtDate = (raw: string | null | undefined) =>
+  raw ? new Date(raw).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
+
+// Compact stroke-SVG icon for a KPI card corner (DESIGN_SYSTEM §5).
+function CardIcon({ paths }: { paths: string[] }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="w-[18px] h-[18px] stroke-icon-muted shrink-0"
+      fill="none"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {paths.map((d) => (
+        <path key={d} d={d} />
+      ))}
+    </svg>
+  );
+}
+
 export default function CustomerProfile() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
@@ -53,7 +88,7 @@ export default function CustomerProfile() {
 
   const { data: customerData, isLoading, isError } = useQuery({
     queryKey: ['customer', id],
-    queryFn: () => api.get<{ customer: Customer }>(`/customers/${id}`),
+    queryFn: () => api.get<{ customer: Customer; breaches: CustomerBreaches }>(`/customers/${id}`),
     enabled: !!id,
   });
 
@@ -95,6 +130,7 @@ export default function CustomerProfile() {
   });
 
   const customer = customerData?.customer;
+  const breaches = customerData?.breaches;
   const calls = journeyData?.calls ?? [];
   const { theme } = useTheme();
   // Resolve chart colours from the CSS tokens at render time so Recharts (which
@@ -140,6 +176,26 @@ export default function CustomerProfile() {
 
   const lastJourneyScore = customer.last_journey_score != null ? Math.round(parseFloat(customer.last_journey_score)) : null;
 
+  // Compliance snapshot derivations (§7 — status carried by text + colour).
+  const cb = breaches ?? { total: 0, open: 0, critical: 0, high: 0, medium: 0, low: 0 };
+  const severe = cb.critical > 0 || cb.high > 0;
+  const clean = cb.total === 0;
+  const severityBreakdown = [
+    cb.critical ? `${cb.critical} critical` : null,
+    cb.high ? `${cb.high} high` : null,
+    cb.medium ? `${cb.medium} medium` : null,
+    cb.low ? `${cb.low} low` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+  const complianceValueClass = clean
+    ? 'text-pass'
+    : severe
+      ? 'text-fail'
+      : cb.open > 0
+        ? 'text-review'
+        : 'text-pass';
+
   // Chart: prefer the journey-level score trend when this customer has scored
   // journeys; otherwise fall back to per-call scores.
   const journeyChartData = journeys
@@ -181,70 +237,9 @@ export default function CustomerProfile() {
             </svg>
             Customers
           </Link>
-          {editMode ? (
-            <div className="mt-2">
-              <div className="flex items-center gap-2 flex-wrap">
-                <input
-                  value={editName}
-                  onChange={(e) => setEditName(e.target.value)}
-                  placeholder="Customer name"
-                  aria-label="Customer name"
-                  className={inputClass}
-                />
-                <input
-                  value={editCrmId}
-                  onChange={(e) => setEditCrmId(e.target.value)}
-                  placeholder="CRM ID"
-                  aria-label="CRM ID"
-                  className={`${inputClass} w-36`}
-                />
-                <button
-                  onClick={() =>
-                    // Send name even when empty — the API clears the name on an
-                    // explicit empty string.
-                    updateMutation.mutate({ name: editName.trim(), external_crm_id: editCrmId.trim() || undefined })
-                  }
-                  disabled={updateMutation.isPending}
-                  className="px-[18px] py-[9px] rounded-btn text-table-cell font-semibold bg-primary text-white hover:bg-primary-hover disabled:opacity-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
-                >
-                  {updateMutation.isPending ? 'Saving…' : 'Save'}
-                </button>
-                <button
-                  onClick={() => setEditMode(false)}
-                  className="text-table-cell text-text-muted hover:text-text-secondary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
-                >
-                  Cancel
-                </button>
-              </div>
-              {updateMutation.isError && (
-                <p className="text-sm text-fail mt-1">
-                  Could not save changes{updateMutation.error instanceof Error ? ` — ${updateMutation.error.message}` : ''}.
-                </p>
-              )}
-            </div>
-          ) : (
-            <div className="mt-2 flex items-center gap-3">
-              <h2 className="text-page-title text-text-primary">{customer.name || formatPhone(customer.phone_normalized)}</h2>
-              {user?.role !== 'adviser' && (
-                <button
-                  onClick={startEdit}
-                  className="text-xs text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
-                >
-                  Edit
-                </button>
-              )}
-              {canAction && (
-                <button
-                  onClick={() => triggerMutation.mutate()}
-                  disabled={triggerMutation.isPending}
-                  className="px-[18px] py-[9px] rounded-btn text-table-cell font-semibold bg-primary text-white hover:bg-primary-hover disabled:opacity-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
-                  title="Score this customer's calls together as one sale"
-                >
-                  {triggerMutation.isPending ? 'Scoring…' : 'Score sale'}
-                </button>
-              )}
-            </div>
-          )}
+          <h2 className="text-page-title text-text-primary mt-2">
+            {customer.name || formatPhone(customer.phone_normalized)}
+          </h2>
           <p className="text-page-sub text-text-subtle mt-0.5">
             {customer.name ? formatPhone(customer.phone_normalized) : 'No name yet'}
           </p>
@@ -253,40 +248,166 @@ export default function CustomerProfile() {
           )}
         </div>
 
-        {/* KPI strip */}
-        <div className="flex gap-6 text-right">
-          <div>
+        {/* Header actions */}
+        <div className="flex items-center gap-2">
+          {user?.role !== 'adviser' && !editMode && (
+            <button
+              onClick={startEdit}
+              className="px-[18px] py-[9px] rounded-btn border border-border text-text-cell font-semibold text-table-cell hover:bg-sidebar-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+            >
+              Edit
+            </button>
+          )}
+          {canAction && (
+            <button
+              onClick={() => triggerMutation.mutate()}
+              disabled={triggerMutation.isPending}
+              className={primaryBtn}
+              title="Score this customer's calls together as one sale"
+            >
+              {triggerMutation.isPending ? 'Scoring…' : 'Score sale'}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Edit form (inline; clears name on an explicit empty string) */}
+      {editMode && (
+        <div className="bg-card border border-border rounded-card p-5">
+          <div className="flex items-center gap-2 flex-wrap">
+            <input
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              placeholder="Customer name"
+              aria-label="Customer name"
+              className={inputClass}
+            />
+            <input
+              value={editCrmId}
+              onChange={(e) => setEditCrmId(e.target.value)}
+              placeholder="CRM ID"
+              aria-label="CRM ID"
+              className={`${inputClass} w-36`}
+            />
+            <button
+              onClick={() =>
+                // Send name even when empty — the API clears the name on an
+                // explicit empty string.
+                updateMutation.mutate({ name: editName.trim(), external_crm_id: editCrmId.trim() || undefined })
+              }
+              disabled={updateMutation.isPending}
+              className={primaryBtn}
+            >
+              {updateMutation.isPending ? 'Saving…' : 'Save'}
+            </button>
+            <button
+              onClick={() => setEditMode(false)}
+              className="text-table-cell text-text-muted hover:text-text-secondary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+            >
+              Cancel
+            </button>
+          </div>
+          {updateMutation.isError && (
+            <p className="text-sm text-fail mt-2">
+              Could not save changes{updateMutation.error instanceof Error ? ` — ${updateMutation.error.message}` : ''}.
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* KPI / summary cards */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        {/* Calls */}
+        <div className="bg-card border border-border rounded-card p-5">
+          <div className="flex justify-between items-center">
             <p className="text-card-label uppercase text-text-muted">Calls</p>
-            <p className="text-card-value text-text-primary">{customer.call_count}</p>
+            <CardIcon paths={['M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6A19.79 19.79 0 012.12 4.18 2 2 0 014.11 2h3']} />
           </div>
-          <div>
+          <p className="text-card-value text-text-primary mt-2.5 tabular-nums">{customer.call_count}</p>
+        </div>
+
+        {/* Sales scored */}
+        <div className="bg-card border border-border rounded-card p-5">
+          <div className="flex justify-between items-center">
             <p className="text-card-label uppercase text-text-muted">Sales scored</p>
-            <p className="text-card-value text-text-primary">{customer.journey_count}</p>
+            <CardIcon paths={['M9 11l3 3L22 4', 'M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11']} />
           </div>
-          <div>
+          <p className="text-card-value text-text-primary mt-2.5 tabular-nums">{customer.journey_count}</p>
+        </div>
+
+        {/* Last sale */}
+        <div className="bg-card border border-border rounded-card p-5">
+          <div className="flex justify-between items-center">
             <p className="text-card-label uppercase text-text-muted">Last sale</p>
-            {lastJourneyScore !== null ? (
-              <p className="text-card-value text-text-primary">
-                {lastJourneyScore}%{' '}
-                <span className={`text-table-cell font-semibold ${customer.last_journey_pass == null ? 'text-review' : customer.last_journey_pass ? 'text-pass' : 'text-fail'}`}>
+            <CardIcon paths={['M22 12l-4 0-3 9-6-18-3 9-4 0']} />
+          </div>
+          {lastJourneyScore !== null ? (
+            <>
+              <div className="mt-2.5 flex items-center gap-2 flex-wrap">
+                <span className="text-card-value text-text-primary tabular-nums">{lastJourneyScore}%</span>
+                <span
+                  className={`inline-block px-2.5 py-[3px] rounded-full text-badge font-semibold ${
+                    customer.last_journey_pass == null
+                      ? 'bg-review-bg text-review'
+                      : customer.last_journey_pass
+                        ? 'bg-pass-bg text-pass'
+                        : 'bg-fail-bg text-fail'
+                  }`}
+                >
                   {customer.last_journey_pass == null ? 'Review' : customer.last_journey_pass ? 'Pass' : 'Fail'}
                 </span>
+              </div>
+              {customer.last_journey_at && (
+                <p className="text-[12px] text-text-muted mt-1">{fmtDate(customer.last_journey_at)}</p>
+              )}
+            </>
+          ) : (
+            <>
+              <p className="text-card-value text-text-muted mt-2.5">—</p>
+              <p className="text-[12px] text-text-muted mt-1">awaiting sale</p>
+            </>
+          )}
+        </div>
+
+        {/* Compliance snapshot */}
+        <div className="bg-card border border-border rounded-card p-5">
+          <div className="flex justify-between items-center">
+            <p className="text-card-label uppercase text-text-muted">Compliance</p>
+            <CardIcon paths={['M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z']} />
+          </div>
+          {clean ? (
+            <>
+              <p className="text-card-value text-pass mt-2.5">Clean</p>
+              <p className="text-[12px] text-text-muted mt-1">No breaches recorded</p>
+            </>
+          ) : (
+            <>
+              <p className={`text-card-value mt-2.5 tabular-nums ${complianceValueClass}`}>
+                {cb.open} <span className="text-sm font-medium">open</span>
               </p>
-            ) : (
-              <>
-                <p className="text-card-value text-text-muted">—</p>
-                <p className="text-[12px] text-text-muted">awaiting sale</p>
-              </>
-            )}
-          </div>
-          <div>
+              <p className={`text-[12px] mt-1 ${severe ? 'text-fail' : 'text-text-muted'}`}>
+                {severityBreakdown || `${cb.total} total`}
+              </p>
+            </>
+          )}
+        </div>
+
+        {/* First seen */}
+        <div className="bg-card border border-border rounded-card p-5">
+          <div className="flex justify-between items-center">
             <p className="text-card-label uppercase text-text-muted">First seen</p>
-            <p className="text-sm font-medium text-text-primary">{new Date(customer.first_seen_at).toLocaleDateString('en-GB')}</p>
+            <CardIcon paths={['M12 22a10 10 0 100-20 10 10 0 000 20z', 'M12 6v6l4 2']} />
           </div>
-          <div>
+          <p className="text-lg font-semibold text-text-primary mt-2.5 tabular-nums">{fmtDate(customer.first_seen_at)}</p>
+        </div>
+
+        {/* Last seen */}
+        <div className="bg-card border border-border rounded-card p-5">
+          <div className="flex justify-between items-center">
             <p className="text-card-label uppercase text-text-muted">Last seen</p>
-            <p className="text-sm font-medium text-text-primary">{new Date(customer.last_seen_at).toLocaleDateString('en-GB')}</p>
+            <CardIcon paths={['M12 22a10 10 0 100-20 10 10 0 000 20z', 'M12 6v6l4 2']} />
           </div>
+          <p className="text-lg font-semibold text-text-primary mt-2.5 tabular-nums">{fmtDate(customer.last_seen_at)}</p>
         </div>
       </div>
 
@@ -313,11 +434,12 @@ export default function CustomerProfile() {
         </div>
       )}
 
-      {/* Scored journeys for this customer (supervisors/admins only) */}
+      {/* Scored sales for this customer (supervisors/admins only) */}
       {canAction && (
         <div className="bg-card border border-border rounded-card overflow-hidden">
           <div className="px-5 py-4 border-b border-border">
             <h3 className="text-section-title text-text-primary">Sales ({journeys.length})</h3>
+            <p className="text-page-sub text-text-subtle mt-0.5">Multi-call sales scored as one compliance unit.</p>
           </div>
           {journeys.length === 0 ? (
             <p className="px-5 py-12 text-center text-text-muted text-table-cell">
@@ -325,41 +447,61 @@ export default function CustomerProfile() {
             </p>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full">
+              <table className="w-full min-w-[720px]">
                 <thead>
                   <tr>
-                    {['Scored', 'Calls', 'Branch', 'Score', 'Result', 'Status', ''].map((h, i) => (
-                      <th key={`${h}-${i}`} className="text-left px-5 py-2.5 text-table-header uppercase text-text-muted bg-table-header border-b border-border">{h}</th>
+                    {['Result', 'Score', 'Branch', 'Calls', 'Status', 'Scored', ''].map((h, i) => (
+                      <th key={`${h}-${i}`} className="text-left px-5 py-2.5 text-table-header uppercase text-text-muted bg-table-header border-b border-border">
+                        {h || <span className="sr-only">Actions</span>}
+                      </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {journeys.map((j) => (
-                    <tr key={j.id} className="hover:bg-table-header transition-colors border-b border-border-light last:border-0">
-                      <td className="px-5 py-3.5 text-table-cell text-text-secondary">
-                        {j.scored_at ? new Date(j.scored_at).toLocaleDateString('en-GB') : '—'}
-                      </td>
-                      <td className="px-5 py-3.5 text-table-cell text-text-cell tabular-nums">{j.call_count}</td>
-                      <td className="px-5 py-3.5 text-table-cell text-text-secondary">{j.branch || '—'}</td>
-                      <td className="px-5 py-3.5 text-table-cell font-medium tabular-nums">
-                        {j.overall_score != null ? `${Number(j.overall_score).toFixed(1)}%` : '—'}
-                      </td>
-                      <td className={`px-5 py-3.5 text-table-cell ${j.pass == null ? 'text-text-muted' : j.pass ? 'text-pass font-semibold' : 'text-fail font-semibold'}`}>
-                        {j.pass == null ? '—' : j.pass ? 'Pass' : 'Fail'}
-                      </td>
-                      <td className="px-5 py-3.5">
-                        <JourneyStatusBadge status={j.status} />
-                      </td>
-                      <td className="px-5 py-3.5">
-                        <Link
-                          to={`/journeys/${j.id}`}
-                          className="text-primary hover:underline text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
-                        >
-                          View
-                        </Link>
-                      </td>
-                    </tr>
-                  ))}
+                  {journeys.map((j) => {
+                    const failed = j.pass === false;
+                    return (
+                      <tr
+                        key={j.id}
+                        className={`hover:bg-table-header transition-colors border-b border-border-light last:border-0 border-l-[3px] ${
+                          failed ? 'border-l-fail bg-fail-bg/30' : 'border-l-transparent'
+                        }`}
+                      >
+                        <td className="px-5 py-3.5">
+                          {j.pass == null ? (
+                            <span className="text-text-muted text-table-cell">—</span>
+                          ) : (
+                            <span
+                              className={`inline-block px-2.5 py-[3px] rounded-full text-badge font-semibold ${
+                                j.pass ? 'bg-pass-bg text-pass' : 'bg-fail-bg text-fail'
+                              }`}
+                            >
+                              {j.pass ? 'Pass' : 'Fail'}
+                            </span>
+                          )}
+                        </td>
+                        <td className={`px-5 py-3.5 text-table-cell font-semibold tabular-nums ${failed ? 'text-fail' : 'text-text-cell'}`}>
+                          {j.overall_score != null ? `${Number(j.overall_score).toFixed(1)}%` : '—'}
+                        </td>
+                        <td className="px-5 py-3.5 text-table-cell text-text-secondary">{j.branch || '—'}</td>
+                        <td className="px-5 py-3.5 text-table-cell text-text-cell tabular-nums">{j.call_count}</td>
+                        <td className="px-5 py-3.5">
+                          <JourneyStatusBadge status={j.status} />
+                        </td>
+                        <td className="px-5 py-3.5 text-table-cell text-text-muted whitespace-nowrap">
+                          {j.scored_at ? new Date(j.scored_at).toLocaleDateString('en-GB') : '—'}
+                        </td>
+                        <td className="px-5 py-3.5 text-right">
+                          <Link
+                            to={`/journeys/${j.id}`}
+                            className="text-primary text-table-cell font-semibold hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                          >
+                            View
+                          </Link>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -367,50 +509,72 @@ export default function CustomerProfile() {
         </div>
       )}
 
-      {/* Journey timeline (supervisors/admins only) */}
+      {/* Call history timeline (supervisors/admins only) */}
       {user?.role !== 'adviser' && (
         <div className="bg-card border border-border rounded-card overflow-hidden">
           <div className="px-5 py-4 border-b border-border">
             <h3 className="text-section-title text-text-primary">Call history ({calls.length})</h3>
+            <p className="text-page-sub text-text-subtle mt-0.5">Every call recorded for this customer.</p>
           </div>
           {calls.length === 0 ? (
             <p className="px-5 py-12 text-center text-text-muted text-table-cell">No calls yet</p>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[680px]">
+              <table className="w-full min-w-[820px]">
                 <thead>
                   <tr>
                     {['Date', 'Adviser', 'Duration', 'Status', 'Score', 'Result', 'Breaches', 'Coaching snippet', ''].map((h, i) => (
-                      <th key={`${h}-${i}`} className="text-left px-5 py-2.5 text-table-header uppercase text-text-muted bg-table-header border-b border-border">{h}</th>
+                      <th key={`${h}-${i}`} className="text-left px-5 py-2.5 text-table-header uppercase text-text-muted bg-table-header border-b border-border">
+                        {h || <span className="sr-only">Actions</span>}
+                      </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {calls.map((c) => {
-                    const date = new Date(c.call_date || c.created_at).toLocaleDateString('en-GB');
-                    const resultClass = c.pass === null ? 'text-text-muted' : c.pass ? 'text-pass font-semibold' : 'text-fail font-semibold';
+                    const failed = c.pass === false;
+                    const breachN = Number(c.breach_count) || 0;
                     return (
-                      <tr key={c.id} className="hover:bg-table-header transition-colors border-b border-border-light last:border-0">
-                        <td className="px-5 py-3.5 text-table-cell text-text-secondary whitespace-nowrap">{date}</td>
+                      <tr
+                        key={c.id}
+                        className={`hover:bg-table-header transition-colors border-b border-border-light last:border-0 border-l-[3px] ${
+                          failed ? 'border-l-fail bg-fail-bg/30' : 'border-l-transparent'
+                        }`}
+                      >
+                        <td className="px-5 py-3.5 text-table-cell text-text-secondary whitespace-nowrap">
+                          {new Date(c.call_date || c.created_at).toLocaleDateString('en-GB')}
+                        </td>
                         <td className="px-5 py-3.5 text-table-cell text-text-primary">{c.agent_name || '—'}</td>
                         <td className="px-5 py-3.5 text-table-cell text-text-cell tabular-nums">{formatDuration(c.duration_seconds)}</td>
                         <td className="px-5 py-3.5">
                           <CallStatusBadge status={c.status} pass={c.pass} />
                         </td>
-                        <td className="px-5 py-3.5 text-table-cell font-medium tabular-nums">
+                        <td className={`px-5 py-3.5 text-table-cell font-semibold tabular-nums ${failed ? 'text-fail' : 'text-text-cell'}`}>
                           {c.overall_score !== null ? `${c.overall_score.toFixed(1)}%` : '—'}
                         </td>
-                        <td className={`px-5 py-3.5 text-table-cell ${resultClass}`}>
-                          {c.pass === null ? '—' : c.pass ? 'Pass' : 'Fail'}
+                        <td className="px-5 py-3.5">
+                          {c.pass == null ? (
+                            <span className="text-text-muted text-table-cell">—</span>
+                          ) : (
+                            <span
+                              className={`inline-block px-2.5 py-[3px] rounded-full text-badge font-semibold ${
+                                c.pass ? 'bg-pass-bg text-pass' : 'bg-fail-bg text-fail'
+                              }`}
+                            >
+                              {c.pass ? 'Pass' : 'Fail'}
+                            </span>
+                          )}
                         </td>
-                        <td className="px-5 py-3.5 text-table-cell text-text-secondary tabular-nums">{c.breach_count}</td>
+                        <td className={`px-5 py-3.5 text-table-cell tabular-nums ${breachN > 0 ? 'text-fail font-semibold' : 'text-text-muted'}`}>
+                          {breachN}
+                        </td>
                         <td className="px-5 py-3.5 text-table-cell text-text-muted max-w-xs truncate">
                           {c.coaching_summary ? `"${c.coaching_summary}"` : '—'}
                         </td>
-                        <td className="px-5 py-3.5">
+                        <td className="px-5 py-3.5 text-right">
                           <Link
                             to={`/calls/${c.id}`}
-                            className="text-primary hover:underline text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                            className="text-primary text-table-cell font-semibold hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
                           >
                             View
                           </Link>

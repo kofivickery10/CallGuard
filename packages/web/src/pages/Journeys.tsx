@@ -69,7 +69,7 @@ export function Journeys() {
           <table className="w-full min-w-[720px]">
             <thead>
               <tr>
-                {['Customer', 'Calls', 'Branch', 'Score', 'Result', 'Status', 'Scored', ''].map((h) => (
+                {['Customer', 'Result', 'Score', 'Branch', 'Calls', 'Status', 'Scored', ''].map((h) => (
                   <th key={h} className="text-left px-5 py-2.5 text-table-header uppercase text-text-muted bg-table-header border-b border-border">
                     {h || <span className="sr-only">Actions</span>}
                   </th>
@@ -114,30 +114,41 @@ export function Journeys() {
                 </tr>
               )}
 
-              {journeys.map((j) => (
-                <tr key={j.id} className="hover:bg-table-header transition-colors border-b border-border-light last:border-0">
+              {journeys.map((j) => {
+                const failed = j.pass === false;
+                return (
+                <tr
+                  key={j.id}
+                  className={`hover:bg-table-header transition-colors border-b border-border-light last:border-0 border-l-[3px] ${
+                    failed ? 'border-l-fail bg-fail-bg/30' : 'border-l-transparent'
+                  }`}
+                >
                   <td className="px-5 py-3.5 text-table-cell">
                     <Link to={`/customers/${j.customer_id}`} className="text-primary font-semibold hover:underline">
                       {j.customer_name || 'Unknown customer'}
                     </Link>
                     <div className="text-xs text-text-muted">{formatPhone(j.customer_phone) || '—'}</div>
                   </td>
-                  <td className="px-5 py-3.5 text-table-cell text-text-cell tabular-nums">{j.call_count}</td>
-                  <td className="px-5 py-3.5 text-table-cell text-text-secondary">{j.branch || '—'}</td>
-                  <td className="px-5 py-3.5 text-table-cell text-text-cell font-medium tabular-nums">
-                    {j.overall_score != null ? `${Number(j.overall_score).toFixed(1)}%` : '—'}
-                  </td>
-                  <td className="px-5 py-3.5 text-table-cell">
+                  <td className="px-5 py-3.5">
                     {j.pass == null ? (
-                      <span className="text-text-muted">—</span>
+                      <span className="text-text-muted text-table-cell">—</span>
                     ) : (
-                      <span className={j.pass ? 'text-pass font-semibold' : 'text-fail font-semibold'}>
+                      <span
+                        className={`inline-block px-2.5 py-[3px] rounded-full text-badge font-semibold ${
+                          j.pass ? 'bg-pass-bg text-pass' : 'bg-fail-bg text-fail'
+                        }`}
+                      >
                         {j.pass ? 'Pass' : 'Fail'}
                       </span>
                     )}
                   </td>
+                  <td className={`px-5 py-3.5 text-table-cell font-semibold tabular-nums ${failed ? 'text-fail' : 'text-text-cell'}`}>
+                    {j.overall_score != null ? `${Number(j.overall_score).toFixed(1)}%` : '—'}
+                  </td>
+                  <td className="px-5 py-3.5 text-table-cell text-text-secondary">{j.branch || '—'}</td>
+                  <td className="px-5 py-3.5 text-table-cell text-text-cell tabular-nums">{j.call_count}</td>
                   <td className="px-5 py-3.5"><JourneyStatusBadge status={j.status} /></td>
-                  <td className="px-5 py-3.5 text-table-cell text-text-muted">
+                  <td className="px-5 py-3.5 text-table-cell text-text-muted whitespace-nowrap">
                     {j.scored_at ? new Date(j.scored_at).toLocaleDateString('en-GB') : '—'}
                   </td>
                   <td className="px-5 py-3.5 text-right">
@@ -146,7 +157,8 @@ export function Journeys() {
                     </Link>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
