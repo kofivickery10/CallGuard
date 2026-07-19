@@ -19,3 +19,6 @@ evaluation-report.json
 # Client-supplied proprietary source docs (keep out of git history)
 docs/trustpoint/*.docx
 docs/trustpoint/*.xlsx
+
+# Local direnv / Claude tooling config (machine-specific)
+.envrc
