@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api/client';
+import { useTableControls, SortHead, TablePagination, TableSearch } from '../components/DataTable';
 
 interface BillingRow {
   org_id: string;
@@ -35,17 +36,35 @@ export default function Billing() {
   const totalDeepgram = rows.reduce((a, r) => a + r.deepgram_cost_estimate, 0);
   const grossMargin = totalIncome - totalClaude - totalDeepgram;
 
+  const table = useTableControls(rows, {
+    initialSortKey: 'monthly_income',
+    initialSortDir: 'desc',
+    searchFields: ['org_name', 'plan'],
+    pageSize: 25,
+    sortValue: (r, key) => {
+      const cost = r.claude_cost_estimate + r.deepgram_cost_estimate;
+      switch (key) {
+        case 'active_seats': return r.active_seats;
+        case 'monthly_income': return r.monthly_income;
+        case 'cost': return cost;
+        case 'margin': return r.monthly_income - cost;
+        default: return String(r[key as keyof BillingRow] ?? '').toLowerCase();
+      }
+    },
+  });
+
   return (
     <div className="p-6 space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h2 className="text-page-title text-text-primary">Billing Overview</h2>
         <div className="flex items-center gap-2">
+          <TableSearch value={table.search} onChange={table.setSearch} placeholder="Search tenants…" />
           <label className="text-sm text-text-muted">Month</label>
           <input
             type="month"
             value={month}
             onChange={(e) => setMonth(e.target.value)}
-            className="border border-border rounded-btn px-3 py-1.5 text-sm"
+            className="border border-border rounded-btn px-3 py-1.5 text-sm bg-card text-text-primary focus:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
           />
         </div>
       </div>
@@ -71,13 +90,17 @@ export default function Billing() {
         <table className="w-full text-sm">
           <thead className="bg-table-header border-b border-border">
             <tr>
-              {['Organisation', 'Plan', 'Active seats', 'Monthly income', 'Running cost', 'Margin', ''].map((h) => (
-                <th key={h} className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-text-muted">{h}</th>
-              ))}
+              <SortHead label="Organisation" columnKey="org_name" activeKey={table.sortKey} dir={table.sortDir} onSort={table.toggleSort} />
+              <SortHead label="Plan" columnKey="plan" activeKey={table.sortKey} dir={table.sortDir} onSort={table.toggleSort} />
+              <SortHead label="Active seats" columnKey="active_seats" activeKey={table.sortKey} dir={table.sortDir} onSort={table.toggleSort} />
+              <SortHead label="Monthly income" columnKey="monthly_income" activeKey={table.sortKey} dir={table.sortDir} onSort={table.toggleSort} />
+              <SortHead label="Running cost" columnKey="cost" activeKey={table.sortKey} dir={table.sortDir} onSort={table.toggleSort} />
+              <SortHead label="Margin" columnKey="margin" activeKey={table.sortKey} dir={table.sortDir} onSort={table.toggleSort} />
+              <th className="px-4 py-3" />
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
-            {rows.map((r) => {
+            {table.pageRows.map((r) => {
               const cost = r.claude_cost_estimate + r.deepgram_cost_estimate;
               const margin = r.monthly_income - cost;
               // Flag tenants whose processing cost has eaten most of their seat
@@ -121,15 +144,16 @@ export default function Billing() {
                 </tr>
               );
             })}
-            {rows.length === 0 && (
+            {table.total === 0 && (
               <tr>
                 <td colSpan={7} className="px-4 py-8 text-center text-text-muted">
-                  No data for {month}
+                  {rows.length === 0 ? `No data for ${month}` : 'No tenants match your search'}
                 </td>
               </tr>
             )}
           </tbody>
         </table>
+        <TablePagination page={table.page} totalPages={table.totalPages} total={table.total} onPage={table.setPage} noun="tenants" />
       </div>
     </div>
   );
