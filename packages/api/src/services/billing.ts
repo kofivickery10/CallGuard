@@ -73,26 +73,34 @@ export interface MonthBilling {
   total: number;
 }
 
+// Live billing per org from current headcount (used for the current month and
+// as a fallback for a just-ended month not yet frozen).
+async function liveBillingByOrg(): Promise<Map<string, MonthBilling>> {
+  const out = new Map<string, MonthBilling>();
+  for (const [orgId, b] of aggregateByOrg(await billableSeatRows())) {
+    out.set(orgId, { seatCount: b.seatCount, total: b.total });
+  }
+  return out;
+}
+
 // Billing for a given month, per org. The current (not-yet-frozen) month is
-// computed live from current headcount; any past month is read from the frozen
+// computed live from current headcount; a past month is read from the frozen
 // ledger (billing_periods) so re-scores/purges/plan-changes can't rewrite
-// history. `monthStart` is 'YYYY-MM-DD' (first of month); `isCurrent` says
-// whether that month is the live one.
+// history. `monthStart` is 'YYYY-MM-DD' (first of month). `live` forces the
+// current-headcount path; `liveFallback` uses it only when the ledger has no
+// rows yet — i.e. the just-ended month before the daily snapshot has frozen it,
+// so it doesn't read as £0 for up to a day after month close.
 export async function billingForMonth(
   monthStart: string,
-  isCurrent: boolean
+  opts: { live: boolean; liveFallback?: boolean }
 ): Promise<Map<string, MonthBilling>> {
-  const out = new Map<string, MonthBilling>();
-  if (isCurrent) {
-    for (const [orgId, b] of aggregateByOrg(await billableSeatRows())) {
-      out.set(orgId, { seatCount: b.seatCount, total: b.total });
-    }
-    return out;
-  }
+  if (opts.live) return liveBillingByOrg();
   const rows = await query<{ organization_id: string; seat_count: number; total: string }>(
     `SELECT organization_id, seat_count, total FROM billing_periods WHERE period_month = $1`,
     [monthStart]
   );
+  if (rows.length === 0 && opts.liveFallback) return liveBillingByOrg();
+  const out = new Map<string, MonthBilling>();
   for (const r of rows) out.set(r.organization_id, { seatCount: r.seat_count, total: Number(r.total) });
   return out;
 }
@@ -123,19 +131,31 @@ export async function currentBillingForOrg(orgId: string): Promise<MonthBilling>
 // Freeze billing for one calendar month for every active org. Idempotent: the
 // UNIQUE(organization_id, period_month) constraint plus ON CONFLICT DO NOTHING
 // means re-running never overwrites an already-frozen month. `monthStart` is
-// the first day of the month (UTC), 'YYYY-MM-DD'. Uses current headcount, so
-// it's meant to run at (or just after) month close. Returns rows newly frozen.
+// the first day of the month (UTC), 'YYYY-MM-DD'. Returns rows newly frozen.
+//
+// Writes a row for every active org, including zero-seat ones, so the ledger
+// unambiguously records "billed £0" rather than leaving a tenant absent.
+//
+// Known limitation: it uses *current* headcount, so it's meant to run at (or
+// just after) month close. Past headcount isn't reconstructable — if the job's
+// first run for a month is much later (e.g. the worker was down across the
+// boundary), the frozen seat_count reflects run-time headcount, not month-end.
 export async function snapshotBillingMonth(monthStart: string): Promise<number> {
   const byOrg = aggregateByOrg(await billableSeatRows());
+  const activeOrgs = await query<{ id: string; plan: string; seat_price_override: string | null }>(
+    `SELECT id, plan, seat_price_override FROM organizations WHERE status = 'active'`
+  );
   let written = 0;
-  for (const [orgId, b] of byOrg) {
+  for (const org of activeOrgs) {
+    const b = byOrg.get(org.id);
+    const override = org.seat_price_override == null ? null : Number(org.seat_price_override);
     const inserted = await query<{ id: string }>(
       `INSERT INTO billing_periods
          (organization_id, period_month, plan, seat_count, seat_price_override, total)
        VALUES ($1, $2, $3, $4, $5, $6)
        ON CONFLICT (organization_id, period_month) DO NOTHING
        RETURNING id`,
-      [orgId, monthStart, b.orgPlan, b.seatCount, b.seatPriceOverride, b.total.toFixed(2)]
+      [org.id, monthStart, org.plan, b?.seatCount ?? 0, override, (b?.total ?? 0).toFixed(2)]
     );
     if (inserted.length) written++;
   }

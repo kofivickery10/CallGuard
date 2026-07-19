@@ -95,7 +95,8 @@ interface CallStats {
 }
 interface SeatMonth {
   month: string;
-  active_seats: string;
+  active_seats: number;
+  total: number;
 }
 interface TenantDetailData {
   org: OrgDetail;

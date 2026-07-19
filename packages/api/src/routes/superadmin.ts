@@ -765,25 +765,40 @@ superadminRouter.get('/billing', async (req, res, next) => {
     }
     const monthStart = `${month}-01`;
 
-    // Active tenants. Seats and income come from the billing map, costs from
-    // the usage ledger (both below) — this just supplies the org identity/plan.
+    // Derive "current" / "previous" month from the DB so the comparison matches
+    // the SQL date_trunc basis (avoids a UTC-vs-server-TZ mismatch at the
+    // month boundary).
+    const monthMeta = await queryOne<{ now_month: string; prev_month: string }>(
+      `SELECT to_char(date_trunc('month', now()), 'YYYY-MM')                       AS now_month,
+              to_char(date_trunc('month', now()) - interval '1 month', 'YYYY-MM') AS prev_month`
+    );
+    const isCurrentMonth = month === monthMeta?.now_month;
+    const isPrevMonth = month === monthMeta?.prev_month;
+
+    // Tenants to show: currently-active ones, plus any tenant (e.g. since
+    // cancelled) that has a frozen ledger row for this month, so historical
+    // billing isn't hidden once a tenant churns.
     const orgRows = await query<{
       org_id: string;
       org_name: string;
       plan: string;
       seat_price_override: string | null;
     }>(
-      `SELECT id AS org_id, name AS org_name, plan, seat_price_override
-         FROM organizations
-        WHERE status = 'active'
-        ORDER BY name`
+      `SELECT o.id AS org_id, o.name AS org_name, o.plan, o.seat_price_override
+         FROM organizations o
+        WHERE o.status = 'active'
+           OR EXISTS (
+                SELECT 1 FROM billing_periods bp
+                 WHERE bp.organization_id = o.id AND bp.period_month = $1::date
+              )
+        ORDER BY o.name`,
+      [monthStart]
     );
 
-    // Headcount billing per org: the current (not-yet-frozen) month is priced
-    // live from current headcount; a past month is read from the frozen ledger
-    // so history can't be rewritten by re-scores/purges/plan changes.
-    const isCurrentMonth = month === new Date().toISOString().slice(0, 7);
-    const billingByOrg = await billingForMonth(monthStart, isCurrentMonth);
+    // Headcount billing per org: the current month is priced live; a past month
+    // reads the frozen ledger (so history can't be rewritten). The just-ended
+    // month falls back to live headcount until the daily snapshot freezes it.
+    const billingByOrg = await billingForMonth(monthStart, { live: isCurrentMonth, liveFallback: isPrevMonth });
 
     // Actual cost per org from the usage ledger — the complete, correctly-priced
     // spend (every operation: transcribe, cleanup, score, verify, live-score,
@@ -884,22 +899,32 @@ superadminRouter.get('/billing/:orgId', async (req, res, next) => {
     }
 
     // Billed seats + income per month: frozen ledger for past months, live
-    // headcount for the current month. Call activity (calls/costs) still comes
-    // from monthRows; a month with billing but no calls won't appear in this
-    // per-tenant breakdown (it's call-activity-driven).
+    // headcount for the current month.
     const billingHistory = await billingHistoryForOrg(req.params.orgId);
     const currentBilling = await currentBillingForOrg(req.params.orgId);
     const currentMonth = new Date().toISOString().slice(0, 7);
     const billedFor = (m: string) =>
       m === currentMonth ? currentBilling : billingHistory.get(m) ?? { seatCount: 0, total: 0 };
+    const callsByMonth = new Map(monthRows.map((r) => [r.month, Number(r.calls)]));
 
-    const breakdown = monthRows.map((r) => {
-      const cost = costByMonth.get(r.month) ?? { claude: 0, deepgram: 0 };
-      const billed = billedFor(r.month);
+    // Union of every month that has call activity, cost, or billing — so a
+    // month with real cost/billing but no scored calls isn't dropped.
+    const months = [
+      ...new Set<string>([
+        ...monthRows.map((r) => r.month),
+        ...costByMonth.keys(),
+        ...billingHistory.keys(),
+        currentMonth,
+      ]),
+    ].sort();
+
+    const breakdown = months.map((month) => {
+      const cost = costByMonth.get(month) ?? { claude: 0, deepgram: 0 };
+      const billed = billedFor(month);
       return {
-        month:                  r.month,
+        month,
         active_seats:           billed.seatCount,
-        calls:                  Number(r.calls),
+        calls:                  callsByMonth.get(month) ?? 0,
         monthly_income:         parseFloat(billed.total.toFixed(2)),
         claude_cost_estimate:   parseFloat(toGbp(cost.claude).toFixed(4)),
         deepgram_cost_estimate: parseFloat(toGbp(cost.deepgram).toFixed(4)),
