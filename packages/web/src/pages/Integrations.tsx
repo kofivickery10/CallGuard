@@ -962,7 +962,7 @@ function ZohoConnectModal({ initial, onClose }: { initial: ZohoConnection | null
   const [saleTriggerEnabled, setSaleTriggerEnabled] = useState(initial?.sale_trigger_enabled ?? false);
   const [qaModule, setQaModule] = useState(initial?.qa_module ?? '');
   const [qaFieldMap, setQaFieldMap] = useState<ZohoQAFieldMap>(
-    initial?.qa_field_map ?? { score: 'AI_Call_Score', client_name: 'Name', customer_lookup: 'Client', notes: '' }
+    initial?.qa_field_map ?? { score: 'AI_Call_Score', client_name: 'Name', customer_lookup: 'Client', notes: '', agent: '' }
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -1075,6 +1075,9 @@ function ZohoConnectModal({ initial, onClose }: { initial: ZohoConnection | null
               </Field>
               <Field label="Summary field (optional)" hint="Multi-line text field for the 'what happened' summary. Leave blank to skip.">
                 <input type="text" value={qaFieldMap.notes} onChange={(e) => setQaFieldMap({ ...qaFieldMap, notes: e.target.value })} className={inputCls} placeholder="e.g. AI_Call_Notes" />
+              </Field>
+              <Field label="Agent name field (optional)" hint="Text field for the closing agent's name. Leave blank to skip. Use this when advisers aren't Zoho users, so the record still shows who took the call.">
+                <input type="text" value={qaFieldMap.agent ?? ''} onChange={(e) => setQaFieldMap({ ...qaFieldMap, agent: e.target.value })} className={inputCls} placeholder="e.g. AI_Call_Agent" />
               </Field>
             </>
           )}
