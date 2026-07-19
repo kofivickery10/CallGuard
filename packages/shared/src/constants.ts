@@ -92,10 +92,11 @@ export const DEEPGRAM_PRICING = {
   per_minute_mono: 0.0086, // mono_diarize tenants — the default & majority
 };
 
-// Monthly revenue per active seat by tier (GBP). A "seat" is an adviser with at
-// least one scored call in the month. A tenant can override this with a
-// negotiated rate (organizations.seat_price_override); when set, all that
-// tenant's seats bill at the override regardless of tier.
+// Monthly revenue per billable seat by tier (GBP). A "seat" is any tenant user
+// who isn't billing_exempt (headcount billing — every provisioned user, not
+// just those active on calls). A tenant can override this with a negotiated
+// rate (organizations.seat_price_override); when set, all that tenant's seats
+// bill at the override regardless of tier.
 export const SEAT_PRICING: Record<Plan, number> = {
   core: 199,
   professional: 299,

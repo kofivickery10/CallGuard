@@ -2,9 +2,9 @@ import { query } from '../db/client.js';
 import { SEAT_PRICING, effectivePlan } from '@callguard/shared';
 import type { Plan } from '@callguard/shared';
 
-// Billing is headcount-based: a billable seat is an adviser (role='adviser')
-// who isn't billing_exempt, in an active org. The seat bills whether or not the
-// adviser took any calls in the month — presence of the seat is what bills.
+// Billing is headcount-based: a billable seat is any tenant user who isn't
+// billing_exempt (every role except the platform superadmin), in an active org.
+// The seat bills on presence — whether or not that user handled any calls.
 
 // Monthly revenue for one billable seat. A negotiated per-tenant override bills
 // every seat at that flat rate; otherwise the seat's effective tier (org plan,
@@ -33,7 +33,7 @@ export async function billableSeatRows(): Promise<BillableSeatRow[]> {
        FROM organizations o
        JOIN users u ON u.organization_id = o.id
       WHERE o.status = 'active'
-        AND u.role = 'adviser'
+        AND u.role != 'superadmin'
         AND NOT u.billing_exempt`
   );
 }

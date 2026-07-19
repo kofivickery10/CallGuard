@@ -4,7 +4,8 @@
 -- drifts as calls are re-scored, edited, or retention-purged, so there was no
 -- durable record of what a tenant was actually billed. This table freezes one
 -- row per active tenant per month: the billed seat count (headcount of billable
--- advisers), the plan and any negotiated override in force, and the total. The
+-- users, all non-exempt tenant users), the plan and any negotiated override in
+-- force, and the total. The
 -- month-end snapshot job (jobs/processors/billing-snapshot.ts) writes it once
 -- per month; nothing recomputes it afterwards.
 CREATE TABLE billing_periods (
@@ -13,7 +14,7 @@ CREATE TABLE billing_periods (
     -- First day (UTC) of the billed calendar month.
     period_month        DATE NOT NULL,
     plan                TEXT NOT NULL,
-    -- Number of billable seats (advisers, excluding billing_exempt) at snapshot.
+    -- Number of billable seats (all non-exempt tenant users) at snapshot.
     seat_count          INTEGER NOT NULL,
     -- The negotiated flat rate in force, if any (else per-tier pricing applied).
     seat_price_override NUMERIC(12, 2),
