@@ -115,7 +115,9 @@ export default function CustomerProfile() {
     mutationFn: () => api.post<{ journey_id?: string; message?: string }>('/journeys/trigger', { customer_id: id }),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['customer-journeys', id] });
-      if (!res.journey_id && res.message) void notify(res.message);
+      // Always give feedback: the endpoint is idempotent, so a click on an
+      // already-scored sale is a no-op and would otherwise look broken.
+      if (res.message) void notify(res.message);
     },
     onError: (err) => void notify('Failed to score the sale: ' + (err instanceof Error ? err.message : 'unknown error')),
   });

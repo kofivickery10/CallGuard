@@ -1,5 +1,5 @@
 import { useParams, Link } from 'react-router-dom';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
@@ -18,8 +18,11 @@ export function JourneyDetail() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const { notify } = useDialog();
+  const { notify, confirm } = useDialog();
   const canAction = user?.role === 'admin' || user?.role === 'supervisor';
+  // Re-scoring re-spends scoring tokens and re-pushes to the CRM, so it's
+  // admin-only (see POST /journeys/:id/rescore) and gated behind a confirm.
+  const isAdmin = user?.role === 'admin';
   const [resolvingId, setResolvingId] = useState<string | null>(null);
 
   const { data: journey, isLoading, isError } = useQuery({
@@ -31,6 +34,24 @@ export function JourneyDetail() {
       return s === 'pending' || s === 'scoring' ? 4000 : false;
     },
   });
+
+  const rescoreMutation = useMutation({
+    mutationFn: () => api.post(`/journeys/${id}/rescore`, {}),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['journey', id] });
+      void notify('Re-scoring started — the result will update here shortly.');
+    },
+    onError: (err) =>
+      void notify('Failed to re-score: ' + (err instanceof Error ? err.message : 'unknown error')),
+  });
+
+  const handleRescore = async () => {
+    const ok = await confirm(
+      'Re-score this sale? It re-runs the AI scorecard on the same calls and updates the sale, its breaches, and any connected CRM record.',
+      { confirmLabel: 'Re-score' }
+    );
+    if (ok) rescoreMutation.mutate();
+  };
 
   const resolve = async (itemScoreId: string, result: 'pass' | 'fail') => {
     setResolvingId(itemScoreId);
@@ -123,18 +144,34 @@ export function JourneyDetail() {
             {journey.scored_at && <span>Scored {new Date(journey.scored_at).toLocaleString('en-GB')}</span>}
           </div>
         </div>
-        {journey.overall_score != null && (
-          <div className="flex items-center gap-3">
-            <span
-              className={`inline-block px-2.5 py-[3px] rounded-full text-badge font-semibold ${
-                journey.pass ? 'bg-pass-bg text-pass' : 'bg-fail-bg text-fail'
-              }`}
+        <div className="flex items-center gap-3">
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={handleRescore}
+              disabled={
+                rescoreMutation.isPending ||
+                journey.status === 'scoring' ||
+                journey.status === 'pending'
+              }
+              className="px-[18px] py-[9px] rounded-btn text-table-cell font-semibold bg-card border border-border text-text-primary hover:border-primary disabled:opacity-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
             >
-              {journey.pass ? 'Pass' : 'Fail'}
-            </span>
-            <ScoreGauge score={Number(journey.overall_score)} size="lg" />
-          </div>
-        )}
+              {rescoreMutation.isPending || journey.status === 'scoring' ? 'Re-scoring…' : 'Re-score'}
+            </button>
+          )}
+          {journey.overall_score != null && (
+            <>
+              <span
+                className={`inline-block px-2.5 py-[3px] rounded-full text-badge font-semibold ${
+                  journey.pass ? 'bg-pass-bg text-pass' : 'bg-fail-bg text-fail'
+                }`}
+              >
+                {journey.pass ? 'Pass' : 'Fail'}
+              </span>
+              <ScoreGauge score={Number(journey.overall_score)} size="lg" />
+            </>
+          )}
+        </div>
       </div>
 
       {journey.status === 'failed' && journey.error_message && (

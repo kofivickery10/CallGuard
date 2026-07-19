@@ -503,8 +503,9 @@ callRouter.patch('/:id/assign-agent', authenticate, requireAdmin, async (req, re
   }
 });
 
-// Re-score a call
-callRouter.post('/:id/rescore', requireActioner, async (req, res, next) => {
+// Re-score a call. Admin-only: re-scoring re-spends scoring tokens, so it's a
+// considered action, not something every actioner should trigger at will.
+callRouter.post('/:id/rescore', requireAdmin, async (req, res, next) => {
   try {
     const call = await queryOne<Call>(
       'SELECT * FROM calls WHERE id = $1 AND organization_id = $2',
