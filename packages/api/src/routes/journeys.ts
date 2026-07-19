@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { authenticate, requireOrgView, requireActioner } from '../middleware/auth.js';
+import { authenticate, requireOrgView, requireActioner, requireAdmin } from '../middleware/auth.js';
 import { query, queryOne } from '../db/client.js';
 import { AppError } from '../middleware/errors.js';
 import { assembleJourney } from '../services/journey.js';
@@ -129,7 +129,54 @@ journeysRouter.post('/trigger', requireActioner, async (req, res, next) => {
       return;
     }
 
-    res.status(202).json({ journey_id: journeyId });
+    // assembleJourney is idempotent: for an already-scored sale over the same
+    // calls it returns the existing journey without re-scoring. Tell the user
+    // which happened so the button never looks like it did nothing.
+    const j = await queryOne<{ status: JourneyStatus }>(
+      'SELECT status FROM journeys WHERE id = $1',
+      [journeyId]
+    );
+    const message =
+      j?.status === 'scored'
+        ? 'This sale is already scored. An admin can re-score it from the sale page.'
+        : 'Scoring started — the result will appear below shortly.';
+
+    res.status(202).json({ journey_id: journeyId, message });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/journeys/:id/rescore — admin-only forced re-score of an existing
+// sale (e.g. after a transcript correction). Re-runs the scorecard on the same
+// calls: score-journey clears the sale's prior breaches and upserts its item
+// scores, so this replaces the result in place rather than duplicating it, and
+// re-pushes to the CRM. Deliberately admin-only and not a general button —
+// each run spends scoring tokens, so it must be a considered action.
+journeysRouter.post('/:id/rescore', requireAdmin, async (req, res, next) => {
+  try {
+    const journey = await queryOne<{ id: string; status: JourneyStatus }>(
+      'SELECT id, status FROM journeys WHERE id = $1 AND organization_id = $2',
+      [req.params.id, req.user!.organizationId]
+    );
+    if (!journey) throw new AppError(404, 'Sale not found');
+    if (journey.status === 'pending' || journey.status === 'scoring') {
+      throw new AppError(409, 'This sale is already being scored');
+    }
+
+    await query(
+      "UPDATE journeys SET status = 'scoring', updated_at = now() WHERE id = $1",
+      [journey.id]
+    );
+
+    const { scoringQueue } = await import('../jobs/queue.js');
+    await scoringQueue.add(
+      'score-journey',
+      { journeyId: journey.id },
+      { jobId: `rescore-journey-${journey.id}-${Date.now()}` }
+    );
+
+    res.json({ message: 'Re-scoring initiated' });
   } catch (err) {
     next(err);
   }
