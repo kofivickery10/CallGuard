@@ -211,7 +211,12 @@ export async function scoreTranscript(
     (withCoaching ? 6144 : 2048) + items.length * perItemBudget
   );
 
-  const response = await client.messages.create({
+  // Stream rather than a plain create: journey scoring builds a large output
+  // budget (up to 32k on big scorecards), and the SDK now hard-errors on a
+  // non-streaming request whose max_tokens implies it could run past 10 minutes
+  // ("Streaming is strongly recommended..."), which was failing every
+  // score-journey retry. finalMessage() returns the same Message shape.
+  const response = await client.messages.stream({
     model,
     max_tokens: maxTokens,
     messages: [
@@ -290,7 +295,7 @@ export async function scoreTranscript(
       },
     ],
     tool_choice: { type: 'tool', name: 'submit_scores' },
-  }, CACHE_TTL_HEADERS);
+  }, CACHE_TTL_HEADERS).finalMessage();
 
   const toolUse = response.content.find(
     (block) => block.type === 'tool_use'
