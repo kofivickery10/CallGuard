@@ -560,7 +560,7 @@ h1, h2, h3, h4, h5 { color: var(--text-primary); font-weight: 700; line-height: 
    ============================================================ */
 .usecase-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 20px;
 }
 .usecase-card {
@@ -1513,4 +1513,28 @@ body.no-scroll { overflow: hidden; }
   .hero::before {
     animation: none;
   }
+}
+
+/* ============================================================
+   Pricing page
+   ============================================================ */
+.pricing-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+}
+.price-line {
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  margin-bottom: 14px;
+}
+.price-line .price-unit {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0;
+  color: var(--text-secondary);
+}
+@media (max-width: 900px) {
+  .pricing-grid { grid-template-columns: 1fr; gap: 16px; }
 }

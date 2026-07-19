@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta name="description" content="The CallGuard AI blog. Practical writing on AI call quality assurance, FCA Consumer Duty compliance, contact centre QA at scale, and how to evidence good outcomes systematically." />
+<meta name="description" content="CallGuard AI is UK-built call QA and compliance scoring software. Why we built it, how we think about AI and evidence, and how to reach us." />
 <meta name="theme-color" content="#4a9e6e" />
 <meta name="robots" content="index,follow,max-image-preview:large" />
 <meta name="author" content="CallGuard AI" />
-<title>Blog | CallGuard AI</title>
-<link rel="canonical" href="https://callguardai.co.uk/blog/" />
+<title>About CallGuard AI | UK-Built Call QA &amp; Compliance Software</title>
+<link rel="canonical" href="https://callguardai.co.uk/about" />
 <link rel="icon" href="/favicon.ico" sizes="48x48" />
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
@@ -19,14 +19,14 @@
 <meta property="og:type" content="website" />
 <meta property="og:site_name" content="CallGuard AI" />
 <meta property="og:locale" content="en_GB" />
-<meta property="og:url" content="https://callguardai.co.uk/blog/" />
-<meta property="og:title" content="Blog | CallGuard AI" />
-<meta property="og:description" content="Practical writing on AI call quality assurance and FCA Consumer Duty compliance." />
+<meta property="og:url" content="https://callguardai.co.uk/about" />
+<meta property="og:title" content="About CallGuard AI | UK-Built Call QA &amp; Compliance Software" />
+<meta property="og:description" content="Why we built CallGuard AI, how we think about AI and evidence, and how to reach us." />
 <meta property="og:image" content="https://callguardai.co.uk/og-image.jpg" />
 
 <meta name="twitter:card" content="summary_large_image" />
-<meta name="twitter:title" content="Blog | CallGuard AI" />
-<meta name="twitter:description" content="Practical writing on AI call quality assurance and FCA Consumer Duty compliance." />
+<meta name="twitter:title" content="About CallGuard AI | UK-Built Call QA &amp; Compliance Software" />
+<meta name="twitter:description" content="Why we built CallGuard AI, how we think about AI and evidence, and how to reach us." />
 <meta name="twitter:image" content="https://callguardai.co.uk/og-image.jpg" />
 
 <script type="application/ld+json">
@@ -34,20 +34,20 @@
   "@context": "https://schema.org",
   "@graph": [
     {
-      "@type": "Blog",
-      "@id": "https://callguardai.co.uk/blog/#blog",
-      "name": "CallGuard AI Blog",
-      "url": "https://callguardai.co.uk/blog/",
-      "description": "Practical writing on AI call quality assurance and FCA Consumer Duty compliance.",
-      "publisher": {"@id": "https://callguardai.co.uk/#organization"},
-      "inLanguage": "en-GB"
-    },
-    {
       "@type": "BreadcrumbList",
       "itemListElement": [
         {"@type": "ListItem", "position": 1, "name": "Home", "item": "https://callguardai.co.uk/"},
-        {"@type": "ListItem", "position": 2, "name": "Blog"}
+        {"@type": "ListItem", "position": 2, "name": "About"}
       ]
+    },
+    {
+      "@type": "AboutPage",
+      "@id": "https://callguardai.co.uk/about#webpage",
+      "name": "About CallGuard AI",
+      "url": "https://callguardai.co.uk/about",
+      "description": "CallGuard AI is UK-built call QA and compliance scoring software.",
+      "isPartOf": {"@id": "https://callguardai.co.uk/#website"},
+      "about": {"@id": "https://callguardai.co.uk/#organization"}
     }
   ]
 }
@@ -74,6 +74,7 @@
       <a href="/#use-cases">Use cases</a>
       <a href="/pricing">Pricing</a>
       <a href="/blog/">Blog</a>
+      <a href="/#faq">FAQ</a>
     </nav>
     <a href="https://app.callguardai.co.uk/" class="nav-login">Log in</a>
     <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request" class="btn btn-primary nav-cta">Book a demo</a>
@@ -93,6 +94,7 @@
     <a href="/#use-cases">Use cases</a>
     <a href="/pricing">Pricing</a>
     <a href="/blog/">Blog</a>
+    <a href="/#faq">FAQ</a>
     <a href="https://app.callguardai.co.uk/">Log in</a>
     <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request" class="btn btn-primary">Book a demo</a>
   </div>
@@ -100,83 +102,58 @@
 
 <main id="top">
 
-  <section class="blog-hero">
+  <section class="hero">
     <div class="container">
-      <div class="crumb"><a href="/">Home</a> · Blog</div>
-      <h1>Notes on AI call QA, compliance, and contact centres at scale.</h1>
-      <p class="blog-hero-sub">Practical writing for compliance leads, ops directors and engineering teams who would rather their conversations were systematically scored than sampled.</p>
+      <span class="eyebrow">About</span>
+      <h1 class="hero-headline">
+        Built in the UK, for <span class="accent">regulated conversations.</span>
+      </h1>
+      <p class="hero-sub">
+        CallGuard AI is call QA and compliance scoring software, built and hosted in the UK. We exist because most compliance teams can only review a tiny sample of their calls, and regulators stopped accepting that years ago.
+      </p>
     </div>
   </section>
 
   <section class="section">
     <div class="container">
-      <div class="post-grid">
+      <span class="section-tag">Why we built it</span>
+      <h2 class="section-h2">The 5% sample was never <span class="accent">the plan.</span></h2>
+      <p class="lead">
+        Every compliance team we spoke to had the same shape of problem: a senior reviewer spending an hour per file, a sample rate in single digits, and a regulator (post-Consumer Duty, under PECR and CONC) asking for systematic evidence of good outcomes. Sampling was a limit imposed by human capacity, not a policy anyone chose. Large language models removed the limit, so we built the product around what compliance teams actually need to produce: a verdict on every criterion of every call, backed by the exact quote that proved it.
+      </p>
 
-        <article class="post-card">
-          <a href="/blog/pecr-tps-2026-outbound-compliance" class="post-card-link">
-            <div class="post-card-tag">Compliance · Outbound</div>
-            <h2 class="post-card-title">PECR and TPS in 2026: practical compliance for outbound teams</h2>
-            <p class="post-card-summary">What's tightened, what's blurred, and the five things the ICO will ask if a PECR complaint reaches them. Plus the systematic-monitoring standard that has replaced sample-based QA.</p>
-            <div class="post-card-meta">
-              <span>5 May 2026</span>
-              <span class="post-card-dot">·</span>
-              <span>9 min read</span>
-            </div>
-          </a>
-        </article>
+      <div class="feature-grid feature-grid-2">
+        <div class="feature">
+          <h3>Evidence-first AI</h3>
+          <p>An AI verdict without evidence is an opinion. Every pass and every fail CallGuard AI produces carries a direct transcript quote, because that is what an auditor, a regulator or a complaints handler will ask to see.</p>
+        </div>
+        <div class="feature">
+          <h3>Your interpretation, not ours</h3>
+          <p>Firms interpret "suitable" and "fair value" differently, and they are allowed to. CallGuard AI learns from your compliance officer's corrections and your exemplar calls, so the scoring converges on your firm's bar rather than a generic baseline.</p>
+        </div>
+        <div class="feature">
+          <h3>Privacy by design</h3>
+          <p>Personal data is redacted at the transcription layer before it reaches any language model or storage. Audio is encrypted at rest with AES-256-GCM, data is hosted in the UK, and our <a href="/dpa">DPA</a> and <a href="/sub-processors">sub-processor list</a> are published, not available on request.</p>
+        </div>
+        <div class="feature">
+          <h3>Self-serve, honestly priced</h3>
+          <p>No 90-day pilots, no solution architects, no quote you have to sit through three calls to hear. <a href="/pricing">Pricing is published</a>, from £199 per seat, per month, and you can be scoring your own calls the day you sign up.</p>
+        </div>
+      </div>
+    </div>
+  </section>
 
-        <article class="post-card">
-          <a href="/blog/ai-vs-human-call-scoring" class="post-card-link">
-            <div class="post-card-tag">Foundations · AI call QA</div>
-            <h2 class="post-card-title">AI vs human call scoring: when each makes sense</h2>
-            <p class="post-card-summary">An honest comparison from someone selling AI scoring tooling. What AI is genuinely better at, what humans still beat AI on, and the right division of labour for production QA teams.</p>
-            <div class="post-card-meta">
-              <span>5 May 2026</span>
-              <span class="post-card-dot">·</span>
-              <span>9 min read</span>
-            </div>
-          </a>
-        </article>
+  <section class="section section-alt">
+    <div class="container">
+      <span class="section-tag">Who we serve</span>
+      <h2 class="section-h2">Four sectors, <span class="accent">one compliance engine.</span></h2>
+      <p class="lead">
+        CallGuard AI scores calls for <a href="/use-cases/financial-services">FCA-regulated advice firms</a>, <a href="/use-cases/bpo">contact centres and BPOs</a>, <a href="/use-cases/collections">debt collections teams</a> and <a href="/use-cases/outbound-sales">outbound sales operations</a>. The regulatory vocabulary differs (Consumer Duty, CONC, PECR, TPS) but the job is the same: evidence what happened on 100% of calls, and catch the breach before it becomes a complaint.
+      </p>
 
-        <article class="post-card">
-          <a href="/blog/fca-consumer-duty-call-recordings" class="post-card-link">
-            <div class="post-card-tag">Compliance · Financial services</div>
-            <h2 class="post-card-title">FCA Consumer Duty: 7 things your call recordings need to evidence</h2>
-            <p class="post-card-summary">A practical checklist for compliance leads at FCA-regulated firms. The four outcomes, the evidence the regulator actually expects on a recording, and why a 5% sample no longer cuts it.</p>
-            <div class="post-card-meta">
-              <span>5 May 2026</span>
-              <span class="post-card-dot">·</span>
-              <span>9 min read</span>
-            </div>
-          </a>
-        </article>
-
-        <article class="post-card">
-          <a href="/blog/score-100-percent-contact-centre-calls" class="post-card-link">
-            <div class="post-card-tag">Operations · Contact centres</div>
-            <h2 class="post-card-title">How to score 100% of contact centre calls without hiring more QA staff</h2>
-            <p class="post-card-summary">The QA bottleneck explained from first principles, the maths of manual versus AI scoring, and what the architecture of 100% coverage actually looks like in production.</p>
-            <div class="post-card-meta">
-              <span>5 May 2026</span>
-              <span class="post-card-dot">·</span>
-              <span>11 min read</span>
-            </div>
-          </a>
-        </article>
-
-        <article class="post-card">
-          <a href="/blog/what-is-ai-call-qa" class="post-card-link">
-            <div class="post-card-tag">Foundations · AI call QA</div>
-            <h2 class="post-card-title">What is AI call QA and how does it actually work?</h2>
-            <p class="post-card-summary">A plain-English walkthrough of how speech recognition, large language models and per-tenant calibration combine to score every call your team takes against your scorecard.</p>
-            <div class="post-card-meta">
-              <span>5 May 2026</span>
-              <span class="post-card-dot">·</span>
-              <span>10 min read</span>
-            </div>
-          </a>
-        </article>
-
+      <div class="cta-buttons" style="margin-top: 28px; text-align: center; justify-content: center;">
+        <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request" class="btn btn-primary btn-lg">Book a 15-min demo</a>
+        <a href="mailto:hello@callguardai.co.uk" class="btn btn-ghost btn-lg">hello@callguardai.co.uk</a>
       </div>
     </div>
   </section>
@@ -198,7 +175,6 @@
         <a href="/pricing">Pricing</a>
         <a href="/compare">Compare</a>
         <a href="/about">About</a>
-        <a href="/#faq">FAQ</a>
         <a href="/blog/">Blog</a>
       </div>
       <div class="footer-col">
