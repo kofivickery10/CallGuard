@@ -531,6 +531,12 @@ async function pushQARecord(
   // a field API name for it.
   if (qa.notes) record[qa.notes] = buildQASummary(payload);
 
+  // Agent-name field is opt-in — writes the dialler's agent name as plain text.
+  // Unlike Owner (below) this works even when the agent isn't a Zoho user, so
+  // the agent is attributed on the QA record regardless. Guarded on both the
+  // configured field and a non-null name (older stored field maps lack `agent`).
+  if (qa.agent && payload.agent_name) record[qa.agent] = payload.agent_name;
+
   // Owner = the closing agent, if we can resolve them to a Zoho user.
   const ownerId = await resolveZohoUserIdByEmail(apiDomain, accessToken, payload.agent_email);
   if (ownerId) record.Owner = { id: ownerId };

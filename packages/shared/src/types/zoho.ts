@@ -29,6 +29,11 @@ export interface ZohoQAFieldMap {
   // configured; CallGuard then writes no summary (nothing breaks if the tenant
   // hasn't added a notes field yet).
   notes: string;
+  // Text field for the closing agent's name. Empty string = not configured.
+  // Distinct from the record Owner (which only works when the agent is a Zoho
+  // user); this writes the dialler's agent name as plain text, so the agent is
+  // visible even for tenants whose advisers aren't Zoho users.
+  agent: string;
 }
 
 // Public shape returned to the admin UI — never includes encrypted secrets.

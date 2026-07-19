@@ -44,6 +44,7 @@ const DEFAULT_QA_FIELD_MAP: ZohoQAFieldMap = {
   client_name: 'Name',
   customer_lookup: 'Client',
   notes: '', // opt-in: set to a text field's API name to write the summary
+  agent: '', // opt-in: set to a text field's API name to write the agent name
 };
 
 const VALID_REGIONS: ZohoRegion[] = ['eu', 'com', 'in', 'com.au', 'jp', 'ca'];
