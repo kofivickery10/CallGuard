@@ -1,0 +1,143 @@
+import { query } from '../db/client.js';
+import { SEAT_PRICING, effectivePlan } from '@callguard/shared';
+import type { Plan } from '@callguard/shared';
+
+// Billing is headcount-based: a billable seat is an adviser (role='adviser')
+// who isn't billing_exempt, in an active org. The seat bills whether or not the
+// adviser took any calls in the month — presence of the seat is what bills.
+
+// Monthly revenue for one billable seat. A negotiated per-tenant override bills
+// every seat at that flat rate; otherwise the seat's effective tier (org plan,
+// bumped by any per-user plan_override) sets the price.
+export function seatPrice(
+  orgPlan: string,
+  override: number | null,
+  planOverride: string | null
+): number {
+  if (override != null) return Number(override);
+  const tier = effectivePlan(orgPlan as Plan, (planOverride ?? null) as Plan | null);
+  return SEAT_PRICING[tier] ?? 0;
+}
+
+export interface BillableSeatRow {
+  org_id: string;
+  org_plan: string;
+  seat_price_override: string | null;
+  plan_override: string | null;
+}
+
+// One row per billable seat across all active orgs.
+export async function billableSeatRows(): Promise<BillableSeatRow[]> {
+  return query<BillableSeatRow>(
+    `SELECT o.id AS org_id, o.plan AS org_plan, o.seat_price_override, u.plan_override
+       FROM organizations o
+       JOIN users u ON u.organization_id = o.id
+      WHERE o.status = 'active'
+        AND u.role = 'adviser'
+        AND NOT u.billing_exempt`
+  );
+}
+
+export interface OrgBilling {
+  seatCount: number;
+  total: number;
+  orgPlan: string;
+  seatPriceOverride: number | null;
+}
+
+// Aggregate seat rows into per-org { seatCount, total }. Pure — unit-tested.
+export function aggregateByOrg(rows: BillableSeatRow[]): Map<string, OrgBilling> {
+  const byOrg = new Map<string, OrgBilling>();
+  for (const r of rows) {
+    const override = r.seat_price_override == null ? null : Number(r.seat_price_override);
+    const price = seatPrice(r.org_plan, override, r.plan_override);
+    const cur =
+      byOrg.get(r.org_id) ??
+      { seatCount: 0, total: 0, orgPlan: r.org_plan, seatPriceOverride: override };
+    cur.seatCount += 1;
+    cur.total += price;
+    byOrg.set(r.org_id, cur);
+  }
+  return byOrg;
+}
+
+// Total platform MRR from current headcount.
+export function mrrFromRows(rows: BillableSeatRow[]): number {
+  let mrr = 0;
+  for (const b of aggregateByOrg(rows).values()) mrr += b.total;
+  return mrr;
+}
+
+export interface MonthBilling {
+  seatCount: number;
+  total: number;
+}
+
+// Billing for a given month, per org. The current (not-yet-frozen) month is
+// computed live from current headcount; any past month is read from the frozen
+// ledger (billing_periods) so re-scores/purges/plan-changes can't rewrite
+// history. `monthStart` is 'YYYY-MM-DD' (first of month); `isCurrent` says
+// whether that month is the live one.
+export async function billingForMonth(
+  monthStart: string,
+  isCurrent: boolean
+): Promise<Map<string, MonthBilling>> {
+  const out = new Map<string, MonthBilling>();
+  if (isCurrent) {
+    for (const [orgId, b] of aggregateByOrg(await billableSeatRows())) {
+      out.set(orgId, { seatCount: b.seatCount, total: b.total });
+    }
+    return out;
+  }
+  const rows = await query<{ organization_id: string; seat_count: number; total: string }>(
+    `SELECT organization_id, seat_count, total FROM billing_periods WHERE period_month = $1`,
+    [monthStart]
+  );
+  for (const r of rows) out.set(r.organization_id, { seatCount: r.seat_count, total: Number(r.total) });
+  return out;
+}
+
+// One org's frozen monthly billing history (last 12 months), keyed by 'YYYY-MM'.
+// The current month is not included here (it isn't frozen yet) — callers append
+// it live.
+export async function billingHistoryForOrg(orgId: string): Promise<Map<string, MonthBilling>> {
+  const rows = await query<{ month: string; seat_count: number; total: string }>(
+    `SELECT to_char(period_month, 'YYYY-MM') AS month, seat_count, total
+       FROM billing_periods
+      WHERE organization_id = $1
+        AND period_month >= date_trunc('month', now()) - interval '12 months'`,
+    [orgId]
+  );
+  const out = new Map<string, MonthBilling>();
+  for (const r of rows) out.set(r.month, { seatCount: r.seat_count, total: Number(r.total) });
+  return out;
+}
+
+// Current-month billing for a single org (live headcount).
+export async function currentBillingForOrg(orgId: string): Promise<MonthBilling> {
+  const rows = await billableSeatRows();
+  const b = aggregateByOrg(rows.filter((r) => r.org_id === orgId)).get(orgId);
+  return b ? { seatCount: b.seatCount, total: b.total } : { seatCount: 0, total: 0 };
+}
+
+// Freeze billing for one calendar month for every active org. Idempotent: the
+// UNIQUE(organization_id, period_month) constraint plus ON CONFLICT DO NOTHING
+// means re-running never overwrites an already-frozen month. `monthStart` is
+// the first day of the month (UTC), 'YYYY-MM-DD'. Uses current headcount, so
+// it's meant to run at (or just after) month close. Returns rows newly frozen.
+export async function snapshotBillingMonth(monthStart: string): Promise<number> {
+  const byOrg = aggregateByOrg(await billableSeatRows());
+  let written = 0;
+  for (const [orgId, b] of byOrg) {
+    const inserted = await query<{ id: string }>(
+      `INSERT INTO billing_periods
+         (organization_id, period_month, plan, seat_count, seat_price_override, total)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (organization_id, period_month) DO NOTHING
+       RETURNING id`,
+      [orgId, monthStart, b.orgPlan, b.seatCount, b.seatPriceOverride, b.total.toFixed(2)]
+    );
+    if (inserted.length) written++;
+  }
+  return written;
+}

@@ -11,6 +11,7 @@ import { processNotifyEmail } from './processors/notify-email.js';
 import { processScoreJourney } from './processors/score-journey.js';
 import { processRetentionPurge } from './processors/retention-purge.js';
 import { processStuckRepair } from './processors/stuck-repair.js';
+import { processBillingSnapshot } from './processors/billing-snapshot.js';
 import { refreshSFTPSchedules } from './scheduler.js';
 import { refreshRetentionSchedule } from './retention-scheduler.js';
 import { writeWorkerHeartbeat, closeRedis } from '../services/redis.js';
@@ -68,11 +69,12 @@ const alertsWorker = new Worker('alerts', dispatchAlerts, {
   concurrency: 4,
 });
 
-// The maintenance queue carries 'retention-purge' (daily lifecycle sweep) and
+// The maintenance queue carries 'retention-purge' (daily lifecycle sweep),
 // 'stuck-repair' (frequent re-enqueue of calls/journeys whose job was never
-// queued) — dispatch by name.
+// queued) and 'billing-snapshot' (daily month-end billing freeze) — dispatch by name.
 async function dispatchMaintenance(job: Job) {
   if (job.name === 'stuck-repair') return processStuckRepair(job);
+  if (job.name === 'billing-snapshot') return processBillingSnapshot(job);
   return processRetentionPurge(job);
 }
 

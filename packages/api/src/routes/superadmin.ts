@@ -6,10 +6,17 @@ import { authenticate, requireSuperadmin, AuthPayload } from '../middleware/auth
 import { query, queryOne, withTransaction } from '../db/client.js';
 import { AppError } from '../middleware/errors.js';
 import { config } from '../config.js';
-import { PLANS, SEAT_PRICING, effectivePlan, FEATURES } from '@callguard/shared';
-import type { Plan } from '@callguard/shared';
+import { PLANS, FEATURES } from '@callguard/shared';
 import { CLAUDE_PRICING, DEEPGRAM_PRICING, DEFAULT_USD_TO_GBP } from '@callguard/shared';
 import { recordAuditEvent } from '../services/audit.js';
+import {
+  billableSeatRows,
+  aggregateByOrg,
+  mrrFromRows,
+  billingForMonth,
+  billingHistoryForOrg,
+  currentBillingForOrg,
+} from '../services/billing.js';
 import { deleteOrganizationCascade } from '../services/tenant-deletion.js';
 import {
   getTranscriptionQueue,
@@ -21,15 +28,6 @@ import {
 export const superadminRouter = Router();
 
 superadminRouter.use(authenticate, requireSuperadmin);
-
-// Monthly revenue for one active seat. If the tenant has a negotiated override,
-// every seat bills at that flat rate; otherwise the seat's effective tier
-// (org plan, bumped by any per-user override) sets the price.
-function seatIncome(orgPlan: string, override: number | null, planOverride: string | null): number {
-  if (override != null) return Number(override);
-  const tier = effectivePlan(orgPlan as Plan, (planOverride ?? null) as Plan | null);
-  return SEAT_PRICING[tier] ?? 0;
-}
 
 // Sum Claude cost across per-model token rows, pricing each model at its own
 // rate (Haiku is ~4x cheaper than Sonnet, so a single blended rate is wrong).
@@ -77,13 +75,10 @@ superadminRouter.get('/tenants', async (_req, res, next) => {
          o.subscription_notes,
          COUNT(DISTINCT u.id)::text                                          AS user_count,
          COUNT(DISTINCT CASE
-           WHEN c.created_at >= date_trunc('month', now())
-            AND c.status = 'scored'
-            AND c.agent_id NOT IN (SELECT id FROM users WHERE billing_exempt) THEN c.agent_id
+           WHEN u.role = 'adviser' AND NOT u.billing_exempt THEN u.id
          END)::text                                                          AS active_seats_mtd
        FROM organizations o
        LEFT JOIN users u ON u.organization_id = o.id AND u.role != 'superadmin'
-       LEFT JOIN calls c ON c.organization_id = o.id
        GROUP BY o.id
        ORDER BY o.created_at DESC`
     );
@@ -196,7 +191,7 @@ superadminRouter.get('/tenants/:id', async (req, res, next) => {
     );
     if (!org) throw new AppError(404, 'Tenant not found');
 
-    const [users, callStats, seatHistory] = await Promise.all([
+    const [users, callStats, billingHistory, currentBilling] = await Promise.all([
       query<{ id: string; name: string; email: string; role: string; last_active_at: string | null; plan_override: string | null; billing_exempt: boolean }>(
         `SELECT id, name, email, role, last_active_at, plan_override, billing_exempt
          FROM users WHERE organization_id = $1 ORDER BY name`,
@@ -216,20 +211,19 @@ superadminRouter.get('/tenants/:id', async (req, res, next) => {
          FROM calls WHERE organization_id = $1`,
         [req.params.id]
       ),
-      query<{ month: string; active_seats: string }>(
-        `SELECT
-           to_char(date_trunc('month', c.created_at AT TIME ZONE 'Europe/London'), 'YYYY-MM') AS month,
-           COUNT(DISTINCT c.agent_id)::text                       AS active_seats
-         FROM calls c
-         WHERE c.organization_id = $1
-           AND c.status = 'scored'
-           AND c.agent_id NOT IN (SELECT id FROM users WHERE billing_exempt)
-           AND c.created_at >= now() - interval '12 months'
-         GROUP BY 1
-         ORDER BY 1`,
-        [req.params.id]
-      ),
+      // Billed-seat history comes from the frozen ledger (headcount at each
+      // month's close), not from call activity. History accrues from the first
+      // month-end snapshot; the current month is appended live below.
+      billingHistoryForOrg(req.params.id),
+      currentBillingForOrg(req.params.id),
     ]);
+
+    const currentMonth = new Date().toISOString().slice(0, 7);
+    const seatMap = new Map(billingHistory);
+    seatMap.set(currentMonth, currentBilling);
+    const seatHistory = [...seatMap.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([month, b]) => ({ month, active_seats: b.seatCount, total: parseFloat(b.total.toFixed(2)) }));
 
     res.json({ org, users, call_stats: callStats, seat_history: seatHistory });
   } catch (err) {
@@ -770,22 +764,10 @@ superadminRouter.get('/dashboard', async (_req, res, next) => {
     );
     const deepgramCostMtd = Number(durationRow?.total_minutes || 0) * DEEPGRAM_PRICING.per_minute;
 
-    // Platform MRR: each active seat this month priced by the tenant's override
-    // or the seat's effective tier (one row per active org+agent pair).
-    const mrrRows = await query<{ org_plan: string; seat_price_override: string | null; plan_override: string | null }>(
-      `SELECT o.plan AS org_plan, o.seat_price_override, u.plan_override
-         FROM organizations o
-         JOIN calls c ON c.organization_id = o.id
-           AND c.status = 'scored'
-           AND c.created_at >= date_trunc('month', now())
-         JOIN users u ON u.id = c.agent_id
-        WHERE o.status = 'active'
-        GROUP BY o.id, o.plan, o.seat_price_override, u.id, u.plan_override`
-    );
-    let platformMrr = 0;
-    for (const r of mrrRows) {
-      platformMrr += seatIncome(r.org_plan, r.seat_price_override == null ? null : Number(r.seat_price_override), r.plan_override);
-    }
+    // Platform MRR: headcount billing — every billable adviser seat across
+    // active tenants, priced by the tenant's override or the seat's effective
+    // tier (per-user bumps included), independent of call activity this month.
+    const platformMrr = mrrFromRows(await billableSeatRows());
 
     res.json({
       active_users_15min:    Number(activity?.active_users_15min || 0),
@@ -842,31 +824,11 @@ superadminRouter.get('/billing', async (req, res, next) => {
       [monthStart]
     );
 
-    // Per-(org, active agent) rows so income can price each seat by the tenant
-    // override or the seat's effective tier (per-user bumps included).
-    const seatRows = await query<{
-      org_id: string;
-      org_plan: string;
-      seat_price_override: string | null;
-      plan_override: string | null;
-    }>(
-      `SELECT o.id AS org_id, o.plan AS org_plan, o.seat_price_override, u.plan_override
-         FROM organizations o
-         JOIN calls c ON c.organization_id = o.id
-           AND c.status = 'scored'
-           AND c.created_at >= $1::date
-           AND c.created_at <  $1::date + interval '1 month'
-         JOIN users u ON u.id = c.agent_id
-        WHERE o.status = 'active'
-          AND NOT u.billing_exempt
-        GROUP BY o.id, o.plan, o.seat_price_override, u.id, u.plan_override`,
-      [monthStart]
-    );
-    const incomeByOrg = new Map<string, number>();
-    for (const r of seatRows) {
-      const inc = seatIncome(r.org_plan, r.seat_price_override == null ? null : Number(r.seat_price_override), r.plan_override);
-      incomeByOrg.set(r.org_id, (incomeByOrg.get(r.org_id) ?? 0) + inc);
-    }
+    // Headcount billing per org: the current (not-yet-frozen) month is priced
+    // live from current headcount; a past month is read from the frozen ledger
+    // so history can't be rewritten by re-scores/purges/plan changes.
+    const isCurrentMonth = month === new Date().toISOString().slice(0, 7);
+    const billingByOrg = await billingForMonth(monthStart, isCurrentMonth);
 
     // Per-(org, model) token sums from each call's latest score, so cost is
     // priced at the model the org actually ran on (Haiku vs Sonnet differ ~4x).
@@ -906,15 +868,18 @@ superadminRouter.get('/billing', async (req, res, next) => {
     const billing = orgRows.map((r) => {
       const claudeCost = claudeCostFromModelRows(tokensByOrg.get(r.org_id) ?? []);
       const deepgramCost = (Number(r.total_duration_seconds) / 60) * DEEPGRAM_PRICING.per_minute;
+      const billed = billingByOrg.get(r.org_id);
 
       return {
         org_id:                r.org_id,
         org_name:              r.org_name,
         plan:                  r.plan,
         month,
-        active_seats:          Number(r.active_seats),
+        // Billed seats = headcount of billable advisers (live for the current
+        // month, frozen ledger for past months) — not call activity.
+        active_seats:          billed?.seatCount ?? 0,
         seat_price_override:   r.seat_price_override == null ? null : Number(r.seat_price_override),
-        monthly_income:        parseFloat((incomeByOrg.get(r.org_id) ?? 0).toFixed(2)),
+        monthly_income:        parseFloat((billed?.total ?? 0).toFixed(2)),
         claude_cost_estimate:  parseFloat(toGbp(claudeCost).toFixed(4)),
         deepgram_cost_estimate: parseFloat(toGbp(deepgramCost).toFixed(4)),
       };
@@ -993,13 +958,25 @@ superadminRouter.get('/billing/:orgId', async (req, res, next) => {
       tokensByMonth.set(r.month, list);
     }
 
+    // Billed seats + income per month: frozen ledger for past months, live
+    // headcount for the current month. Call activity (calls/costs) still comes
+    // from monthRows; a month with billing but no calls won't appear in this
+    // per-tenant breakdown (it's call-activity-driven).
+    const billingHistory = await billingHistoryForOrg(req.params.orgId);
+    const currentBilling = await currentBillingForOrg(req.params.orgId);
+    const currentMonth = new Date().toISOString().slice(0, 7);
+    const billedFor = (m: string) =>
+      m === currentMonth ? currentBilling : billingHistory.get(m) ?? { seatCount: 0, total: 0 };
+
     const breakdown = monthRows.map((r) => {
       const claudeCost = claudeCostFromModelRows(tokensByMonth.get(r.month) ?? []);
       const deepgramCost = (Number(r.total_duration_seconds) / 60) * DEEPGRAM_PRICING.per_minute;
+      const billed = billedFor(r.month);
       return {
         month:                  r.month,
-        active_seats:           Number(r.active_seats),
+        active_seats:           billed.seatCount,
         calls:                  Number(r.calls),
+        monthly_income:         parseFloat(billed.total.toFixed(2)),
         claude_cost_estimate:   parseFloat(toGbp(claudeCost).toFixed(4)),
         deepgram_cost_estimate: parseFloat(toGbp(deepgramCost).toFixed(4)),
       };
