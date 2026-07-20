@@ -7,7 +7,7 @@ import { config } from '../config.js';
 import { AppError } from '../middleware/errors.js';
 import { encrypt } from '../services/crypto.js';
 import { recordAuditEvent } from '../services/audit.js';
-import { normalizePhone } from '../services/ingestion.js';
+import { normalizePhone, pickField } from '../services/ingestion.js';
 import { ingestionQueue } from '../jobs/queue.js';
 import {
   buildAuthorizeUrl,
@@ -164,7 +164,17 @@ export async function handleZohoSaleTrigger(
     // to arrive. assembleJourney is idempotent, so a Zoho retry that enqueues a
     // second job just reuses the in-flight journey.
     const recordId = typeof body.id === 'string' ? body.id : null;
-    const clientName = typeof body.client_name === 'string' ? body.client_name.trim() || null : null;
+    // Zoho workflows label the customer's name differently depending on how the
+    // webhook was built (our documented `client_name`, or a raw module field
+    // like Name / Full_Name / Last_Name). Accept the common variants so the QA
+    // record gets a real name rather than "Unknown" when the workflow wasn't set
+    // up with the exact `client_name` key.
+    const clientName = pickField(body, [
+      'client_name', 'Client_Name',
+      'Full_Name', 'full_name', 'Name', 'name',
+      'contact_name', 'Contact_Name', 'customer_name', 'Customer_Name',
+      'Last_Name', 'last_name',
+    ]);
     await ingestionQueue.add(
       'assemble-journey',
       { organizationId: orgId, phone, recordId, clientName },

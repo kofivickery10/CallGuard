@@ -80,6 +80,26 @@ export function normalizePhone(raw: string): string | null {
   return `+${digits}`;
 }
 
+// Find the first non-empty string at any of the candidate keys, checking the
+// body and one level of common nesting (call / Call / data / payload). Used to
+// read loosely-shaped external webhook payloads (dialler + Zoho sale trigger)
+// where the same value can arrive under different key names.
+export function pickField(body: Record<string, unknown>, keys: string[]): string | null {
+  const containers: Record<string, unknown>[] = [body];
+  for (const c of ['call', 'Call', 'data', 'payload']) {
+    const nested = body[c];
+    if (nested && typeof nested === 'object') containers.push(nested as Record<string, unknown>);
+  }
+  for (const container of containers) {
+    for (const key of keys) {
+      const v = container[key];
+      if (typeof v === 'string' && v.trim()) return v.trim();
+      if (typeof v === 'number') return String(v);
+    }
+  }
+  return null;
+}
+
 /**
  * Upsert a customer record based on normalised phone. Returns the customer id.
  */

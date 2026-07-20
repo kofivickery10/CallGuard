@@ -11,7 +11,7 @@ import { query, queryOne } from '../db/client.js';
 import { AppError } from '../middleware/errors.js';
 import { generateApiKey } from '../services/api-keys.js';
 import { encrypt } from '../services/crypto.js';
-import { ingestCall, fetchRemoteAudio, captureCallMetadata } from '../services/ingestion.js';
+import { ingestCall, fetchRemoteAudio, captureCallMetadata, pickField } from '../services/ingestion.js';
 import { recordAuditEvent } from '../services/audit.js';
 import * as sftp from '../services/sftp.js';
 import {
@@ -145,24 +145,6 @@ function normalizeCallDirection(raw: string | null): 'inbound' | 'outbound' | nu
   const v = raw.trim().toLowerCase();
   if (['inbound', 'incoming', 'in'].includes(v)) return 'inbound';
   if (['outbound', 'outgoing', 'out'].includes(v)) return 'outbound';
-  return null;
-}
-
-// Find the first non-empty string at any of the candidate keys, checking the
-// body and one level of common nesting (call / Call / data / payload).
-function pickField(body: Record<string, unknown>, keys: string[]): string | null {
-  const containers: Record<string, unknown>[] = [body];
-  for (const c of ['call', 'Call', 'data', 'payload']) {
-    const nested = body[c];
-    if (nested && typeof nested === 'object') containers.push(nested as Record<string, unknown>);
-  }
-  for (const container of containers) {
-    for (const key of keys) {
-      const v = container[key];
-      if (typeof v === 'string' && v.trim()) return v.trim();
-      if (typeof v === 'number') return String(v);
-    }
-  }
   return null;
 }
 
