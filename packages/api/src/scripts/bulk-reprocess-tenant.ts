@@ -20,7 +20,7 @@
 // Usage:
 //   tsx src/scripts/bulk-reprocess-tenant.ts <orgId|nameSubstring> [--commit] [--rescore] [--min-chars=30000]
 import { pool, query, queryOne } from '../db/client.js';
-import { cleanupTranscript } from '../services/transcript-cleanup.js';
+import { cleanupTranscript, resolveSpeakerConfidence } from '../services/transcript-cleanup.js';
 import { getKBContext } from '../services/kb.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -127,16 +127,17 @@ async function main() {
 
     const cleanup = await cleanupTranscript(callRow.transcript_text, org.id, kbContext, c.id, confidence);
     const changed = cleanup.text !== callRow.transcript_text;
+    const newConfidence = resolveSpeakerConfidence(confidence, cleanup.speakerVerdict);
+    const confidenceRaised = newConfidence !== confidence;
 
-    if (changed || cleanup.speakerLabelsSwapped) {
-      const newConfidence = cleanup.speakerLabelsSwapped ? Math.max(confidence, 0.75) : confidence;
+    if (changed || confidenceRaised) {
       await query(
         'UPDATE calls SET transcript_text = $1, speaker_attribution_confidence = $2, updated_at = now() WHERE id = $3',
         [cleanup.text, newConfidence, c.id]
       );
       changedCallIds.push(c.id);
       if (cleanup.speakerLabelsSwapped) swappedCount++;
-      console.log(`  updated ${c.id}${cleanup.speakerLabelsSwapped ? ' (labels swapped)' : ''}`);
+      console.log(`  updated ${c.id} (verdict: ${cleanup.speakerVerdict})`);
     } else {
       console.log(`  unchanged ${c.id}`);
     }

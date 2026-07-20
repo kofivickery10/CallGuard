@@ -1,7 +1,7 @@
 import { Job } from 'bullmq';
 import { query, queryOne } from '../../db/client.js';
 import { transcribeCall } from '../../services/transcription.js';
-import { cleanupTranscript } from '../../services/transcript-cleanup.js';
+import { cleanupTranscript, resolveSpeakerConfidence } from '../../services/transcript-cleanup.js';
 import { getKBContext } from '../../services/kb.js';
 import { evaluateAlertsForCall } from '../../services/alert-evaluator.js';
 import { recordUsage } from '../../services/usage.js';
@@ -100,12 +100,15 @@ export async function processTranscription(job: Job<{ callId: string }>) {
     if (cleanup.speakerLabelsSwapped) {
       console.warn(`[Transcription] Call ${callId}: AI cleanup swapped Agent/Customer labels (heuristic guess was likely backwards)`);
     }
-    // Content-verified either way (confirmed or corrected) is more reliable
-    // than the raw first-speaker heuristic alone — but only a swap is a
-    // strong enough positive signal to actually raise the stored confidence.
-    const speakerAttributionConfidence = cleanup.speakerLabelsSwapped
-      ? Math.max(result.speaker_attribution_confidence, 0.75)
-      : result.speaker_attribution_confidence;
+    // A swap OR a positive content-confirmation both mean the Agent/Customer
+    // split is now content-verified — strong enough to raise the stored
+    // confidence above the consent-gate floor so a genuinely-correct mono call
+    // no longer routes every consent gate to manual review. 'unclear' (no
+    // strong evidence either way) leaves the heuristic confidence untouched.
+    const speakerAttributionConfidence = resolveSpeakerConfidence(
+      result.speaker_attribution_confidence,
+      cleanup.speakerVerdict
+    );
 
     // Store transcript
     await query(

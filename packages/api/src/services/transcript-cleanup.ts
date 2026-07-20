@@ -4,13 +4,38 @@ import { CLAUDE_MODELS } from '@callguard/shared';
 import { recordUsage } from './usage.js';
 import { CACHE_1H, CACHE_TTL_HEADERS } from './scoring.js';
 
+// The model's content-based verdict on the Agent/Customer labels:
+// - 'swapped'     — clear evidence the labels were inverted throughout; corrected.
+// - 'confirmed'   — clear evidence the labels were already correct.
+// - 'unclear'     — no strong evidence either way; labels left as given.
+// - 'not_checked' — speakerAttributionConfidence was 1.0 (exact channel pin),
+//                   so the speaker check was skipped entirely.
+// Only ever 'swapped'/'confirmed'/'unclear' when the check runs
+// (speakerAttributionConfidence < 1 — see needsSpeakerCheck below).
+export type SpeakerVerdict = 'swapped' | 'confirmed' | 'unclear' | 'not_checked';
+
 export interface CleanupResult {
   text: string;
-  // true only when the model found clear content evidence (self-introduction,
-  // fact-find questions, product/compliance explanation) that the Agent/
-  // Customer labels were swapped throughout, and corrected them. Only ever
-  // set when speakerAttributionConfidence < 1 — see needsSpeakerCheck below.
+  // Retained for callers that only care whether labels were flipped.
+  // Equivalent to speakerVerdict === 'swapped'.
   speakerLabelsSwapped: boolean;
+  speakerVerdict: SpeakerVerdict;
+}
+
+// A swap or a positive content-confirmation both mean the labels are now
+// content-verified — a strong enough signal to lift the stored attribution
+// confidence above the consent-gate floor (checkpoint-classification.ts) so a
+// genuinely-correct mono transcript no longer routes every consent gate to
+// manual review. 'unclear' (no strong evidence either way) and 'not_checked'
+// leave the base confidence untouched, preserving the false-pass protection
+// for calls we genuinely can't attribute.
+export function resolveSpeakerConfidence(
+  baseConfidence: number,
+  verdict: SpeakerVerdict
+): number {
+  return verdict === 'swapped' || verdict === 'confirmed'
+    ? Math.max(baseConfidence, 0.75)
+    : baseConfidence;
 }
 
 // Mechanically flip every Agent:/Customer: turn label. Used when the model's
@@ -21,6 +46,20 @@ function swapSpeakerLabels(transcript: string): string {
   return transcript.replace(/^(Agent|Customer):/gm, (_m, who: string) =>
     who === 'Agent' ? 'Customer:' : 'Agent:'
   );
+}
+
+// Read the leading `SPEAKER_LABELS: <verdict>` line the model is asked to emit.
+// Returns null when the line is absent or unrecognised. 'unchanged' is accepted
+// as a backward-compatible alias for 'unclear' (older prompt / stale model).
+function parseSpeakerVerdict(
+  text: string
+): 'swapped' | 'confirmed' | 'unclear' | null {
+  const m = text
+    .trimStart()
+    .match(/^SPEAKER_LABELS:\s*(swapped|confirmed|unclear|unchanged)/i);
+  if (!m) return null;
+  const v = m[1]!.toLowerCase();
+  return v === 'unchanged' ? 'unclear' : (v as 'swapped' | 'confirmed' | 'unclear');
 }
 
 export async function cleanupTranscript(
@@ -36,7 +75,7 @@ export async function cleanupTranscript(
   speakerAttributionConfidence: number = 1.0
 ): Promise<CleanupResult> {
   if (!config.anthropic.apiKey) {
-    return { text: rawTranscript, speakerLabelsSwapped: false };
+    return { text: rawTranscript, speakerLabelsSwapped: false, speakerVerdict: 'not_checked' };
   }
 
   const needsSpeakerCheck = speakerAttributionConfidence < 1;
@@ -76,7 +115,11 @@ export async function cleanupTranscript(
     : '';
 
   const speakerCheckBlock = needsSpeakerCheck
-    ? `\n\n## Speaker label verification\n\nThe Agent/Customer labels below come from an automated guess (based on who speaks first in a mono recording) and can be swapped throughout — check them against conversational content before cleaning up:\n\n- The **Agent** usually introduces themselves and their company by name, asks fact-find/discovery questions, and explains products, pricing or compliance wording.\n- The **Customer** usually answers personal questions, reacts to what's proposed, and is the one being sold to or advised.\n\nIf the labels are clearly swapped throughout — strong, unambiguous evidence, not a hunch — swap every "Agent:"/"Customer:" label in your output (one full swap, decided once; never reorder turns or swap only some of them). If it's not clearly wrong, leave the labels exactly as given.`
+    ? `\n\n## Speaker label verification\n\nThe Agent/Customer labels below come from an automated guess (based on who speaks first in a mono recording) and can be swapped throughout — check them against conversational content before cleaning up:\n\n- The **Agent** usually introduces themselves and their company by name, asks fact-find/discovery questions, and explains products, pricing or compliance wording.\n- The **Customer** usually answers personal questions, reacts to what's proposed, and is the one being sold to or advised.\n\nDecide one of three verdicts from the conversational content:
+
+- **swapped** — strong, unambiguous evidence the labels are inverted throughout (e.g. the turns labelled "Customer" are clearly the one introducing the company and asking the fact-find questions). Swap every "Agent:"/"Customer:" label in your output — one full swap, decided once; never reorder turns or swap only some of them.
+- **confirmed** — clear, positive evidence the labels are already correct: the "Agent" turns really are the one who introduces themselves/the company, asks fact-find questions and explains products/compliance, and the "Customer" turns really are the one answering personal questions and reacting. Leave the labels exactly as given.
+- **unclear** — the content doesn't give strong evidence either way (too short, ambiguous, or heavily redacted). Leave the labels exactly as given. Do NOT report "confirmed" unless you actually see the evidence — a guess is "unclear".`
     : '';
 
   const { default: Anthropic } = await import('@anthropic-ai/sdk');
@@ -126,7 +169,7 @@ Fix the transcript while following these rules STRICTLY:
 ## Output
 
 ${needsSpeakerCheck
-  ? 'Start your response with exactly one line: `SPEAKER_LABELS: unchanged` or `SPEAKER_LABELS: swapped` (your decision from the Speaker label verification section above), then a blank line, then the cleaned transcript. No other preamble, explanation, or markdown code blocks.'
+  ? 'Start your response with exactly one line: `SPEAKER_LABELS: confirmed`, `SPEAKER_LABELS: swapped`, or `SPEAKER_LABELS: unclear` (your decision from the Speaker label verification section above), then a blank line, then the cleaned transcript. No other preamble, explanation, or markdown code blocks.'
   : 'Return ONLY the cleaned transcript, nothing else. No preamble, no explanation, no markdown code blocks.'}`;
 
   let response;
@@ -152,7 +195,7 @@ ${needsSpeakerCheck
     response = await stream.finalMessage();
   } catch (err) {
     console.error(`[TranscriptCleanup] Claude request failed for call ${callId ?? 'unknown'}, using raw transcript:`, (err as Error).message);
-    return { text: rawTranscript, speakerLabelsSwapped: false };
+    return { text: rawTranscript, speakerLabelsSwapped: false, speakerVerdict: needsSpeakerCheck ? 'unclear' : 'not_checked' };
   }
 
   await recordUsage({
@@ -175,35 +218,48 @@ ${needsSpeakerCheck
   // transcript rather than discarding the one decision that matters most.
   if (response.stop_reason === 'max_tokens') {
     const partial = response.content.find((b) => b.type === 'text');
-    const swappedVerdict =
-      needsSpeakerCheck &&
-      partial?.type === 'text' &&
-      /^SPEAKER_LABELS:\s*swapped/i.test(partial.text.trimStart());
-    if (swappedVerdict) {
+    const verdict =
+      needsSpeakerCheck && partial?.type === 'text'
+        ? parseSpeakerVerdict(partial.text)
+        : null;
+    if (verdict === 'swapped') {
       console.error(`[TranscriptCleanup] Cleanup output truncated at max_tokens for call ${callId ?? 'unknown'}, but SPEAKER_LABELS verdict was 'swapped' — using raw transcript with labels swapped`);
-      return { text: swapSpeakerLabels(rawTranscript), speakerLabelsSwapped: true };
+      return { text: swapSpeakerLabels(rawTranscript), speakerLabelsSwapped: true, speakerVerdict: 'swapped' };
     }
-    console.error(`[TranscriptCleanup] Cleanup output truncated at max_tokens for call ${callId ?? 'unknown'}, using raw transcript`);
-    return { text: rawTranscript, speakerLabelsSwapped: false };
+    // The cleaned body is unusable, but the verdict line survives truncation
+    // (it's the first line) — carry a 'confirmed' through so a positively-
+    // verified call still clears the consent-gate floor even though we fall
+    // back to the raw transcript for scoring.
+    console.error(`[TranscriptCleanup] Cleanup output truncated at max_tokens for call ${callId ?? 'unknown'}, using raw transcript (speaker verdict: ${verdict ?? 'none'})`);
+    return {
+      text: rawTranscript,
+      speakerLabelsSwapped: false,
+      speakerVerdict: verdict ?? (needsSpeakerCheck ? 'unclear' : 'not_checked'),
+    };
   }
 
   const textBlock = response.content.find((b) => b.type === 'text');
   if (!textBlock || textBlock.type !== 'text') {
-    return { text: rawTranscript, speakerLabelsSwapped: false };
+    return { text: rawTranscript, speakerLabelsSwapped: false, speakerVerdict: needsSpeakerCheck ? 'unclear' : 'not_checked' };
   }
 
   const output = textBlock.text.trim();
   if (!needsSpeakerCheck) {
-    return { text: output, speakerLabelsSwapped: false };
+    return { text: output, speakerLabelsSwapped: false, speakerVerdict: 'not_checked' };
   }
 
-  const match = output.match(/^SPEAKER_LABELS:\s*(unchanged|swapped)\s*\n+([\s\S]*)$/i);
+  const match = output.match(/^SPEAKER_LABELS:\s*(unchanged|swapped|confirmed|unclear)\s*\n+([\s\S]*)$/i);
   if (!match) {
     // Model didn't follow the prefix format — safer to use its output as-is
-    // (still cleaned) than to guess at a swap that wasn't clearly signalled.
-    console.warn(`[TranscriptCleanup] Call ${callId ?? 'unknown'}: missing SPEAKER_LABELS prefix, treating as unchanged`);
-    return { text: output, speakerLabelsSwapped: false };
+    // (still cleaned) and treat the split as unverified (no confidence lift)
+    // than to guess at a swap/confirmation that wasn't clearly signalled.
+    console.warn(`[TranscriptCleanup] Call ${callId ?? 'unknown'}: missing SPEAKER_LABELS prefix, treating as unclear`);
+    return { text: output, speakerLabelsSwapped: false, speakerVerdict: 'unclear' };
   }
-  const speakerLabelsSwapped = match[1]!.toLowerCase() === 'swapped';
-  return { text: match[2]!.trim(), speakerLabelsSwapped };
+  const rawVerdict = match[1]!.toLowerCase();
+  const speakerVerdict: SpeakerVerdict =
+    rawVerdict === 'swapped' ? 'swapped'
+    : rawVerdict === 'confirmed' ? 'confirmed'
+    : 'unclear'; // 'unchanged' (legacy alias) and 'unclear' both map here
+  return { text: match[2]!.trim(), speakerLabelsSwapped: speakerVerdict === 'swapped', speakerVerdict };
 }
