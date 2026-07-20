@@ -286,14 +286,24 @@ interface ZohoWriteResult {
   status?: string;
   code?: string;
   message?: string;
+  // On errors Zoho names the offending field here, e.g.
+  // { api_name: 'Score', json_path: '$.data[0].Score', expected_data_type: 'integer' }.
+  // Without it, INVALID_DATA is undiagnosable — surface it in the thrown error.
+  details?: Record<string, unknown>;
 }
 
 async function checkZohoWriteResult(res: Response, action: string): Promise<void> {
   const body = (await res.json().catch(() => null)) as { data?: ZohoWriteResult[] } | null;
   const result = body?.data?.[0];
   if (!res.ok || result?.status === 'error') {
+    // Zoho puts the rejected field's api_name (and expected type) in `details`;
+    // include it so an INVALID_DATA points at the exact field to fix.
+    const details =
+      result?.details && Object.keys(result.details).length > 0
+        ? ` (${JSON.stringify(result.details)})`
+        : '';
     throw new Error(
-      `${action} failed: ${res.status} ${result?.code ?? ''} ${result?.message ?? ''}`.trim()
+      `${action} failed: ${res.status} ${result?.code ?? ''} ${result?.message ?? ''}${details}`.trim()
     );
   }
 }
