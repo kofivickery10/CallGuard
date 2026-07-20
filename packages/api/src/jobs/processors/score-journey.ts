@@ -322,8 +322,8 @@ export async function processScoreJourney(job: Job<{ journeyId: string }>) {
       `${branch ? ` [branch: ${branch}]` : ''} across ${withTranscript.length} call(s)`
     );
 
-    const customer = await queryOne<{ phone_normalized: string | null; external_crm_id: string | null }>(
-      'SELECT phone_normalized, external_crm_id FROM customers WHERE id = $1',
+    const customer = await queryOne<{ name: string | null; phone_normalized: string | null; external_crm_id: string | null }>(
+      'SELECT name, phone_normalized, external_crm_id FROM customers WHERE id = $1',
       [journey.customer_id]
     );
 
@@ -347,7 +347,12 @@ export async function processScoreJourney(job: Job<{ journeyId: string }>) {
       customer_phone: customer?.phone_normalized ?? null,
       customer_external_crm_id: customer?.external_crm_id ?? null,
       zoho_record_id: journey.zoho_record_id,
-      client_name: journey.client_name,
+      // Prefer the name the sale trigger carried; fall back to the customer's
+      // stored name (backfilled from Zoho/CloudTalk) so the QA record shows a
+      // real client rather than "Unknown" for sales assembled without a trigger
+      // client name (manual/re-scored journeys, or a trigger that didn't send
+      // client_name). pushQARecord keeps 'Unknown' only as a last resort.
+      client_name: journey.client_name ?? customer?.name ?? null,
       breaches: failures,
     };
 
