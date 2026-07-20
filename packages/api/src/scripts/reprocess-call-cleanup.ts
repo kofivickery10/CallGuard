@@ -4,7 +4,7 @@
 // enqueue scoring — trigger a re-score via the UI/API afterwards.
 // Usage: tsx src/scripts/reprocess-call-cleanup.ts <callId>
 import { pool, queryOne, query } from '../db/client.js';
-import { cleanupTranscript } from '../services/transcript-cleanup.js';
+import { cleanupTranscript, resolveSpeakerConfidence } from '../services/transcript-cleanup.js';
 import { getKBContext } from '../services/kb.js';
 
 async function main() {
@@ -42,13 +42,13 @@ async function main() {
     confidence
   );
 
-  console.log(`speakerLabelsSwapped=${cleanup.speakerLabelsSwapped}, output chars=${cleanup.text.length}`);
+  console.log(`speakerVerdict=${cleanup.speakerVerdict}, output chars=${cleanup.text.length}`);
   console.log('After: ', cleanup.text.slice(0, 160).replace(/\n/g, ' | '));
 
   if (cleanup.text === call.transcript_text) {
     console.log('Cleanup returned the transcript unchanged — nothing to store.');
   } else {
-    const newConfidence = cleanup.speakerLabelsSwapped ? Math.max(confidence, 0.75) : confidence;
+    const newConfidence = resolveSpeakerConfidence(confidence, cleanup.speakerVerdict);
     await query(
       `UPDATE calls SET transcript_text = $1, speaker_attribution_confidence = $2, updated_at = now() WHERE id = $3`,
       [cleanup.text, newConfidence, callId]
