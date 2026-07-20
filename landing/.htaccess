@@ -15,6 +15,10 @@ RewriteRule ^ https://callguardai.co.uk%{REQUEST_URI} [L,R=301]
 RewriteCond %{HTTPS} !=on
 RewriteRule ^ https://callguardai.co.uk%{REQUEST_URI} [L,R=301]
 
+# ─── Legacy URLs: /alternatives/* moved to /compare/* ────────────────────
+RewriteRule ^alternatives/callminer/?$ /compare/callminer-alternative [R=301,L]
+RewriteRule ^alternatives/observe-ai/?$ /compare/observe-ai-alternative [R=301,L]
+
 # ─── Pretty URLs: /privacy -> /privacy.html ──────────────────────────────
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteCond %{REQUEST_FILENAME} !-f

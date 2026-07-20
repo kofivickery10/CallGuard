@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api/client';
 import CreateTenantModal from './CreateTenantModal';
+import { useTableControls, SortHead, TablePagination, TableSearch } from '../components/DataTable';
 
 interface Tenant {
   id: string;
@@ -38,16 +39,30 @@ export default function TenantList() {
 
   useEffect(load, []);
 
+  const table = useTableControls(tenants, {
+    initialSortKey: 'name',
+    searchFields: ['name', 'plan', 'status'],
+    pageSize: 25,
+    sortValue: (t, key) => {
+      if (key === 'user_count' || key === 'active_seats_mtd') return Number(t[key] ?? 0);
+      if (key === 'created_at') return new Date(t.created_at).getTime();
+      return String(t[key as keyof Tenant] ?? '').toLowerCase();
+    },
+  });
+
   return (
     <div className="p-6 space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <h2 className="text-page-title text-text-primary">Tenants</h2>
-        <button
-          onClick={() => setShowModal(true)}
-          className="bg-primary hover:bg-primary-hover text-white text-sm font-semibold px-4 py-2 rounded-btn transition-colors"
-        >
-          + New tenant
-        </button>
+        <div className="flex items-center gap-2">
+          <TableSearch value={table.search} onChange={table.setSearch} placeholder="Search tenants…" />
+          <button
+            onClick={() => setShowModal(true)}
+            className="bg-primary hover:bg-primary-hover text-white text-sm font-semibold px-4 py-2 rounded-btn transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+          >
+            + New tenant
+          </button>
+        </div>
       </div>
 
       {error && <p className="text-fail text-sm">{error}</p>}
@@ -56,15 +71,17 @@ export default function TenantList() {
         <table className="w-full text-sm">
           <thead className="bg-table-header border-b border-border">
             <tr>
-              {['Organisation', 'Plan', 'Status', 'Users', 'Active seats (MTD)', 'Created', ''].map((h) => (
-                <th key={h} className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-text-muted">
-                  {h}
-                </th>
-              ))}
+              <SortHead label="Organisation" columnKey="name" activeKey={table.sortKey} dir={table.sortDir} onSort={table.toggleSort} />
+              <SortHead label="Plan" columnKey="plan" activeKey={table.sortKey} dir={table.sortDir} onSort={table.toggleSort} />
+              <SortHead label="Status" columnKey="status" activeKey={table.sortKey} dir={table.sortDir} onSort={table.toggleSort} />
+              <SortHead label="Users" columnKey="user_count" activeKey={table.sortKey} dir={table.sortDir} onSort={table.toggleSort} />
+              <SortHead label="Active seats (MTD)" columnKey="active_seats_mtd" activeKey={table.sortKey} dir={table.sortDir} onSort={table.toggleSort} />
+              <SortHead label="Created" columnKey="created_at" activeKey={table.sortKey} dir={table.sortDir} onSort={table.toggleSort} />
+              <th className="px-4 py-3" />
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
-            {tenants.map((t) => (
+            {table.pageRows.map((t) => (
               <tr key={t.id} className="hover:bg-sidebar-hover">
                 <td className="px-4 py-3 font-medium text-text-primary">{t.name}</td>
                 <td className="px-4 py-3">
@@ -89,15 +106,16 @@ export default function TenantList() {
                 </td>
               </tr>
             ))}
-            {tenants.length === 0 && (
+            {table.total === 0 && (
               <tr>
                 <td colSpan={7} className="px-4 py-8 text-center text-text-muted">
-                  No tenants yet
+                  {tenants.length === 0 ? 'No tenants yet' : 'No tenants match your search'}
                 </td>
               </tr>
             )}
           </tbody>
         </table>
+        <TablePagination page={table.page} totalPages={table.totalPages} total={table.total} onPage={table.setPage} noun="tenants" />
       </div>
 
       {showModal && (

@@ -3,7 +3,7 @@
         xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
   <url>
     <loc>https://callguardai.co.uk/</loc>
-    <lastmod>2026-04-30</lastmod>
+    <lastmod>2026-07-19</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
     <image:image>
@@ -13,13 +13,13 @@
   </url>
   <url>
     <loc>https://callguardai.co.uk/use-cases/financial-services</loc>
-    <lastmod>2026-04-30</lastmod>
+    <lastmod>2026-07-19</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
     <loc>https://callguardai.co.uk/use-cases/bpo</loc>
-    <lastmod>2026-04-30</lastmod>
+    <lastmod>2026-07-19</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.9</priority>
   </url>
@@ -73,25 +73,25 @@
   </url>
   <url>
     <loc>https://callguardai.co.uk/use-cases/collections</loc>
-    <lastmod>2026-05-05</lastmod>
+    <lastmod>2026-07-19</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
     <loc>https://callguardai.co.uk/use-cases/outbound-sales</loc>
-    <lastmod>2026-05-05</lastmod>
+    <lastmod>2026-07-19</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://callguardai.co.uk/alternatives/callminer</loc>
-    <lastmod>2026-05-05</lastmod>
+    <loc>https://callguardai.co.uk/compare/callminer-alternative</loc>
+    <lastmod>2026-07-19</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://callguardai.co.uk/alternatives/observe-ai</loc>
-    <lastmod>2026-05-05</lastmod>
+    <loc>https://callguardai.co.uk/compare/observe-ai-alternative</loc>
+    <lastmod>2026-07-19</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -118,5 +118,35 @@
     <lastmod>2026-04-28</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://callguardai.co.uk/pricing</loc>
+    <lastmod>2026-07-19</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://callguardai.co.uk/about</loc>
+    <lastmod>2026-07-19</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://callguardai.co.uk/compare</loc>
+    <lastmod>2026-07-19</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://callguardai.co.uk/compare/convin-alternative</loc>
+    <lastmod>2026-07-19</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://callguardai.co.uk/compare/balto-alternative</loc>
+    <lastmod>2026-07-19</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
   </url>
 </urlset>
