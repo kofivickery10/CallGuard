@@ -15,5 +15,6 @@ export * from './types/learning.js';
 export * from './types/streaming.js';
 export * from './types/dialer.js';
 export * from './types/journey.js';
+export * from './types/capture.js';
 export * from './constants.js';
 export * from './scoring.js';

@@ -8,6 +8,7 @@ import { getScoringSettings } from '../../services/tenant-settings.js';
 import { classifyItems } from '../../services/checkpoint-classification.js';
 import { deliverCallScored } from '../../services/webhook-delivery.js';
 import { pushJourneyScored } from '../../services/zoho.js';
+import { maybeStartJourneyCapture } from '../../services/capture-runs.js';
 import { isItemPass, deriveSeverity, callPasses, resolveBranch } from '@callguard/shared';
 import type { Scorecard, ScorecardItem, WebhookJourneyScoredPayload } from '@callguard/shared';
 
@@ -368,6 +369,10 @@ export async function processScoreJourney(job: Job<{ journeyId: string }>) {
     pushJourneyScored(journey.organization_id, payload).catch((err) => {
       console.error(`[ScoreJourney] Zoho write-back failed for ${journeyId}:`, (err as Error).message);
     });
+    // Data capture runs strictly after (and independently of) scoring — a
+    // capture failure never affects the journey's score. No-op unless the
+    // org has capture_enabled and a form resolves.
+    await maybeStartJourneyCapture(journey.organization_id, journeyId);
   } catch (err) {
     const totalAttempts = job.opts.attempts ?? 1;
     const isFinalAttempt = job.attemptsMade + 1 >= totalAttempts;

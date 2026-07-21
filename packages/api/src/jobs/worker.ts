@@ -9,6 +9,7 @@ import { processAssembleJourney } from './processors/assemble-journey.js';
 import { processAlertDelivery } from './processors/alert-deliver.js';
 import { processNotifyEmail } from './processors/notify-email.js';
 import { processScoreJourney } from './processors/score-journey.js';
+import { processCapture } from './processors/capture.js';
 import { processRetentionPurge } from './processors/retention-purge.js';
 import { processStuckRepair } from './processors/stuck-repair.js';
 import { processBillingSnapshot } from './processors/billing-snapshot.js';
@@ -26,12 +27,14 @@ const transcriptionWorker = new Worker('transcription', processTranscription, {
   concurrency: 2,
 });
 
-// The scoring queue carries two job types: 'score' (per-call, unchanged) and
-// 'score-journey' (multi-call, spec §9) — dispatch by name rather than
-// splitting into a second queue/worker pair, since both are Claude-scoring
-// work with the same concurrency/backoff needs.
+// The scoring queue carries three job types: 'score' (per-call, unchanged),
+// 'score-journey' (multi-call, spec §9) and 'capture' (data-capture
+// extraction, run after scoring) — dispatch by name rather than splitting
+// into more queue/worker pairs, since all are Claude work with the same
+// concurrency/backoff needs.
 async function dispatchScoring(job: Job) {
   if (job.name === 'score-journey') return processScoreJourney(job);
+  if (job.name === 'capture') return processCapture(job);
   return processScoring(job);
 }
 

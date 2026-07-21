@@ -38,6 +38,7 @@ import { streamRouter } from './routes/stream.js';
 import { superadminRouter } from './routes/superadmin.js';
 import { announcementsRouter } from './routes/announcements.js';
 import { customersRouter } from './routes/customers.js';
+import { captureRouter } from './routes/capture.js';
 import { usersRouter } from './routes/users.js';
 
 const app = express();
@@ -222,6 +223,7 @@ app.use('/api/support', supportRouter);
 app.use('/api/superadmin', superadminRouter);
 app.use('/api/customers', customersRouter);
 app.use('/api/journeys', journeysRouter);
+app.use('/api/capture', captureRouter);
 app.use('/api/review-items', reviewRouter);
 app.use('/api/users', usersRouter);
 app.use('/api/announcements', announcementsRouter);
