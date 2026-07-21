@@ -16,7 +16,7 @@ organizationRouter.get('/', async (req, res, next) => {
               data_improvement_opt_in, data_improvement_opt_in_at,
               scoring_scope, min_scoreable_seconds, min_scoreable_words,
               pass_threshold, retention_days, transcription_mode, mono_first_speaker,
-              deepgram_region, deepgram_mip_opt_out, status, cancelled_at
+              deepgram_region, deepgram_mip_opt_out, capture_enabled, status, cancelled_at
          FROM organizations WHERE id = $1`,
       [req.user!.organizationId]
     );

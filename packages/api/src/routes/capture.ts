@@ -454,6 +454,44 @@ captureRouter.get('/runs/:id/export.csv', async (req, res, next) => {
   }
 });
 
+// Recent runs, joined with the sale/customer they belong to — powers the
+// Data Capture page's attention queue (needs_form / failed) and history.
+captureRouter.get('/runs', async (req, res, next) => {
+  try {
+    const status = typeof req.query.status === 'string' ? req.query.status : null;
+    const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
+    const params: unknown[] = [req.user!.organizationId];
+    let statusFilter = '';
+    if (status) {
+      params.push(status);
+      statusFilter = `AND r.status = $${params.length}`;
+    }
+    params.push(limit);
+    const rows = await query(
+      `SELECT r.id, r.journey_id, r.call_id, r.form_id, r.form_version, r.status,
+              r.error_message, r.completed_at, r.created_at,
+              cf.name AS form_name, cf.context_label,
+              cust.name AS customer_name,
+              (SELECT COUNT(*) FROM capture_answers ca
+                JOIN capture_form_fields f ON f.id = ca.field_id
+                WHERE ca.run_id = r.id AND ca.result = 'missed' AND f.required)::int AS missed_required,
+              (SELECT COUNT(*) FROM capture_answers ca
+                WHERE ca.run_id = r.id AND ca.result = 'manual_review')::int AS needs_review
+         FROM capture_runs r
+         JOIN capture_forms cf ON cf.id = r.form_id
+         LEFT JOIN journeys j ON j.id = r.journey_id
+         LEFT JOIN customers cust ON cust.id = j.customer_id
+        WHERE r.organization_id = $1 ${statusFilter}
+        ORDER BY r.created_at DESC
+        LIMIT $${params.length}`,
+      params
+    );
+    res.json({ data: rows });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // Coverage report: per-field asked/missed rates over completed runs in a date
 // range — the "which questions are agents skipping" QC view.
 captureRouter.get('/coverage', async (req, res, next) => {

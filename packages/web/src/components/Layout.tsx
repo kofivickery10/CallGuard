@@ -77,6 +77,9 @@ interface NavItem {
   roles?: string[];
   // Only CallGuard platform staff (cross-tenant support inbox).
   staffOnly?: boolean;
+  // Per-tenant module gate: only shown when the org has the feature enabled
+  // (e.g. 'capture' → organizations.capture_enabled). Orthogonal to roles.
+  requiresFeature?: 'capture';
 }
 
 interface NavSection {
@@ -116,6 +119,7 @@ const NAV_SECTIONS: NavSection[] = [
     label: 'Compliance',
     items: [
       { path: '/compliance-docs', label: 'Compliance Docs', icon: 'M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8zM14 2v6h6M16 13H8M16 17H8M10 9H8', roles: ORG_VIEW },
+      { path: '/data-capture', label: 'Data Capture', icon: 'M4 4h16v4H4zM4 10h16v4H4zM4 16h10v4H4zM18 18l2 2 4-4', roles: ORG_VIEW, requiresFeature: 'capture' },
       { path: '/audit-log', label: 'Audit Log', icon: 'M12 2v20M2 12h20M12 6l4 4M12 6l-4 4M12 18l4-4M12 18l-4-4', roles: ORG_VIEW },
     ],
   },
@@ -140,6 +144,17 @@ export function Layout({ children }: { children: ReactNode }) {
     refetchInterval: 20000,
   });
   const supportUnreadCount = supportUnread?.count ?? 0;
+
+  // Per-tenant feature flags (e.g. the Data Capture module) — gates nav items
+  // marked requiresFeature. Cached long: flags flip via superadmin ops, not
+  // mid-session.
+  const { data: orgInfo } = useQuery({
+    queryKey: ['organization'],
+    queryFn: () => api.get<{ capture_enabled?: boolean }>('/organization'),
+    enabled: !!user,
+    staleTime: 5 * 60_000,
+  });
+  const features: Record<'capture', boolean> = { capture: orgInfo?.capture_enabled === true };
 
   // Desktop ping for staff when a customer message arrives and the tab isn't focused.
   const prevSupportUnreadRef = useRef<number | null>(null);
@@ -189,11 +204,12 @@ export function Layout({ children }: { children: ReactNode }) {
         {/* Nav (scrolls independently when items exceed viewport height) */}
         <nav className="flex-1 min-h-0 overflow-y-auto px-3 py-1">
           {NAV_SECTIONS.map((section, si) => {
-            const visible = section.items.filter((item) =>
-              item.staffOnly
+            const visible = section.items.filter((item) => {
+              if (item.requiresFeature && !features[item.requiresFeature]) return false;
+              return item.staffOnly
                 ? !!user?.is_staff
-                : !item.roles || (!!user?.role && item.roles.includes(user.role))
-            );
+                : !item.roles || (!!user?.role && item.roles.includes(user.role));
+            });
             if (visible.length === 0) return null;
             return (
               <div key={si} className={si === 0 ? '' : 'mt-3'}>

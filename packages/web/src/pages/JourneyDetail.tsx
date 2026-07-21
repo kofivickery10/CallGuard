@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import { useDialog } from '../components/DialogProvider';
 import { ScoreGauge } from '../components/ScoreGauge';
 import { CoachingPanel } from '../components/CoachingPanel';
+import { CapturePanel } from '../components/CapturePanel';
 import { ItemResultBadge } from '../components/ItemResultBadge';
 import { SeverityBadge } from '../components/BreachBadges';
 import { formatPhone } from '../lib/format';
@@ -329,6 +330,10 @@ export function JourneyDetail() {
           </div>
         </div>
       </div>
+
+      {/* Data Capture record (module-gated: renders nothing when the sale has
+          no capture run). Deliberately below and separate from the QA score. */}
+      <CapturePanel journeyId={journey.id} isAdmin={isAdmin} />
     </div>
   );
 }

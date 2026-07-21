@@ -40,6 +40,9 @@ export interface OrganizationInfo {
   // (products, sector jargon, provider names). Boosted ahead of the generic
   // core list at transcription time — see services/transcription.ts.
   keyterms?: string[];
+  // Data Capture module switch (migration 059). Set by CallGuard staff, like
+  // the other scoring-policy columns; gates capture jobs, routes and UI.
+  capture_enabled?: boolean;
   // Stereo channel the adviser is recorded on: 0 = left, 1 = right, null = auto-detect.
   adviser_channel?: number | null;
   // Opt-in (default false) to let CallGuard use anonymised, customer-derived

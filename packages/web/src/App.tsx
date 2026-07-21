@@ -15,6 +15,9 @@ import { Impersonate } from './pages/Impersonate';
 // Lazy-loaded admin-heavy pages (most users never visit)
 const Scorecards = lazy(() => import('./pages/Scorecards').then((m) => ({ default: m.Scorecards })));
 const ScorecardEditor = lazy(() => import('./pages/ScorecardEditor').then((m) => ({ default: m.ScorecardEditor })));
+const DataCaptureForms = lazy(() => import('./pages/DataCaptureForms').then((m) => ({ default: m.DataCaptureForms })));
+const DataCaptureFormEditor = lazy(() => import('./pages/DataCaptureFormEditor').then((m) => ({ default: m.DataCaptureFormEditor })));
+const DataCapture = lazy(() => import('./pages/DataCapture').then((m) => ({ default: m.DataCapture })));
 const Team = lazy(() => import('./pages/Team').then((m) => ({ default: m.Team })));
 const KnowledgeBase = lazy(() => import('./pages/KnowledgeBase').then((m) => ({ default: m.KnowledgeBase })));
 const Integrations = lazy(() => import('./pages/Integrations').then((m) => ({ default: m.Integrations })));
@@ -85,6 +88,10 @@ export function App() {
                   <Route path="/scorecards" element={<Scorecards />} />
                   <Route path="/scorecards/new" element={<ScorecardEditor />} />
                   <Route path="/scorecards/:id/edit" element={<ScorecardEditor />} />
+                  <Route path="/capture-forms" element={<DataCaptureForms />} />
+                  <Route path="/capture-forms/new" element={<DataCaptureFormEditor />} />
+                  <Route path="/capture-forms/:id/edit" element={<DataCaptureFormEditor />} />
+                  <Route path="/data-capture" element={<DataCapture />} />
                   <Route path="/team" element={<Team />} />
                   <Route path="/knowledge-base" element={<KnowledgeBase />} />
                   <Route path="/integrations" element={<Integrations />} />
