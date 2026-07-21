@@ -24,6 +24,7 @@ export function AlertRuleModal({ open, initial, onClose }: AlertRuleModalProps) 
   const [description, setDescription] = useState('');
   const [triggerType, setTriggerType] = useState<AlertTriggerType>('low_overall_score');
   const [threshold, setThreshold] = useState(70);
+  const [minMissed, setMinMissed] = useState(1);
   const [selectedScorecardId, setSelectedScorecardId] = useState('');
   const [selectedItemId, setSelectedItemId] = useState('');
   const [isActive, setIsActive] = useState(true);
@@ -71,6 +72,8 @@ export function AlertRuleModal({ open, initial, onClose }: AlertRuleModalProps) 
       } else if (initial.trigger_type === 'item_below_threshold') {
         setSelectedItemId(String(cfg.scorecard_item_id || ''));
         setThreshold(Number(cfg.threshold) || 50);
+      } else if (initial.trigger_type === 'capture_missed_required') {
+        setMinMissed(Number(cfg.min_missed) || 1);
       }
 
       const channels = initial.channels;
@@ -145,6 +148,8 @@ export function AlertRuleModal({ open, initial, onClose }: AlertRuleModalProps) 
         return;
       }
       trigger_config = { scorecard_item_id: selectedItemId, threshold };
+    } else if (triggerType === 'capture_missed_required') {
+      trigger_config = { min_missed: Math.max(1, minMissed) };
     }
 
     setSaving(true);
@@ -207,6 +212,19 @@ export function AlertRuleModal({ open, initial, onClose }: AlertRuleModalProps) 
                 max={100}
                 value={threshold}
                 onChange={(e) => setThreshold(parseInt(e.target.value) || 0)}
+                className={inputCls}
+              />
+            </Field>
+          )}
+
+          {triggerType === 'capture_missed_required' && (
+            <Field label="Minimum missed answers (fires when a sale's data capture finds at least this many required questions unanswered)">
+              <input
+                type="number"
+                min={1}
+                max={100}
+                value={minMissed}
+                onChange={(e) => setMinMissed(parseInt(e.target.value) || 1)}
                 className={inputCls}
               />
             </Field>

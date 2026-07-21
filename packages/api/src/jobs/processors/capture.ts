@@ -3,6 +3,7 @@ import { query, queryOne, withTransaction } from '../../db/client.js';
 import { captureFromTranscript, sanitizeAnswers } from '../../services/capture.js';
 import { getCaptureForm } from '../../services/capture-runs.js';
 import { recordUsage } from '../../services/usage.js';
+import { evaluateCaptureRunAlerts } from '../../services/alert-evaluator.js';
 import type { CaptureRun } from '@callguard/shared';
 
 // ============================================================
@@ -141,6 +142,15 @@ export async function processCapture(job: Job<{ runId: string }>) {
       `${sanitized.filter((a) => a.result === 'captured').length} captured, ` +
       `${missedRequired} required missed`
     );
+
+    // Alert supervisors about missed required answers (rule-driven, no-op
+    // unless the org has a capture_missed_required rule). Fire-and-forget —
+    // an alert failure never fails the completed run.
+    if (missedRequired > 0) {
+      evaluateCaptureRunAlerts(runId).catch((alertErr) => {
+        console.error(`[Capture] Alert evaluation failed for run ${runId}:`, alertErr);
+      });
+    }
   } catch (err) {
     const totalAttempts = job.opts.attempts ?? 1;
     const isFinalAttempt = job.attemptsMade + 1 >= totalAttempts;

@@ -54,10 +54,16 @@ export async function processAlertDelivery(job: Job<DeliverJobData>) {
   }
 }
 
+// The alert's landing page: an explicit action_url (journey-level alerts)
+// beats the classic per-call link.
+function alertLink(payload: AlertPayload): string {
+  if (payload.action_url) return `${config.appUrl}${payload.action_url}`;
+  return payload.call_id ? `${config.appUrl}/calls/${payload.call_id}` : config.appUrl;
+}
+
 async function deliverEmail(recipient: string, payload: AlertPayload) {
-  const callLink = payload.call_id
-    ? `${config.appUrl}/calls/${payload.call_id}`
-    : config.appUrl;
+  const callLink = alertLink(payload);
+  const linkLabel = payload.action_label ?? 'View Call';
 
   const severityColor = {
     info: '#2d5a9e',
@@ -76,7 +82,7 @@ async function deliverEmail(recipient: string, payload: AlertPayload) {
         ${payload.agent_name ? `<p style="color: #6a7e6a; font-size: 13px;"><strong>Agent:</strong> ${escapeHtml(payload.agent_name)}</p>` : ''}
         <p style="color: #6a7e6a; font-size: 13px;"><strong>Reason:</strong> ${escapeHtml(payload.matched_reason)}</p>
         <div style="margin-top: 24px;">
-          <a href="${callLink}" style="background: #4a9e6e; color: white; text-decoration: none; padding: 10px 20px; border-radius: 6px; font-weight: 600; display: inline-block;">View Call</a>
+          <a href="${callLink}" style="background: #4a9e6e; color: white; text-decoration: none; padding: 10px 20px; border-radius: 6px; font-weight: 600; display: inline-block;">${escapeHtml(linkLabel)}</a>
         </div>
         <p style="color: #8a9e8a; font-size: 12px; margin-top: 24px;">Sent by CallGuard — <a href="${config.appUrl}/alerts" style="color: #4a9e6e;">manage alert rules</a></p>
       </div>
@@ -103,9 +109,8 @@ async function deliverEmail(recipient: string, payload: AlertPayload) {
 }
 
 async function deliverSlack(webhookUrl: string, payload: AlertPayload) {
-  const callLink = payload.call_id
-    ? `${config.appUrl}/calls/${payload.call_id}`
-    : config.appUrl;
+  const callLink = alertLink(payload);
+  const linkLabel = payload.action_label ?? 'View Call';
 
   const emoji = {
     info: ':information_source:',
@@ -142,7 +147,7 @@ async function deliverSlack(webhookUrl: string, payload: AlertPayload) {
         elements: [
           {
             type: 'button',
-            text: { type: 'plain_text', text: 'View Call' },
+            text: { type: 'plain_text', text: linkLabel },
             url: callLink,
           },
         ],
@@ -178,7 +183,7 @@ async function deliverInApp(
         payload.severity,
         callId,
         ruleId,
-        callId ? `/calls/${callId}` : null,
+        payload.action_url ?? (callId ? `/calls/${callId}` : null),
       ]
     );
     return { ok: true };

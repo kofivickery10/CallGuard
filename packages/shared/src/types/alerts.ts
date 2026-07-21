@@ -2,6 +2,7 @@ export const ALERT_TRIGGER_TYPES = [
   'low_overall_score',
   'item_below_threshold',
   'processing_failed',
+  'capture_missed_required',
 ] as const;
 
 export type AlertTriggerType = (typeof ALERT_TRIGGER_TYPES)[number];
@@ -10,6 +11,7 @@ export const ALERT_TRIGGER_LABELS: Record<AlertTriggerType, string> = {
   low_overall_score: 'Low overall score',
   item_below_threshold: 'Scorecard item below threshold',
   processing_failed: 'Call processing failed',
+  capture_missed_required: 'Data capture: required answer missed',
 };
 
 export type AlertChannel = 'email' | 'slack' | 'in_app';
@@ -23,6 +25,11 @@ export interface ItemBelowThresholdConfig {
   threshold: number;
 }
 export type ProcessingFailedConfig = Record<string, never>;
+// Fires when a completed capture run has at least min_missed required
+// questions with no answer (default 1).
+export interface CaptureMissedRequiredConfig {
+  min_missed?: number;
+}
 
 export type AlertInAppTarget = string[] | 'all_admins';
 
