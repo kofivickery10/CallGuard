@@ -42,6 +42,7 @@ export type AuditActionType =
   | 'scorecard.deactivate'
   | 'org.data_improvement_optin'
   | 'org.industry.change'
+  | 'org.keyterms.change'
   | 'org.scoring_settings.change'
   | 'dialer_connection.create'
   | 'dialer_connection.update'

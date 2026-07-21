@@ -148,7 +148,7 @@ Use the business context below to correctly identify product names, brand names,
 
 - UK postcodes get mangled (e.g. "S O twenty three" → **SO23**) — restore standard UK postcode format
 - UK phone numbers: restore space-free 11-digit format (e.g. "0 7 4 7 3..." → **07473...**)
-- Spelled-out acronyms/brands (e.g. "B T" → **BT**, "E E" → **EE**, "D P A" → **DPA**) — restore as written
+- Spelled-out acronyms/brands (e.g. "D P A" → **DPA**) — restore as written, using the Business Context above for brand and product names
 - "cooling of" → **cooling off**; "cash back" → **cashback**; prices with pound signs (**£19.99**)
 - Misheard product/brand names → correct them using the Business Context above
 

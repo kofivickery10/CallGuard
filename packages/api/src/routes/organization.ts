@@ -12,7 +12,7 @@ organizationRouter.use(authenticate);
 organizationRouter.get('/', async (req, res, next) => {
   try {
     const org = await queryOne<OrganizationInfo>(
-      `SELECT id, name, plan, industry, adviser_channel,
+      `SELECT id, name, plan, industry, keyterms, adviser_channel,
               data_improvement_opt_in, data_improvement_opt_in_at,
               scoring_scope, min_scoreable_seconds, min_scoreable_words,
               pass_threshold, retention_days, transcription_mode, mono_first_speaker,
@@ -62,6 +62,45 @@ organizationRouter.put('/industry', requireAdmin, async (req, res, next) => {
       entityType: 'organization',
       entityId: req.user!.organizationId,
       metadata: { industry: trimmed || null },
+    });
+    res.json(rows[0]);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Admins set the organisation's transcription keyterms — domain vocabulary
+// (products, sector jargon, provider names) boosted in Deepgram ahead of the
+// generic core list, improving recognition of the tenant's own terminology.
+// Empty array clears the list. See migration 058 and services/transcription.ts.
+organizationRouter.put('/keyterms', requireAdmin, async (req, res, next) => {
+  try {
+    const { keyterms } = req.body as { keyterms: unknown };
+    if (!Array.isArray(keyterms) || keyterms.some((t) => typeof t !== 'string')) {
+      throw new AppError(400, 'keyterms must be an array of strings');
+    }
+    const cleaned = [...new Set(keyterms.map((t) => t.trim()).filter(Boolean))];
+    if (cleaned.length > 80) {
+      // Deepgram caps keyterm boosting at 100 terms per request; leave room
+      // for the org name, agent names and the generic core list.
+      throw new AppError(400, 'keyterms must be 80 terms or fewer');
+    }
+    if (cleaned.some((t) => t.length > 60)) {
+      throw new AppError(400, 'each keyterm must be 60 characters or fewer');
+    }
+    const rows = await query<OrganizationInfo>(
+      `UPDATE organizations SET keyterms = $1, updated_at = now()
+        WHERE id = $2
+        RETURNING id, name, plan, industry, keyterms, adviser_channel`,
+      [cleaned, req.user!.organizationId]
+    );
+    void recordAuditEvent({
+      organizationId: req.user!.organizationId,
+      userId: req.user!.userId,
+      actionType: 'org.keyterms.change',
+      entityType: 'organization',
+      entityId: req.user!.organizationId,
+      metadata: { keyterm_count: cleaned.length },
     });
     res.json(rows[0]);
   } catch (err) {

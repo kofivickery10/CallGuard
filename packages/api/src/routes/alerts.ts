@@ -162,8 +162,17 @@ alertsRouter.post('/rules/:id/test', requireAdmin, async (req, res, next) => {
           [req.user!.organizationId]
         );
         userIds = admins.map((a) => a.id);
-      } else if (Array.isArray(channels.in_app.user_ids)) {
-        userIds = channels.in_app.user_ids;
+      } else if (Array.isArray(channels.in_app.user_ids) && channels.in_app.user_ids.length > 0) {
+        // Same org-membership filter as the evaluator's resolveInAppUserIds:
+        // never deliver to a user id outside the requesting admin's org.
+        const rows = await query<{ id: string }>(
+          `SELECT id FROM users WHERE organization_id = $1 AND id = ANY($2::uuid[])`,
+          [
+            req.user!.organizationId,
+            channels.in_app.user_ids.filter((id) => /^[0-9a-f-]{36}$/i.test(id)),
+          ]
+        );
+        userIds = rows.map((r) => r.id);
       }
       for (const userId of userIds) {
         await alertsQueue.add('deliver', {

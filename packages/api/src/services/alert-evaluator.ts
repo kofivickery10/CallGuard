@@ -2,6 +2,8 @@ import { query, queryOne } from '../db/client.js';
 import { alertsQueue } from '../jobs/queue.js';
 import type { AlertRule, AlertChannelsConfig, AlertSeverity } from '@callguard/shared';
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 interface CallRow {
   id: string;
   organization_id: string;
@@ -210,5 +212,18 @@ async function resolveInAppUserIds(
     );
     return admins.map((a) => a.id);
   }
-  return Array.isArray(config) ? config : [];
+  if (!Array.isArray(config) || config.length === 0) return [];
+  // Only deliver to users in the rule's own organisation. An explicit id list
+  // is admin-supplied JSONB — without this filter, a rule configured with a
+  // foreign user's UUID would push this org's call metadata into another
+  // tenant's notifications (deliverInApp resolves the notification's org from
+  // the TARGET user, not the rule). Non-UUID entries are dropped up front so
+  // a malformed rule can't fail the cast and take down the whole fan-out.
+  const candidates = config.filter((id) => typeof id === 'string' && UUID_RE.test(id));
+  if (candidates.length === 0) return [];
+  const users = await query<{ id: string }>(
+    `SELECT id FROM users WHERE organization_id = $1 AND id = ANY($2::uuid[])`,
+    [organizationId, candidates]
+  );
+  return users.map((u) => u.id);
 }

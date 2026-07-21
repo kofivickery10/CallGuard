@@ -71,8 +71,14 @@ export async function processScoreJourney(job: Job<{ journeyId: string }>) {
       })
       .join('\n\n');
 
-    const scorecard = await queryOne<Scorecard>('SELECT * FROM scorecards WHERE id = $1', [journey.scorecard_id]);
-    if (!scorecard) throw new Error(`Scorecard ${journey.scorecard_id} not found`);
+    // Org predicate is defence-in-depth: journey.scorecard_id was org-validated
+    // at assembly, but a mis-wired reference must never score one tenant's
+    // calls against another tenant's scorecard.
+    const scorecard = await queryOne<Scorecard>(
+      'SELECT * FROM scorecards WHERE id = $1 AND organization_id = $2',
+      [journey.scorecard_id, journey.organization_id]
+    );
+    if (!scorecard) throw new Error(`Scorecard ${journey.scorecard_id} not found in org ${journey.organization_id}`);
 
     const items = await query<ScorecardItem>(
       'SELECT * FROM scorecard_items WHERE scorecard_id = $1 AND archived_at IS NULL ORDER BY sort_order',

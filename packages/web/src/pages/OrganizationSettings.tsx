@@ -35,6 +35,12 @@ export function OrganizationSettings() {
   const [industryDraft, setIndustryDraft] = useState('');
   const [savingIndustry, setSavingIndustry] = useState(false);
 
+  // Transcription keyterms (domain vocabulary boosted in speech-to-text).
+  // Stored as an array; edited as one term per line. undefined = loading.
+  const [keyterms, setKeyterms] = useState<string | undefined>(undefined);
+  const [keytermsDraft, setKeytermsDraft] = useState('');
+  const [savingKeyterms, setSavingKeyterms] = useState(false);
+
   // Active-seat usage (admin only)
   const [seats, setSeats] = useState<ActiveSeats | null>(null);
 
@@ -46,10 +52,14 @@ export function OrganizationSettings() {
         setDataOptInAt(org.data_improvement_opt_in_at ?? null);
         setIndustry(org.industry ?? '');
         setIndustryDraft(org.industry ?? '');
+        const terms = (org.keyterms ?? []).join('\n');
+        setKeyterms(terms);
+        setKeytermsDraft(terms);
       })
       .catch(() => {
         setDataOptIn(false);
         setIndustry('');
+        setKeyterms('');
       });
   }, []);
 
@@ -72,6 +82,27 @@ export function OrganizationSettings() {
       setError((err as Error).message);
     } finally {
       setSavingIndustry(false);
+    }
+  };
+
+  const handleKeytermsSave = async () => {
+    setSavingKeyterms(true);
+    setError('');
+    try {
+      const terms = keytermsDraft
+        .split('\n')
+        .map((t) => t.trim())
+        .filter(Boolean);
+      const updated = await api.put<OrganizationInfo>('/organization/keyterms', {
+        keyterms: terms,
+      });
+      const next = (updated.keyterms ?? []).join('\n');
+      setKeyterms(next);
+      setKeytermsDraft(next);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSavingKeyterms(false);
     }
   };
 
@@ -136,6 +167,46 @@ export function OrganizationSettings() {
               >
                 {savingIndustry ? 'Saving…' : 'Save'}
               </button>
+            )}
+          </div>
+        )}
+        {!isAdmin && (
+          <p className="text-[11px] text-text-muted mt-2">Ask your admin to change this.</p>
+        )}
+      </div>
+
+      <div className="bg-card border border-border rounded-card p-5 mb-5">
+        <h3 className="text-table-cell uppercase tracking-wider text-text-muted font-semibold mb-1">
+          Transcription vocabulary
+        </h3>
+        <p className="text-xs text-text-subtle mb-3">
+          Terms specific to your business — product names, industry jargon, provider names — that
+          transcription should recognise accurately. One term per line, up to 80 terms. Your
+          organisation and agent names are included automatically.
+        </p>
+        {keyterms === undefined ? (
+          <p className="text-xs text-text-muted">Loading…</p>
+        ) : (
+          <div>
+            <textarea
+              value={keytermsDraft}
+              onChange={(e) => setKeytermsDraft(e.target.value)}
+              disabled={!isAdmin || savingKeyterms}
+              rows={6}
+              aria-label="Transcription vocabulary, one term per line"
+              placeholder={'e.g.\nlife cover\ncritical illness\nsum assured'}
+              className="w-full px-3 py-2 rounded-btn border border-border bg-card text-table-cell text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none disabled:opacity-60 resize-y"
+            />
+            {isAdmin && (
+              <div className="mt-2 flex justify-end">
+                <button
+                  onClick={handleKeytermsSave}
+                  disabled={savingKeyterms || keytermsDraft.trim() === (keyterms ?? '').trim()}
+                  className="px-3 py-2 rounded-btn text-table-cell border border-primary bg-primary text-white font-semibold hover:bg-primary-hover disabled:opacity-50 transition-colors"
+                >
+                  {savingKeyterms ? 'Saving…' : 'Save'}
+                </button>
+              </div>
             )}
           </div>
         )}
