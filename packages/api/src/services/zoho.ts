@@ -473,7 +473,10 @@ async function updateRecordScore(
 ): Promise<void> {
   const record: Record<string, unknown> = {
     id: recordId,
-    [fieldMap.score]: Number(payload.overall_score.toFixed(1)),
+    // Rounded to an integer: a Zoho number field typed as Integer rejects a
+    // decimal (400 INVALID_DATA), and an integer is valid for a decimal field
+    // too — so rounding is safe whatever the tenant's field type.
+    [fieldMap.score]: Math.round(payload.overall_score),
     [fieldMap.result]: payload.pass ? 'Pass' : 'Fail',
     [fieldMap.last_scored]: toZohoDateTime(payload.scored_at),
     [fieldMap.link]: reviewLink(payload),
@@ -621,7 +624,9 @@ async function pushQARecord(
 
   const qa = conn.qa_field_map;
   const record: Record<string, unknown> = {
-    [qa.score]: Number(payload.overall_score.toFixed(1)),
+    // Integer: the QA score field may be typed Integer in Zoho (e.g. Trust
+    // Point's AI_Call_Score), which rejects a decimal. Safe for a decimal field too.
+    [qa.score]: Math.round(payload.overall_score),
     [qa.client_name]: payload.client_name ?? 'Unknown',
     [qa.customer_lookup]: { id: zohoRecordId },
   };
