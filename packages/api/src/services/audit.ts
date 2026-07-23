@@ -45,6 +45,7 @@ export type AuditActionType =
   | 'product.create'
   | 'product.update'
   | 'product.deactivate'
+  | 'product.sync'
   | 'org.data_improvement_optin'
   | 'org.industry.change'
   | 'org.keyterms.change'
@@ -64,6 +65,7 @@ export type AuditActionType =
   | 'tenant.billing_exempt'
   | 'tenant.feature_override'
   | 'tenant.impersonate'
+  | 'tenant.pii_redaction_exemption'
   | 'tenant.delete';
 
 export type AuditEntityType =

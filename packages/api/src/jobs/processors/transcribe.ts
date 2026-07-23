@@ -41,8 +41,13 @@ export async function processTranscription(job: Job<{ callId: string }>) {
     // Per-tenant stereo channel mapping (which channel is the adviser), plus
     // the org's own name and domain vocabulary (migration 058) for keyterm
     // boosting — tenant terms are boosted ahead of the generic core list.
-    const orgRow = await queryOne<{ name: string | null; adviser_channel: number | null; keyterms: string[] | null }>(
-      'SELECT name, adviser_channel, keyterms FROM organizations WHERE id = $1',
+    const orgRow = await queryOne<{
+      name: string | null;
+      adviser_channel: number | null;
+      keyterms: string[] | null;
+      pii_redaction_exempt: boolean;
+    }>(
+      'SELECT name, adviser_channel, keyterms, pii_redaction_exempt FROM organizations WHERE id = $1',
       [call.organization_id]
     );
     const tenantKeyterms = [
@@ -75,7 +80,8 @@ export async function processTranscription(job: Job<{ callId: string }>) {
       orgRow?.adviser_channel ?? null,
       scoringSettings.transcriptionMode,
       scoringSettings.deepgramRegion,
-      monoFirstSpeaker
+      monoFirstSpeaker,
+      orgRow?.pii_redaction_exempt ?? false
     );
 
     // Record Deepgram usage (billed per minute of audio).

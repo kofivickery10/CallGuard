@@ -89,7 +89,12 @@ export async function transcribeCall(
   adviserChannel: number | null = null,
   transcriptionMode: TranscriptionMode = 'mono_diarize',
   deepgramRegion: DeepgramRegion = 'eu',
-  monoFirstSpeaker: MonoFirstSpeaker = 'agent'
+  monoFirstSpeaker: MonoFirstSpeaker = 'agent',
+  // organizations.pii_redaction_exempt (migration 065) — an explicit,
+  // superadmin-set, DPIA-backed exception for a tenant whose Data Capture
+  // reconciliation needs the customer's actual health/identity answers, not
+  // just confirmation they were given. Defaults to false (redact everything).
+  piiRedactionExempt: boolean = false
 ): Promise<TranscriptionResult> {
   if (!config.deepgram.apiKey) {
     throw new Error('DEEPGRAM_API_KEY is not set in .env - needed for transcription');
@@ -177,15 +182,25 @@ export async function transcribeCall(
       //    provide and we still want gone (names, DOB, contact details, address).
       // This keeps every real identifier redacted while letting organisation and
       // regulator names (FCA, the firm) through to the scorer.
-      redact: [
-        'pci',
-        'phi',
-        'numbers',
-        'name', 'name_given', 'name_family',
-        'dob',
-        'email_address',
-        'location_address', 'location_city', 'location_state', 'location_zip', 'location_country',
-      ],
+      //
+      // `pci` and `numbers` are an unconditional floor and are never affected by
+      // piiRedactionExempt: card and bank details have no legitimate reason to
+      // exist unredacted in this system, DPIA or not. The rest of this list
+      // (health + identity) is dropped in full for an org with a signed-off
+      // redaction exemption (organizations.pii_redaction_exempt, migration
+      // 065) — see there for why this can only be an org-wide, not per-question,
+      // exception.
+      redact: piiRedactionExempt
+        ? ['pci', 'numbers']
+        : [
+            'pci',
+            'phi',
+            'numbers',
+            'name', 'name_given', 'name_family',
+            'dob',
+            'email_address',
+            'location_address', 'location_city', 'location_state', 'location_zip', 'location_country',
+          ],
       numerals: true,
       keyterm: keyterms,
     }

@@ -28,12 +28,21 @@ async function main() {
   if (!call) { console.error('Call not found'); process.exit(1); }
   if (!call.file_key) { console.error('Call has no file_key (not hydrated)'); process.exit(1); }
 
-  // organizations.keyterms only exists once migration 058 is applied; this DB
-  // may predate it. Select it only when present — it doesn't affect redaction.
+  // organizations.keyterms/pii_redaction_exempt only exist once their
+  // migrations (058/065) are applied; this DB may predate either. Select each
+  // only when present.
   const hasKeyterms = !!(await queryOne(
     "SELECT 1 FROM information_schema.columns WHERE table_name='organizations' AND column_name='keyterms'"));
-  const orgRow = await queryOne<{ name: string | null; adviser_channel: number | null; keyterms: string[] | null }>(
-    `SELECT name, adviser_channel${hasKeyterms ? ', keyterms' : ''} FROM organizations WHERE id = $1`,
+  const hasRedactionExempt = !!(await queryOne(
+    "SELECT 1 FROM information_schema.columns WHERE table_name='organizations' AND column_name='pii_redaction_exempt'"));
+  const orgRow = await queryOne<{
+    name: string | null;
+    adviser_channel: number | null;
+    keyterms: string[] | null;
+    pii_redaction_exempt: boolean | null;
+  }>(
+    `SELECT name, adviser_channel${hasKeyterms ? ', keyterms' : ''}${hasRedactionExempt ? ', pii_redaction_exempt' : ''}
+       FROM organizations WHERE id = $1`,
     [call.organization_id]);
   const agents = await query<{ name: string }>(
     "SELECT name FROM users WHERE organization_id = $1 AND role = 'adviser'", [call.organization_id]);
@@ -54,7 +63,17 @@ async function main() {
     ? false
     : ((call as { encrypted_at_rest?: boolean }).encrypted_at_rest ?? false);
 
-  console.log(`Re-transcribing ${callId} with current redaction settings (no DB write, encrypted=${encrypted})...`);
+  const piiRedactionExempt = orgRow?.pii_redaction_exempt ?? false;
+  console.log(
+    `Re-transcribing ${callId} with current redaction settings (no DB write, encrypted=${encrypted}, ` +
+      `pii_redaction_exempt=${piiRedactionExempt})...`
+  );
+  if (piiRedactionExempt) {
+    console.log(
+      'WARNING: this org has a signed-off PII/PHI redaction exemption — health/identity leak checks below are ' +
+        'EXPECTED to fire. This run only confirms pci/numbers are still redacted.'
+    );
+  }
   const result = await transcribeCall(
     call.file_key,
     keyterms,
@@ -62,7 +81,8 @@ async function main() {
     orgRow?.adviser_channel ?? null,
     s.transcriptionMode,
     s.deepgramRegion,
-    monoFirst as 'agent' | 'customer'
+    monoFirst as 'agent' | 'customer',
+    piiRedactionExempt
   );
 
   const oldTags = tagTypes(call.transcript_text ?? '');
@@ -113,7 +133,12 @@ async function main() {
   for (const p of postcodes.slice(0, 10)) console.log(`     ${p}`);
   console.log(`  possible dates of birth: ${dates.length}`);
   for (const d of dates.slice(0, 10)) console.log(`     ${d}`);
-  const leaked = digitRuns.length > 0 || emails.length > 0 || postcodes.length > 0 || dates.length > 0;
+  // digit runs (phone/sort-code/account numbers) are caught by pci/numbers,
+  // which stay redacted unconditionally — these must NEVER appear, exemption
+  // or not. Emails/postcodes/dates are identity fields the exemption
+  // deliberately lets through for an opted-in org, so they don't fail the run
+  // there — only report them as informational (already printed above).
+  const leaked = digitRuns.length > 0 || (!piiRedactionExempt && (emails.length > 0 || postcodes.length > 0 || dates.length > 0));
 
   console.log('\n=== compliance content now visible? ===');
   const lc = result.text.toLowerCase();
@@ -123,9 +148,12 @@ async function main() {
   console.log(`\n[ORGANIZATION] gone: ${!newTags.has('[ORGANIZATION]')}   [MONEY] gone: ${!newTags.has('[MONEY]')}   [DURATION] gone: ${!newTags.has('[DURATION]')}`);
   console.log(leaked
     ? '\nRESULT: *** RAW IDENTIFIER FOUND — inspect the masked samples above; do not ship until resolved ***'
-    : '\nRESULT: no digit/email/postcode/date identifiers leaked by the automated check.'
-      + '\n  CAVEAT: this cannot detect leaked NAMES (no reliable pattern) — eyeball the'
-      + '\n  transcript printed above for un-tagged personal names before treating this as safe.');
+    : piiRedactionExempt
+      ? '\nRESULT: pci/numbers still redacted (the only floor that applies to an exempt org). Health/identity'
+        + '\n  content is expected to be visible above — confirm that matches the signed-off DPIA scope, nothing more.'
+      : '\nRESULT: no digit/email/postcode/date identifiers leaked by the automated check.'
+        + '\n  CAVEAT: this cannot detect leaked NAMES (no reliable pattern) — eyeball the'
+        + '\n  transcript printed above for un-tagged personal names before treating this as safe.');
 
   await pool.end();
 }
