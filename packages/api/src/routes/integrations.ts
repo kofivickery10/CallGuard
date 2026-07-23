@@ -275,11 +275,6 @@ zohoRouter.post('/', async (req, res, next) => {
     if (!body.client_id) throw new AppError(400, 'client_id is required');
 
     const existing = await getConnectionRow(orgId);
-    // On first save the secret is required; on edit it may be omitted to keep the
-    // stored one — but then we can't re-run OAuth, so a re-save needs the secret.
-    if (!body.client_secret) {
-      throw new AppError(400, 'client_secret is required to (re)connect Zoho');
-    }
 
     const fieldMap: ZohoFieldMap = { ...DEFAULT_FIELD_MAP, ...(body.field_map ?? {}) };
     for (const [key, value] of Object.entries(fieldMap)) {
@@ -312,6 +307,64 @@ zohoRouter.post('/', async (req, res, next) => {
     if (policyProductField) assertValidZohoApiName('policy_product_field', policyProductField);
     const policiesModule = body.policies_module?.trim() || null;
     if (policiesModule) assertValidZohoApiName('policies_module', policiesModule);
+
+    // Config-only save: editing an already-connected tenant without supplying
+    // the secret updates just the settings (field maps, product config, sale
+    // trigger) — it leaves the credentials, tokens and 'active' status alone,
+    // so no Zoho re-authorisation is needed. The secret is only required to
+    // (re)connect: first-time setup, or deliberately changing credentials.
+    if (existing && !body.client_secret) {
+      await query(
+        `UPDATE zoho_connections SET
+           module                   = $2,
+           field_map                = $3,
+           sale_phone_field         = $4,
+           qa_module                = $5,
+           qa_field_map             = $6,
+           sale_module              = $7,
+           policies_related_list    = $8,
+           policy_product_field     = $9,
+           policies_module          = $10,
+           inbound_secret_encrypted = COALESCE($11, inbound_secret_encrypted),
+           sale_trigger_enabled     = $12,
+           updated_at               = now()
+         WHERE organization_id = $1`,
+        [
+          orgId,
+          module,
+          JSON.stringify(fieldMap),
+          salePhoneField,
+          qaModule,
+          JSON.stringify(qaFieldMap),
+          saleModule,
+          policiesRelatedList,
+          policyProductField,
+          policiesModule,
+          body.inbound_secret ? encrypt(body.inbound_secret) : null,
+          body.sale_trigger_enabled ?? false,
+        ]
+      );
+
+      void recordAuditEvent({
+        organizationId: orgId,
+        userId: req.user!.userId,
+        actionType: 'zoho.update',
+        entityType: 'zoho_connection',
+        summary: 'Updated Zoho settings (no re-authorisation)',
+        metadata: { module },
+        req,
+      });
+
+      // No authorize_url — the connection stays as it was; the UI just closes.
+      res.json({ ok: true, reauthorized: false });
+      return;
+    }
+
+    // (Re)connect: no existing connection, or the admin supplied a secret to
+    // change credentials. Requires the secret and re-runs OAuth.
+    if (!body.client_secret) {
+      throw new AppError(400, 'client_secret is required to connect Zoho');
+    }
 
     await query(
       `INSERT INTO zoho_connections

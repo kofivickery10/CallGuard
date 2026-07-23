@@ -437,7 +437,11 @@ export function ScorecardEditor() {
         await api.put(`/scorecards/${id}`, payload);
       }
 
+      // Invalidate both the list AND this scorecard's detail cache — without
+      // the detail key, re-opening the editor serves the pre-save items from
+      // cache (deleted rows appear to "come back" until a hard refresh).
       queryClient.invalidateQueries({ queryKey: ['scorecards'] });
+      if (id) queryClient.invalidateQueries({ queryKey: ['scorecard', id] });
       navigate('/scorecards');
     } catch (err) {
       setError((err as Error).message);
