@@ -287,10 +287,10 @@ scorecardRouter.put('/:id', requireAdmin, async (req, res, next) => {
           // (call_item_scores) or per-journey/sale scoring (journey_item_scores);
           // both FK to scorecard_items with no ON DELETE. Check both, or a
           // journey-scored item slips past and the DELETE throws a FK violation.
-          const scored = await tx.queryOne<{ id: string }>(
-            `SELECT id FROM call_item_scores WHERE scorecard_item_id = $1 LIMIT 1
-             UNION ALL
-             SELECT id FROM journey_item_scores WHERE scorecard_item_id = $1 LIMIT 1`,
+          const scored = await tx.queryOne<{ found: number }>(
+            `SELECT 1 AS found
+               WHERE EXISTS (SELECT 1 FROM call_item_scores WHERE scorecard_item_id = $1)
+                  OR EXISTS (SELECT 1 FROM journey_item_scores WHERE scorecard_item_id = $1)`,
             [item.id]
           );
           if (scored) {
