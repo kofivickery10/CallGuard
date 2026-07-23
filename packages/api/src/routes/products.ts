@@ -3,10 +3,42 @@ import { authenticate, requireAdmin } from '../middleware/auth.js';
 import { query, queryOne } from '../db/client.js';
 import { AppError } from '../middleware/errors.js';
 import { recordAuditEvent } from '../services/audit.js';
+import { syncProductsFromZoho } from '../services/product-resolution.js';
+import { ZohoScopeError } from '../services/zoho.js';
 import type { Product } from '@callguard/shared';
 
 export const productsRouter = Router();
 productsRouter.use(authenticate);
+
+// Sync the catalogue from the Zoho product picklist (add new, refresh names,
+// deactivate removed). Manual products are left untouched. Returns a summary.
+productsRouter.post('/sync', requireAdmin, async (req, res, next) => {
+  try {
+    const result = await syncProductsFromZoho(req.user!.organizationId);
+    if (!result.configured) {
+      throw new AppError(
+        400,
+        'Product sync is not configured — set the Zoho products module and product field under Integrations first.'
+      );
+    }
+    void recordAuditEvent({
+      organizationId: req.user!.organizationId,
+      userId: req.user!.userId,
+      actionType: 'product.sync',
+      entityType: 'product',
+      metadata: { added: result.added, updated: result.updated, deactivated: result.deactivated },
+    });
+    res.json(result);
+  } catch (err) {
+    // A scope mismatch means the Zoho connection predates the products read
+    // scope — tell the admin to reconnect rather than showing a raw 401.
+    if (err instanceof ZohoScopeError) {
+      next(new AppError(409, 'Reconnect Zoho to grant products access, then sync again.'));
+      return;
+    }
+    next(err);
+  }
+});
 
 // List the org's products. Available to any authenticated tenant user — the
 // scorecard editor needs it to render the per-item "Required for" picker.

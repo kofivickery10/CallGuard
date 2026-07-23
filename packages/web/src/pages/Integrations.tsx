@@ -967,6 +967,7 @@ function ZohoConnectModal({ initial, onClose }: { initial: ZohoConnection | null
   const [saleModule, setSaleModule] = useState(initial?.sale_module ?? '');
   const [policiesRelatedList, setPoliciesRelatedList] = useState(initial?.policies_related_list ?? '');
   const [policyProductField, setPolicyProductField] = useState(initial?.policy_product_field ?? '');
+  const [policiesModule, setPoliciesModule] = useState(initial?.policies_module ?? '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -987,6 +988,7 @@ function ZohoConnectModal({ initial, onClose }: { initial: ZohoConnection | null
         sale_module: saleModule.trim() || null,
         policies_related_list: policiesRelatedList.trim() || null,
         policy_product_field: policyProductField.trim() || null,
+        policies_module: policiesModule.trim() || null,
       };
       if (inboundSecret) payload.inbound_secret = inboundSecret;
 
@@ -1093,8 +1095,10 @@ function ZohoConnectModal({ initial, onClose }: { initial: ZohoConnection | null
             <p className="text-[11px] text-text-muted mb-2">
               For product-aware scoring: read the products a sale covered from a related module (e.g. a
               "Policies Sold" list on the sale record), so scorecard criteria can be scoped to the right
-              products. Set all three to enable; leave blank to score without product scoping. Product values
-              are mapped to your <span className="font-semibold">Products</span> catalogue by their CRM value.
+              products. Product values are mapped to your <span className="font-semibold">Products</span>{' '}
+              catalogue by their CRM value. Set the products module + field to also sync the catalogue from
+              the Zoho picklist (Products page → Sync from Zoho); set the sale module + related list to
+              resolve the products on each sale. Leave blank to score without product scoping.
             </p>
           </div>
           <Field label="Sale module API name" hint="The module the sale trigger fires from (its record id is on the payload). e.g. Customers_Sold.">
@@ -1103,7 +1107,10 @@ function ZohoConnectModal({ initial, onClose }: { initial: ZohoConnection | null
           <Field label="Products related list" hint="API name of the related list holding the products. e.g. Policies_Sold.">
             <input type="text" value={policiesRelatedList} onChange={(e) => setPoliciesRelatedList(e.target.value)} className={inputCls} placeholder="e.g. Policies_Sold" />
           </Field>
-          <Field label="Product field" full hint="API name of the field on a policy record carrying the product value (matched to a Product's CRM value). e.g. Product or Policy_Type.">
+          <Field label="Products module API name" hint="Module the product picklist field lives on — used to sync the catalogue. e.g. Policies_Sold.">
+            <input type="text" value={policiesModule} onChange={(e) => setPoliciesModule(e.target.value)} className={inputCls} placeholder="e.g. Policies_Sold" />
+          </Field>
+          <Field label="Product field" hint="API name of the field carrying the product value (matched to a Product's CRM value). e.g. Product.">
             <input type="text" value={policyProductField} onChange={(e) => setPolicyProductField(e.target.value)} className={inputCls} placeholder="e.g. Product" />
           </Field>
 

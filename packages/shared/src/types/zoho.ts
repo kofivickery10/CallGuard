@@ -62,6 +62,9 @@ export interface ZohoConnection {
   sale_module: string | null;
   policies_related_list: string | null;
   policy_product_field: string | null;
+  // API name of the module the product picklist field lives on (e.g. the
+  // "Policies Sold" module), used to sync the product catalogue from Zoho.
+  policies_module: string | null;
   // Whether the inbound sale-trigger secret has been set (never returns the
   // secret itself). When set, the sale-trigger endpoint enforces the HMAC
   // signature; when unset the trigger runs API-key-only.
@@ -90,6 +93,7 @@ export interface ZohoConnectionInput {
   sale_module?: string | null;
   policies_related_list?: string | null;
   policy_product_field?: string | null;
+  policies_module?: string | null;
   // Set/replace the inbound sale-webhook secret. Omit to keep the existing one.
   inbound_secret?: string;
   // Mark the sale trigger as configured (activates capture without a secret).

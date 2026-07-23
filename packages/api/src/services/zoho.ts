@@ -43,7 +43,16 @@ const ZOHO_ACCOUNTS_HOST: Record<ZohoRegion, string> = {
 // offline + consent (see buildAuthorizeUrl) guarantee a refresh token on first
 // authorisation. NB: widening this list requires reconnecting — an existing
 // token only carries the scopes it was granted with.
-const OAUTH_SCOPE = 'ZohoCRM.modules.ALL,ZohoCRM.settings.modules.READ,ZohoCRM.users.READ';
+// settings.fields.READ       : read a picklist field's allowed values, to sync
+//                              the product catalogue from Zoho (fetchProductPicklist).
+// settings.related_lists.READ : discover related-list API names during setup
+//                              (zoho introspection), so a tenant needn't dig
+//                              them out of the Zoho UI.
+// NB: adding scopes requires the tenant to RECONNECT — an existing refresh
+// token only carries the scopes it was granted with, so the new metadata reads
+// 401 (OAUTH_SCOPE_MISMATCH) until they re-authorise.
+const OAUTH_SCOPE =
+  'ZohoCRM.modules.ALL,ZohoCRM.settings.modules.READ,ZohoCRM.settings.fields.READ,ZohoCRM.settings.related_lists.READ,ZohoCRM.users.READ';
 
 interface ZohoConnectionRow {
   id: string;
@@ -64,6 +73,7 @@ interface ZohoConnectionRow {
   sale_module: string | null;
   policies_related_list: string | null;
   policy_product_field: string | null;
+  policies_module: string | null;
   status: 'pending' | 'active' | 'disabled';
 }
 
@@ -71,7 +81,7 @@ const ROW_COLUMNS = `id, organization_id, dc_region, client_id,
   client_secret_encrypted, refresh_token_encrypted, access_token_encrypted,
   token_expires_at, api_domain, module, field_map,
   inbound_secret_encrypted, sale_phone_field, qa_module, qa_field_map,
-  sale_module, policies_related_list, policy_product_field, status`;
+  sale_module, policies_related_list, policy_product_field, policies_module, status`;
 
 export function accountsHost(region: ZohoRegion): string {
   return ZOHO_ACCOUNTS_HOST[region] ?? ZOHO_ACCOUNTS_HOST.eu;
@@ -437,6 +447,86 @@ export async function fetchSaleProducts(
     if (value) products.add(value);
   }
   return { configured: true, products: [...products] };
+}
+
+// Raised when a metadata read fails because the token predates the widened
+// scope (OAUTH_SCOPE) — the tenant must reconnect. Surfaced distinctly so the
+// UI can prompt for a reconnect rather than showing a generic error.
+export class ZohoScopeError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ZohoScopeError';
+  }
+}
+
+export interface PicklistValue {
+  // The stored value (matches products.external_key / a sale's Product value).
+  value: string;
+  // The human label shown in Zoho (used as the product display name).
+  label: string;
+}
+
+export interface ProductPicklistResult {
+  // False when the org hasn't configured the picklist source (policies_module /
+  // policy_product_field) — the caller skips catalogue sync.
+  configured: boolean;
+  values: PicklistValue[];
+}
+
+/**
+ * Read the allowed values of the product picklist field off its module's
+ * metadata (`/settings/fields`), so the product catalogue can mirror Zoho.
+ * Distinct from fetchSaleProducts (which reads a specific sale's policies):
+ * this is the full set of possible products. Throws ZohoScopeError when the
+ * connection needs reconnecting for the widened metadata scope.
+ */
+export async function fetchProductPicklist(
+  organizationId: string
+): Promise<ProductPicklistResult> {
+  const conn = await getConnectionRow(organizationId);
+  if (!conn || conn.status !== 'active' || !conn.policies_module || !conn.policy_product_field) {
+    return { configured: false, values: [] };
+  }
+
+  const { accessToken, apiDomain } = await ensureAccessToken(conn);
+  const res = await zohoApi(
+    apiDomain,
+    accessToken,
+    `/crm/v8/settings/fields?module=${encodeURIComponent(conn.policies_module)}`
+  );
+  if (res.status === 401) {
+    const text = (await res.text()).slice(0, 300);
+    throw new ZohoScopeError(
+      `Zoho denied field metadata (401) — the connection likely needs reconnecting to grant products read access. ${text}`
+    );
+  }
+  if (!res.ok) {
+    throw new Error(`Zoho fields metadata fetch failed: ${res.status} ${(await res.text()).slice(0, 300)}`);
+  }
+
+  const body = (await res.json()) as {
+    fields?: Array<{
+      api_name?: string;
+      pick_list_values?: Array<{ display_value?: string; actual_value?: string }>;
+    }>;
+  };
+  const field = (body.fields ?? []).find((f) => f.api_name === conn.policy_product_field);
+  if (!field) {
+    throw new Error(`Field "${conn.policy_product_field}" not found on module "${conn.policies_module}"`);
+  }
+
+  const values: PicklistValue[] = [];
+  const seen = new Set<string>();
+  for (const pv of field.pick_list_values ?? []) {
+    // actual_value is what a record stores (our external_key); fall back to
+    // display_value for fields where they coincide. Skip Zoho's "-None-".
+    const value = (pv.actual_value ?? pv.display_value ?? '').trim();
+    const label = (pv.display_value ?? pv.actual_value ?? '').trim();
+    if (!value || value === '-None-' || seen.has(value.toLowerCase())) continue;
+    seen.add(value.toLowerCase());
+    values.push({ value, label: label || value });
+  }
+  return { configured: true, values };
 }
 
 // Zoho datetime fields want an offset (…+00:00), not a trailing Z.
