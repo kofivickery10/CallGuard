@@ -97,11 +97,21 @@ function ProductForm({
   );
 }
 
+interface SyncResult {
+  configured: boolean;
+  added: number;
+  updated: number;
+  deactivated: number;
+  active: number;
+}
+
 export default function Products() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncMsg, setSyncMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['products'],
@@ -129,6 +139,23 @@ export default function Products() {
     invalidate();
   };
 
+  const syncFromZoho = async () => {
+    setSyncing(true);
+    setSyncMsg(null);
+    try {
+      const r = await api.post<SyncResult>('/products/sync');
+      setSyncMsg({
+        ok: true,
+        text: `Synced from Zoho — ${r.added} added, ${r.updated} updated, ${r.deactivated} retired (${r.active} active).`,
+      });
+      invalidate();
+    } catch (err) {
+      setSyncMsg({ ok: false, text: (err as Error).message });
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   return (
     <div className="max-w-3xl">
       <button
@@ -146,19 +173,40 @@ export default function Products() {
             that doesn't apply to a sale is marked N/A instead of failing.
           </p>
         </div>
-        {!adding && (
+        <div className="flex items-center gap-3 shrink-0">
           <button
             type="button"
-            onClick={() => {
-              setAdding(true);
-              setEditing(null);
-            }}
-            className="bg-primary text-white px-[18px] py-[9px] rounded-btn font-semibold text-table-cell hover:bg-primary-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 shrink-0"
+            onClick={syncFromZoho}
+            disabled={syncing}
+            className="px-[18px] py-[9px] rounded-btn font-semibold text-table-cell border border-border text-text-primary hover:border-primary disabled:opacity-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
           >
-            + Add product
+            {syncing ? 'Syncing…' : 'Sync from Zoho'}
           </button>
-        )}
+          {!adding && (
+            <button
+              type="button"
+              onClick={() => {
+                setAdding(true);
+                setEditing(null);
+              }}
+              className="bg-primary text-white px-[18px] py-[9px] rounded-btn font-semibold text-table-cell hover:bg-primary-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+            >
+              + Add product
+            </button>
+          )}
+        </div>
       </div>
+
+      {syncMsg && (
+        <div
+          className={`rounded-btn px-4 py-3 mb-4 text-table-cell ${
+            syncMsg.ok ? 'bg-pass-bg text-pass' : 'bg-fail-bg text-fail'
+          }`}
+          role="status"
+        >
+          {syncMsg.text}
+        </div>
+      )}
 
       <div className="space-y-3">
         {adding && (

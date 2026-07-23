@@ -73,6 +73,9 @@ export interface AgentSummary {
   pass_rate: number | null;
   // True for a no-login adviser (attribution + billing only).
   login_disabled?: boolean;
+  // True for a login-capable member who was invited by email but hasn't set a
+  // password yet — the admin can resend the invite link.
+  pending_invite?: boolean;
 }
 
 export interface InviteAgentInput {

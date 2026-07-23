@@ -5,6 +5,7 @@ import { requireAdmin } from '../middleware/auth.js';
 import { query, queryOne } from '../db/client.js';
 import { AppError } from '../middleware/errors.js';
 import { recordAuditEvent } from '../services/audit.js';
+import { createInviteToken, buildInviteUrl, sendInviteEmail } from '../services/invite.js';
 import { TENANT_ASSIGNABLE_ROLES } from '@callguard/shared';
 
 // Tenant admins may only assign tenant-scoped roles — never 'superadmin',
@@ -25,6 +26,7 @@ agentRouter.get('/', async (req, res, next) => {
     const agents = await query(
       `SELECT
         u.id, u.name, u.email, u.role, u.external_agent_id, u.login_disabled, u.created_at,
+        (u.password_hash IS NULL AND NOT u.login_disabled AND u.email IS NOT NULL) AS pending_invite,
         COUNT(c.id) as total_calls,
         COUNT(c.id) FILTER (WHERE c.status = 'scored') as scored_calls,
         AVG(cs.overall_score) as average_score,
@@ -61,11 +63,14 @@ agentRouter.get('/', async (req, res, next) => {
   }
 });
 
-// Create agent. Two shapes:
-//   can_login !== false (default) — a normal account: email + password required.
-//   can_login === false           — a no-login adviser for call attribution +
-//                                    billing only: name alone; email optional,
-//                                    no password, login hard-disabled.
+// Create agent. Three shapes:
+//   can_login !== false, no password (default) — a normal account invited by
+//     email: created with no password, sent a one-time set-password link so the
+//     user picks their own password (nothing is shown to the admin in plaintext).
+//   can_login !== false, password provided     — legacy manual path: the admin
+//     sets a temporary password directly (kept for backward compatibility).
+//   can_login === false                         — a no-login adviser for call
+//     attribution + billing only: name alone; email optional, no password.
 agentRouter.post('/', async (req, res, next) => {
   try {
     const name = (req.body.name as string | undefined)?.trim();
@@ -78,12 +83,16 @@ agentRouter.post('/', async (req, res, next) => {
     if (!name) throw new AppError(400, 'name is required');
 
     let passwordHash: string | null = null;
+    // Invite by email when no password is supplied for a login-capable user.
+    const inviteByEmail = canLogin && !password;
     if (canLogin) {
       if (!email) throw new AppError(400, 'email is required for an adviser who can sign in');
-      if (!password || password.length < 6) {
-        throw new AppError(400, 'password (min 6 characters) is required for an adviser who can sign in');
+      if (password) {
+        if (password.length < 6) {
+          throw new AppError(400, 'password must be at least 6 characters');
+        }
+        passwordHash = await bcrypt.hash(password, 12);
       }
-      passwordHash = await bcrypt.hash(password, 12);
     }
 
     // Uniqueness only applies when an email is provided (multiple no-login
@@ -93,6 +102,8 @@ agentRouter.post('/', async (req, res, next) => {
       if (existing) throw new AppError(409, 'Email already registered');
     }
 
+    // login_disabled is false for an invited user (they're meant to sign in) —
+    // the null password_hash is what blocks login until they set one via the link.
     const rows = await query<{ id: string; email: string | null; name: string; role: string; external_agent_id: string | null; login_disabled: boolean; created_at: string }>(
       `INSERT INTO users (organization_id, email, name, password_hash, role, external_agent_id, login_disabled)
        VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -106,10 +117,60 @@ agentRouter.post('/', async (req, res, next) => {
       actionType: 'user.invite',
       entityType: 'user',
       entityId: rows[0].id,
-      metadata: { email: rows[0].email, role: rows[0].role, login_disabled: !canLogin },
+      metadata: { email: rows[0].email, role: rows[0].role, login_disabled: !canLogin, invited: inviteByEmail },
     });
 
-    res.status(201).json(rows[0]);
+    // Email the set-password link. If delivery is unavailable (e.g. no Resend
+    // key), return the link so the admin can pass it on manually — mirrors the
+    // old "here's the temp password" fallback, but with a one-time link.
+    if (inviteByEmail) {
+      const org = await queryOne<{ name: string }>('SELECT name FROM organizations WHERE id = $1', [req.user!.organizationId]);
+      const rawToken = await createInviteToken(rows[0].id);
+      const inviteUrl = buildInviteUrl(rawToken);
+      const sent = await sendInviteEmail({
+        to: email!,
+        name,
+        organizationName: org?.name ?? '',
+        url: inviteUrl,
+      });
+      res.status(201).json({
+        ...rows[0],
+        invited: true,
+        invite_sent: sent.ok,
+        // Only surface the link when the email didn't go out.
+        invite_url: sent.ok ? undefined : inviteUrl,
+      });
+      return;
+    }
+
+    res.status(201).json({ ...rows[0], invited: false });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Resend the set-password invite for a member who hasn't set a password yet.
+agentRouter.post('/:id/resend-invite', async (req, res, next) => {
+  try {
+    const user = await queryOne<{ id: string; email: string | null; name: string; password_hash: string | null; login_disabled: boolean }>(
+      'SELECT id, email, name, password_hash, login_disabled FROM users WHERE id = $1 AND organization_id = $2',
+      [req.params.id, req.user!.organizationId]
+    );
+    if (!user) throw new AppError(404, 'Member not found');
+    if (!user.email) throw new AppError(400, 'This member has no email to send an invite to');
+    if (user.login_disabled) throw new AppError(400, 'This member cannot sign in; enable sign-in first');
+    if (user.password_hash) throw new AppError(400, 'This member has already set a password');
+
+    const org = await queryOne<{ name: string }>('SELECT name FROM organizations WHERE id = $1', [req.user!.organizationId]);
+    const rawToken = await createInviteToken(user.id);
+    const inviteUrl = buildInviteUrl(rawToken);
+    const sent = await sendInviteEmail({
+      to: user.email,
+      name: user.name,
+      organizationName: org?.name ?? '',
+      url: inviteUrl,
+    });
+    res.json({ invite_sent: sent.ok, invite_url: sent.ok ? undefined : inviteUrl });
   } catch (err) {
     next(err);
   }

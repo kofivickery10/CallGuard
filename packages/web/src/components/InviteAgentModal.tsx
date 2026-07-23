@@ -7,17 +7,34 @@ interface InviteAgentModalProps {
   onClose: () => void;
 }
 
+interface CreatedAgentResponse {
+  id: string;
+  name: string;
+  email: string | null;
+  invited?: boolean;
+  invite_sent?: boolean;
+  invite_url?: string;
+}
+
 const fieldClass =
   'w-full border border-border rounded-btn px-3 py-2 text-table-cell text-text-primary placeholder:text-text-muted focus:outline-none focus:border-primary transition-colors';
 
-const emptyForm = { name: '', email: '', password: '', external_agent_id: '', role: 'adviser', can_login: true };
+const emptyForm = { name: '', email: '', external_agent_id: '', role: 'adviser', can_login: true };
+
+interface CreatedState {
+  can_login: boolean;
+  name: string;
+  email: string;
+  invite_sent: boolean;
+  invite_url?: string;
+}
 
 export function InviteAgentModal({ open, onClose }: InviteAgentModalProps) {
   const queryClient = useQueryClient();
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [created, setCreated] = useState<{ can_login: boolean; name: string; email: string; password: string } | null>(null);
+  const [created, setCreated] = useState<CreatedState | null>(null);
 
   if (!open) return null;
 
@@ -26,11 +43,19 @@ export function InviteAgentModal({ open, onClose }: InviteAgentModalProps) {
     setError('');
     setSaving(true);
     try {
+      // Login-capable members are invited by email (no password sent) — the
+      // backend creates the account and emails a one-time set-password link.
       const payload = form.can_login
-        ? { ...form }
+        ? { name: form.name, email: form.email, external_agent_id: form.external_agent_id, role: form.role, can_login: true }
         : { name: form.name, email: form.email || undefined, external_agent_id: form.external_agent_id, role: form.role, can_login: false };
-      await api.post('/agents', payload);
-      setCreated({ can_login: form.can_login, name: form.name, email: form.email, password: form.password });
+      const res = await api.post<CreatedAgentResponse>('/agents', payload);
+      setCreated({
+        can_login: form.can_login,
+        name: form.name,
+        email: form.email,
+        invite_sent: res.invite_sent ?? false,
+        invite_url: res.invite_url,
+      });
       queryClient.invalidateQueries({ queryKey: ['agents'] });
       setForm(emptyForm);
     } catch (err) {
@@ -55,12 +80,26 @@ export function InviteAgentModal({ open, onClose }: InviteAgentModalProps) {
           <div>
             {created.can_login ? (
               <>
-                <h3 className="text-section-title text-text-primary mb-2">Agent created</h3>
-                <p className="text-table-cell text-text-subtle mb-4">Share these credentials with the agent:</p>
-                <div className="bg-table-header rounded-btn p-4 space-y-1 text-table-cell">
-                  <div><span className="text-text-muted">Email: </span><span className="text-text-primary font-medium">{created.email}</span></div>
-                  <div><span className="text-text-muted">Password: </span><span className="text-text-primary font-medium">{created.password}</span></div>
-                </div>
+                <h3 className="text-section-title text-text-primary mb-2">Invite sent</h3>
+                {created.invite_sent ? (
+                  <p className="text-table-cell text-text-subtle">
+                    We&rsquo;ve emailed <span className="text-text-primary font-medium">{created.email}</span> a secure
+                    link to set their password. It expires in 7 days — you can resend it any time from the team list.
+                  </p>
+                ) : (
+                  <>
+                    <p className="text-table-cell text-text-subtle mb-3">
+                      The account for <span className="text-text-primary font-medium">{created.email}</span> was created,
+                      but the invite email couldn&rsquo;t be sent. Copy this one-time set-password link and share it
+                      securely:
+                    </p>
+                    {created.invite_url && (
+                      <div className="bg-table-header rounded-btn p-3 text-xs break-all text-text-primary select-all">
+                        {created.invite_url}
+                      </div>
+                    )}
+                  </>
+                )}
               </>
             ) : (
               <>
@@ -108,6 +147,9 @@ export function InviteAgentModal({ open, onClose }: InviteAgentModalProps) {
                   Email {!form.can_login && <span className="text-text-muted font-normal">(optional)</span>}
                 </label>
                 <input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="agent@company.com" className={fieldClass} required={form.can_login} />
+                {form.can_login && (
+                  <p className="text-[11px] text-text-muted mt-1">We&rsquo;ll email them a secure link to set their own password.</p>
+                )}
               </div>
 
               <div>
@@ -120,13 +162,6 @@ export function InviteAgentModal({ open, onClose }: InviteAgentModalProps) {
                 </select>
               </div>
 
-              {form.can_login && (
-                <div>
-                  <label className="block text-table-cell font-medium text-text-secondary mb-1">Password</label>
-                  <input type="text" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="Temporary password" className={fieldClass} required minLength={6} />
-                </div>
-              )}
-
               <div>
                 <label className="block text-table-cell font-medium text-text-secondary mb-1">
                   Dialler agent ID <span className="text-text-muted font-normal">(optional)</span>
@@ -138,7 +173,7 @@ export function InviteAgentModal({ open, onClose }: InviteAgentModalProps) {
 
             <div className="flex gap-3 mt-5">
               <button type="submit" disabled={saving} className="flex-1 bg-primary text-white py-[9px] rounded-btn font-semibold text-table-cell hover:bg-primary-hover disabled:opacity-50 transition-colors">
-                {saving ? 'Adding…' : form.can_login ? 'Create account' : 'Add adviser'}
+                {saving ? 'Adding…' : form.can_login ? 'Send invite' : 'Add adviser'}
               </button>
               <button type="button" onClick={handleClose} className="px-4 py-[9px] rounded-btn text-text-cell border border-border hover:bg-sidebar-hover text-table-cell font-semibold transition-colors">
                 Cancel

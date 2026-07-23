@@ -36,6 +36,9 @@ interface AuthContextValue {
   user: AuthUser | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<LoginResult>;
+  // Establish a session from a response that already contains tokens + user
+  // (e.g. the set-password page after consuming an invite link).
+  applySession: (res: AuthResponse) => LoginResult;
   verifyTwoFactor: (
     challengeToken: string,
     method: 'totp' | 'email' | 'backup',
@@ -76,6 +79,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return { status: '2fa_required', challenge: res };
     }
 
+    setTokens(res.token, res.refresh_token);
+    setUser(res.user);
+    return res.mfa_enrolment_required ? { status: 'enrol_required' } : { status: 'authenticated' };
+  };
+
+  const applySession = (res: AuthResponse): LoginResult => {
     setTokens(res.token, res.refresh_token);
     setUser(res.user);
     return res.mfa_enrolment_required ? { status: 'enrol_required' } : { status: 'authenticated' };
@@ -134,6 +143,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         loading,
         login,
+        applySession,
         verifyTwoFactor,
         requestEmailCode,
         setupTwoFactor,

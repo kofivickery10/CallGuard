@@ -12,6 +12,7 @@ import { processScoreJourney } from './processors/score-journey.js';
 import { processCapture } from './processors/capture.js';
 import { processRetentionPurge } from './processors/retention-purge.js';
 import { processStuckRepair } from './processors/stuck-repair.js';
+import { processSyncProducts } from './processors/sync-products.js';
 import { processBillingSnapshot } from './processors/billing-snapshot.js';
 import { refreshSFTPSchedules } from './scheduler.js';
 import { refreshRetentionSchedule } from './retention-scheduler.js';
@@ -78,6 +79,7 @@ const alertsWorker = new Worker('alerts', dispatchAlerts, {
 async function dispatchMaintenance(job: Job) {
   if (job.name === 'stuck-repair') return processStuckRepair(job);
   if (job.name === 'billing-snapshot') return processBillingSnapshot(job);
+  if (job.name === 'sync-products') return processSyncProducts(job);
   return processRetentionPurge(job);
 }
 

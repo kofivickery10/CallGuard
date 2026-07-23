@@ -1064,6 +1064,51 @@ superadminRouter.put('/tenants/:id/features', async (req, res, next) => {
   }
 });
 
+// ── PII/PHI redaction exemption (Data Capture value reconciliation) ──────────
+// Turns off Deepgram's health + identity redaction (phi, name, dob, email,
+// address) for every call this tenant sends to transcription — pci/numbers
+// stay redacted unconditionally regardless (see services/transcription.ts).
+// This is the mechanism behind Data Capture value-level reconciliation
+// (comparing what the customer actually said to what was submitted on their
+// behalf) for a tenant whose capture form needs real health/personal answers,
+// not just confirmation a question was asked. Superadmin-only rather than
+// tenant self-serve, because switching it on is a joint CallGuard/tenant
+// compliance decision requiring a DPIA — note is mandatory when enabling so
+// there is a durable record of what authorised the exposure.
+superadminRouter.put('/tenants/:id/pii-redaction-exemption', async (req, res, next) => {
+  try {
+    const { exempt, note } = req.body as { exempt?: boolean; note?: string };
+    if (typeof exempt !== 'boolean') throw new AppError(400, 'exempt must be true or false');
+    const trimmedNote = typeof note === 'string' ? note.trim().slice(0, 2000) : '';
+    if (exempt && !trimmedNote) {
+      throw new AppError(400, 'note is required when enabling the exemption (record the DPIA reference/approver)');
+    }
+
+    const rows = await query<{ id: string; pii_redaction_exempt: boolean; pii_redaction_exempt_note: string | null }>(
+      `UPDATE organizations SET pii_redaction_exempt = $1, pii_redaction_exempt_note = $2
+       WHERE id = $3 RETURNING id, pii_redaction_exempt, pii_redaction_exempt_note`,
+      [exempt, exempt ? trimmedNote : null, req.params.id]
+    );
+    if (!rows.length) throw new AppError(404, 'Tenant not found');
+
+    await recordAuditEvent({
+      organizationId: req.params.id,
+      userId: req.user!.userId,
+      actionType: 'tenant.pii_redaction_exemption',
+      entityType: 'organization',
+      entityId: req.params.id,
+      summary: exempt
+        ? `PII/PHI redaction exemption ENABLED — ${trimmedNote}`
+        : 'PII/PHI redaction exemption disabled',
+      req,
+    });
+
+    res.json(rows[0]);
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ── Failed / stuck calls for one tenant ───────────────────────────────────────
 // Calls that failed, or have sat in a processing state for over 15 minutes
 // (a sign the worker died or a job is wedged). Newest first.

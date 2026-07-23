@@ -967,8 +967,13 @@ function ZohoConnectModal({ initial, onClose }: { initial: ZohoConnection | null
   const [saleModule, setSaleModule] = useState(initial?.sale_module ?? '');
   const [policiesRelatedList, setPoliciesRelatedList] = useState(initial?.policies_related_list ?? '');
   const [policyProductField, setPolicyProductField] = useState(initial?.policy_product_field ?? '');
+  const [policiesModule, setPoliciesModule] = useState(initial?.policies_module ?? '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const queryClient = useQueryClient();
+  // Editing an existing connection: the secret can be left blank to save
+  // settings only (no Zoho re-authorisation). It's required for a first connect.
+  const isEdit = !!initial;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -979,7 +984,6 @@ function ZohoConnectModal({ initial, onClose }: { initial: ZohoConnection | null
         dc_region: dcRegion,
         module,
         client_id: clientId,
-        client_secret: clientSecret,
         sale_phone_field: salePhoneField,
         sale_trigger_enabled: saleTriggerEnabled,
         qa_module: qaModule.trim() || null,
@@ -987,12 +991,23 @@ function ZohoConnectModal({ initial, onClose }: { initial: ZohoConnection | null
         sale_module: saleModule.trim() || null,
         policies_related_list: policiesRelatedList.trim() || null,
         policy_product_field: policyProductField.trim() || null,
+        policies_module: policiesModule.trim() || null,
       };
+      // Only send the secret when provided — blank on an edit means "keep the
+      // stored credentials, just update settings".
+      if (clientSecret) payload.client_secret = clientSecret;
       if (inboundSecret) payload.inbound_secret = inboundSecret;
 
-      const { authorize_url } = await api.post<{ authorize_url: string }>('/integrations/zoho', payload);
-      // Hand off to Zoho's consent screen; it redirects back to /integrations.
-      window.location.assign(authorize_url);
+      const resp = await api.post<{ authorize_url?: string }>('/integrations/zoho', payload);
+      if (resp.authorize_url) {
+        // Credentials (re)connect — hand off to Zoho's consent screen; it
+        // redirects back to /integrations.
+        window.location.assign(resp.authorize_url);
+        return;
+      }
+      // Config-only save — no re-auth; just refresh and close.
+      queryClient.invalidateQueries({ queryKey: ['zoho-connection'] });
+      onClose();
     } catch (err) {
       setError((err as Error).message);
       setSaving(false);
@@ -1007,7 +1022,9 @@ function ZohoConnectModal({ initial, onClose }: { initial: ZohoConnection | null
           {initial ? 'Edit Zoho Connection' : 'Connect Zoho CRM'}
         </h3>
         <p className="text-table-cell text-text-subtle mb-4">
-          Paste the Client ID and Secret from your Zoho API console. You'll be sent to Zoho to approve access.
+          {isEdit
+            ? 'Update settings below and save — no need to re-authorise. Only re-enter the Client Secret if you want to change credentials or reconnect Zoho.'
+            : 'Paste the Client ID and Secret from your Zoho API console. You’ll be sent to Zoho to approve access.'}
         </p>
 
         {error && <div className="bg-fail-bg text-fail px-3 py-2 rounded-btn text-table-cell mb-3">{error}</div>}
@@ -1029,8 +1046,8 @@ function ZohoConnectModal({ initial, onClose }: { initial: ZohoConnection | null
           <Field label="Client ID" full>
             <input type="text" value={clientId} onChange={(e) => setClientId(e.target.value)} required className={inputCls} placeholder="1000.XXXXXXXX" />
           </Field>
-          <Field label="Client Secret" full hint="Stored encrypted. Re-enter when reconnecting.">
-            <input type="password" value={clientSecret} onChange={(e) => setClientSecret(e.target.value)} required className={inputCls} />
+          <Field label={isEdit ? 'Client Secret (only to reconnect)' : 'Client Secret'} full hint={isEdit ? 'Leave blank to keep the stored secret and just save settings. Enter it to change credentials / reconnect.' : 'Stored encrypted.'}>
+            <input type="password" value={clientSecret} onChange={(e) => setClientSecret(e.target.value)} required={!isEdit} className={inputCls} placeholder={isEdit ? 'Leave blank to keep existing' : ''} />
           </Field>
 
           <div className="col-span-2 border-t border-border-light pt-3 mt-1">
@@ -1093,8 +1110,10 @@ function ZohoConnectModal({ initial, onClose }: { initial: ZohoConnection | null
             <p className="text-[11px] text-text-muted mb-2">
               For product-aware scoring: read the products a sale covered from a related module (e.g. a
               "Policies Sold" list on the sale record), so scorecard criteria can be scoped to the right
-              products. Set all three to enable; leave blank to score without product scoping. Product values
-              are mapped to your <span className="font-semibold">Products</span> catalogue by their CRM value.
+              products. Product values are mapped to your <span className="font-semibold">Products</span>{' '}
+              catalogue by their CRM value. Set the products module + field to also sync the catalogue from
+              the Zoho picklist (Products page → Sync from Zoho); set the sale module + related list to
+              resolve the products on each sale. Leave blank to score without product scoping.
             </p>
           </div>
           <Field label="Sale module API name" hint="The module the sale trigger fires from (its record id is on the payload). e.g. Customers_Sold.">
@@ -1103,7 +1122,10 @@ function ZohoConnectModal({ initial, onClose }: { initial: ZohoConnection | null
           <Field label="Products related list" hint="API name of the related list holding the products. e.g. Policies_Sold.">
             <input type="text" value={policiesRelatedList} onChange={(e) => setPoliciesRelatedList(e.target.value)} className={inputCls} placeholder="e.g. Policies_Sold" />
           </Field>
-          <Field label="Product field" full hint="API name of the field on a policy record carrying the product value (matched to a Product's CRM value). e.g. Product or Policy_Type.">
+          <Field label="Products module API name" hint="Module the product picklist field lives on — used to sync the catalogue. e.g. Policies_Sold.">
+            <input type="text" value={policiesModule} onChange={(e) => setPoliciesModule(e.target.value)} className={inputCls} placeholder="e.g. Policies_Sold" />
+          </Field>
+          <Field label="Product field" hint="API name of the field carrying the product value (matched to a Product's CRM value). e.g. Product.">
             <input type="text" value={policyProductField} onChange={(e) => setPolicyProductField(e.target.value)} className={inputCls} placeholder="e.g. Product" />
           </Field>
 
@@ -1112,7 +1134,9 @@ function ZohoConnectModal({ initial, onClose }: { initial: ZohoConnection | null
               Cancel
             </button>
             <button type="submit" disabled={saving} className="flex-1 bg-primary text-white px-[18px] py-[9px] rounded-btn font-semibold text-table-cell hover:bg-primary-hover disabled:opacity-50 transition-colors">
-              {saving ? 'Redirecting…' : 'Save & Authorize'}
+              {isEdit && !clientSecret
+                ? saving ? 'Saving…' : 'Save settings'
+                : saving ? 'Redirecting…' : 'Save & Authorize'}
             </button>
           </div>
         </form>

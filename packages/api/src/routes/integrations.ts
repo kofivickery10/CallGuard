@@ -29,7 +29,7 @@ export const integrationsRouter = Router();
 // Public columns only — never expose the encrypted secrets/tokens.
 const ZOHO_PUBLIC_COLUMNS = `id, organization_id, dc_region, client_id, module,
   field_map, sale_phone_field, qa_module, qa_field_map,
-  sale_module, policies_related_list, policy_product_field, sale_trigger_enabled,
+  sale_module, policies_related_list, policy_product_field, policies_module, sale_trigger_enabled,
   status, last_synced_at, last_error, created_at, updated_at,
   (inbound_secret_encrypted IS NOT NULL) AS inbound_configured`;
 
@@ -263,6 +263,7 @@ zohoRouter.post('/', async (req, res, next) => {
       sale_module?: string | null;
       policies_related_list?: string | null;
       policy_product_field?: string | null;
+      policies_module?: string | null;
       inbound_secret?: string;
       sale_trigger_enabled?: boolean;
     };
@@ -274,11 +275,6 @@ zohoRouter.post('/', async (req, res, next) => {
     if (!body.client_id) throw new AppError(400, 'client_id is required');
 
     const existing = await getConnectionRow(orgId);
-    // On first save the secret is required; on edit it may be omitted to keep the
-    // stored one — but then we can't re-run OAuth, so a re-save needs the secret.
-    if (!body.client_secret) {
-      throw new AppError(400, 'client_secret is required to (re)connect Zoho');
-    }
 
     const fieldMap: ZohoFieldMap = { ...DEFAULT_FIELD_MAP, ...(body.field_map ?? {}) };
     for (const [key, value] of Object.entries(fieldMap)) {
@@ -309,14 +305,74 @@ zohoRouter.post('/', async (req, res, next) => {
     if (policiesRelatedList) assertValidZohoApiName('policies_related_list', policiesRelatedList);
     const policyProductField = body.policy_product_field?.trim() || null;
     if (policyProductField) assertValidZohoApiName('policy_product_field', policyProductField);
+    const policiesModule = body.policies_module?.trim() || null;
+    if (policiesModule) assertValidZohoApiName('policies_module', policiesModule);
+
+    // Config-only save: editing an already-connected tenant without supplying
+    // the secret updates just the settings (field maps, product config, sale
+    // trigger) — it leaves the credentials, tokens and 'active' status alone,
+    // so no Zoho re-authorisation is needed. The secret is only required to
+    // (re)connect: first-time setup, or deliberately changing credentials.
+    if (existing && !body.client_secret) {
+      await query(
+        `UPDATE zoho_connections SET
+           module                   = $2,
+           field_map                = $3,
+           sale_phone_field         = $4,
+           qa_module                = $5,
+           qa_field_map             = $6,
+           sale_module              = $7,
+           policies_related_list    = $8,
+           policy_product_field     = $9,
+           policies_module          = $10,
+           inbound_secret_encrypted = COALESCE($11, inbound_secret_encrypted),
+           sale_trigger_enabled     = $12,
+           updated_at               = now()
+         WHERE organization_id = $1`,
+        [
+          orgId,
+          module,
+          JSON.stringify(fieldMap),
+          salePhoneField,
+          qaModule,
+          JSON.stringify(qaFieldMap),
+          saleModule,
+          policiesRelatedList,
+          policyProductField,
+          policiesModule,
+          body.inbound_secret ? encrypt(body.inbound_secret) : null,
+          body.sale_trigger_enabled ?? false,
+        ]
+      );
+
+      void recordAuditEvent({
+        organizationId: orgId,
+        userId: req.user!.userId,
+        actionType: 'zoho.update',
+        entityType: 'zoho_connection',
+        summary: 'Updated Zoho settings (no re-authorisation)',
+        metadata: { module },
+        req,
+      });
+
+      // No authorize_url — the connection stays as it was; the UI just closes.
+      res.json({ ok: true, reauthorized: false });
+      return;
+    }
+
+    // (Re)connect: no existing connection, or the admin supplied a secret to
+    // change credentials. Requires the secret and re-runs OAuth.
+    if (!body.client_secret) {
+      throw new AppError(400, 'client_secret is required to connect Zoho');
+    }
 
     await query(
       `INSERT INTO zoho_connections
          (organization_id, dc_region, client_id, client_secret_encrypted, module,
           field_map, sale_phone_field, qa_module, qa_field_map,
-          sale_module, policies_related_list, policy_product_field,
+          sale_module, policies_related_list, policy_product_field, policies_module,
           inbound_secret_encrypted, sale_trigger_enabled, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'pending')
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 'pending')
        ON CONFLICT (organization_id) DO UPDATE SET
          dc_region               = EXCLUDED.dc_region,
          client_id               = EXCLUDED.client_id,
@@ -329,6 +385,7 @@ zohoRouter.post('/', async (req, res, next) => {
          sale_module             = EXCLUDED.sale_module,
          policies_related_list   = EXCLUDED.policies_related_list,
          policy_product_field    = EXCLUDED.policy_product_field,
+         policies_module         = EXCLUDED.policies_module,
          inbound_secret_encrypted = COALESCE(EXCLUDED.inbound_secret_encrypted, zoho_connections.inbound_secret_encrypted),
          sale_trigger_enabled    = EXCLUDED.sale_trigger_enabled,
          status                  = 'pending',
@@ -350,6 +407,7 @@ zohoRouter.post('/', async (req, res, next) => {
         saleModule,
         policiesRelatedList,
         policyProductField,
+        policiesModule,
         body.inbound_secret ? encrypt(body.inbound_secret) : null,
         body.sale_trigger_enabled ?? false,
       ]
