@@ -1,5 +1,6 @@
 import { config } from '../config.js';
-import { query } from '../db/client.js';
+import { query, withTransaction } from '../db/client.js';
+import { fetchProductPicklist } from './zoho.js';
 import { CLAUDE_MODELS } from '@callguard/shared';
 import type { Product } from '@callguard/shared';
 
@@ -17,6 +18,104 @@ export async function getActiveProducts(organizationId: string): Promise<Product
        ORDER BY sort_order, name`,
     [organizationId]
   );
+}
+
+export interface ProductSyncResult {
+  // False when the org hasn't configured a picklist source — caller no-ops.
+  configured: boolean;
+  added: number;
+  updated: number;
+  deactivated: number;
+  // Total active products after the sync.
+  active: number;
+}
+
+/**
+ * Mirror the Zoho product picklist into the catalogue: add new values,
+ * refresh names, re-activate any that reappeared, and deactivate ones that
+ * vanished from the picklist. Only Zoho-managed products (zoho_synced_at set)
+ * are ever deactivated — products added by hand are left untouched, so manual
+ * and synced products coexist. Idempotent. Throws ZohoScopeError (from
+ * fetchProductPicklist) when the connection needs reconnecting for scope.
+ */
+export async function syncProductsFromZoho(organizationId: string): Promise<ProductSyncResult> {
+  const picklist = await fetchProductPicklist(organizationId);
+  if (!picklist.configured) {
+    return { configured: false, added: 0, updated: 0, deactivated: 0, active: 0 };
+  }
+
+  return withTransaction(async (tx) => {
+    // One timestamp for the whole run: products touched now get runAt; stale
+    // Zoho-managed ones keep an older stamp and are deactivated below.
+    const runAt = (await tx.queryOne<{ now: string }>('SELECT now() AS now'))!.now;
+
+    let added = 0;
+    let updated = 0;
+    for (let i = 0; i < picklist.values.length; i++) {
+      const { value, label } = picklist.values[i]!;
+      const existing = await tx.queryOne<{ id: string }>(
+        `SELECT id FROM products
+           WHERE organization_id = $1 AND external_key IS NOT NULL
+             AND lower(external_key) = lower($2)`,
+        [organizationId, value]
+      );
+      if (existing) {
+        await tx.query(
+          `UPDATE products SET name = $2, external_key = $3, is_active = true,
+             sort_order = $4, zoho_synced_at = $5, updated_at = now()
+           WHERE id = $1`,
+          [existing.id, label, value, i, runAt]
+        );
+        updated++;
+      } else {
+        // A distinct value whose label collides with an existing product name
+        // (e.g. a manual one) would violate the (org, name) unique — fall back
+        // to appending the value so the sync never fails on one clash.
+        try {
+          await tx.query(
+            `INSERT INTO products (organization_id, name, external_key, sort_order, is_active, zoho_synced_at)
+             VALUES ($1, $2, $3, $4, true, $5)`,
+            [organizationId, label, value, i, runAt]
+          );
+        } catch (err) {
+          if ((err as { code?: string }).code === '23505') {
+            await tx.query(
+              `INSERT INTO products (organization_id, name, external_key, sort_order, is_active, zoho_synced_at)
+               VALUES ($1, $2, $3, $4, true, $5)`,
+              [organizationId, `${label} (${value})`, value, i, runAt]
+            );
+          } else {
+            throw err;
+          }
+        }
+        added++;
+      }
+    }
+
+    // Deactivate Zoho-managed products no longer in the picklist (kept, not
+    // deleted — journey_products / scorecard scoping may reference them).
+    const deactivated = await tx.query<{ id: string }>(
+      `UPDATE products SET is_active = false, updated_at = now()
+         WHERE organization_id = $1
+           AND zoho_synced_at IS NOT NULL AND zoho_synced_at <> $2
+           AND is_active = true
+       RETURNING id`,
+      [organizationId, runAt]
+    );
+
+    const activeRow = await tx.queryOne<{ n: string }>(
+      'SELECT count(*)::text AS n FROM products WHERE organization_id = $1 AND is_active = true',
+      [organizationId]
+    );
+
+    return {
+      configured: true,
+      added,
+      updated,
+      deactivated: deactivated.length,
+      active: Number(activeRow?.n ?? 0),
+    };
+  });
 }
 
 /**

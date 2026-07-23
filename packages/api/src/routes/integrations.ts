@@ -29,7 +29,7 @@ export const integrationsRouter = Router();
 // Public columns only — never expose the encrypted secrets/tokens.
 const ZOHO_PUBLIC_COLUMNS = `id, organization_id, dc_region, client_id, module,
   field_map, sale_phone_field, qa_module, qa_field_map,
-  sale_module, policies_related_list, policy_product_field, sale_trigger_enabled,
+  sale_module, policies_related_list, policy_product_field, policies_module, sale_trigger_enabled,
   status, last_synced_at, last_error, created_at, updated_at,
   (inbound_secret_encrypted IS NOT NULL) AS inbound_configured`;
 
@@ -263,6 +263,7 @@ zohoRouter.post('/', async (req, res, next) => {
       sale_module?: string | null;
       policies_related_list?: string | null;
       policy_product_field?: string | null;
+      policies_module?: string | null;
       inbound_secret?: string;
       sale_trigger_enabled?: boolean;
     };
@@ -309,14 +310,16 @@ zohoRouter.post('/', async (req, res, next) => {
     if (policiesRelatedList) assertValidZohoApiName('policies_related_list', policiesRelatedList);
     const policyProductField = body.policy_product_field?.trim() || null;
     if (policyProductField) assertValidZohoApiName('policy_product_field', policyProductField);
+    const policiesModule = body.policies_module?.trim() || null;
+    if (policiesModule) assertValidZohoApiName('policies_module', policiesModule);
 
     await query(
       `INSERT INTO zoho_connections
          (organization_id, dc_region, client_id, client_secret_encrypted, module,
           field_map, sale_phone_field, qa_module, qa_field_map,
-          sale_module, policies_related_list, policy_product_field,
+          sale_module, policies_related_list, policy_product_field, policies_module,
           inbound_secret_encrypted, sale_trigger_enabled, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'pending')
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 'pending')
        ON CONFLICT (organization_id) DO UPDATE SET
          dc_region               = EXCLUDED.dc_region,
          client_id               = EXCLUDED.client_id,
@@ -329,6 +332,7 @@ zohoRouter.post('/', async (req, res, next) => {
          sale_module             = EXCLUDED.sale_module,
          policies_related_list   = EXCLUDED.policies_related_list,
          policy_product_field    = EXCLUDED.policy_product_field,
+         policies_module         = EXCLUDED.policies_module,
          inbound_secret_encrypted = COALESCE(EXCLUDED.inbound_secret_encrypted, zoho_connections.inbound_secret_encrypted),
          sale_trigger_enabled    = EXCLUDED.sale_trigger_enabled,
          status                  = 'pending',
@@ -350,6 +354,7 @@ zohoRouter.post('/', async (req, res, next) => {
         saleModule,
         policiesRelatedList,
         policyProductField,
+        policiesModule,
         body.inbound_secret ? encrypt(body.inbound_secret) : null,
         body.sale_trigger_enabled ?? false,
       ]
