@@ -1,7 +1,8 @@
 import { query, queryOne, withTransaction } from '../db/client.js';
 import { getDialerConnection } from './tenant-settings.js';
 import { scoringQueue, ingestionQueue } from '../jobs/queue.js';
-import type { JourneyTriggerSource, Scorecard, Call } from '@callguard/shared';
+import type { ResolvedProduct } from './product-resolution.js';
+import type { JourneyTriggerSource, Scorecard, Call, ProductSource } from '@callguard/shared';
 
 const DEFAULT_HISTORY_WINDOW_DAYS = 30;
 
@@ -15,6 +16,17 @@ interface AssembleJourneyParams {
   // (required QA field). Null for non-Zoho triggers (e.g. manual sale flag).
   zohoRecordId?: string | null;
   clientName?: string | null;
+  // Products the sale covered, resolved from the CRM at assembly (spec:
+  // product-aware scoring). Empty when unresolved — score-journey then infers
+  // them from the transcript. Only written when the journey is freshly created.
+  products?: ResolvedProduct[];
+  // How `products` was determined ('crm'), or null when left for the transcript
+  // fallback at score time.
+  productSource?: ProductSource | null;
+  // Scalar snapshot of the sale-trigger payload — persisted so capture-form
+  // resolution rules (crm_field) can be evaluated at scoring time, when the
+  // webhook payload is long gone. Null for non-CRM triggers.
+  triggerContext?: Record<string, string> | null;
 }
 
 /**
@@ -49,7 +61,7 @@ async function resolveScorecard(organizationId: string, scorecardId?: string | n
  * and belongs in the journey.
  */
 export async function assembleJourney(params: AssembleJourneyParams): Promise<string | null> {
-  const { organizationId, customerId, scorecardId, triggerSource, zohoRecordId, clientName } = params;
+  const { organizationId, customerId, scorecardId, triggerSource, zohoRecordId, clientName, products = [], productSource = null, triggerContext = null } = params;
 
   const scorecard = await resolveScorecard(organizationId, scorecardId);
   if (!scorecard) {
@@ -129,12 +141,23 @@ export async function assembleJourney(params: AssembleJourneyParams): Promise<st
     journeyId = await withTransaction(async (tx) => {
       const journeyRow = await tx.queryOne<{ id: string }>(
         `INSERT INTO journeys
-           (organization_id, customer_id, scorecard_id, scorecard_version, window_start, window_end, trigger_source, status, zoho_record_id, client_name)
-         VALUES ($1, $2, $3, $4, $5, now(), $6, 'pending', $7, $8)
+           (organization_id, customer_id, scorecard_id, scorecard_version, window_start, window_end, trigger_source, status, zoho_record_id, client_name, product_source, trigger_context)
+         VALUES ($1, $2, $3, $4, $5, now(), $6, 'pending', $7, $8, $9, $10)
          RETURNING id`,
-        [organizationId, customerId, scorecard.id, scorecard.version, windowStart.toISOString(), triggerSource, zohoRecordId ?? null, clientName ?? null]
+        [organizationId, customerId, scorecard.id, scorecard.version, windowStart.toISOString(), triggerSource, zohoRecordId ?? null, clientName ?? null, productSource, triggerContext ? JSON.stringify(triggerContext) : null]
       );
       const id = journeyRow!.id;
+
+      // Attach the products resolved from the CRM. Left empty (and
+      // product_source null) when unresolved — score-journey infers them from
+      // the transcript when it runs.
+      for (const p of products) {
+        await tx.query(
+          `INSERT INTO journey_products (journey_id, product_id, product_name, source)
+           VALUES ($1, $2, $3, 'crm')`,
+          [id, p.product_id, p.product_name]
+        );
+      }
 
       // The most recent call in the window is the wrap-up/close (spec §9's
       // interim fallback) — everything earlier is context.

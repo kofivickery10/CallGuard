@@ -6,7 +6,7 @@ import type {
   TwoFactorSetupResponse,
 } from '@callguard/shared';
 
-import type { Plan } from '@callguard/shared';
+import { hasFeature, type Plan } from '@callguard/shared';
 
 interface AuthUser {
   id: string;
@@ -17,6 +17,8 @@ interface AuthUser {
   organization_id: string | null;
   organization_name: string;
   organization_plan: Plan | null;
+  // Per-tenant feature grants/denials beyond the plan tier (e.g. score_only).
+  feature_overrides?: Record<string, boolean> | null;
   // Whether the user has completed 2FA enrolment. 2FA is mandatory, so a false
   // value forces the enrolment flow before the app is usable.
   totp_enabled?: boolean;
@@ -149,4 +151,15 @@ export function useAuth() {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error('useAuth must be used within AuthProvider');
   return ctx;
+}
+
+// Score-only display mode: the tenant sees the numeric score alone, with the
+// overall Pass/Fail/Review verdict (and its red/green styling and pass-rate
+// KPIs) suppressed. Per-checkpoint item results are unaffected; the verdict is
+// still computed and stored server-side. Tolerates being called outside an
+// AuthProvider (e.g. the public share page) — returns false there.
+export function useScoreOnly(): boolean {
+  const ctx = useContext(AuthContext);
+  const user = ctx?.user;
+  return hasFeature(user?.organization_plan ?? null, 'score_only', user?.feature_overrides);
 }

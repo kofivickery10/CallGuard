@@ -38,8 +38,13 @@ export type AuditActionType =
   | 'user.invite'
   | 'user.role_change'
   | 'user.delete'
+  | 'user.login_enabled'
+  | 'user.login_revoked'
   | 'plan.change'
   | 'scorecard.deactivate'
+  | 'product.create'
+  | 'product.update'
+  | 'product.deactivate'
   | 'org.data_improvement_optin'
   | 'org.industry.change'
   | 'org.keyterms.change'
@@ -76,7 +81,8 @@ export type AuditEntityType =
   | 'organization'
   | 'capture_form'
   | 'capture_run'
-  | 'journey';
+  | 'journey'
+  | 'product';
 
 interface AuditEvent {
   // NULL for platform-level events not scoped to a tenant (e.g. a superadmin

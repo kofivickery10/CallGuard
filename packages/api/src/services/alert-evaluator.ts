@@ -1,8 +1,7 @@
 import { query, queryOne } from '../db/client.js';
 import { alertsQueue } from '../jobs/queue.js';
+import { isUuid } from './uuid.js';
 import type { AlertRule, AlertChannelsConfig, AlertSeverity } from '@callguard/shared';
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 interface CallRow {
   id: string;
@@ -314,7 +313,7 @@ async function resolveInAppUserIds(
   // tenant's notifications (deliverInApp resolves the notification's org from
   // the TARGET user, not the rule). Non-UUID entries are dropped up front so
   // a malformed rule can't fail the cast and take down the whole fan-out.
-  const candidates = config.filter((id) => typeof id === 'string' && UUID_RE.test(id));
+  const candidates = config.filter(isUuid);
   if (candidates.length === 0) return [];
   const users = await query<{ id: string }>(
     `SELECT id FROM users WHERE organization_id = $1 AND id = ANY($2::uuid[])`,

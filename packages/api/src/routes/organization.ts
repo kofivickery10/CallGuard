@@ -80,10 +80,13 @@ organizationRouter.put('/keyterms', requireAdmin, async (req, res, next) => {
       throw new AppError(400, 'keyterms must be an array of strings');
     }
     const cleaned = [...new Set(keyterms.map((t) => t.trim()).filter(Boolean))];
-    if (cleaned.length > 80) {
-      // Deepgram caps keyterm boosting at 100 terms per request; leave room
-      // for the org name, agent names and the generic core list.
-      throw new AppError(400, 'keyterms must be 80 terms or fewer');
+    if (cleaned.length > 60) {
+      // Deepgram caps keyterm boosting at 100 terms per request. The generic
+      // core list (~28 terms) is always reserved (services/transcription.ts),
+      // and the org name + adviser names ride along with the tenant terms —
+      // 60 keeps everything comfortably inside the tenant budget so nothing
+      // an admin configures is silently dropped at transcription time.
+      throw new AppError(400, 'keyterms must be 60 terms or fewer');
     }
     if (cleaned.some((t) => t.length > 60)) {
       throw new AppError(400, 'each keyterm must be 60 characters or fewer');

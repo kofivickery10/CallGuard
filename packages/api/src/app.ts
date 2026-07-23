@@ -40,6 +40,7 @@ import { announcementsRouter } from './routes/announcements.js';
 import { customersRouter } from './routes/customers.js';
 import { captureRouter } from './routes/capture.js';
 import { usersRouter } from './routes/users.js';
+import { productsRouter } from './routes/products.js';
 
 const app = express();
 
@@ -226,6 +227,7 @@ app.use('/api/journeys', journeysRouter);
 app.use('/api/capture', captureRouter);
 app.use('/api/review-items', reviewRouter);
 app.use('/api/users', usersRouter);
+app.use('/api/products', productsRouter);
 app.use('/api/announcements', announcementsRouter);
 app.use('/v1', streamRouter);
 

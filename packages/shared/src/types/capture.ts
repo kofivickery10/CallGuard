@@ -80,8 +80,10 @@ export interface CaptureRun {
   organization_id: string;
   journey_id: string | null;
   call_id: string | null;
-  form_id: string;
-  form_version: number;
+  // Null only on needs_form runs — "no form could be resolved" carries no
+  // form (migration 061); every other status pins the form + version.
+  form_id: string | null;
+  form_version: number | null;
   status: CaptureRunStatus;
   model_id: string | null;
   error_message: string | null;

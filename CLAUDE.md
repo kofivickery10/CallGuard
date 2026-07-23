@@ -6,6 +6,25 @@ CallGuard AI is a **standalone product**: AI compliance scoring for sales/advice
 calls, built for FCA-regulated firms. It is not part of, and must not be
 co-branded or conflated with, any other product or company.
 
+## Standalone boundary — do not cross (non-negotiable)
+
+CallGuard is a **separate business**. It has **nothing to do with** ProperLeads,
+Switcheroo, Telegen, KOA, or any other product or company — nor with the
+ProperLeads people (including Beau, Jordan, James, and Kim). When working on this
+project:
+
+- **Never** save anything about this project to AVA's brain or any shared
+  ProperLeads memory (`memory_remember`, `memory_learn`, `memory_ingest`, etc.).
+  Use only this repo's own local file memory.
+- **Never** share, sync, post, or surface CallGuard information into the
+  ProperLeads ecosystem — no Slack, SFTP, Sheets, Drive, Notion, or any
+  ProperLeads MCP/connector. Its data, code, clients, and decisions stay here.
+- **Never** conflate, co-brand, or cross-reference CallGuard with those products,
+  in code, docs, or customer-facing copy.
+
+If a task would move CallGuard information into any of those systems, stop and
+flag it rather than proceeding.
+
 ## Commands
 
 npm workspaces monorepo, Node 20+. Run from the repo root unless noted.

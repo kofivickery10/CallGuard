@@ -15,6 +15,7 @@ const FEATURE_LABELS: Record<string, string> = {
   live_coaching: 'Live coaching',
   dedicated_support: 'Dedicated support',
   white_label: 'White-label',
+  score_only: 'Score-only mode (hide pass/fail)',
 };
 
 interface OrgDetail {

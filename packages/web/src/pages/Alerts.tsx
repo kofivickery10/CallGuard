@@ -153,5 +153,9 @@ function summarizeTrigger(rule: AlertRule): string {
   if (rule.trigger_type === 'item_below_threshold') {
     return `Item score < ${cfg.threshold}%`;
   }
+  if (rule.trigger_type === 'capture_missed_required') {
+    const min = Number(cfg.min_missed) || 1;
+    return `≥ ${min} required answer${min === 1 ? '' : 's'} missed`;
+  }
   return '';
 }

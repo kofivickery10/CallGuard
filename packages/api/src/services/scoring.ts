@@ -55,7 +55,13 @@ function buildScoringPrompt(
   withCoaching: boolean = false,
   learning?: LearningContext | null,
   industry?: string | null,
-  journeyMode: boolean = false
+  journeyMode: boolean = false,
+  // Product-aware scoring: the products this sale covered. Goes in the dynamic
+  // (per-call) part of the prompt, not the cached prefix — it varies per
+  // journey, so caching it would bust the per-scorecard cache. Criteria not
+  // relevant to these products are already filtered out before scoring; this
+  // just gives the model the context to judge the ones that remain.
+  productsSold: string[] = []
 ): { cached: string; dynamic: string } {
   const criteriaBlock = items
     .map((item, i) => {
@@ -161,7 +167,11 @@ In addition to the scoring, produce a coaching brief for the agent:
 
 Coaching tone: supportive, specific, actionable. Avoid generic platitudes like "keep up the good work" - be concrete. If the call was a critical fail, focus coaching on the most impactful 2-3 things the agent must change, not a laundry list.` : ''}`;
 
-  const dynamic = `${priorCoachingBlock}
+  const productsBlock = productsSold.length > 0
+    ? `\n\n## Products Sold On This Sale\n\nThe customer bought: ${productsSold.join(', ')}. Judge each criterion in the context of these products. The criteria you have been given are already scoped to what's relevant to this sale.\n`
+    : '';
+
+  const dynamic = `${priorCoachingBlock}${productsBlock}
 
 ## Call Transcript${journeyMode ? 's (this customer\'s journey)' : ''}
 
@@ -186,7 +196,10 @@ export async function scoreTranscript(
   // delimited by "=== Call N ===" markers — see services/journey.ts, which
   // asks Claude to prefix evidence quotes with the matching marker so the
   // journey processor can attribute each checkpoint back to its source call.
-  journeyMode: boolean = false
+  journeyMode: boolean = false,
+  // Product-aware scoring: names of the products this sale covered, surfaced to
+  // the model as context (see buildScoringPrompt).
+  productsSold: string[] = []
 ): Promise<{ output: ScoringOutput; usage: { input_tokens: number; output_tokens: number; cache_creation_input_tokens: number; cache_read_input_tokens: number }; model: string }> {
   if (!config.anthropic.apiKey) {
     throw new Error('ANTHROPIC_API_KEY is not set in .env - needed for scoring');
@@ -198,7 +211,7 @@ export async function scoreTranscript(
 
   const model = modelOverride ?? DEFAULT_SCORING_MODEL;
 
-  const prompt = buildScoringPrompt(transcript, items, kbContext, withCoaching, learning, industry, journeyMode);
+  const prompt = buildScoringPrompt(transcript, items, kbContext, withCoaching, learning, industry, journeyMode, productsSold);
 
   // Scale the output budget to the scorecard size: each scored item returns an
   // id + score + confidence + an evidence quote + reasoning (~300-400 tokens).

@@ -9,8 +9,10 @@ import { classifyItems } from '../../services/checkpoint-classification.js';
 import { deliverCallScored } from '../../services/webhook-delivery.js';
 import { pushJourneyScored } from '../../services/zoho.js';
 import { maybeStartJourneyCapture } from '../../services/capture-runs.js';
+import { buildCombinedTranscript, CALL_MARKER } from '../../services/journey-transcript.js';
+import { detectProductsFromTranscript } from '../../services/product-resolution.js';
 import { isItemPass, deriveSeverity, callPasses, resolveBranch } from '@callguard/shared';
-import type { Scorecard, ScorecardItem, WebhookJourneyScoredPayload } from '@callguard/shared';
+import type { Scorecard, ScorecardItem, WebhookJourneyScoredPayload, ProductSource } from '@callguard/shared';
 
 interface JourneyRow {
   id: string;
@@ -20,6 +22,7 @@ interface JourneyRow {
   scorecard_version: number;
   zoho_record_id: string | null;
   client_name: string | null;
+  product_source: ProductSource | null;
 }
 
 interface JourneyCallRow {
@@ -33,13 +36,10 @@ interface JourneyCallRow {
   speaker_attribution_confidence: number | null;
 }
 
-// Matches the "[Call N] ..." marker Claude is asked to prefix journey
-// evidence with (see services/scoring.ts buildScoringPrompt journeyMode).
-const CALL_MARKER = /^\[Call (\d+)\]\s*/;
 
-export async function processScoreJourney(job: Job<{ journeyId: string }>) {
-  const { journeyId } = job.data;
-  console.log(`[ScoreJourney] Processing journey ${journeyId}`);
+export async function processScoreJourney(job: Job<{ journeyId: string; suppressCrm?: boolean }>) {
+  const { journeyId, suppressCrm } = job.data;
+  console.log(`[ScoreJourney] Processing journey ${journeyId}${suppressCrm ? ' (CRM write-back suppressed)' : ''}`);
 
   const journey = await queryOne<JourneyRow>('SELECT * FROM journeys WHERE id = $1', [journeyId]);
   if (!journey) throw new Error(`Journey ${journeyId} not found`);
@@ -65,12 +65,9 @@ export async function processScoreJourney(job: Job<{ journeyId: string }>) {
     // Combined, call-delimited transcript — one Claude call sees the whole
     // journey at once, so a statement/consent given in one call and a sale
     // closed in another are scored together, not each in isolation (spec §9.3).
-    const combinedTranscript = withTranscript
-      .map((c, i) => {
-        const date = c.call_date ?? c.created_at;
-        return `=== Call ${i + 1} (${new Date(date).toLocaleDateString('en-GB')}, agent: ${c.agent_name ?? 'unknown'}) ===\n${c.transcript_text}`;
-      })
-      .join('\n\n');
+    // Shared with data capture (services/journey-transcript.ts): the header
+    // format and the [Call N] evidence marker are one contract.
+    const combinedTranscript = buildCombinedTranscript(withTranscript);
 
     // Org predicate is defence-in-depth: journey.scorecard_id was org-validated
     // at assembly, but a mis-wired reference must never score one tenant's
@@ -89,6 +86,40 @@ export async function processScoreJourney(job: Job<{ journeyId: string }>) {
 
     const branch = resolveBranch(combinedTranscript, scorecard.branch_config);
 
+    // Product-aware scoring: resolve which products this sale covered. CRM
+    // values were attached at assembly (product_source='crm'). If still
+    // unresolved — the CRM never delivered within the wait window, or the org
+    // relies purely on the fallback — infer them from the transcript now. An org
+    // with no product catalogue resolves to no products (detect returns []),
+    // and every item is scored as before.
+    let journeyProducts = await query<{ product_id: string | null; product_name: string }>(
+      'SELECT product_id, product_name FROM journey_products WHERE journey_id = $1',
+      [journeyId]
+    );
+    if (!journey.product_source) {
+      const detected = await detectProductsFromTranscript(journey.organization_id, combinedTranscript);
+      const source: ProductSource = detected.length > 0 ? 'ai' : 'none';
+      await withTransaction(async (tx) => {
+        for (const p of detected) {
+          await tx.query(
+            `INSERT INTO journey_products (journey_id, product_id, product_name, source)
+             VALUES ($1, $2, $3, 'ai')
+             ON CONFLICT (journey_id, product_id) WHERE product_id IS NOT NULL DO NOTHING`,
+            [journeyId, p.product_id, p.product_name]
+          );
+        }
+        await tx.query('UPDATE journeys SET product_source = $2 WHERE id = $1', [journeyId, source]);
+      });
+      journeyProducts = detected.map((p) => ({ product_id: p.product_id, product_name: p.product_name }));
+      if (detected.length > 0) {
+        console.log(`[ScoreJourney] ${journeyId}: ${detected.length} product(s) inferred from transcript (AI fallback)`);
+      }
+    }
+    const journeyProductIds = journeyProducts
+      .map((p) => p.product_id)
+      .filter((id): id is string => id !== null);
+    const productNames = journeyProducts.map((p) => p.product_name);
+
     // Conservative: if any call in the journey has an unreliable speaker
     // split, treat the whole journey's consent gates as unreliable too — a
     // consent quote could have come from any of the calls.
@@ -97,7 +128,13 @@ export async function processScoreJourney(job: Job<{ journeyId: string }>) {
       .filter((c): c is number => c !== null);
     const journeySpeakerConfidence = confidences.length > 0 ? Math.min(...confidences) : null;
 
-    const { scoreable, na, manualReview, provisional } = classifyItems(items, branch, journeySpeakerConfidence);
+    const { scoreable, na, manualReview, provisional } = classifyItems(
+      items,
+      branch,
+      journeySpeakerConfidence,
+      undefined,
+      journeyProductIds
+    );
     // Provisional items (consent gates under the speaker-confidence floor) are
     // AI-scored alongside the rest — the verdict is stored on their
     // manual_review row so the reviewer confirms instead of scoring blind.
@@ -143,7 +180,8 @@ export async function processScoreJourney(job: Job<{ journeyId: string }>) {
       learning,
       true, // withCoaching — journey-level brief
       org?.industry ?? null,
-      true // journeyMode
+      true, // journeyMode
+      productNames
     );
 
     await recordUsage({
@@ -363,12 +401,22 @@ export async function processScoreJourney(job: Job<{ journeyId: string }>) {
       breaches: failures,
     };
 
-    deliverCallScored(journey.organization_id, payload).catch((err) => {
-      console.error(`[ScoreJourney] journey.scored webhook failed for ${journeyId}:`, (err as Error).message);
-    });
-    pushJourneyScored(journey.organization_id, payload).catch((err) => {
-      console.error(`[ScoreJourney] Zoho write-back failed for ${journeyId}:`, (err as Error).message);
-    });
+    // suppressCrm: a bulk backfill/correction re-scores many historical sales at
+    // once (e.g. after a transcription-pipeline fix). Re-firing the outbound
+    // webhook and Zoho write-back for each would flood the tenant's CRM with
+    // re-pushed scores and duplicate breach tasks, so bulk re-scores set this to
+    // correct CallGuard's own scores quietly. Normal (per-sale) scoring never
+    // sets it, so live sales still push as usual.
+    if (suppressCrm) {
+      console.log(`[ScoreJourney] Skipping webhook + Zoho write-back for ${journeyId} (suppressCrm)`);
+    } else {
+      deliverCallScored(journey.organization_id, payload).catch((err) => {
+        console.error(`[ScoreJourney] journey.scored webhook failed for ${journeyId}:`, (err as Error).message);
+      });
+      pushJourneyScored(journey.organization_id, payload).catch((err) => {
+        console.error(`[ScoreJourney] Zoho write-back failed for ${journeyId}:`, (err as Error).message);
+      });
+    }
     // Data capture runs strictly after (and independently of) scoring — a
     // capture failure never affects the journey's score. No-op unless the
     // org has capture_enabled and a form resolves.

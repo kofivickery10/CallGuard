@@ -2,6 +2,7 @@ import { config } from '../config.js';
 import { CLAUDE_MODELS, CAPTURE_REVIEW_CONFIDENCE_THRESHOLD } from '@callguard/shared';
 import type { CaptureFormField, CaptureAnswerResult } from '@callguard/shared';
 import { CACHE_1H, CACHE_TTL_HEADERS } from './scoring.js';
+import { CALL_MARKER } from './journey-transcript.js';
 
 // ============================================================
 // Data Capture (generic, cross-tenant): extract a capture form's typed
@@ -17,10 +18,6 @@ import { CACHE_1H, CACHE_TTL_HEADERS } from './scoring.js';
 // ============================================================
 
 const DEFAULT_CAPTURE_MODEL = CLAUDE_MODELS.HAIKU;
-
-// Matches the "[Call N] ..." marker the model is asked to prefix journey
-// evidence with — same convention as journey scoring evidence attribution.
-const CALL_MARKER = /^\[Call (\d+)\]\s*/;
 
 // Deepgram redaction tags, e.g. [PII_NAME_1], [PHONE_NUMBER_2], [PHI_..._1].
 // If a "captured value" is just a redaction tag, there is no value to store.
@@ -316,9 +313,14 @@ export function sanitizeAnswers(
       }
     }
 
-    // A required field the AI isn't sure about goes to a human, not into the
-    // record as fact — same philosophy as consent gates in scoring.
-    if (field.required && confidence < CAPTURE_REVIEW_CONFIDENCE_THRESHOLD) {
+    // A required ANSWER the AI isn't sure about goes to a human, not into the
+    // record as fact — same philosophy as consent gates in scoring. This must
+    // never apply to a missed field: reclassifying a low-confidence miss to
+    // manual_review would silently remove it from the missed-required count,
+    // the capture_missed_required alert, and the coverage report — hiding
+    // exactly the uncertain gaps most worth flagging. A miss stays a miss;
+    // low confidence there just means the evidence is weaker.
+    if (field.required && answered && confidence < CAPTURE_REVIEW_CONFIDENCE_THRESHOLD) {
       result = 'manual_review';
     }
 

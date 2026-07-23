@@ -24,7 +24,7 @@ agentRouter.get('/', async (req, res, next) => {
     // double-counting it in total_calls/scored_calls/pass_rate.
     const agents = await query(
       `SELECT
-        u.id, u.name, u.email, u.role, u.external_agent_id, u.created_at,
+        u.id, u.name, u.email, u.role, u.external_agent_id, u.login_disabled, u.created_at,
         COUNT(c.id) as total_calls,
         COUNT(c.id) FILTER (WHERE c.status = 'scored') as scored_calls,
         AVG(cs.overall_score) as average_score,
@@ -61,28 +61,43 @@ agentRouter.get('/', async (req, res, next) => {
   }
 });
 
-// Create agent (invite)
+// Create agent. Two shapes:
+//   can_login !== false (default) — a normal account: email + password required.
+//   can_login === false           — a no-login adviser for call attribution +
+//                                    billing only: name alone; email optional,
+//                                    no password, login hard-disabled.
 agentRouter.post('/', async (req, res, next) => {
   try {
-    const { email, name, password } = req.body;
+    const name = (req.body.name as string | undefined)?.trim();
+    const password = req.body.password as string | undefined;
     const role = isValidRole(req.body.role) ? req.body.role : 'adviser';
     const externalAgentId = (req.body.external_agent_id as string | undefined)?.trim() || null;
-    if (!email || !name || !password) {
-      throw new AppError(400, 'email, name, and password are required');
+    const email = (req.body.email as string | undefined)?.trim() || null;
+    const canLogin = req.body.can_login !== false; // default true (backward compatible)
+
+    if (!name) throw new AppError(400, 'name is required');
+
+    let passwordHash: string | null = null;
+    if (canLogin) {
+      if (!email) throw new AppError(400, 'email is required for an adviser who can sign in');
+      if (!password || password.length < 6) {
+        throw new AppError(400, 'password (min 6 characters) is required for an adviser who can sign in');
+      }
+      passwordHash = await bcrypt.hash(password, 12);
     }
 
-    const existing = await queryOne('SELECT id FROM users WHERE email = $1', [email]);
-    if (existing) {
-      throw new AppError(409, 'Email already registered');
+    // Uniqueness only applies when an email is provided (multiple no-login
+    // advisers can share the "no email" state).
+    if (email) {
+      const existing = await queryOne('SELECT id FROM users WHERE email = $1', [email]);
+      if (existing) throw new AppError(409, 'Email already registered');
     }
 
-    const passwordHash = await bcrypt.hash(password, 12);
-
-    const rows = await query<{ id: string; email: string; name: string; role: string; created_at: string }>(
-      `INSERT INTO users (organization_id, email, name, password_hash, role, external_agent_id)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       RETURNING id, email, name, role, external_agent_id, created_at`,
-      [req.user!.organizationId, email, name, passwordHash, role, externalAgentId]
+    const rows = await query<{ id: string; email: string | null; name: string; role: string; external_agent_id: string | null; login_disabled: boolean; created_at: string }>(
+      `INSERT INTO users (organization_id, email, name, password_hash, role, external_agent_id, login_disabled)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING id, email, name, role, external_agent_id, login_disabled, created_at`,
+      [req.user!.organizationId, email, name, passwordHash, role, externalAgentId, !canLogin]
     );
 
     void recordAuditEvent({
@@ -91,10 +106,80 @@ agentRouter.post('/', async (req, res, next) => {
       actionType: 'user.invite',
       entityType: 'user',
       entityId: rows[0].id,
-      metadata: { email: rows[0].email, role: rows[0].role },
+      metadata: { email: rows[0].email, role: rows[0].role, login_disabled: !canLogin },
     });
 
     res.status(201).json(rows[0]);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Toggle sign-in access for an existing member (admin only, like the rest of
+// this router). Enabling a member who has no usable password (a no-login
+// adviser) requires a password — and an email if they don't have one — in the
+// same request, since you can't sign in without either.
+agentRouter.patch('/:id/login', async (req, res, next) => {
+  try {
+    if (req.params.id === req.user!.userId) {
+      throw new AppError(400, 'You cannot change your own sign-in access');
+    }
+    const canLogin = req.body.can_login === true;
+    const password = req.body.password as string | undefined;
+    const newEmail = (req.body.email as string | undefined)?.trim() || null;
+
+    const user = await queryOne<{ id: string; email: string | null; password_hash: string | null }>(
+      'SELECT id, email, password_hash FROM users WHERE id = $1 AND organization_id = $2',
+      [req.params.id, req.user!.organizationId]
+    );
+    if (!user) throw new AppError(404, 'User not found');
+
+    if (!canLogin) {
+      // Revoke sign-in. The login_disabled flag blocks fresh logins and refresh
+      // (see routes/auth.ts), and we also revoke any outstanding refresh tokens
+      // so an existing session can't be renewed. The member's current access
+      // token stays valid until it expires (bounded by the short access-token
+      // TTL) — stateless JWTs aren't checked against the DB per request.
+      await query('UPDATE users SET login_disabled = true, updated_at = now() WHERE id = $1', [user.id]);
+      await query(
+        'UPDATE refresh_tokens SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL',
+        [user.id]
+      );
+    } else {
+      const effectiveEmail = user.email ?? newEmail;
+      if (!effectiveEmail) throw new AppError(400, 'an email is required to enable sign-in');
+      // A password is required unless the member already has a usable one.
+      let passwordHash = user.password_hash;
+      if (!passwordHash) {
+        if (!password || password.length < 6) {
+          throw new AppError(400, 'a password (min 6 characters) is required to enable sign-in');
+        }
+        passwordHash = await bcrypt.hash(password, 12);
+      } else if (password) {
+        if (password.length < 6) throw new AppError(400, 'password must be at least 6 characters');
+        passwordHash = await bcrypt.hash(password, 12);
+      }
+      if (newEmail && !user.email) {
+        const clash = await queryOne('SELECT id FROM users WHERE email = $1 AND id <> $2', [newEmail, user.id]);
+        if (clash) throw new AppError(409, 'Email already registered');
+      }
+      await query(
+        `UPDATE users SET login_disabled = false, password_hash = $2,
+                          email = COALESCE(email, $3), updated_at = now()
+          WHERE id = $1`,
+        [user.id, passwordHash, effectiveEmail]
+      );
+    }
+
+    void recordAuditEvent({
+      organizationId: req.user!.organizationId,
+      userId: req.user!.userId,
+      actionType: canLogin ? 'user.login_enabled' : 'user.login_revoked',
+      entityType: 'user',
+      entityId: user.id,
+    });
+
+    res.json({ id: user.id, login_disabled: !canLogin });
   } catch (err) {
     next(err);
   }

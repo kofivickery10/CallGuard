@@ -4,6 +4,7 @@ import { captureFromTranscript, sanitizeAnswers } from '../../services/capture.j
 import { getCaptureForm } from '../../services/capture-runs.js';
 import { recordUsage } from '../../services/usage.js';
 import { evaluateCaptureRunAlerts } from '../../services/alert-evaluator.js';
+import { buildCombinedTranscript } from '../../services/journey-transcript.js';
 import type { CaptureRun } from '@callguard/shared';
 
 // ============================================================
@@ -26,10 +27,20 @@ export async function processCapture(job: Job<{ runId: string }>) {
   console.log(`[Capture] Processing run ${runId}`);
 
   const run = await queryOne<CaptureRun>('SELECT * FROM capture_runs WHERE id = $1', [runId]);
-  if (!run) throw new Error(`Capture run ${runId} not found`);
+  if (!run) {
+    // A deliberate re-run (routes/capture.ts) deletes prior runs; a job queued
+    // for one of those is orphaned by design. Clean no-op — throwing here just
+    // burns BullMQ retries on a permanently-gone row and logs noise.
+    console.log(`[Capture] Run ${runId} no longer exists (superseded by a re-run) — skipping`);
+    return;
+  }
   if (run.status === 'completed') {
     console.log(`[Capture] Run ${runId} already completed — skipping`);
     return;
+  }
+  if (!run.form_id || run.form_version == null) {
+    // needs_form rows are never enqueued as jobs; this guards a mis-wired call.
+    throw new Error(`Capture run ${runId} has no form pinned (status=${run.status})`);
   }
 
   await query(
@@ -67,13 +78,10 @@ export async function processCapture(job: Job<{ runId: string }>) {
     const withTranscript = calls.filter((c) => c.transcript_text);
     if (withTranscript.length === 0) throw new Error('No transcribed calls available for capture');
 
+    // Same call-delimited format (and [Call N] evidence-marker contract) as
+    // journey scoring — one shared builder, services/journey-transcript.ts.
     const transcript = journeyMode
-      ? withTranscript
-          .map((c, i) => {
-            const date = c.call_date ?? c.created_at;
-            return `=== Call ${i + 1} (${new Date(date).toLocaleDateString('en-GB')}, agent: ${c.agent_name ?? 'unknown'}) ===\n${c.transcript_text}`;
-          })
-          .join('\n\n')
+      ? buildCombinedTranscript(withTranscript)
       : withTranscript[0]!.transcript_text!;
 
     const org = await queryOne<{ industry: string | null }>(

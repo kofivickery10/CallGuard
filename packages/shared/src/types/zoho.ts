@@ -50,6 +50,18 @@ export interface ZohoConnection {
   // Custom QA module API name. null = QA write-back not configured.
   qa_module: string | null;
   qa_field_map: ZohoQAFieldMap;
+  // Product-aware scoring: read the products sold off a related module. All
+  // null = product resolution not configured (scoring is unaffected).
+  //   sale_module           — API name of the module the sale trigger fires
+  //                           from, whose record id the payload carries
+  //                           (e.g. 'Customers_Sold').
+  //   policies_related_list — API name of the related list holding the products
+  //                           (e.g. 'Policies_Sold').
+  //   policy_product_field  — API name of the field on a policy record carrying
+  //                           the product value (maps to products.external_key).
+  sale_module: string | null;
+  policies_related_list: string | null;
+  policy_product_field: string | null;
   // Whether the inbound sale-trigger secret has been set (never returns the
   // secret itself). When set, the sale-trigger endpoint enforces the HMAC
   // signature; when unset the trigger runs API-key-only.
@@ -75,6 +87,9 @@ export interface ZohoConnectionInput {
   sale_phone_field?: string;
   qa_module?: string | null;
   qa_field_map?: Partial<ZohoQAFieldMap>;
+  sale_module?: string | null;
+  policies_related_list?: string | null;
+  policy_product_field?: string | null;
   // Set/replace the inbound sale-webhook secret. Omit to keep the existing one.
   inbound_secret?: string;
   // Mark the sale trigger as configured (activates capture without a secret).

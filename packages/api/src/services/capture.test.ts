@@ -89,6 +89,14 @@ describe('sanitizeAnswers — result derivation', () => {
     expect(a!.result).toBe('captured');
   });
 
+  it('keeps a low-confidence MISS as missed — it must stay in the missed-required alert path', () => {
+    const [a] = sanitizeAnswers(
+      [field({ required: true })],
+      [raw({ asked: false, answered: false, value: null, confidence: 0.4 })]
+    );
+    expect(a!.result).toBe('missed');
+  });
+
   it('reports a field the model omitted as missed at zero confidence', () => {
     const answers = sanitizeAnswers(
       [field({ id: 'f1' }), field({ id: 'f2', label: 'Second question', required: false })],

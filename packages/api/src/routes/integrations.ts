@@ -28,7 +28,8 @@ export const integrationsRouter = Router();
 
 // Public columns only — never expose the encrypted secrets/tokens.
 const ZOHO_PUBLIC_COLUMNS = `id, organization_id, dc_region, client_id, module,
-  field_map, sale_phone_field, qa_module, qa_field_map, sale_trigger_enabled,
+  field_map, sale_phone_field, qa_module, qa_field_map,
+  sale_module, policies_related_list, policy_product_field, sale_trigger_enabled,
   status, last_synced_at, last_error, created_at, updated_at,
   (inbound_secret_encrypted IS NOT NULL) AS inbound_configured`;
 
@@ -55,6 +56,12 @@ const VALID_MODULES: ZohoModule[] = ['Leads', 'Contacts'];
 // captured and included. Comfortably covers the seconds-scale gap between a
 // call ending and its capture webhook arriving.
 const SALE_TRIGGER_GRACE_SECONDS = 90;
+
+// How long assemble-journey will keep re-checking the CRM for the "Policies
+// Sold" related record before giving up and letting score-journey infer the
+// products from the transcript. Covers the tenant-reported "no more than an
+// hour" gap between the sale record and its policies, with buffer.
+const MAX_PRODUCT_WAIT_MS = 75 * 60 * 1000;
 
 // Zoho field/module API names are alphanumeric/underscore only. Catching a
 // malformed one here — rather than letting it reach Zoho — turns a silent
@@ -175,9 +182,33 @@ export async function handleZohoSaleTrigger(
       'contact_name', 'Contact_Name', 'customer_name', 'Customer_Name',
       'Last_Name', 'last_name',
     ]);
+    // Product-aware scoring: if the org has the "Policies Sold" related-list
+    // mapping configured and the sale carried a record id, give assemble-journey
+    // a deadline to poll the CRM for the products before scoring. Otherwise
+    // omit it and assembly proceeds without product resolution.
+    const productResolutionConfigured = !!(
+      conn.sale_module && conn.policies_related_list && conn.policy_product_field
+    );
+    const productDeadlineAt =
+      productResolutionConfigured && recordId ? Date.now() + MAX_PRODUCT_WAIT_MS : undefined;
+
+    // Snapshot the payload's scalar fields so capture-form resolution rules
+    // (capture_form_rules, source='crm_field' — e.g. an Insurer/Provider field
+    // routing to a question set) can be evaluated when capture starts at
+    // scoring time, long after this webhook payload is gone. Scalars only,
+    // size-capped: this is routing context, not a data store.
+    const triggerContext: Record<string, string> = {};
+    for (const [key, value] of Object.entries(body)) {
+      if (Object.keys(triggerContext).length >= 40) break;
+      if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+        const str = String(value).slice(0, 200);
+        if (str.trim()) triggerContext[key.slice(0, 100)] = str;
+      }
+    }
+
     await ingestionQueue.add(
       'assemble-journey',
-      { organizationId: orgId, phone, recordId, clientName },
+      { organizationId: orgId, phone, recordId, clientName, productDeadlineAt, triggerContext },
       {
         delay: SALE_TRIGGER_GRACE_SECONDS * 1000,
         attempts: 3,
@@ -229,6 +260,9 @@ zohoRouter.post('/', async (req, res, next) => {
       sale_phone_field?: string;
       qa_module?: string | null;
       qa_field_map?: Partial<ZohoQAFieldMap>;
+      sale_module?: string | null;
+      policies_related_list?: string | null;
+      policy_product_field?: string | null;
       inbound_secret?: string;
       sale_trigger_enabled?: boolean;
     };
@@ -266,12 +300,23 @@ zohoRouter.post('/', async (req, res, next) => {
       }
     }
 
+    // Product-aware scoring config (all optional). Each is a Zoho API name when
+    // set; blank/absent clears it. Product resolution only runs when all three
+    // are set (see the sale-trigger handler and services/zoho.ts fetchSaleProducts).
+    const saleModule = body.sale_module?.trim() || null;
+    if (saleModule) assertValidZohoApiName('sale_module', saleModule);
+    const policiesRelatedList = body.policies_related_list?.trim() || null;
+    if (policiesRelatedList) assertValidZohoApiName('policies_related_list', policiesRelatedList);
+    const policyProductField = body.policy_product_field?.trim() || null;
+    if (policyProductField) assertValidZohoApiName('policy_product_field', policyProductField);
+
     await query(
       `INSERT INTO zoho_connections
          (organization_id, dc_region, client_id, client_secret_encrypted, module,
           field_map, sale_phone_field, qa_module, qa_field_map,
+          sale_module, policies_related_list, policy_product_field,
           inbound_secret_encrypted, sale_trigger_enabled, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'pending')
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'pending')
        ON CONFLICT (organization_id) DO UPDATE SET
          dc_region               = EXCLUDED.dc_region,
          client_id               = EXCLUDED.client_id,
@@ -281,6 +326,9 @@ zohoRouter.post('/', async (req, res, next) => {
          sale_phone_field        = EXCLUDED.sale_phone_field,
          qa_module               = EXCLUDED.qa_module,
          qa_field_map            = EXCLUDED.qa_field_map,
+         sale_module             = EXCLUDED.sale_module,
+         policies_related_list   = EXCLUDED.policies_related_list,
+         policy_product_field    = EXCLUDED.policy_product_field,
          inbound_secret_encrypted = COALESCE(EXCLUDED.inbound_secret_encrypted, zoho_connections.inbound_secret_encrypted),
          sale_trigger_enabled    = EXCLUDED.sale_trigger_enabled,
          status                  = 'pending',
@@ -299,6 +347,9 @@ zohoRouter.post('/', async (req, res, next) => {
         salePhoneField,
         qaModule,
         JSON.stringify(qaFieldMap),
+        saleModule,
+        policiesRelatedList,
+        policyProductField,
         body.inbound_secret ? encrypt(body.inbound_secret) : null,
         body.sale_trigger_enabled ?? false,
       ]

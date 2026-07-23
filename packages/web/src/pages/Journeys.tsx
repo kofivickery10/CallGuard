@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../api/client';
 import { JourneyStatusBadge } from '../components/JourneyStatusBadge';
+import { useScoreOnly } from '../context/AuthContext';
 import { formatPhone } from '../lib/format';
 import type { JourneyListItem, JourneyStatus } from '@callguard/shared';
 
@@ -15,6 +16,7 @@ const STATUS_FILTERS: Array<{ value: '' | JourneyStatus; label: string }> = [
 ];
 
 export function Journeys() {
+  const scoreOnly = useScoreOnly();
   const [status, setStatus] = useState<'' | JourneyStatus>('');
   const [page, setPage] = useState(1);
 
@@ -33,6 +35,11 @@ export function Journeys() {
 
   const journeys = data?.data ?? [];
   const totalPages = data ? Math.ceil(data.total / data.limit) : 0;
+
+  // Score-only tenants don't see the pass/fail verdict, so the Result column is
+  // dropped entirely rather than left blank.
+  const columns = ['Customer', ...(scoreOnly ? [] : ['Result']), 'Score', 'Branch', 'Calls', 'Status', 'Scored', ''];
+  const colCount = columns.length;
 
   return (
     <div>
@@ -69,7 +76,7 @@ export function Journeys() {
           <table className="w-full min-w-[720px]">
             <thead>
               <tr>
-                {['Customer', 'Result', 'Score', 'Branch', 'Calls', 'Status', 'Scored', ''].map((h) => (
+                {columns.map((h) => (
                   <th key={h} className="text-left px-5 py-2.5 text-table-header uppercase text-text-muted bg-table-header border-b border-border">
                     {h || <span className="sr-only">Actions</span>}
                   </th>
@@ -80,7 +87,7 @@ export function Journeys() {
               {isLoading &&
                 Array.from({ length: 6 }).map((_, i) => (
                   <tr key={`skeleton-${i}`} className="border-b border-border-light last:border-0">
-                    {Array.from({ length: 8 }).map((__, j) => (
+                    {Array.from({ length: colCount }).map((__, j) => (
                       <td key={j} className="px-5 py-3.5">
                         <div
                           className="h-4 rounded bg-[length:800px_100%] animate-skeleton-shimmer"
@@ -97,7 +104,7 @@ export function Journeys() {
 
               {isError && (
                 <tr>
-                  <td colSpan={8} className="px-5 py-6 text-center">
+                  <td colSpan={colCount} className="px-5 py-6 text-center">
                     <div className="bg-fail-bg text-fail px-3 py-2 rounded-btn inline-block">
                       Could not load sales — try refreshing.
                     </div>
@@ -107,7 +114,7 @@ export function Journeys() {
 
               {!isLoading && !isError && journeys.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-5 py-12 text-center text-text-muted text-table-cell">
+                  <td colSpan={colCount} className="px-5 py-12 text-center text-text-muted text-table-cell">
                     No scored sales yet. A sale is scored when it closes in your CRM, or via
                     “Score sale” on a customer.
                   </td>
@@ -115,7 +122,7 @@ export function Journeys() {
               )}
 
               {journeys.map((j) => {
-                const failed = j.pass === false;
+                const failed = j.pass === false && !scoreOnly;
                 return (
                 <tr
                   key={j.id}
@@ -129,19 +136,21 @@ export function Journeys() {
                     </Link>
                     <div className="text-xs text-text-muted">{formatPhone(j.customer_phone) || '—'}</div>
                   </td>
-                  <td className="px-5 py-3.5">
-                    {j.pass == null ? (
-                      <span className="text-text-muted text-table-cell">—</span>
-                    ) : (
-                      <span
-                        className={`inline-block px-2.5 py-[3px] rounded-full text-badge font-semibold ${
-                          j.pass ? 'bg-pass-bg text-pass' : 'bg-fail-bg text-fail'
-                        }`}
-                      >
-                        {j.pass ? 'Pass' : 'Fail'}
-                      </span>
-                    )}
-                  </td>
+                  {!scoreOnly && (
+                    <td className="px-5 py-3.5">
+                      {j.pass == null ? (
+                        <span className="text-text-muted text-table-cell">—</span>
+                      ) : (
+                        <span
+                          className={`inline-block px-2.5 py-[3px] rounded-full text-badge font-semibold ${
+                            j.pass ? 'bg-pass-bg text-pass' : 'bg-fail-bg text-fail'
+                          }`}
+                        >
+                          {j.pass ? 'Pass' : 'Fail'}
+                        </span>
+                      )}
+                    </td>
+                  )}
                   <td className={`px-5 py-3.5 text-table-cell font-semibold tabular-nums ${failed ? 'text-fail' : 'text-text-cell'}`}>
                     {j.overall_score != null ? `${Number(j.overall_score).toFixed(1)}%` : '—'}
                   </td>

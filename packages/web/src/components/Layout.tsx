@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../api/client';
 import { pingOnIncrease } from '../lib/browserPing';
+import { useOrgFeatures, type OrgFeature } from '../hooks/useOrgFeatures';
 import { NotificationBell } from './NotificationBell';
 import { SupportWidget } from './SupportWidget';
 import { ThemeToggle } from './ThemeToggle';
@@ -79,7 +80,7 @@ interface NavItem {
   staffOnly?: boolean;
   // Per-tenant module gate: only shown when the org has the feature enabled
   // (e.g. 'capture' → organizations.capture_enabled). Orthogonal to roles.
-  requiresFeature?: 'capture';
+  requiresFeature?: OrgFeature;
 }
 
 interface NavSection {
@@ -146,15 +147,8 @@ export function Layout({ children }: { children: ReactNode }) {
   const supportUnreadCount = supportUnread?.count ?? 0;
 
   // Per-tenant feature flags (e.g. the Data Capture module) — gates nav items
-  // marked requiresFeature. Cached long: flags flip via superadmin ops, not
-  // mid-session.
-  const { data: orgInfo } = useQuery({
-    queryKey: ['organization'],
-    queryFn: () => api.get<{ capture_enabled?: boolean }>('/organization'),
-    enabled: !!user,
-    staleTime: 5 * 60_000,
-  });
-  const features: Record<'capture', boolean> = { capture: orgInfo?.capture_enabled === true };
+  // marked requiresFeature. Shared with the Settings hub via useOrgFeatures.
+  const features = useOrgFeatures();
 
   // Desktop ping for staff when a customer message arrives and the tab isn't focused.
   const prevSupportUnreadRef = useRef<number | null>(null);

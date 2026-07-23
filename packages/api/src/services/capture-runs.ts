@@ -85,23 +85,30 @@ export async function maybeStartJourneyCapture(
   try {
     if (!(await isCaptureEnabled(organizationId))) return;
 
-    const journey = await queryOne<{ capture_form_id: string | null }>(
-      'SELECT capture_form_id FROM journeys WHERE id = $1 AND organization_id = $2',
+    const journey = await queryOne<{
+      capture_form_id: string | null;
+      trigger_context: Record<string, string> | null;
+    }>(
+      'SELECT capture_form_id, trigger_context FROM journeys WHERE id = $1 AND organization_id = $2',
       [journeyId, organizationId]
     );
     if (!journey) return;
 
-    const formId = journey.capture_form_id ?? (await resolveCaptureFormId(organizationId));
+    // Resolution order: explicit pick on the journey, then the tenant's
+    // crm_field rules evaluated against the sale-trigger payload snapshot,
+    // then the single-active-form default (inside resolveCaptureFormId).
+    const formId =
+      journey.capture_form_id ??
+      (await resolveCaptureFormId(organizationId, journey.trigger_context));
 
     if (!formId) {
       // No form resolvable — record the gap so it surfaces in the UI queue
-      // rather than silently not capturing. One needs_form row per journey.
+      // rather than silently not capturing. needs_form rows carry no form
+      // (form_id nullable, migration 061); the partial unique index there
+      // enforces one needs_form row per journey across re-scores.
       await query(
-        `INSERT INTO capture_runs (organization_id, journey_id, form_id, form_version, status)
-         SELECT $1, $2, cf.id, cf.version, 'needs_form'
-           FROM capture_forms cf
-          WHERE cf.organization_id = $1 AND cf.is_active AND cf.archived_at IS NULL
-          ORDER BY cf.created_at ASC LIMIT 1
+        `INSERT INTO capture_runs (organization_id, journey_id, status)
+         VALUES ($1, $2, 'needs_form')
          ON CONFLICT DO NOTHING`,
         [organizationId, journeyId]
       );
@@ -124,6 +131,13 @@ export async function maybeStartJourneyCapture(
     );
     const runId = inserted[0]?.id;
     if (!runId) return; // already ran / in flight for this form version
+
+    // A form resolved — clear any stale needs_form marker from an earlier
+    // scoring pass so the attention queue doesn't show a solved gap.
+    await query(
+      `DELETE FROM capture_runs WHERE journey_id = $1 AND status = 'needs_form'`,
+      [journeyId]
+    );
 
     if (journey.capture_form_id !== form.id) {
       await query('UPDATE journeys SET capture_form_id = $1, updated_at = now() WHERE id = $2', [form.id, journeyId]);

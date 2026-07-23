@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../api/client';
-import { useAuth } from '../context/AuthContext';
+import { useAuth, useScoreOnly } from '../context/AuthContext';
 import { hasFeature } from '@callguard/shared';
 import { formatPhone } from '../lib/format';
 
@@ -30,6 +30,7 @@ interface CustomersResponse {
 const COLUMNS = ['Customer', 'CRM ID', 'Calls', 'Sales', 'Last sale', 'Last seen'];
 
 function LastJourneyCell({ customer }: { customer: Customer }) {
+  const scoreOnly = useScoreOnly();
   if (customer.last_journey_score == null) {
     return <span className="text-text-muted">Awaiting sale</span>;
   }
@@ -44,9 +45,11 @@ function LastJourneyCell({ customer }: { customer: Customer }) {
       <span className="font-medium tabular-nums text-text-cell">
         {Math.round(parseFloat(customer.last_journey_score))}%
       </span>
-      <span className={`px-2.5 py-[3px] rounded-full text-badge font-semibold ${badge.className}`}>
-        {badge.label}
-      </span>
+      {!scoreOnly && (
+        <span className={`px-2.5 py-[3px] rounded-full text-badge font-semibold ${badge.className}`}>
+          {badge.label}
+        </span>
+      )}
     </span>
   );
 }

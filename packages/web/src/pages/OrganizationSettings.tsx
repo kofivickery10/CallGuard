@@ -181,7 +181,7 @@ export function OrganizationSettings() {
         </h3>
         <p className="text-xs text-text-subtle mb-3">
           Terms specific to your business — product names, industry jargon, provider names — that
-          transcription should recognise accurately. One term per line, up to 80 terms. Your
+          transcription should recognise accurately. One term per line, up to 60 terms. Your
           organisation and agent names are included automatically.
         </p>
         {keyterms === undefined ? (

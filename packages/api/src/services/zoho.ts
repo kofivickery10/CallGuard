@@ -61,13 +61,17 @@ interface ZohoConnectionRow {
   sale_phone_field: string;
   qa_module: string | null;
   qa_field_map: ZohoQAFieldMap;
+  sale_module: string | null;
+  policies_related_list: string | null;
+  policy_product_field: string | null;
   status: 'pending' | 'active' | 'disabled';
 }
 
 const ROW_COLUMNS = `id, organization_id, dc_region, client_id,
   client_secret_encrypted, refresh_token_encrypted, access_token_encrypted,
   token_expires_at, api_domain, module, field_map,
-  inbound_secret_encrypted, sale_phone_field, qa_module, qa_field_map, status`;
+  inbound_secret_encrypted, sale_phone_field, qa_module, qa_field_map,
+  sale_module, policies_related_list, policy_product_field, status`;
 
 export function accountsHost(region: ZohoRegion): string {
   return ZOHO_ACCOUNTS_HOST[region] ?? ZOHO_ACCOUNTS_HOST.eu;
@@ -360,6 +364,79 @@ async function findRecordByPhone(
   );
   const best = rows[0]!;
   return { id: best.id, ownerId: best.Owner?.id ?? null };
+}
+
+// A related-record field can be a plain picklist/text value or a lookup object
+// ({ id, name }). Normalise to the human string we map to products.external_key.
+function relatedFieldValue(raw: unknown): string | null {
+  if (raw == null) return null;
+  if (typeof raw === 'string') return raw.trim() || null;
+  if (typeof raw === 'number' || typeof raw === 'boolean') return String(raw);
+  if (typeof raw === 'object' && 'name' in (raw as Record<string, unknown>)) {
+    const name = (raw as { name?: unknown }).name;
+    return typeof name === 'string' ? name.trim() || null : null;
+  }
+  return null;
+}
+
+export interface SaleProductsResult {
+  // False when the org hasn't configured product resolution (sale_module /
+  // policies_related_list / policy_product_field). The caller then skips
+  // product-aware scoring entirely rather than polling.
+  configured: boolean;
+  // Distinct product values read off the related list. Empty with
+  // configured=true means the related records don't exist yet (keep polling)
+  // — the caller distinguishes this from "not configured".
+  products: string[];
+}
+
+/**
+ * Read the products a sale covered off a related module (e.g. Zoho "Policies
+ * Sold" linked to the "Customers Sold" record the sale trigger fired from).
+ * Best-effort: returns configured=false when the org isn't set up for product
+ * resolution, and throws only on an unexpected Zoho error so the caller's poll
+ * can retry. The related-list records are read fresh each call — a policy
+ * added after the sale trigger fired shows up on a later poll.
+ */
+export async function fetchSaleProducts(
+  organizationId: string,
+  recordId: string
+): Promise<SaleProductsResult> {
+  const conn = await getConnectionRow(organizationId);
+  if (
+    !conn ||
+    conn.status !== 'active' ||
+    !conn.sale_module ||
+    !conn.policies_related_list ||
+    !conn.policy_product_field
+  ) {
+    return { configured: false, products: [] };
+  }
+
+  const { accessToken, apiDomain } = await ensureAccessToken(conn);
+  const res = await zohoApi(
+    apiDomain,
+    accessToken,
+    `/crm/v8/${encodeURIComponent(conn.sale_module)}/${encodeURIComponent(recordId)}/` +
+      `${encodeURIComponent(conn.policies_related_list)}`
+  );
+  // 204 = the related list exists but has no records yet (policies not created
+  // yet — the common case in the gap between the sale and its policies).
+  if (res.status === 204) return { configured: true, products: [] };
+  if (!res.ok) {
+    throw new Error(
+      `Zoho related-list fetch failed: ${res.status} ${(await res.text()).slice(0, 300)}`
+    );
+  }
+
+  const body = (await res.json()) as { data?: Array<Record<string, unknown>> };
+  const field = conn.policy_product_field;
+  const products = new Set<string>();
+  for (const rec of body.data ?? []) {
+    const value = relatedFieldValue(rec[field]);
+    if (value) products.add(value);
+  }
+  return { configured: true, products: [...products] };
 }
 
 // Zoho datetime fields want an offset (…+00:00), not a trailing Z.

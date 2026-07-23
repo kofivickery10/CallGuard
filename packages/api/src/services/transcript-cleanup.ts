@@ -62,6 +62,25 @@ function parseSpeakerVerdict(
   return v === 'unchanged' ? 'unclear' : (v as 'swapped' | 'confirmed' | 'unclear');
 }
 
+// A faithful cleanup fixes mishearings and punctuation, so its output is
+// roughly as long as the input (often slightly longer). A cleaned transcript
+// that comes back materially SHORTER has almost always had a chunk silently
+// dropped — the model, on a long transcript, skipped a section despite being
+// told not to remove turns. That failure is as dangerous as a hard truncation:
+// the result reads as a complete call with a hole in it, so scoring misses
+// whatever was in the gap (e.g. a compliance intro), producing false breaches.
+// 0.80 leaves generous headroom for legitimate tidy-ups (removing filler,
+// tightening grammar) while catching real content loss — a genuine drop is
+// typically 25%+ (an observed case retained only 72%). The tags in raw and
+// cleaned are identical, so redaction doesn't skew the ratio.
+export const CLEANUP_MIN_RETAINED_RATIO = 0.8;
+
+export function isCleanupContentLoss(rawTranscript: string, cleaned: string): boolean {
+  const rawLen = rawTranscript.trim().length;
+  if (rawLen === 0) return false;
+  return cleaned.trim().length < rawLen * CLEANUP_MIN_RETAINED_RATIO;
+}
+
 export async function cleanupTranscript(
   rawTranscript: string,
   organizationId?: string,
@@ -244,22 +263,46 @@ ${needsSpeakerCheck
   }
 
   const output = textBlock.text.trim();
+
+  // Resolve the cleaned body and the speaker verdict, then apply one shared
+  // content-loss guard below before returning either.
+  let cleanedBody: string;
+  let speakerVerdict: SpeakerVerdict;
   if (!needsSpeakerCheck) {
-    return { text: output, speakerLabelsSwapped: false, speakerVerdict: 'not_checked' };
+    cleanedBody = output;
+    speakerVerdict = 'not_checked';
+  } else {
+    const match = output.match(/^SPEAKER_LABELS:\s*(unchanged|swapped|confirmed|unclear)\s*\n+([\s\S]*)$/i);
+    if (!match) {
+      // Model didn't follow the prefix format — safer to use its output as-is
+      // (still cleaned) and treat the split as unverified (no confidence lift)
+      // than to guess at a swap/confirmation that wasn't clearly signalled.
+      console.warn(`[TranscriptCleanup] Call ${callId ?? 'unknown'}: missing SPEAKER_LABELS prefix, treating as unclear`);
+      cleanedBody = output;
+      speakerVerdict = 'unclear';
+    } else {
+      const rawVerdict = match[1]!.toLowerCase();
+      speakerVerdict =
+        rawVerdict === 'swapped' ? 'swapped'
+        : rawVerdict === 'confirmed' ? 'confirmed'
+        : 'unclear'; // 'unchanged' (legacy alias) and 'unclear' both map here
+      cleanedBody = match[2]!.trim();
+    }
   }
 
-  const match = output.match(/^SPEAKER_LABELS:\s*(unchanged|swapped|confirmed|unclear)\s*\n+([\s\S]*)$/i);
-  if (!match) {
-    // Model didn't follow the prefix format — safer to use its output as-is
-    // (still cleaned) and treat the split as unverified (no confidence lift)
-    // than to guess at a swap/confirmation that wasn't clearly signalled.
-    console.warn(`[TranscriptCleanup] Call ${callId ?? 'unknown'}: missing SPEAKER_LABELS prefix, treating as unclear`);
-    return { text: output, speakerLabelsSwapped: false, speakerVerdict: 'unclear' };
+  // Content-loss guard: a well-formed but lossy cleanup (the model silently
+  // dropped a section of a long transcript, even though stop_reason was not
+  // max_tokens) is as harmful as a truncated one — see isCleanupContentLoss.
+  // Fall back to the raw transcript, keeping the speaker decision: a raw-but-
+  // complete transcript scores far better than a cleaned one with a hole in it.
+  if (isCleanupContentLoss(rawTranscript, cleanedBody)) {
+    const retained = Math.round((cleanedBody.trim().length / Math.max(1, rawTranscript.trim().length)) * 100);
+    console.error(`[TranscriptCleanup] Cleaned transcript for call ${callId ?? 'unknown'} retained only ${retained}% of the raw length — likely dropped content; using raw transcript (speaker verdict: ${speakerVerdict})`);
+    if (speakerVerdict === 'swapped') {
+      return { text: swapSpeakerLabels(rawTranscript), speakerLabelsSwapped: true, speakerVerdict: 'swapped' };
+    }
+    return { text: rawTranscript, speakerLabelsSwapped: false, speakerVerdict };
   }
-  const rawVerdict = match[1]!.toLowerCase();
-  const speakerVerdict: SpeakerVerdict =
-    rawVerdict === 'swapped' ? 'swapped'
-    : rawVerdict === 'confirmed' ? 'confirmed'
-    : 'unclear'; // 'unchanged' (legacy alias) and 'unclear' both map here
-  return { text: match[2]!.trim(), speakerLabelsSwapped: speakerVerdict === 'swapped', speakerVerdict };
+
+  return { text: cleanedBody, speakerLabelsSwapped: speakerVerdict === 'swapped', speakerVerdict };
 }

@@ -13,6 +13,7 @@ import {
 } from 'recharts';
 import { api } from '../api/client';
 import { useTheme } from '../lib/theme';
+import { useScoreOnly } from '../context/AuthContext';
 import type {
   CallsPerDayPoint,
   ScoreTrendPoint,
@@ -166,9 +167,13 @@ function ScoresOverTimeChart({ agentFilter }: { agentFilter: string | null }) {
   });
 
   const { grid, tick, primary, processing } = useChartColors();
+  const scoreOnly = useScoreOnly();
 
   return (
-    <ChartCard title="Scores Over Time" subtitle="Weekly avg score & pass rate (last 12 weeks)">
+    <ChartCard
+      title="Scores Over Time"
+      subtitle={scoreOnly ? 'Weekly avg score (last 12 weeks)' : 'Weekly avg score & pass rate (last 12 weeks)'}
+    >
       {!data?.data.length ? (
         <EmptyState message="Not enough scored calls yet" />
       ) : (
@@ -200,15 +205,17 @@ function ScoresOverTimeChart({ agentFilter }: { agentFilter: string | null }) {
               dot={{ r: 3 }}
               name="Avg Score"
             />
-            <Line
-              type="monotone"
-              dataKey="pass_rate"
-              stroke={processing}
-              strokeWidth={2}
-              dot={{ r: 3 }}
-              name="Pass Rate"
-              strokeDasharray="5 5"
-            />
+            {!scoreOnly && (
+              <Line
+                type="monotone"
+                dataKey="pass_rate"
+                stroke={processing}
+                strokeWidth={2}
+                dot={{ r: 3 }}
+                name="Pass Rate"
+                strokeDasharray="5 5"
+              />
+            )}
           </LineChart>
         </ResponsiveContainer>
       )}

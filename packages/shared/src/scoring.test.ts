@@ -3,6 +3,7 @@ import {
   isItemPass,
   resolveBranch,
   itemAppliesToBranch,
+  productAppliesToItem,
   deriveSeverity,
   callPasses,
 } from './scoring.js';
@@ -56,6 +57,27 @@ describe('itemAppliesToBranch', () => {
     expect(itemAppliesToBranch({ branch: 'referred' }, 'referred')).toBe(true);
     expect(itemAppliesToBranch({ branch: 'referred' }, 'on_risk')).toBe(false);
     expect(itemAppliesToBranch({ branch: ['on_risk', 'referred'] }, 'on_risk')).toBe(true);
+  });
+});
+
+describe('productAppliesToItem', () => {
+  it('an unscoped item (null/empty) applies to every product', () => {
+    expect(productAppliesToItem(null, ['p1'])).toBe(true);
+    expect(productAppliesToItem(undefined, [])).toBe(true);
+    expect(productAppliesToItem([], ['p1', 'p2'])).toBe(true);
+  });
+  it('applies when the sale intersects the item scope', () => {
+    expect(productAppliesToItem(['p1'], ['p1'])).toBe(true);
+    expect(productAppliesToItem(['p1', 'p2'], ['p2', 'p3'])).toBe(true);
+  });
+  it('does not apply when the sale misses the item scope', () => {
+    expect(productAppliesToItem(['p1'], ['p2'])).toBe(false);
+    expect(productAppliesToItem(['p1', 'p2'], ['p3'])).toBe(false);
+  });
+  it('scores a scoped item conservatively when the product is unknown', () => {
+    // Empty sale set = product couldn't be resolved — score it rather than
+    // silently dropping a compliance checkpoint.
+    expect(productAppliesToItem(['p1'], [])).toBe(true);
   });
 });
 

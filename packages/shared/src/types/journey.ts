@@ -1,5 +1,6 @@
 import type { ItemResult } from './scorecard.js';
 import type { CallCoaching } from './coaching.js';
+import type { ProductSource, JourneyProduct } from './product.js';
 
 export type JourneyStatus = 'pending' | 'scoring' | 'scored' | 'failed';
 export type JourneyTriggerSource = 'zoho_sale' | 'manual' | 'fallback';
@@ -22,6 +23,9 @@ export interface Journey {
   // Journey-level coaching brief (whole-sale strengths / improvements / next
   // actions). Null until scored, or if coaching is disabled for the plan.
   coaching: CallCoaching | null;
+  // How this journey's product set was resolved. Null until resolution runs
+  // (or for orgs not using product-aware scoring).
+  product_source: ProductSource | null;
   error_message: string | null;
   scored_at: string | null;
   created_at: string;
@@ -52,12 +56,17 @@ export interface JourneyItemScore {
 export interface JourneyWithDetail extends Journey {
   customer_name: string | null;
   customer_phone: string | null;
+  // The products this sale covered (empty for orgs not using product scoping).
+  products: JourneyProduct[];
   calls: Array<{ id: string; role: JourneyCallRole; call_date: string | null; agent_name: string | null }>;
   item_scores: Array<
     JourneyItemScore & {
       label: string;
       section: string | null;
       severity: 'critical' | 'high' | 'medium' | 'low' | null;
+      // Product ids this checkpoint is scoped to — lets the UI explain an 'na'
+      // result as "not required for this sale's products".
+      applies_to_products: string[] | null;
     }
   >;
 }

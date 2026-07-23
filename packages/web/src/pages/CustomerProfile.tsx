@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
-import { useAuth } from '../context/AuthContext';
+import { useAuth, useScoreOnly } from '../context/AuthContext';
 import { useDialog } from '../components/DialogProvider';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { PASS_THRESHOLD } from '@callguard/shared';
@@ -80,6 +80,7 @@ function CardIcon({ paths }: { paths: string[] }) {
 export default function CustomerProfile() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
+  const scoreOnly = useScoreOnly();
   const queryClient = useQueryClient();
   const { notify } = useDialog();
   const [editMode, setEditMode] = useState(false);
@@ -347,17 +348,19 @@ export default function CustomerProfile() {
             <>
               <div className="mt-2.5 flex items-center gap-2 flex-wrap">
                 <span className="text-card-value text-text-primary tabular-nums">{lastJourneyScore}%</span>
-                <span
-                  className={`inline-block px-2.5 py-[3px] rounded-full text-badge font-semibold ${
-                    customer.last_journey_pass == null
-                      ? 'bg-review-bg text-review'
-                      : customer.last_journey_pass
-                        ? 'bg-pass-bg text-pass'
-                        : 'bg-fail-bg text-fail'
-                  }`}
-                >
-                  {customer.last_journey_pass == null ? 'Review' : customer.last_journey_pass ? 'Pass' : 'Fail'}
-                </span>
+                {!scoreOnly && (
+                  <span
+                    className={`inline-block px-2.5 py-[3px] rounded-full text-badge font-semibold ${
+                      customer.last_journey_pass == null
+                        ? 'bg-review-bg text-review'
+                        : customer.last_journey_pass
+                          ? 'bg-pass-bg text-pass'
+                          : 'bg-fail-bg text-fail'
+                    }`}
+                  >
+                    {customer.last_journey_pass == null ? 'Review' : customer.last_journey_pass ? 'Pass' : 'Fail'}
+                  </span>
+                )}
               </div>
               {customer.last_journey_at && (
                 <p className="text-[12px] text-text-muted mt-1">{fmtDate(customer.last_journey_at)}</p>
@@ -429,7 +432,7 @@ export default function CustomerProfile() {
                 formatter={(v) => [`${Number(v).toFixed(1)}%`, 'Score']}
                 labelFormatter={(l) => `${usingJourneyChart ? 'Sale' : 'Call'} ${l}`}
               />
-              <ReferenceLine y={PASS_THRESHOLD} stroke={chartColors.fail} strokeDasharray="3 3" />
+              {!scoreOnly && <ReferenceLine y={PASS_THRESHOLD} stroke={chartColors.fail} strokeDasharray="3 3" />}
               <Line type="monotone" dataKey="score" stroke={chartColors.primary} strokeWidth={2} dot={{ r: 3 }} />
             </LineChart>
           </ResponsiveContainer>
@@ -452,7 +455,7 @@ export default function CustomerProfile() {
               <table className="w-full min-w-[720px]">
                 <thead>
                   <tr>
-                    {['Result', 'Score', 'Branch', 'Calls', 'Status', 'Scored', ''].map((h, i) => (
+                    {[...(scoreOnly ? [] : ['Result']), 'Score', 'Branch', 'Calls', 'Status', 'Scored', ''].map((h, i) => (
                       <th key={`${h}-${i}`} className="text-left px-5 py-2.5 text-table-header uppercase text-text-muted bg-table-header border-b border-border">
                         {h || <span className="sr-only">Actions</span>}
                       </th>
@@ -461,7 +464,7 @@ export default function CustomerProfile() {
                 </thead>
                 <tbody>
                   {journeys.map((j) => {
-                    const failed = j.pass === false;
+                    const failed = j.pass === false && !scoreOnly;
                     return (
                       <tr
                         key={j.id}
@@ -469,19 +472,21 @@ export default function CustomerProfile() {
                           failed ? 'border-l-fail bg-fail-bg/30' : 'border-l-transparent'
                         }`}
                       >
-                        <td className="px-5 py-3.5">
-                          {j.pass == null ? (
-                            <span className="text-text-muted text-table-cell">—</span>
-                          ) : (
-                            <span
-                              className={`inline-block px-2.5 py-[3px] rounded-full text-badge font-semibold ${
-                                j.pass ? 'bg-pass-bg text-pass' : 'bg-fail-bg text-fail'
-                              }`}
-                            >
-                              {j.pass ? 'Pass' : 'Fail'}
-                            </span>
-                          )}
-                        </td>
+                        {!scoreOnly && (
+                          <td className="px-5 py-3.5">
+                            {j.pass == null ? (
+                              <span className="text-text-muted text-table-cell">—</span>
+                            ) : (
+                              <span
+                                className={`inline-block px-2.5 py-[3px] rounded-full text-badge font-semibold ${
+                                  j.pass ? 'bg-pass-bg text-pass' : 'bg-fail-bg text-fail'
+                                }`}
+                              >
+                                {j.pass ? 'Pass' : 'Fail'}
+                              </span>
+                            )}
+                          </td>
+                        )}
                         <td className={`px-5 py-3.5 text-table-cell font-semibold tabular-nums ${failed ? 'text-fail' : 'text-text-cell'}`}>
                           {j.overall_score != null ? `${Number(j.overall_score).toFixed(1)}%` : '—'}
                         </td>
@@ -525,7 +530,7 @@ export default function CustomerProfile() {
               <table className="w-full min-w-[820px]">
                 <thead>
                   <tr>
-                    {['Date', 'Adviser', 'Duration', 'Status', 'Score', 'Result', 'Breaches', 'Coaching snippet', ''].map((h, i) => (
+                    {['Date', 'Adviser', 'Duration', 'Status', 'Score', ...(scoreOnly ? [] : ['Result']), 'Breaches', 'Coaching snippet', ''].map((h, i) => (
                       <th key={`${h}-${i}`} className="text-left px-5 py-2.5 text-table-header uppercase text-text-muted bg-table-header border-b border-border">
                         {h || <span className="sr-only">Actions</span>}
                       </th>
@@ -534,7 +539,7 @@ export default function CustomerProfile() {
                 </thead>
                 <tbody>
                   {calls.map((c) => {
-                    const failed = c.pass === false;
+                    const failed = c.pass === false && !scoreOnly;
                     const breachN = Number(c.breach_count) || 0;
                     return (
                       <tr
@@ -554,19 +559,21 @@ export default function CustomerProfile() {
                         <td className={`px-5 py-3.5 text-table-cell font-semibold tabular-nums ${failed ? 'text-fail' : 'text-text-cell'}`}>
                           {c.overall_score !== null ? `${c.overall_score.toFixed(1)}%` : '—'}
                         </td>
-                        <td className="px-5 py-3.5">
-                          {c.pass == null ? (
-                            <span className="text-text-muted text-table-cell">—</span>
-                          ) : (
-                            <span
-                              className={`inline-block px-2.5 py-[3px] rounded-full text-badge font-semibold ${
-                                c.pass ? 'bg-pass-bg text-pass' : 'bg-fail-bg text-fail'
-                              }`}
-                            >
-                              {c.pass ? 'Pass' : 'Fail'}
-                            </span>
-                          )}
-                        </td>
+                        {!scoreOnly && (
+                          <td className="px-5 py-3.5">
+                            {c.pass == null ? (
+                              <span className="text-text-muted text-table-cell">—</span>
+                            ) : (
+                              <span
+                                className={`inline-block px-2.5 py-[3px] rounded-full text-badge font-semibold ${
+                                  c.pass ? 'bg-pass-bg text-pass' : 'bg-fail-bg text-fail'
+                                }`}
+                              >
+                                {c.pass ? 'Pass' : 'Fail'}
+                              </span>
+                            )}
+                          </td>
+                        )}
                         <td className={`px-5 py-3.5 text-table-cell tabular-nums ${breachN > 0 ? 'text-fail font-semibold' : 'text-text-muted'}`}>
                           {breachN}
                         </td>

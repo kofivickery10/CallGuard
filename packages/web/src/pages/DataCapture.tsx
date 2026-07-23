@@ -12,7 +12,8 @@ interface RunRow {
   error_message: string | null;
   completed_at: string | null;
   created_at: string;
-  form_name: string;
+  // Null on needs_form runs — no form could be matched to the sale.
+  form_name: string | null;
   context_label: string | null;
   customer_name: string | null;
   missed_required: number;
@@ -105,7 +106,9 @@ export function DataCapture() {
                 <div className="min-w-0">
                   <div className="text-table-cell text-text-primary font-medium">
                     {r.customer_name ?? 'Unknown customer'}
-                    <span className="text-text-muted font-normal"> — {r.form_name}</span>
+                    <span className="text-text-muted font-normal">
+                      {' — '}{r.form_name ?? 'no question set matched'}
+                    </span>
                   </div>
                   <div className="text-xs text-text-muted mt-0.5">
                     {new Date(r.created_at).toLocaleDateString('en-GB')}

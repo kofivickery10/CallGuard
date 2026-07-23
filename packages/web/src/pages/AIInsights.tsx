@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { api } from '../api/client';
-import { useAuth } from '../context/AuthContext';
+import { useAuth, useScoreOnly } from '../context/AuthContext';
 import { hasFeature, PLAN_LABELS } from '@callguard/shared';
 import type { InsightDigest, InsightPriority } from '@callguard/shared';
 
@@ -201,6 +201,7 @@ export function AIInsights() {
 }
 
 function DigestView({ digest }: { digest: InsightDigest }) {
+  const scoreOnly = useScoreOnly();
   const metrics = digest.metrics as {
     total_calls?: number;
     scored_calls?: number;
@@ -230,17 +231,19 @@ function DigestView({ digest }: { digest: InsightDigest }) {
           )}
         </div>
 
-        {/* Metrics strip */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 border-b border-border-light">
+        {/* Metrics strip — Pass rate is verdict-derived, hidden in score-only mode. */}
+        <div className={`grid grid-cols-2 ${scoreOnly ? 'sm:grid-cols-3' : 'sm:grid-cols-4'} border-b border-border-light`}>
           <MetricCell label="Calls" value={metrics.total_calls ?? '—'} />
           <MetricCell
             label="Avg score"
             value={metrics.avg_score_current != null ? `${metrics.avg_score_current.toFixed(1)}%` : '—'}
           />
-          <MetricCell
-            label="Pass rate"
-            value={metrics.pass_rate_current != null ? `${metrics.pass_rate_current.toFixed(1)}%` : '—'}
-          />
+          {!scoreOnly && (
+            <MetricCell
+              label="Pass rate"
+              value={metrics.pass_rate_current != null ? `${metrics.pass_rate_current.toFixed(1)}%` : '—'}
+            />
+          )}
           <MetricCell
             label="Corrections"
             value={metrics.corrections_count ?? 0}

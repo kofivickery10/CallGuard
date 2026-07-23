@@ -317,10 +317,13 @@ async function loadRunWithAnswers(organizationId: string, run: CaptureRun) {
       ORDER BY f.sort_order`,
     [run.id]
   );
-  const form = await queryOne<CaptureForm>(
-    'SELECT * FROM capture_forms WHERE id = $1 AND organization_id = $2',
-    [run.form_id, organizationId]
-  );
+  // needs_form runs carry no form (form_id null, migration 061).
+  const form = run.form_id
+    ? await queryOne<CaptureForm>(
+        'SELECT * FROM capture_forms WHERE id = $1 AND organization_id = $2',
+        [run.form_id, organizationId]
+      )
+    : null;
   return { run, form, answers };
 }
 
@@ -418,7 +421,20 @@ captureRouter.get('/runs/:id/export.csv', async (req, res, next) => {
     if (!run) throw new AppError(404, 'Capture run not found');
     const { form, answers } = await loadRunWithAnswers(req.user!.organizationId, run);
 
-    const esc = (v: string | null | undefined) => `"${(v ?? '').replace(/"/g, '""')}"`;
+    // Quote-escape AND neutralise spreadsheet formula triggers: a cell whose
+    // content starts with =, +, -, @ (or tab/CR) is evaluated as a formula by
+    // Excel/Sheets regardless of quoting — and Answer/Evidence cells carry
+    // transcript-derived text an outside party influenced by speaking on the
+    // call. Standard CSV-injection guard: prefix a literal apostrophe.
+    const esc = (v: string | null | undefined) => {
+      let s = v ?? '';
+      const trimmed = s.trim();
+      // A plain signed number (e.g. "-5", "+3.5") is a value, not a formula —
+      // don't prefix it, or a captured negative amount exports as "'-5".
+      const isNumeric = /^[+-]?\d[\d,]*(\.\d+)?$/.test(trimmed);
+      if (/^[=+\-@\t\r]/.test(trimmed) && !isNumeric) s = `'${s}`;
+      return `"${s.replace(/"/g, '""')}"`;
+    };
     const lines = [
       ['Question', 'Asked', 'Answered', 'Answer', 'Result', 'Confidence', 'Evidence'].join(','),
       ...answers.map((a) =>
@@ -459,7 +475,9 @@ captureRouter.get('/runs/:id/export.csv', async (req, res, next) => {
 captureRouter.get('/runs', async (req, res, next) => {
   try {
     const status = typeof req.query.status === 'string' ? req.query.status : null;
-    const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
+    // Clamp into [1, 200]: parseInt(-1) is truthy so `|| 50` alone lets a
+    // negative through to LIMIT, which Postgres rejects.
+    const limit = Math.max(1, Math.min(parseInt(req.query.limit as string) || 50, 200));
     const params: unknown[] = [req.user!.organizationId];
     let statusFilter = '';
     if (status) {
@@ -467,6 +485,7 @@ captureRouter.get('/runs', async (req, res, next) => {
       statusFilter = `AND r.status = $${params.length}`;
     }
     params.push(limit);
+    // LEFT JOIN capture_forms: needs_form runs carry no form (migration 061).
     const rows = await query(
       `SELECT r.id, r.journey_id, r.call_id, r.form_id, r.form_version, r.status,
               r.error_message, r.completed_at, r.created_at,
@@ -478,7 +497,7 @@ captureRouter.get('/runs', async (req, res, next) => {
               (SELECT COUNT(*) FROM capture_answers ca
                 WHERE ca.run_id = r.id AND ca.result = 'manual_review')::int AS needs_review
          FROM capture_runs r
-         JOIN capture_forms cf ON cf.id = r.form_id
+         LEFT JOIN capture_forms cf ON cf.id = r.form_id
          LEFT JOIN journeys j ON j.id = r.journey_id
          LEFT JOIN customers cust ON cust.id = j.customer_id
         WHERE r.organization_id = $1 ${statusFilter}
@@ -496,7 +515,7 @@ captureRouter.get('/runs', async (req, res, next) => {
 // range — the "which questions are agents skipping" QC view.
 captureRouter.get('/coverage', async (req, res, next) => {
   try {
-    const days = Math.min(parseInt(req.query.days as string) || 30, 365);
+    const days = Math.max(1, Math.min(parseInt(req.query.days as string) || 30, 365));
     const rows = await query<{
       form_id: string;
       form_name: string;

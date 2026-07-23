@@ -50,6 +50,12 @@ export interface ScorecardItem {
   // consent from context, and low-confidence speaker attribution on the
   // evidence utterance routes the item to manual_review instead of a score.
   consent_gate: boolean;
+  // Product ids this item is required for. Null/empty = applies to every
+  // product (the default). When populated, the item is only scored on a sale
+  // whose products intersect this set; otherwise it resolves to 'na' and is
+  // excluded from the weighted denominator — same gate as `applies_when` on
+  // the branch axis. See services/checkpoint-classification.ts.
+  applies_to_products?: string[] | null;
 }
 
 export interface Scorecard {
@@ -81,6 +87,7 @@ export interface ScorecardItemInput {
   expectation?: string | null;
   ai_check?: string | null;
   consent_gate?: boolean;
+  applies_to_products?: string[] | null;
 }
 
 export interface CreateScorecardInput {

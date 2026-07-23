@@ -2,7 +2,7 @@ import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { api } from '../api/client';
-import { useAuth } from '../context/AuthContext';
+import { useAuth, useScoreOnly } from '../context/AuthContext';
 import { useDialog } from '../components/DialogProvider';
 import { ScoreGauge } from '../components/ScoreGauge';
 import { CoachingPanel } from '../components/CoachingPanel';
@@ -11,13 +11,14 @@ import { ItemResultBadge } from '../components/ItemResultBadge';
 import { SeverityBadge } from '../components/BreachBadges';
 import { formatPhone } from '../lib/format';
 import { isItemPass } from '@callguard/shared';
-import type { JourneyWithDetail, ItemResult } from '@callguard/shared';
+import type { JourneyWithDetail, ItemResult, Product } from '@callguard/shared';
 
 const RESULT_ORDER: Record<ItemResult, number> = { fail: 0, manual_review: 1, pass: 2, na: 3 };
 
 export function JourneyDetail() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
+  const scoreOnly = useScoreOnly();
   const queryClient = useQueryClient();
   const { notify, confirm } = useDialog();
   const canAction = user?.role === 'admin' || user?.role === 'supervisor';
@@ -35,6 +36,15 @@ export function JourneyDetail() {
       return s === 'pending' || s === 'scoring' ? 4000 : false;
     },
   });
+
+  // Product catalogue — resolves the ids on a checkpoint's applies_to_products
+  // to names, to explain an N/A result. Cheap and cached; empty for orgs not
+  // using product-aware scoring.
+  const { data: productsData } = useQuery({
+    queryKey: ['products'],
+    queryFn: () => api.get<{ data: Product[] }>('/products'),
+  });
+  const productNames = new Map((productsData?.data ?? []).map((p) => [p.id, p.name]));
 
   const rescoreMutation = useMutation({
     mutationFn: () => api.post(`/journeys/${id}/rescore`, {}),
@@ -101,6 +111,10 @@ export function JourneyDetail() {
   const pendingReview = journey.item_scores.filter((i) => i.result === 'manual_review');
   const customerLabel =
     journey.customer_name ?? (journey.customer_phone ? formatPhone(journey.customer_phone) : null);
+  // Names for a checkpoint's product scope (drops ids no longer in the
+  // catalogue). Used to explain why a product-scoped item resolved to N/A.
+  const productNameList = (ids: string[]): string[] =>
+    ids.map((pid) => productNames.get(pid)).filter((n): n is string => !!n);
 
   return (
     <div>
@@ -144,6 +158,21 @@ export function JourneyDetail() {
             <span>Trigger: {journey.trigger_source.replace('_', ' ')}</span>
             {journey.scored_at && <span>Scored {new Date(journey.scored_at).toLocaleString('en-GB')}</span>}
           </div>
+          {journey.products && journey.products.length > 0 && (
+            <div className="flex items-center gap-2 mt-2 flex-wrap">
+              <span className="text-xs text-text-muted">
+                Products{journey.product_source === 'ai' ? ' (inferred from the call)' : ''}:
+              </span>
+              {journey.products.map((p) => (
+                <span
+                  key={p.id}
+                  className="px-2.5 py-[3px] rounded-full text-badge font-semibold bg-table-header text-text-secondary"
+                >
+                  {p.product_name}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-3">
           {isAdmin && (
@@ -162,13 +191,15 @@ export function JourneyDetail() {
           )}
           {journey.overall_score != null && (
             <>
-              <span
-                className={`inline-block px-2.5 py-[3px] rounded-full text-badge font-semibold ${
-                  journey.pass ? 'bg-pass-bg text-pass' : 'bg-fail-bg text-fail'
-                }`}
-              >
-                {journey.pass ? 'Pass' : 'Fail'}
-              </span>
+              {!scoreOnly && (
+                <span
+                  className={`inline-block px-2.5 py-[3px] rounded-full text-badge font-semibold ${
+                    journey.pass ? 'bg-pass-bg text-pass' : 'bg-fail-bg text-fail'
+                  }`}
+                >
+                  {journey.pass ? 'Pass' : 'Fail'}
+                </span>
+              )}
               <ScoreGauge score={Number(journey.overall_score)} size="lg" />
             </>
           )}
@@ -230,6 +261,15 @@ export function JourneyDetail() {
                       </div>
                     )}
                     <div className="text-table-cell text-text-secondary">{item.label}</div>
+                    {item.result === 'na' && item.applies_to_products && item.applies_to_products.length > 0 && (
+                      <div className="text-xs text-text-muted mt-1">
+                        Not required for this sale's product{productNameList(item.applies_to_products).length !== 1 ? 's' : ''}
+                        {productNameList(item.applies_to_products).length > 0
+                          ? ` — only scored for ${productNameList(item.applies_to_products).join(', ')}`
+                          : ''}
+                        .
+                      </div>
+                    )}
                     {item.result === 'manual_review' && item.normalized_score != null && (
                       <div className="text-xs mt-1">
                         <span className={`font-semibold ${isItemPass(Number(item.normalized_score)) ? 'text-pass' : 'text-fail'}`}>

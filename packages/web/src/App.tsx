@@ -39,6 +39,7 @@ const JourneyDetail = lazy(() => import('./pages/JourneyDetail').then((m) => ({ 
 const Account = lazy(() => import('./pages/Account'));
 const BillingOverview = lazy(() => import('./pages/BillingOverview'));
 const Settings = lazy(() => import('./pages/Settings'));
+const Products = lazy(() => import('./pages/Products'));
 
 function PageLoader() {
   return (
@@ -86,6 +87,7 @@ export function App() {
                   <Route path="/calls/upload" element={<Upload />} />
                   <Route path="/calls/:id" element={<CallDetail />} />
                   <Route path="/scorecards" element={<Scorecards />} />
+                  <Route path="/products" element={<Products />} />
                   <Route path="/scorecards/new" element={<ScorecardEditor />} />
                   <Route path="/scorecards/:id/edit" element={<ScorecardEditor />} />
                   <Route path="/capture-forms" element={<DataCaptureForms />} />

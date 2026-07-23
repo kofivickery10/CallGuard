@@ -1,4 +1,4 @@
-import { itemAppliesToBranch } from '@callguard/shared';
+import { itemAppliesToBranch, productAppliesToItem } from '@callguard/shared';
 import type { ScorecardItem } from '@callguard/shared';
 
 // Below this speaker-attribution-confidence floor, a consent_gate item's
@@ -10,7 +10,7 @@ export const CONSENT_SPEAKER_CONFIDENCE_FLOOR = 0.5;
 export interface ClassifiedItems {
   // Sent to Claude and auto-scored normally.
   scoreable: ScorecardItem[];
-  // Branch-excluded — never scored, excluded from the denominator.
+  // Branch- or product-excluded — never scored, excluded from the denominator.
   na: ScorecardItem[];
   // item_type='manual' — never auto-scored, excluded from the AI-scored
   // denominator, surfaced for a human reviewer.
@@ -32,7 +32,12 @@ export function classifyItems(
   items: ScorecardItem[],
   branch: string | null,
   speakerAttributionConfidence: number | null,
-  confidenceFloor: number = CONSENT_SPEAKER_CONFIDENCE_FLOOR
+  confidenceFloor: number = CONSENT_SPEAKER_CONFIDENCE_FLOOR,
+  // The product ids the sale covered. Empty = product unknown/not configured;
+  // product-restricted items then still score (conservative — see
+  // productAppliesToItem). An item is scored only when it applies to BOTH the
+  // resolved branch and the sale's products.
+  journeyProductIds: string[] = []
 ): ClassifiedItems {
   const na: ScorecardItem[] = [];
   const manualReview: ScorecardItem[] = [];
@@ -41,6 +46,10 @@ export function classifyItems(
 
   for (const item of items) {
     if (!itemAppliesToBranch(item.applies_when, branch)) {
+      na.push(item);
+      continue;
+    }
+    if (!productAppliesToItem(item.applies_to_products, journeyProductIds)) {
       na.push(item);
       continue;
     }

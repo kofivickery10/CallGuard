@@ -72,7 +72,14 @@ export type FeatureFlag =
   | 'live_streaming'
   | 'live_coaching'
   | 'dedicated_support'
-  | 'white_label';
+  | 'white_label'
+  // Display-only mode: show the numeric score alone and suppress the overall
+  // Pass/Fail/Review verdict (and its red/green styling and pass-rate KPIs).
+  // Per-checkpoint item results are unaffected, and the verdict is still
+  // computed and stored server-side (alerts, Zoho write-back and reporting are
+  // unchanged). Not tied to any plan tier — granted per tenant by a superadmin
+  // via feature_overrides.
+  | 'score_only';
 
 export const FEATURES: Record<FeatureFlag, Plan[]> = {
   // Available on all tiers
@@ -86,6 +93,8 @@ export const FEATURES: Record<FeatureFlag, Plan[]> = {
   // Enterprise only
   dedicated_support: ['enterprise'],
   white_label:       ['enterprise'],
+  // No tier grants this by default — enabled per tenant via a superadmin override.
+  score_only:        [],
 };
 
 export function hasFeature(

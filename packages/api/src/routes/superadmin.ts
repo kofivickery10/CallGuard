@@ -528,9 +528,13 @@ superadminRouter.delete('/tenants/:id', async (req, res, next) => {
 
 superadminRouter.post('/tenants/:id/impersonate', async (req, res, next) => {
   try {
+    // Only impersonate an admin who can actually sign in — a login_disabled
+    // admin is barred from authenticating, so minting a session as them would
+    // bypass that guard entirely.
     const admin = await queryOne<{ id: string; organization_id: string; role: string }>(
       `SELECT id, organization_id, role FROM users
-       WHERE organization_id = $1 AND role = 'admin' ORDER BY created_at LIMIT 1`,
+       WHERE organization_id = $1 AND role = 'admin' AND login_disabled = false
+       ORDER BY created_at LIMIT 1`,
       [req.params.id]
     );
     if (!admin) throw new AppError(404, 'No admin user found for this tenant');
