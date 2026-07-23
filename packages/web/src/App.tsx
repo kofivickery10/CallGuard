@@ -9,6 +9,7 @@ import { Calls } from './pages/Calls';
 import { CallDetail } from './pages/CallDetail';
 import { Upload } from './pages/Upload';
 import { PublicCallView } from './pages/PublicCallView';
+import { SetPassword } from './pages/SetPassword';
 import { Welcome } from './pages/Welcome';
 import { Impersonate } from './pages/Impersonate';
 
@@ -75,6 +76,7 @@ export function App() {
       <Route path="/enroll-2fa" element={<EnrolRoute><TwoFactorEnroll /></EnrolRoute>} />
       <Route path="/welcome" element={<Welcome />} />
       <Route path="/shared/:token" element={<PublicCallView />} />
+      <Route path="/set-password/:token" element={<SetPassword />} />
       <Route
         path="/*"
         element={

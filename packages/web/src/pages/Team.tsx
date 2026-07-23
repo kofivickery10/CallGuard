@@ -25,6 +25,24 @@ export function Team() {
     queryFn: () => api.get<{ data: AgentSummary[] }>('/agents'),
   });
 
+  const resendInvite = async (agent: AgentSummary) => {
+    setBusyId(agent.id);
+    try {
+      const res = await api.post<{ invite_sent: boolean; invite_url?: string }>(`/agents/${agent.id}/resend-invite`);
+      if (res.invite_sent) {
+        await notify(`Invite resent to ${agent.email}.`);
+      } else {
+        await notify(
+          `Couldn't email the invite. Share this one-time set-password link securely:\n\n${res.invite_url ?? ''}`
+        );
+      }
+    } catch (err) {
+      await notify((err as Error).message);
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   const revokeLogin = async (agent: AgentSummary) => {
     const ok = await confirm(
       `Revoke ${agent.name}'s ability to sign in? Their calls and history stay, and they still count as a billable seat — they just can't log in.`,
@@ -99,6 +117,11 @@ export function Team() {
                           No login
                         </span>
                       )}
+                      {agent.pending_invite && (
+                        <span className="inline-block px-2 py-[2px] rounded-full text-badge font-semibold bg-review-bg text-review border border-review/30">
+                          Invite pending
+                        </span>
+                      )}
                     </div>
                     <div className="text-xs text-text-muted">{agent.email || 'Attribution & billing only'}</div>
                   </td>
@@ -127,13 +150,24 @@ export function Team() {
                           Enable login
                         </button>
                       ) : (
-                        <button
-                          onClick={() => revokeLogin(agent)}
-                          disabled={busyId === agent.id}
-                          className="text-table-cell text-fail font-semibold hover:underline disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
-                        >
-                          Revoke login
-                        </button>
+                        <span className="inline-flex items-center gap-3">
+                          {agent.pending_invite && (
+                            <button
+                              onClick={() => resendInvite(agent)}
+                              disabled={busyId === agent.id}
+                              className="text-table-cell text-primary font-semibold hover:underline disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
+                            >
+                              Resend invite
+                            </button>
+                          )}
+                          <button
+                            onClick={() => revokeLogin(agent)}
+                            disabled={busyId === agent.id}
+                            className="text-table-cell text-fail font-semibold hover:underline disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
+                          >
+                            Revoke login
+                          </button>
+                        </span>
                       )}
                     </td>
                   )}

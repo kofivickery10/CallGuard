@@ -200,6 +200,89 @@ authRouter.post('/login', async (req, res, next) => {
   }
 });
 
+// ── Invite / set-password (public) ─────────────────────────────────────────────
+// A user invited by their admin sets their own password via a one-time link
+// (services/invite.ts). Both endpoints are unauthenticated — the opaque token
+// in the URL is the credential.
+
+interface InviteRow {
+  id: string;
+  user_id: string;
+  expires_at: string;
+  used_at: string | null;
+  name: string;
+  email: string;
+  organization_name: string | null;
+  totp_enabled: boolean;
+}
+
+async function loadInvite(rawToken: string): Promise<InviteRow | null> {
+  return queryOne<InviteRow>(
+    `SELECT it.id, it.user_id, it.expires_at, it.used_at,
+            u.name, u.email, u.totp_enabled, o.name AS organization_name
+       FROM invite_tokens it
+       JOIN users u ON u.id = it.user_id
+       LEFT JOIN organizations o ON o.id = u.organization_id
+      WHERE it.token_hash = $1`,
+    [hashToken(rawToken)]
+  );
+}
+
+// Validate a link (used by the set-password page to show who it's for). Neutral
+// 410 for a spent/expired link so it can't distinguish "wrong token" from
+// "already used".
+authRouter.get('/invite/:token', async (req, res, next) => {
+  try {
+    const invite = await loadInvite(req.params.token);
+    if (!invite) throw new AppError(404, 'This invite link is not valid.');
+    if (invite.used_at) throw new AppError(410, 'This invite link has already been used.');
+    if (new Date(invite.expires_at).getTime() < Date.now()) {
+      throw new AppError(410, 'This invite link has expired. Ask your admin to resend it.');
+    }
+    res.json({ name: invite.name, email: invite.email, organization_name: invite.organization_name });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Consume a link: set the user's password and sign them in. If the account
+// already has 2FA (a re-invite of an enrolled user), we don't auto-issue a
+// session — they're sent to log in so the second factor is enforced.
+authRouter.post('/invite/:token', async (req, res, next) => {
+  try {
+    const { password } = req.body as { password?: string };
+    if (!password || password.length < 8) {
+      throw new AppError(400, 'Password must be at least 8 characters.');
+    }
+    const invite = await loadInvite(req.params.token);
+    if (!invite) throw new AppError(404, 'This invite link is not valid.');
+    if (invite.used_at) throw new AppError(410, 'This invite link has already been used.');
+    if (new Date(invite.expires_at).getTime() < Date.now()) {
+      throw new AppError(410, 'This invite link has expired. Ask your admin to resend it.');
+    }
+
+    const passwordHash = await bcrypt.hash(password, 12);
+    await query(
+      `UPDATE users SET password_hash = $2, login_disabled = false WHERE id = $1`,
+      [invite.user_id, passwordHash]
+    );
+    // Single-use: mark this token spent and drop any other outstanding ones.
+    await query('UPDATE invite_tokens SET used_at = now() WHERE id = $1', [invite.id]);
+    await query('DELETE FROM invite_tokens WHERE user_id = $1 AND used_at IS NULL', [invite.user_id]);
+
+    if (invite.totp_enabled) {
+      res.json({ password_set: true, next: 'login' });
+      return;
+    }
+    // Fresh account — sign in but unenrolled, so the client is routed straight
+    // into mandatory 2FA enrolment (same as login's not-enrolled path).
+    const session = await issueSession(invite.user_id, false);
+    res.json({ ...session, mfa_enrolment_required: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // Exchange a valid refresh token for a new access JWT.
 // Rotates the refresh token on each use (prevents replay attacks).
 authRouter.post('/refresh', async (req, res, next) => {
