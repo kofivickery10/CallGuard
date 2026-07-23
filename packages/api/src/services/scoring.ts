@@ -184,6 +184,10 @@ ${transcript}
 
 const DEFAULT_SCORING_MODEL = CLAUDE_MODELS.HAIKU;
 
+// How many times to re-sample the scoring call when the model returns a valid
+// but incomplete item set (see the coverage retry in scoreTranscript).
+const SCORING_COVERAGE_ATTEMPTS = 3;
+
 export async function scoreTranscript(
   transcript: string,
   items: ScorecardItemInput[],
@@ -224,117 +228,144 @@ export async function scoreTranscript(
     (withCoaching ? 6144 : 2048) + items.length * perItemBudget
   );
 
-  // Stream rather than a plain create: journey scoring builds a large output
-  // budget (up to 32k on big scorecards), and the SDK now hard-errors on a
-  // non-streaming request whose max_tokens implies it could run past 10 minutes
-  // ("Streaming is strongly recommended..."), which was failing every
-  // score-journey retry. finalMessage() returns the same Message shape.
-  const response = await client.messages.stream({
-    model,
-    max_tokens: maxTokens,
-    messages: [
-      {
-        role: 'user',
-        content: [
-          // Stable prefix (scorecard + KB + instructions) — cached across
-          // calls. 1-hour TTL (2x write vs 1.25x for 5-min, reads 0.1x
-          // either way): production calls arrive minutes-to-an-hour apart,
-          // which the 5-minute TTL misses on all but tight batches — one
-          // extra hit within the hour already pays for the dearer write.
-          { type: 'text', text: prompt.cached, cache_control: CACHE_1H },
-          // Per-call suffix (this agent's coaching + this transcript).
-          { type: 'text', text: prompt.dynamic },
-        ],
-      },
-    ],
-    tools: [
-      {
-        name: 'submit_scores',
-        description: 'Submit the evaluation scores for all criteria',
-        input_schema: {
-          type: 'object' as const,
-          properties: {
-            items: {
-              type: 'array',
-              items: {
-                type: 'object',
-                properties: {
-                  scorecard_item_id: { type: 'string' },
-                  score: { type: 'number' },
-                  confidence: { type: 'number', minimum: 0, maximum: 1 },
-                  evidence: { type: 'string' },
-                  reasoning: { type: 'string' },
-                },
-                required: [
-                  'scorecard_item_id',
-                  'score',
-                  'confidence',
-                  'evidence',
-                  'reasoning',
-                ],
-              },
-            },
-            ...(withCoaching ? {
-              coaching: {
-                type: 'object',
-                description: 'Coaching brief for the agent - strengths, improvements, and next actions',
-                properties: {
-                  summary: { type: 'string', description: '1-2 sentence overall assessment' },
-                  strengths: {
-                    type: 'array',
-                    items: { type: 'string' },
-                    minItems: 2,
-                    maxItems: 4,
-                  },
-                  improvements: {
-                    type: 'array',
-                    items: { type: 'string' },
-                    minItems: 2,
-                    maxItems: 4,
-                  },
-                  next_actions: {
-                    type: 'array',
-                    items: { type: 'string' },
-                    minItems: 1,
-                    maxItems: 3,
-                  },
-                },
-                required: ['summary', 'strengths', 'improvements', 'next_actions'],
-              },
-            } : {}),
-          },
-          required: withCoaching ? ['items', 'coaching'] : ['items'],
+  // The model occasionally returns a valid, complete submit_scores tool-call
+  // that simply OMITS one item on a large scorecard. The 1:1 coverage guards in
+  // score.ts / score-journey.ts then reject the whole result and fail the job —
+  // which, mid BullMQ retry, leaves a journey wedged in 'scoring'. Temperature
+  // is unpinned, so a fresh sample almost always returns the full set: re-sample
+  // here on incomplete coverage rather than burning job retries. Usage is summed
+  // across attempts so billing reflects the real spend.
+  const requestedIds = new Set(items.map((i) => i.id));
+  const usage = { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 };
+  let output: ScoringOutput | null = null;
+
+  for (let attempt = 1; attempt <= SCORING_COVERAGE_ATTEMPTS; attempt++) {
+    // Stream rather than a plain create: journey scoring builds a large output
+    // budget (up to 32k on big scorecards), and the SDK now hard-errors on a
+    // non-streaming request whose max_tokens implies it could run past 10 minutes
+    // ("Streaming is strongly recommended..."). finalMessage() returns the same
+    // Message shape.
+    const response = await client.messages.stream({
+      model,
+      max_tokens: maxTokens,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            // Stable prefix (scorecard + KB + instructions) — cached across
+            // calls. 1-hour TTL (2x write vs 1.25x for 5-min, reads 0.1x
+            // either way): production calls arrive minutes-to-an-hour apart,
+            // which the 5-minute TTL misses on all but tight batches — one
+            // extra hit within the hour already pays for the dearer write.
+            { type: 'text', text: prompt.cached, cache_control: CACHE_1H },
+            // Per-call suffix (this agent's coaching + this transcript).
+            { type: 'text', text: prompt.dynamic },
+          ],
         },
-      },
-    ],
-    tool_choice: { type: 'tool', name: 'submit_scores' },
-  }, CACHE_TTL_HEADERS).finalMessage();
+      ],
+      tools: [
+        {
+          name: 'submit_scores',
+          description: 'Submit the evaluation scores for all criteria',
+          input_schema: {
+            type: 'object' as const,
+            properties: {
+              items: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    scorecard_item_id: { type: 'string' },
+                    score: { type: 'number' },
+                    confidence: { type: 'number', minimum: 0, maximum: 1 },
+                    evidence: { type: 'string' },
+                    reasoning: { type: 'string' },
+                  },
+                  required: [
+                    'scorecard_item_id',
+                    'score',
+                    'confidence',
+                    'evidence',
+                    'reasoning',
+                  ],
+                },
+              },
+              ...(withCoaching ? {
+                coaching: {
+                  type: 'object',
+                  description: 'Coaching brief for the agent - strengths, improvements, and next actions',
+                  properties: {
+                    summary: { type: 'string', description: '1-2 sentence overall assessment' },
+                    strengths: {
+                      type: 'array',
+                      items: { type: 'string' },
+                      minItems: 2,
+                      maxItems: 4,
+                    },
+                    improvements: {
+                      type: 'array',
+                      items: { type: 'string' },
+                      minItems: 2,
+                      maxItems: 4,
+                    },
+                    next_actions: {
+                      type: 'array',
+                      items: { type: 'string' },
+                      minItems: 1,
+                      maxItems: 3,
+                    },
+                  },
+                  required: ['summary', 'strengths', 'improvements', 'next_actions'],
+                },
+              } : {}),
+            },
+            required: withCoaching ? ['items', 'coaching'] : ['items'],
+          },
+        },
+      ],
+      tool_choice: { type: 'tool', name: 'submit_scores' },
+    }, CACHE_TTL_HEADERS).finalMessage();
 
-  const toolUse = response.content.find(
-    (block) => block.type === 'tool_use'
-  );
-  if (!toolUse || toolUse.type !== 'tool_use') {
-    throw new Error('Claude did not return structured scores');
-  }
+    usage.input_tokens += response.usage.input_tokens;
+    usage.output_tokens += response.usage.output_tokens;
+    usage.cache_creation_input_tokens += response.usage.cache_creation_input_tokens ?? 0;
+    usage.cache_read_input_tokens += response.usage.cache_read_input_tokens ?? 0;
 
-  // If the model hit the token ceiling mid tool-call, the input JSON is
-  // incomplete and `items` is missing — fail clearly here rather than letting
-  // an undefined `output.items` blow up downstream (score.ts / score-journey.ts).
-  const output = toolUse.input as ScoringOutput;
-  if (!output || !Array.isArray(output.items)) {
-    throw new Error(
-      `Claude returned incomplete scores (stop_reason=${response.stop_reason}, items=${items.length}, max_tokens=${maxTokens}) — likely truncated`
+    const toolUse = response.content.find(
+      (block) => block.type === 'tool_use'
     );
+    if (!toolUse || toolUse.type !== 'tool_use') {
+      throw new Error('Claude did not return structured scores');
+    }
+
+    // If the model hit the token ceiling mid tool-call, the input JSON is
+    // incomplete and `items` is missing — fail clearly here rather than letting
+    // an undefined `output.items` blow up downstream (score.ts / score-journey.ts).
+    const candidate = toolUse.input as ScoringOutput;
+    if (!candidate || !Array.isArray(candidate.items)) {
+      throw new Error(
+        `Claude returned incomplete scores (stop_reason=${response.stop_reason}, items=${items.length}, max_tokens=${maxTokens}) — likely truncated`
+      );
+    }
+    output = candidate;
+
+    // Coverage retry (the flaky-omission case above). A complete set is the
+    // common outcome, so this usually runs once.
+    const got = new Set(candidate.items.map((it) => it.scorecard_item_id));
+    const missing = [...requestedIds].filter((id) => !got.has(id));
+    if (missing.length === 0) break;
+
+    if (attempt < SCORING_COVERAGE_ATTEMPTS) {
+      console.warn(`[Scoring] attempt ${attempt}/${SCORING_COVERAGE_ATTEMPTS} omitted ${missing.length} of ${requestedIds.size} item(s) — re-sampling`);
+    } else {
+      console.error(`[Scoring] still missing ${missing.length} item(s) after ${SCORING_COVERAGE_ATTEMPTS} attempts — returning incomplete set (caller coverage guard will reject)`);
+    }
   }
 
   return {
-    output,
-    usage: {
-      input_tokens: response.usage.input_tokens,
-      output_tokens: response.usage.output_tokens,
-      cache_creation_input_tokens: response.usage.cache_creation_input_tokens ?? 0,
-      cache_read_input_tokens: response.usage.cache_read_input_tokens ?? 0,
-    },
+    // output is assigned on every iteration; the loop runs at least once.
+    output: output!,
+    usage,
     model,
   };
 }

@@ -307,15 +307,26 @@ interface ZohoWriteResult {
 }
 
 async function checkZohoWriteResult(res: Response, action: string): Promise<void> {
-  const body = (await res.json().catch(() => null)) as { data?: ZohoWriteResult[] } | null;
+  // Read the body as text first so we can fall back to the raw response when
+  // Zoho names no field: a bare "INVALID_DATA / invalid data" with empty
+  // details is otherwise undiagnosable.
+  const raw = await res.text().catch(() => '');
+  let body: { data?: ZohoWriteResult[] } | null = null;
+  try {
+    body = raw ? (JSON.parse(raw) as { data?: ZohoWriteResult[] }) : null;
+  } catch {
+    body = null;
+  }
   const result = body?.data?.[0];
   if (!res.ok || result?.status === 'error') {
     // Zoho puts the rejected field's api_name (and expected type) in `details`;
-    // include it so an INVALID_DATA points at the exact field to fix.
+    // include it so an INVALID_DATA points at the exact field to fix. When
+    // details is empty (Zoho sometimes returns none), fall back to the raw body
+    // so the failure is still diagnosable rather than a bare "invalid data".
     const details =
       result?.details && Object.keys(result.details).length > 0
         ? ` (${JSON.stringify(result.details)})`
-        : '';
+        : ` [raw: ${raw.slice(0, 600)}]`;
     throw new Error(
       `${action} failed: ${res.status} ${result?.code ?? ''} ${result?.message ?? ''}${details}`.trim()
     );
