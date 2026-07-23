@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
-import type { Scorecard, ScoreType, ScorecardItemType, BranchConfig, AppliesWhen } from '@callguard/shared';
+import type { Scorecard, ScoreType, ScorecardItemType, BranchConfig, AppliesWhen, Product } from '@callguard/shared';
 
 const VALID_SCORE_TYPES: ScoreType[] = ['binary', 'scale_1_5', 'scale_1_10'];
 const VALID_SEVERITIES = ['critical', 'high', 'medium', 'low'];
@@ -73,6 +73,7 @@ function parseStructuredCSV(lines: string[], header: string[]): ItemForm[] {
       expectation: expectationIdx >= 0 ? cols[expectationIdx]?.trim() || '' : '',
       ai_check: aiCheckIdx >= 0 ? cols[aiCheckIdx]?.trim() || '' : '',
       consent_gate: consentIdx >= 0 ? TRUTHY.includes(cols[consentIdx]?.trim().toLowerCase() || '') : false,
+      applies_to_products: [],
     });
   }
 
@@ -177,6 +178,9 @@ interface ItemForm {
   expectation: string;
   ai_check: string;
   consent_gate: boolean;
+  // Product ids this criterion is required for. Empty = applies to every
+  // product (the default).
+  applies_to_products: string[];
 }
 
 function emptyItem(sortOrder: number): ItemForm {
@@ -193,6 +197,7 @@ function emptyItem(sortOrder: number): ItemForm {
     expectation: '',
     ai_check: '',
     consent_gate: false,
+    applies_to_products: [],
   };
 }
 
@@ -210,6 +215,19 @@ function stringToAppliesWhen(branch: string): AppliesWhen | null {
 const inputClass = 'w-full border border-border rounded-btn px-3 py-2 text-table-cell text-text-primary placeholder:text-text-muted focus:outline-none focus:border-primary transition-colors';
 const selectClass = 'border border-border rounded-btn px-3 py-1.5 text-table-cell text-text-primary focus:outline-none focus:border-primary transition-colors';
 const labelClass = 'block text-xs text-text-muted mb-1';
+const filterSelectClass = 'border border-border rounded-btn px-3 py-2 text-table-cell text-text-primary bg-card focus:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 transition-colors';
+
+// Compact count tile for the criteria summary strip. `tone='fail'` tints the
+// number (e.g. a non-zero critical count) — the label always carries the
+// meaning too, so it never relies on colour alone (§7).
+function SummaryTile({ label, value, tone = 'default' }: { label: string; value: number; tone?: 'default' | 'fail' }) {
+  return (
+    <div className="bg-card border border-border rounded-card p-3 text-center">
+      <div className={`text-card-value tabular-nums ${tone === 'fail' ? 'text-fail' : 'text-text-primary'}`}>{value}</div>
+      <div className="text-card-label uppercase text-text-muted mt-0.5">{label}</div>
+    </div>
+  );
+}
 
 export function ScorecardEditor() {
   const { id } = useParams<{ id: string }>();
@@ -227,6 +245,22 @@ export function ScorecardEditor() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const csvInputRef = useRef<HTMLInputElement>(null);
+
+  // View-only filters over the criteria list — they never reorder or mutate
+  // `items`, so saving (which reindexes sort_order from the full array) is
+  // unaffected. Edits/removals operate on each item's real index.
+  const [search, setSearch] = useState('');
+  const [filterType, setFilterType] = useState<'all' | ScorecardItemType>('all');
+  const [filterSection, setFilterSection] = useState('');
+  const [filterSeverity, setFilterSeverity] =
+    useState<'all' | 'none' | 'critical' | 'high' | 'medium' | 'low'>('all');
+
+  const resetFilters = () => {
+    setSearch('');
+    setFilterType('all');
+    setFilterSection('');
+    setFilterSeverity('all');
+  };
 
   const branches = branchList.split(',').map((b) => b.trim()).filter(Boolean);
 
@@ -259,10 +293,19 @@ export function ScorecardEditor() {
     e.target.value = '';
   };
 
+  const { data: productsData } = useQuery({
+    queryKey: ['products'],
+    queryFn: () => api.get<{ data: Product[] }>('/products'),
+  });
+  // Active products drive the per-criterion "Required for" picker. The section
+  // only appears when the org has a catalogue, so nothing changes for tenants
+  // who don't use product-aware scoring.
+  const activeProducts = (productsData?.data ?? []).filter((p) => p.is_active);
+
   const { data: existing } = useQuery({
     queryKey: ['scorecard', id],
     queryFn: () =>
-      api.get<Scorecard & { items: (Partial<ItemForm> & { applies_when?: AppliesWhen | null })[] }>(`/scorecards/${id}`),
+      api.get<Scorecard & { items: (Partial<ItemForm> & { applies_when?: AppliesWhen | null; applies_to_products?: string[] | null })[] }>(`/scorecards/${id}`),
     enabled: !!id,
   });
 
@@ -292,6 +335,7 @@ export function ScorecardEditor() {
             expectation: item.expectation || '',
             ai_check: item.ai_check || '',
             consent_gate: !!item.consent_gate,
+            applies_to_products: item.applies_to_products ?? [],
           }))
         );
       }
@@ -299,6 +343,8 @@ export function ScorecardEditor() {
   }, [existing]);
 
   const addItem = () => {
+    // Clear filters so the new (empty) criterion is always visible.
+    resetFilters();
     setItems([...items, emptyItem(items.length)]);
   };
 
@@ -314,6 +360,23 @@ export function ScorecardEditor() {
   ) => {
     setItems(
       items.map((item, i) => (i === index ? { ...item, [field]: value } : item))
+    );
+  };
+
+  // Toggle a product in a criterion's "Required for" set. Empty set = the
+  // criterion applies to every product.
+  const toggleItemProduct = (index: number, productId: string) => {
+    setItems(
+      items.map((item, i) => {
+        if (i !== index) return item;
+        const has = item.applies_to_products.includes(productId);
+        return {
+          ...item,
+          applies_to_products: has
+            ? item.applies_to_products.filter((id) => id !== productId)
+            : [...item.applies_to_products, productId],
+        };
+      })
     );
   };
 
@@ -364,6 +427,7 @@ export function ScorecardEditor() {
           expectation: item.expectation || null,
           ai_check: item.ai_check || null,
           consent_gate: item.consent_gate,
+          applies_to_products: item.applies_to_products.length ? item.applies_to_products : null,
         })),
       };
 
@@ -381,6 +445,42 @@ export function ScorecardEditor() {
       setSaving(false);
     }
   };
+
+  const sections = Array.from(new Set(items.map((i) => i.section.trim()).filter(Boolean))).sort();
+
+  const stats = {
+    total: items.length,
+    ai: items.filter((i) => i.item_type === 'ai').length,
+    manual: items.filter((i) => i.item_type === 'manual').length,
+    sections: sections.length,
+    consent: items.filter((i) => i.consent_gate).length,
+    critical: items.filter((i) => i.severity === 'critical').length,
+  };
+
+  const q = search.trim().toLowerCase();
+  const visible = items
+    .map((item, index) => ({ item, index }))
+    .filter(({ item }) => {
+      if (filterType !== 'all' && item.item_type !== filterType) return false;
+      if (filterSection && item.section.trim() !== filterSection) return false;
+      if (filterSeverity !== 'all') {
+        if (filterSeverity === 'none' ? !!item.severity : item.severity !== filterSeverity) return false;
+      }
+      if (q) {
+        const hay = [item.label, item.section, item.description, item.expectation, item.ai_check]
+          .join(' ')
+          .toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+
+  const filtersActive = filterType !== 'all' || !!filterSection || filterSeverity !== 'all' || !!q;
+  // The summary + filter toolbar only earns its space on larger scorecards.
+  const showTools = items.length >= 5;
+  // Below the toolbar threshold the (now hidden) filters must not hide rows —
+  // fall back to the full list so stale filter state can never strand items.
+  const shown = showTools ? visible : items.map((item, index) => ({ item, index }));
 
   return (
     <div className="max-w-3xl">
@@ -454,26 +554,102 @@ export function ScorecardEditor() {
         </div>
 
         <div>
-          <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
             <div>
               <h3 className="text-section-title text-text-primary">Criteria</h3>
               <p className="text-xs text-text-muted mt-0.5">{items.length} {items.length === 1 ? 'criterion' : 'criteria'}</p>
             </div>
             <div className="flex items-center gap-3">
               <input ref={csvInputRef} type="file" accept=".csv" onChange={handleCSVImport} className="hidden" />
-              <button type="button" onClick={() => csvInputRef.current?.click()} className="px-[18px] py-[9px] rounded-btn text-table-cell font-semibold border border-border text-text-cell hover:bg-sidebar-hover transition-colors">
+              <button type="button" onClick={() => csvInputRef.current?.click()} className="px-[18px] py-[9px] rounded-btn text-table-cell font-semibold border border-border text-text-cell hover:bg-sidebar-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40">
                 Import CSV
               </button>
-              <button type="button" onClick={addItem} className="text-primary font-semibold text-table-cell hover:underline">
+              <button type="button" onClick={addItem} className="text-primary font-semibold text-table-cell hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded">
                 + Add Criterion
               </button>
             </div>
           </div>
 
+          {showTools && (
+            <>
+              {/* Summary — at-a-glance counts for the whole scorecard */}
+              <div className="grid grid-cols-3 sm:grid-cols-6 gap-2.5 mb-4">
+                <SummaryTile label="Total" value={stats.total} />
+                <SummaryTile label="AI-scored" value={stats.ai} />
+                <SummaryTile label="Manual" value={stats.manual} />
+                <SummaryTile label="Sections" value={stats.sections} />
+                <SummaryTile label="Consent gates" value={stats.consent} />
+                <SummaryTile label="Critical" value={stats.critical} tone={stats.critical > 0 ? 'fail' : 'default'} />
+              </div>
+
+              {/* Filters — view only; never reorder or mutate the item list */}
+              <div className="bg-card border border-border rounded-card p-4 mb-4 space-y-3">
+                <div className="flex flex-wrap items-center gap-3">
+                  <input
+                    type="text"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Search criteria, sections, rubric…"
+                    aria-label="Search criteria"
+                    className="flex-1 min-w-[180px] border border-border rounded-btn px-3 py-2 text-table-cell text-text-primary placeholder:text-text-muted focus:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 transition-colors"
+                  />
+                  {sections.length > 0 && (
+                    <select value={filterSection} onChange={(e) => setFilterSection(e.target.value)} aria-label="Filter by section" className={filterSelectClass}>
+                      <option value="">All sections</option>
+                      {sections.map((s) => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  )}
+                  <select value={filterSeverity} onChange={(e) => setFilterSeverity(e.target.value as typeof filterSeverity)} aria-label="Filter by severity" className={filterSelectClass}>
+                    <option value="all">All severities</option>
+                    <option value="critical">Critical</option>
+                    <option value="high">High</option>
+                    <option value="medium">Medium</option>
+                    <option value="low">Low</option>
+                    <option value="none">No severity</option>
+                  </select>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs text-text-muted mr-1">Type</span>
+                  {([['all', 'All'], ['ai', 'AI-scored'], ['manual', 'Manual']] as const).map(([val, lbl]) => (
+                    <button
+                      key={val}
+                      type="button"
+                      onClick={() => setFilterType(val)}
+                      aria-pressed={filterType === val}
+                      className={`px-3 py-1.5 rounded-btn text-table-cell font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
+                        filterType === val ? 'bg-primary text-white' : 'border border-border text-text-secondary hover:bg-sidebar-hover'
+                      }`}
+                    >
+                      {lbl}
+                    </button>
+                  ))}
+                  <div className="flex-1" />
+                  <span className="text-xs text-text-muted tabular-nums">Showing {visible.length} of {items.length}</span>
+                  {filtersActive && (
+                    <button type="button" onClick={resetFilters} className="text-table-cell text-primary font-semibold hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded">
+                      Clear
+                    </button>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
+
+          {shown.length === 0 ? (
+            <div className="bg-card border border-border rounded-card p-10 text-center">
+              <p className="text-table-cell text-text-muted">No criteria match your filters.</p>
+              <button type="button" onClick={resetFilters} className="text-primary font-semibold text-table-cell hover:underline mt-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded">
+                Clear filters
+              </button>
+            </div>
+          ) : (
           <div className="space-y-2.5">
-            {items.map((item, index) => (
-              <div key={index} className="bg-card border border-border rounded-card p-5">
+            {shown.map(({ item, index }) => (
+              <div key={item.id ?? `i-${index}`} className="bg-card border border-border rounded-card p-5">
                 <div className="flex items-start gap-3">
+                  <span className="mt-1 shrink-0 inline-flex items-center justify-center min-w-[26px] h-[26px] px-1.5 rounded-full bg-table-header text-text-muted text-badge tabular-nums" aria-hidden="true">
+                    {index + 1}
+                  </span>
                   <div className="flex-1 space-y-3">
                     <div className="flex gap-4">
                       <div className="flex-1">
@@ -536,6 +712,38 @@ export function ScorecardEditor() {
                         </label>
                       </div>
                     </div>
+                    {activeProducts.length > 0 && (
+                      <div>
+                        <label className={labelClass}>
+                          Required for products{' '}
+                          <span className="text-text-muted">
+                            {item.applies_to_products.length === 0
+                              ? '(none selected — scored on every product)'
+                              : '(scored only when the sale includes one of these; N/A otherwise)'}
+                          </span>
+                        </label>
+                        <div className="flex flex-wrap gap-2">
+                          {activeProducts.map((p) => {
+                            const selected = item.applies_to_products.includes(p.id);
+                            return (
+                              <button
+                                key={p.id}
+                                type="button"
+                                onClick={() => toggleItemProduct(index, p.id)}
+                                aria-pressed={selected}
+                                className={`px-3 py-1.5 rounded-btn text-table-cell font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
+                                  selected
+                                    ? 'bg-primary text-white'
+                                    : 'border border-border text-text-secondary hover:bg-sidebar-hover'
+                                }`}
+                              >
+                                {p.name}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
                     {item.item_type === 'ai' && (
                       <>
                         <div>
@@ -560,13 +768,14 @@ export function ScorecardEditor() {
                       </p>
                     )}
                   </div>
-                  <button type="button" onClick={() => removeItem(index)} className="text-text-muted hover:text-fail transition-colors mt-1 p-1" disabled={items.length <= 1}>
+                  <button type="button" onClick={() => removeItem(index)} aria-label={`Remove criterion ${index + 1}`} className="text-text-muted hover:text-fail transition-colors mt-1 p-1 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:opacity-40" disabled={items.length <= 1}>
                     <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.8"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
                   </button>
                 </div>
               </div>
             ))}
           </div>
+          )}
         </div>
 
         <div className="flex gap-3 pt-1">

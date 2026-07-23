@@ -38,11 +38,18 @@ export async function processTranscription(job: Job<{ callId: string }>) {
     );
     const agentNames = agents.map((a) => a.name).filter(Boolean);
 
-    // Per-tenant stereo channel mapping (which channel is the adviser).
-    const orgRow = await queryOne<{ adviser_channel: number | null }>(
-      'SELECT adviser_channel FROM organizations WHERE id = $1',
+    // Per-tenant stereo channel mapping (which channel is the adviser), plus
+    // the org's own name and domain vocabulary (migration 058) for keyterm
+    // boosting — tenant terms are boosted ahead of the generic core list.
+    const orgRow = await queryOne<{ name: string | null; adviser_channel: number | null; keyterms: string[] | null }>(
+      'SELECT name, adviser_channel, keyterms FROM organizations WHERE id = $1',
       [call.organization_id]
     );
+    const tenantKeyterms = [
+      ...(orgRow?.name ? [orgRow.name] : []),
+      ...(orgRow?.keyterms ?? []),
+      ...agentNames,
+    ];
     const scoringSettings = await getScoringSettings(call.organization_id);
 
     // A per-call direction (from the dialler's webhook, when it carries one)
@@ -63,7 +70,7 @@ export async function processTranscription(job: Job<{ callId: string }>) {
 
     const result = await transcribeCall(
       call.file_key,
-      agentNames,
+      tenantKeyterms,
       (call as Call & { encrypted_at_rest?: boolean }).encrypted_at_rest ?? false,
       orgRow?.adviser_channel ?? null,
       scoringSettings.transcriptionMode,

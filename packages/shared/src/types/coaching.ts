@@ -36,6 +36,13 @@ export interface OrganizationInfo {
   // Free-text industry / advice domain (e.g. "FCA-regulated protection insurance
   // advice"). Frames the AI scoring prompt. null = generic sales/service framing.
   industry?: string | null;
+  // Per-tenant Deepgram keyterm boosting: the org's domain vocabulary
+  // (products, sector jargon, provider names). Boosted ahead of the generic
+  // core list at transcription time — see services/transcription.ts.
+  keyterms?: string[];
+  // Data Capture module switch (migration 059). Set by CallGuard staff, like
+  // the other scoring-policy columns; gates capture jobs, routes and UI.
+  capture_enabled?: boolean;
   // Stereo channel the adviser is recorded on: 0 = left, 1 = right, null = auto-detect.
   adviser_channel?: number | null;
   // Opt-in (default false) to let CallGuard use anonymised, customer-derived
@@ -65,7 +72,14 @@ export type FeatureFlag =
   | 'live_streaming'
   | 'live_coaching'
   | 'dedicated_support'
-  | 'white_label';
+  | 'white_label'
+  // Display-only mode: show the numeric score alone and suppress the overall
+  // Pass/Fail/Review verdict (and its red/green styling and pass-rate KPIs).
+  // Per-checkpoint item results are unaffected, and the verdict is still
+  // computed and stored server-side (alerts, Zoho write-back and reporting are
+  // unchanged). Not tied to any plan tier — granted per tenant by a superadmin
+  // via feature_overrides.
+  | 'score_only';
 
 export const FEATURES: Record<FeatureFlag, Plan[]> = {
   // Available on all tiers
@@ -79,6 +93,8 @@ export const FEATURES: Record<FeatureFlag, Plan[]> = {
   // Enterprise only
   dedicated_support: ['enterprise'],
   white_label:       ['enterprise'],
+  // No tier grants this by default — enabled per tenant via a superadmin override.
+  score_only:        [],
 };
 
 export function hasFeature(

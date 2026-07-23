@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { api } from '../api/client';
-import { useAuth } from '../context/AuthContext';
+import { useAuth, useScoreOnly } from '../context/AuthContext';
 import { CallStatusBadge } from '../components/CallStatusBadge';
 import { ScoreGauge } from '../components/ScoreGauge';
 import { CountUp } from '../components/CountUp';
@@ -47,6 +47,7 @@ const statIcons = [
 
 export function Dashboard() {
   const { user } = useAuth();
+  const scoreOnly = useScoreOnly();
   const isAdmin = user?.role === 'admin';
   const [agentFilter, setAgentFilter] = useState<string | null>(null);
 
@@ -91,11 +92,14 @@ export function Dashboard() {
       value: summary?.average_score != null ? `${Math.round(summary.average_score)}%` : '-',
       change: '',
     },
-    {
-      label: 'Pass Rate',
-      value: summary?.pass_rate != null ? `${Math.round(summary.pass_rate)}%` : '-',
-      change: '',
-    },
+    // Pass Rate is a verdict-derived KPI — hidden in score-only mode.
+    ...(scoreOnly
+      ? []
+      : [{
+          label: 'Pass Rate',
+          value: summary?.pass_rate != null ? `${Math.round(summary.pass_rate)}%` : '-',
+          change: '',
+        }]),
   ];
 
   const adminExtra = breachSummary ? [
@@ -178,7 +182,9 @@ export function Dashboard() {
                 <th className="text-left px-5 py-2.5 text-table-header uppercase text-text-muted bg-table-header border-b border-border">Agent</th>
                 <th className="text-left px-5 py-2.5 text-table-header uppercase text-text-muted bg-table-header border-b border-border">Calls</th>
                 <th className="text-left px-5 py-2.5 text-table-header uppercase text-text-muted bg-table-header border-b border-border">Score</th>
-                <th className="text-left px-5 py-2.5 text-table-header uppercase text-text-muted bg-table-header border-b border-border">Pass Rate</th>
+                {!scoreOnly && (
+                  <th className="text-left px-5 py-2.5 text-table-header uppercase text-text-muted bg-table-header border-b border-border">Pass Rate</th>
+                )}
               </tr>
             </thead>
             <tbody>
@@ -191,9 +197,11 @@ export function Dashboard() {
                       <ScoreGauge score={agent.average_score} showBar />
                     ) : <span className="text-text-muted">--</span>}
                   </td>
-                  <td className="px-5 py-3 text-table-cell text-text-cell">
-                    {agent.pass_rate != null ? `${Math.round(agent.pass_rate)}%` : '--'}
-                  </td>
+                  {!scoreOnly && (
+                    <td className="px-5 py-3 text-table-cell text-text-cell">
+                      {agent.pass_rate != null ? `${Math.round(agent.pass_rate)}%` : '--'}
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>

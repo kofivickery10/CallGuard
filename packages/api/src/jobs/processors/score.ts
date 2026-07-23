@@ -8,6 +8,7 @@ import { recordUsage } from '../../services/usage.js';
 import { deliverCallScored } from '../../services/webhook-delivery.js';
 import { pushCallScored } from '../../services/zoho.js';
 import { getScoringSettings } from '../../services/tenant-settings.js';
+import { maybeStartCallCapture } from '../../services/capture-runs.js';
 import { classifyItems } from '../../services/checkpoint-classification.js';
 import { hasFeature, isItemPass, deriveSeverity, callPasses, resolveBranch } from '@callguard/shared';
 import type { Call, Scorecard, ScorecardItem, Plan, WebhookCallScoredPayload } from '@callguard/shared';
@@ -474,6 +475,11 @@ export async function processScoring(job: Job<{ callId: string }>) {
     evaluateAlertsForCall(callId, 'scored').catch((alertErr) => {
       console.error(`[Scoring] Alert evaluation failed for call ${callId}:`, alertErr);
     });
+
+    // Data capture runs strictly after (and independently of) scoring — a
+    // capture failure never affects the call's score. No-op unless the org
+    // has capture_enabled and a form resolves.
+    await maybeStartCallCapture(call.organization_id, callId);
   } catch (err) {
     // Only surface 'failed' (and alert the tenant) once BullMQ's retries are
     // exhausted — a transient Claude/DB blip on attempt 1 of 2 shouldn't flip

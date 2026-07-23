@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
-import { useAuth } from '../context/AuthContext';
+import { useAuth, useScoreOnly } from '../context/AuthContext';
 import { CallStatusBadge } from '../components/CallStatusBadge';
 import { ScoreGauge } from '../components/ScoreGauge';
 import { TranscriptViewer } from '../components/TranscriptViewer';
@@ -43,6 +43,7 @@ export function CallDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const scoreOnly = useScoreOnly();
   const queryClient = useQueryClient();
   const { confirm, notify } = useDialog();
   const isAdmin = user?.role === 'admin';
@@ -266,7 +267,7 @@ export function CallDetail() {
               {call.journey.overall_score != null && (
                 <ScoreGauge score={Number(call.journey.overall_score)} size="lg" />
               )}
-              {call.journey.status === 'scored' && (
+              {!scoreOnly && call.journey.status === 'scored' && (
                 call.journey.pass === true ? (
                   <span className="inline-block px-2.5 py-[3px] rounded-full text-badge font-semibold bg-pass-bg text-pass">Pass</span>
                 ) : call.journey.pass === false ? (

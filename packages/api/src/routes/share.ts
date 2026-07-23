@@ -5,11 +5,12 @@ import { authenticate, requireAdmin } from '../middleware/auth.js';
 import { query, queryOne } from '../db/client.js';
 import { AppError } from '../middleware/errors.js';
 import { config } from '../config.js';
-import { isItemPass } from '@callguard/shared';
+import { isItemPass, hasFeature } from '@callguard/shared';
 import type {
   PublicCallView,
   PublicCallViewItem,
   CallShareLink,
+  Plan,
 } from '@callguard/shared';
 
 interface ShareTokenPayload {
@@ -202,8 +203,11 @@ publicShareRouter.get('/:token', async (req, res, next) => {
       call_date: string | null;
       duration_seconds: number | null;
       org_name: string;
+      org_plan: string;
+      org_feature_overrides: Record<string, boolean>;
     }>(
-      `SELECT c.file_name, c.call_date, c.duration_seconds, o.name as org_name
+      `SELECT c.file_name, c.call_date, c.duration_seconds,
+              o.name as org_name, o.plan as org_plan, o.feature_overrides as org_feature_overrides
          FROM calls c
          JOIN organizations o ON o.id = c.organization_id
         WHERE c.id = $1 AND c.organization_id = $2`,
@@ -238,15 +242,21 @@ publicShareRouter.get('/:token', async (req, res, next) => {
       [linkId]
     );
 
+    const scoreOnly = hasFeature(call.org_plan as Plan, 'score_only', call.org_feature_overrides);
+
     const view: PublicCallView = {
       file_name: call.file_name,
       organization_name: call.org_name,
       call_date: call.call_date,
       duration_seconds: call.duration_seconds,
       overall_score: score?.overall_score != null ? Number(score.overall_score) : null,
-      pass: score?.pass ?? null,
+      // Under score_only the pass/fail verdict is withheld — the client hides the
+      // badge, but the value must not ship in the payload either (otherwise it's
+      // trivially readable from the network response).
+      pass: scoreOnly ? null : (score?.pass ?? null),
       items,
       feedback_submitted: !!fb,
+      score_only: scoreOnly,
     };
 
     res.json(view);

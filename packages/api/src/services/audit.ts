@@ -38,11 +38,22 @@ export type AuditActionType =
   | 'user.invite'
   | 'user.role_change'
   | 'user.delete'
+  | 'user.login_enabled'
+  | 'user.login_revoked'
   | 'plan.change'
   | 'scorecard.deactivate'
+  | 'product.create'
+  | 'product.update'
+  | 'product.deactivate'
   | 'org.data_improvement_optin'
   | 'org.industry.change'
+  | 'org.keyterms.change'
   | 'org.scoring_settings.change'
+  | 'capture_form.create'
+  | 'capture_form.update'
+  | 'capture_form.archive'
+  | 'capture_run.manual'
+  | 'capture_run.export'
   | 'dialer_connection.create'
   | 'dialer_connection.update'
   | 'dialer_connection.delete'
@@ -67,7 +78,11 @@ export type AuditEntityType =
   | 'dialer_connection'
   | 'user'
   | 'session'
-  | 'organization';
+  | 'organization'
+  | 'capture_form'
+  | 'capture_run'
+  | 'journey'
+  | 'product';
 
 interface AuditEvent {
   // NULL for platform-level events not scoped to a tenant (e.g. a superadmin

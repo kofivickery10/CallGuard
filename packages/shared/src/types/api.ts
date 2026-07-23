@@ -66,17 +66,33 @@ export interface DashboardSummary {
 export interface AgentSummary {
   id: string;
   name: string;
-  email: string;
+  email: string | null;
   total_calls: number;
   scored_calls: number;
   average_score: number | null;
   pass_rate: number | null;
+  // True for a no-login adviser (attribution + billing only).
+  login_disabled?: boolean;
 }
 
 export interface InviteAgentInput {
-  email: string;
   name: string;
-  password: string;
+  // Email + password are required only when the adviser can sign in. A no-login
+  // adviser (can_login: false) can be added by name alone.
+  email?: string;
+  password?: string;
+  role?: string;
+  external_agent_id?: string;
+  // Defaults to true (a normal, loginable account) when omitted.
+  can_login?: boolean;
+}
+
+// Toggle sign-in access for an existing member. Enabling a member who has no
+// password (a no-login adviser) requires a password in the same request.
+export interface LoginAccessInput {
+  can_login: boolean;
+  password?: string;
+  email?: string;
 }
 
 export interface ApiError {

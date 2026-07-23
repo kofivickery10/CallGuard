@@ -10,6 +10,7 @@ import {
   type Notification,
 } from '@callguard/shared';
 import type { AlertPayload } from '../services/alert-evaluator.js';
+import { isUuid } from '../services/uuid.js';
 
 export const alertsRouter = Router();
 alertsRouter.use(authenticate);
@@ -162,8 +163,16 @@ alertsRouter.post('/rules/:id/test', requireAdmin, async (req, res, next) => {
           [req.user!.organizationId]
         );
         userIds = admins.map((a) => a.id);
-      } else if (Array.isArray(channels.in_app.user_ids)) {
-        userIds = channels.in_app.user_ids;
+      } else if (Array.isArray(channels.in_app.user_ids) && channels.in_app.user_ids.length > 0) {
+        // Same org-membership filter as the evaluator's resolveInAppUserIds:
+        // never deliver to a user id outside the requesting admin's org. The
+        // strict shared validator matters — a loose pattern would let a
+        // 36-char non-UUID through to the ::uuid[] cast and 500 the request.
+        const rows = await query<{ id: string }>(
+          `SELECT id FROM users WHERE organization_id = $1 AND id = ANY($2::uuid[])`,
+          [req.user!.organizationId, channels.in_app.user_ids.filter(isUuid)]
+        );
+        userIds = rows.map((r) => r.id);
       }
       for (const userId of userIds) {
         await alertsQueue.add('deliver', {

@@ -3,6 +3,7 @@ import { authenticate, requireAdmin } from '../middleware/auth.js';
 import { query, queryOne, withTransaction } from '../db/client.js';
 import { AppError } from '../middleware/errors.js';
 import { recordAuditEvent } from '../services/audit.js';
+import { isUuid } from '../services/uuid.js';
 import type { Scorecard, ScorecardItem, BranchConfig } from '@callguard/shared';
 
 export const scorecardRouter = Router();
@@ -27,6 +28,34 @@ function validateBranchConfig(branchConfig: unknown): void {
         throw new AppError(400, `branch_config.keywords references unknown branch "${branch}"`);
       }
     }
+  }
+}
+
+// Validate that every product id referenced by an item's applies_to_products
+// belongs to this org — a scorecard must never reference (or leak) another
+// tenant's products. Returns nothing; throws 400 on any unknown/foreign id.
+async function assertItemProductsBelongToOrg(
+  organizationId: string,
+  items: Array<{ applies_to_products?: string[] | null }>
+): Promise<void> {
+  const referenced = [
+    ...new Set(items.flatMap((it) => it.applies_to_products ?? []).filter(Boolean)),
+  ];
+  if (referenced.length === 0) return;
+  // Only well-formed UUIDs reach the ::uuid[] cast — a malformed value would
+  // otherwise raise 22P02 (a 500) instead of the clean 400 below. A non-UUID
+  // can't match a real product, so it falls through to the "unknown" set.
+  const wellFormed = referenced.filter((id) => isUuid(id));
+  const rows = wellFormed.length
+    ? await query<{ id: string }>(
+        'SELECT id FROM products WHERE organization_id = $1 AND id = ANY($2::uuid[])',
+        [organizationId, wellFormed]
+      )
+    : [];
+  const known = new Set(rows.map((r) => r.id));
+  const unknown = referenced.filter((id) => !known.has(id));
+  if (unknown.length > 0) {
+    throw new AppError(400, `applies_to_products references unknown product(s): ${unknown.join(', ')}`);
   }
 }
 
@@ -71,6 +100,7 @@ scorecardRouter.post('/', requireAdmin, async (req, res, next) => {
       throw new AppError(400, 'name and at least one item are required');
     }
     validateBranchConfig(branch_config);
+    await assertItemProductsBelongToOrg(req.user!.organizationId, items);
 
     const rows = await query<Scorecard>(
       `INSERT INTO scorecards (organization_id, name, description, created_by, branch_config, scoring_mode)
@@ -92,8 +122,9 @@ scorecardRouter.post('/', requireAdmin, async (req, res, next) => {
       const itemRows = await query<ScorecardItem>(
         `INSERT INTO scorecard_items
            (scorecard_id, label, description, score_type, weight, sort_order,
-            severity, section, item_type, applies_when, expectation, ai_check, consent_gate)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING *`,
+            severity, section, item_type, applies_when, expectation, ai_check, consent_gate,
+            applies_to_products)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::uuid[]) RETURNING *`,
         [
           scorecard.id,
           item.label,
@@ -108,6 +139,7 @@ scorecardRouter.post('/', requireAdmin, async (req, res, next) => {
           item.expectation || null,
           item.ai_check || null,
           item.consent_gate ?? false,
+          item.applies_to_products?.length ? item.applies_to_products : null,
         ]
       );
       createdItems.push(itemRows[0]);
@@ -139,6 +171,9 @@ scorecardRouter.put('/:id', requireAdmin, async (req, res, next) => {
 
     const { name, description, is_active, items, branch_config, scoring_mode } = req.body;
     validateBranchConfig(branch_config);
+    if (items && Array.isArray(items)) {
+      await assertItemProductsBelongToOrg(req.user!.organizationId, items);
+    }
 
     // A structural edit (the items array is present) bumps the version so
     // scores taken before this edit stay pinned to what they were actually
@@ -196,7 +231,7 @@ scorecardRouter.put('/:id', requireAdmin, async (req, res, next) => {
                  label = $2, description = $3, score_type = $4, weight = $5,
                  sort_order = $6, severity = $7, section = $8, item_type = $9,
                  applies_when = $10, expectation = $11, ai_check = $12,
-                 consent_gate = $13, archived_at = NULL
+                 consent_gate = $13, applies_to_products = $14::uuid[], archived_at = NULL
                WHERE id = $1 RETURNING *`,
               [
                 existing.id,
@@ -212,6 +247,7 @@ scorecardRouter.put('/:id', requireAdmin, async (req, res, next) => {
                 item.expectation || null,
                 item.ai_check || null,
                 item.consent_gate ?? false,
+                item.applies_to_products?.length ? item.applies_to_products : null,
               ]
             );
             result.push(rows[0]!);
@@ -219,8 +255,9 @@ scorecardRouter.put('/:id', requireAdmin, async (req, res, next) => {
             const rows = await tx.query<ScorecardItem>(
               `INSERT INTO scorecard_items
                  (scorecard_id, label, description, score_type, weight, sort_order,
-                  severity, section, item_type, applies_when, expectation, ai_check, consent_gate)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING *`,
+                  severity, section, item_type, applies_when, expectation, ai_check, consent_gate,
+                  applies_to_products)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::uuid[]) RETURNING *`,
               [
                 scorecard.id,
                 item.label,
@@ -235,6 +272,7 @@ scorecardRouter.put('/:id', requireAdmin, async (req, res, next) => {
                 item.expectation || null,
                 item.ai_check || null,
                 item.consent_gate ?? false,
+                item.applies_to_products?.length ? item.applies_to_products : null,
               ]
             );
             result.push(rows[0]!);
@@ -245,8 +283,14 @@ scorecardRouter.put('/:id', requireAdmin, async (req, res, next) => {
         // otherwise archive so history stays intact.
         const removed = existingBefore.filter((i) => !keptIds.has(i.id));
         for (const item of removed) {
+          // A scorecard item can be referenced from per-call scoring
+          // (call_item_scores) or per-journey/sale scoring (journey_item_scores);
+          // both FK to scorecard_items with no ON DELETE. Check both, or a
+          // journey-scored item slips past and the DELETE throws a FK violation.
           const scored = await tx.queryOne<{ id: string }>(
-            'SELECT id FROM call_item_scores WHERE scorecard_item_id = $1 LIMIT 1',
+            `SELECT id FROM call_item_scores WHERE scorecard_item_id = $1 LIMIT 1
+             UNION ALL
+             SELECT id FROM journey_item_scores WHERE scorecard_item_id = $1 LIMIT 1`,
             [item.id]
           );
           if (scored) {

@@ -17,7 +17,8 @@ export type UsageOperation =
   | 'score'
   | 'verify'
   | 'live_score'
-  | 'insights';
+  | 'insights'
+  | 'capture';
 
 export interface RecordUsageInput {
   organizationId: string | null;

@@ -1,4 +1,5 @@
 import type { CallStatus } from '@callguard/shared';
+import { useScoreOnly } from '../context/AuthContext';
 
 const statusConfig: Record<CallStatus, { label: string; className: string }> = {
   captured: {
@@ -40,12 +41,15 @@ const statusConfig: Record<CallStatus, { label: string; className: string }> = {
 };
 
 export function CallStatusBadge({ status, pass }: { status: CallStatus; pass?: boolean | null }) {
+  const scoreOnly = useScoreOnly();
   let config = statusConfig[status];
 
   // Override scored status based on pass/fail. pass === undefined (still
   // loading, or the scores fetch errored) intentionally falls through to the
-  // neutral 'Scored' default above rather than showing Pass or Fail.
-  if (status === 'scored') {
+  // neutral 'Scored' default above rather than showing Pass or Fail. In
+  // score-only mode we never surface the verdict — the neutral 'Scored' pill
+  // stands in for pass/fail/review.
+  if (status === 'scored' && !scoreOnly) {
     if (pass === true) {
       config = { label: 'Pass', className: 'bg-pass-bg text-pass' };
     } else if (pass === false) {

@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useOrgFeatures, type OrgFeature } from '../hooks/useOrgFeatures';
 
 interface SettingsCard {
   path: string;
@@ -7,6 +8,8 @@ interface SettingsCard {
   description: string;
   icon: string;
   roles: string[];
+  // Per-tenant module gate (e.g. the Data Capture module).
+  requiresFeature?: OrgFeature;
 }
 
 const ADMIN = ['admin'];
@@ -28,6 +31,21 @@ const CARDS: SettingsCard[] = [
     description: 'Define and edit the criteria calls are scored against.',
     icon: 'M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11',
     roles: ADMIN,
+  },
+  {
+    path: '/products',
+    label: 'Products',
+    description: 'Products you sell, so criteria can be scoped to the right ones.',
+    icon: 'M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82zM7 7h.01',
+    roles: ADMIN,
+  },
+  {
+    path: '/capture-forms',
+    label: 'Data Capture Forms',
+    description: 'Question sets the AI captures answers to on every sale.',
+    icon: 'M4 4h16v4H4zM4 10h16v4H4zM4 16h10v4H4zM18 18l2 2 4-4',
+    roles: ADMIN,
+    requiresFeature: 'capture',
   },
   {
     path: '/knowledge-base',
@@ -69,7 +87,10 @@ const CARDS: SettingsCard[] = [
 export default function Settings() {
   const { user } = useAuth();
   const role = user?.role ?? '';
-  const cards = CARDS.filter((c) => c.roles.includes(role));
+  const features = useOrgFeatures();
+  const cards = CARDS.filter(
+    (c) => c.roles.includes(role) && (!c.requiresFeature || features[c.requiresFeature])
+  );
 
   return (
     <div>

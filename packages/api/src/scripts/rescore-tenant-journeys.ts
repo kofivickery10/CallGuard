@@ -51,10 +51,11 @@ async function main() {
   const orgArg = args.find((a) => !a.startsWith('--'));
   const commit = args.includes('--commit');
   const all = args.includes('--all');
+  const noCrm = args.includes('--no-crm');
   const statusArg = args.find((a) => a.startsWith('--status='))?.split('=')[1];
 
   if (!orgArg) {
-    console.error('Usage: tsx src/scripts/rescore-tenant-journeys.ts <orgId|nameSubstring> [--commit] [--all] [--status=scoring,failed]');
+    console.error('Usage: tsx src/scripts/rescore-tenant-journeys.ts <orgId|nameSubstring> [--commit] [--all] [--status=scoring,failed] [--no-crm]');
     process.exit(1);
   }
 
@@ -69,7 +70,7 @@ async function main() {
 
   const org = await resolveOrg(orgArg);
   console.log(`Tenant: ${org.name} (${org.id})`);
-  console.log(`Mode: ${commit ? 'COMMIT' : 'DRY RUN'} | target statuses: ${statuses.join(', ')}\n`);
+  console.log(`Mode: ${commit ? 'COMMIT' : 'DRY RUN'} | target statuses: ${statuses.join(', ')} | CRM write-back: ${noCrm ? 'SUPPRESSED' : 'on'}\n`);
 
   const journeys = await query<{ id: string; status: string; call_count: string; created_at: string }>(
     `SELECT j.id, j.status,
@@ -105,10 +106,10 @@ async function main() {
   const ts = Date.now();
   for (const j of journeys) {
     await query("UPDATE journeys SET status = 'scoring', updated_at = now() WHERE id = $1", [j.id]);
-    await scoringQueue.add('score-journey', { journeyId: j.id }, { jobId: `rescore-journey-${j.id}-${ts}` });
+    await scoringQueue.add('score-journey', { journeyId: j.id, suppressCrm: noCrm }, { jobId: `rescore-journey-${j.id}-${ts}` });
     console.log(`  enqueued ${j.id}`);
   }
-  console.log(`\nEnqueued ${journeys.length} sales for re-scoring. This re-pushes corrected results to the CRM. Ensure the scoring worker is running to process them.`);
+  console.log(`\nEnqueued ${journeys.length} sales for re-scoring${noCrm ? ' (CRM write-back suppressed)' : ' — this re-pushes corrected results to the CRM'}. Ensure the scoring worker is running to process them.`);
 
   await pool.end();
 }

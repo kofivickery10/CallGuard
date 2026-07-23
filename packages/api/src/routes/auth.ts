@@ -53,6 +53,8 @@ export interface SessionResponse {
     organization_id: string | null;
     organization_name: string;
     organization_plan: Plan | null;
+    // Per-tenant feature grants/denials beyond the plan tier (e.g. score_only).
+    feature_overrides: Record<string, boolean>;
     totp_enabled: boolean;
   };
 }
@@ -71,16 +73,20 @@ export async function issueSession(userId: string, mfa: boolean): Promise<Sessio
     organization_id: string | null;
     plan_override: string | null;
     totp_enabled: boolean;
+    login_disabled: boolean;
   }>(
-    `SELECT id, email, name, role, is_staff, organization_id, plan_override, totp_enabled
+    `SELECT id, email, name, role, is_staff, organization_id, plan_override, totp_enabled, login_disabled
        FROM users WHERE id = $1`,
     [userId]
   );
   if (!user) throw new AppError(401, 'User not found');
+  // Defence in depth — a no-login account must never be handed a session,
+  // whichever path reached here (login, 2FA verify, enrolment completion).
+  if (user.login_disabled) throw new AppError(403, 'This account cannot sign in');
 
   const org = user.organization_id
-    ? await queryOne<{ name: string; plan: string }>(
-        'SELECT name, plan FROM organizations WHERE id = $1',
+    ? await queryOne<{ name: string; plan: string; feature_overrides: Record<string, boolean> }>(
+        'SELECT name, plan, feature_overrides FROM organizations WHERE id = $1',
         [user.organization_id]
       )
     : null;
@@ -111,6 +117,7 @@ export async function issueSession(userId: string, mfa: boolean): Promise<Sessio
       organization_id: user.organization_id,
       organization_name: org?.name || '',
       organization_plan,
+      feature_overrides: org?.feature_overrides ?? {},
       totp_enabled: user.totp_enabled,
     },
   };
@@ -136,16 +143,24 @@ authRouter.post('/login', async (req, res, next) => {
     const user = await queryOne<{
       id: string;
       email: string;
-      password_hash: string;
+      password_hash: string | null;
       totp_enabled: boolean;
       two_factor_exempt: boolean;
+      login_disabled: boolean;
     }>(
-      `SELECT u.id, u.email, u.password_hash, u.totp_enabled, u.two_factor_exempt
+      `SELECT u.id, u.email, u.password_hash, u.totp_enabled, u.two_factor_exempt, u.login_disabled
        FROM users u WHERE u.email = $1`,
       [email]
     );
 
     if (!user) {
+      throw new AppError(401, 'Invalid email or password');
+    }
+
+    // No-login advisers (login_disabled, or simply no password set) can never
+    // sign in. Return the same neutral error as a bad password so this doesn't
+    // become an account-enumeration oracle.
+    if (user.login_disabled || !user.password_hash) {
       throw new AppError(401, 'Invalid email or password');
     }
 
@@ -226,11 +241,15 @@ authRouter.post('/refresh', async (req, res, next) => {
       role: string;
       totp_enabled: boolean;
       two_factor_exempt: boolean;
+      login_disabled: boolean;
     }>(
-      'SELECT id, organization_id, role, totp_enabled, two_factor_exempt FROM users WHERE id = $1',
+      'SELECT id, organization_id, role, totp_enabled, two_factor_exempt, login_disabled FROM users WHERE id = $1',
       [record.user_id]
     );
     if (!user) throw new AppError(401, 'User not found');
+    // Access tokens are short-lived (15m); refusing to refresh a now-disabled
+    // account bounds any lingering session to at most one token lifetime.
+    if (user.login_disabled) throw new AppError(401, 'Invalid or expired refresh token');
 
     const payload: AuthPayload = {
       userId: user.id,
@@ -282,8 +301,8 @@ authRouter.get('/me', authenticate, async (req, res, next) => {
       throw new AppError(404, 'User not found');
     }
 
-    const org = await queryOne<{ name: string; plan: string }>(
-      'SELECT name, plan FROM organizations WHERE id = $1',
+    const org = await queryOne<{ name: string; plan: string; feature_overrides: Record<string, boolean> }>(
+      'SELECT name, plan, feature_overrides FROM organizations WHERE id = $1',
       [user.organization_id]
     );
 
@@ -297,6 +316,7 @@ authRouter.get('/me', authenticate, async (req, res, next) => {
         ...user,
         organization_name: org?.name || '',
         organization_plan,
+        feature_overrides: org?.feature_overrides ?? {},
         // True when the caller is a superadmin impersonating this user.
         impersonated: req.user?.imp === true,
       },

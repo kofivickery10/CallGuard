@@ -3,7 +3,7 @@ import { authenticate, requireOrgView, requireActioner, requireAdmin } from '../
 import { query, queryOne } from '../db/client.js';
 import { AppError } from '../middleware/errors.js';
 import { assembleJourney } from '../services/journey.js';
-import type { Journey, JourneyItemScore, JourneyCallRole, JourneyListItem, JourneyStatus } from '@callguard/shared';
+import type { Journey, JourneyItemScore, JourneyCallRole, JourneyListItem, JourneyStatus, JourneyProduct } from '@callguard/shared';
 
 export const journeysRouter = Router();
 journeysRouter.use(authenticate);
@@ -50,7 +50,13 @@ journeysRouter.get('/', requireOrgView, async (req, res, next) => {
       [...params, limit, offset]
     );
 
-    res.json({ data: rows, total: parseInt(countRow?.count || '0'), page, limit });
+    // SELECT j.* pulls the server-only trigger_context (raw Zoho payload, can
+    // carry PII) — strip it from every row before responding.
+    const data = (rows as Array<JourneyListItem & { trigger_context?: unknown }>).map(
+      ({ trigger_context: _t, ...r }) => r as JourneyListItem
+    );
+
+    res.json({ data, total: parseInt(countRow?.count || '0'), page, limit });
   } catch (err) {
     next(err);
   }
@@ -75,8 +81,8 @@ journeysRouter.get('/:id', requireOrgView, async (req, res, next) => {
       [journey.id]
     );
 
-    const itemScores = await query<JourneyItemScore & { label: string; section: string | null; severity: string | null }>(
-      `SELECT jis.*, si.label, si.section, si.severity
+    const itemScores = await query<JourneyItemScore & { label: string; section: string | null; severity: string | null; applies_to_products: string[] | null }>(
+      `SELECT jis.*, si.label, si.section, si.severity, si.applies_to_products
          FROM journey_item_scores jis
          JOIN scorecard_items si ON si.id = jis.scorecard_item_id
         WHERE jis.journey_id = $1
@@ -91,10 +97,28 @@ journeysRouter.get('/:id', requireOrgView, async (req, res, next) => {
       [journey.customer_id]
     );
 
+    // The products this sale covered (empty for orgs not using product scoping)
+    // — shown on the detail page and used to explain why product-scoped items
+    // resolved to N/A.
+    const products = await query<JourneyProduct>(
+      `SELECT id, journey_id, product_id, product_name, source, created_at
+         FROM journey_products WHERE journey_id = $1
+        ORDER BY product_name`,
+      [journey.id]
+    );
+
+    // trigger_context is a server-only routing field: a raw snapshot of the
+    // Zoho sale-trigger payload (used to resolve capture forms), which can
+    // carry customer PII. It's kept off the shared Journey type, but SELECT *
+    // returns it at runtime — strip it before responding.
+    const { trigger_context: _triggerContext, ...journeyPublic } =
+      journey as Journey & { trigger_context?: unknown };
+
     res.json({
-      ...journey,
+      ...journeyPublic,
       calls,
       item_scores: itemScores,
+      products,
       customer_name: customer?.name ?? null,
       customer_phone: customer?.phone_normalized ?? null,
     });

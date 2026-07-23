@@ -70,14 +70,16 @@ export function PublicCallView() {
             <div className="flex items-baseline gap-3">
               {data.overall_score != null ? (
                 <>
-                  <span className={`text-[48px] font-bold font-mono ${scoreColor(data.overall_score)}`}>
+                  <span className={`text-[48px] font-bold font-mono ${data.score_only ? 'text-text-primary' : scoreColor(data.overall_score)}`}>
                     {Math.round(data.overall_score)}%
                   </span>
-                  <span className={`px-3 py-1 rounded-full text-xs font-semibold uppercase ${
-                    data.pass ? 'bg-pass-bg text-pass' : 'bg-fail-bg text-fail'
-                  }`}>
-                    {data.pass ? 'Pass' : 'Needs Review'}
-                  </span>
+                  {!data.score_only && (
+                    <span className={`px-3 py-1 rounded-full text-xs font-semibold uppercase ${
+                      data.pass ? 'bg-pass-bg text-pass' : 'bg-fail-bg text-fail'
+                    }`}>
+                      {data.pass ? 'Pass' : 'Needs Review'}
+                    </span>
+                  )}
                 </>
               ) : (
                 <span className="text-text-muted">Not yet scored</span>

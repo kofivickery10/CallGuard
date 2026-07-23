@@ -129,6 +129,34 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify(body),
     }),
+  patch: <T>(path: string, body?: unknown) =>
+    request<T>(path, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
   delete: <T>(path: string) =>
     request<T>(path, { method: 'DELETE' }),
+  // Authenticated file download (CSV exports etc.) — fetches as a blob and
+  // triggers a browser save, honouring the server's filename when present.
+  download: async (path: string, fallbackName: string) => {
+    const token = getToken();
+    const res = await fetch(`${BASE_URL}${path}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({ message: res.statusText }));
+      throw new Error((body as { message?: string }).message || `Download failed: ${res.status}`);
+    }
+    const disposition = res.headers.get('Content-Disposition') || '';
+    const match = disposition.match(/filename="([^"]+)"/);
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = match?.[1] ?? fallbackName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  },
 };

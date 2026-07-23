@@ -48,6 +48,24 @@ export function itemAppliesToBranch(appliesWhen: AppliesWhen | null | undefined,
 }
 
 /**
+ * Whether a scorecard item applies to the sale's product set. An item with no
+ * `applies_to_products` (null/empty) applies to every product — the default,
+ * so an org not using product-aware scoring is unaffected. Otherwise the item
+ * applies only if the sale covered at least one of its products. A sale whose
+ * products couldn't be determined (`journeyProductIds` empty) still scores
+ * product-restricted items — the conservative choice, so an unresolved product
+ * never silently drops a compliance checkpoint.
+ */
+export function productAppliesToItem(
+  appliesToProducts: string[] | null | undefined,
+  journeyProductIds: string[]
+): boolean {
+  if (!appliesToProducts || appliesToProducts.length === 0) return true;
+  if (journeyProductIds.length === 0) return true;
+  return appliesToProducts.some((id) => journeyProductIds.includes(id));
+}
+
+/**
  * Effective breach severity for a failing item: the explicit severity if it is
  * a valid value, otherwise derived from the item's weight. Single source of
  * truth for the weight -> severity mapping (used by scoring, breach creation,

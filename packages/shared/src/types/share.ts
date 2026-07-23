@@ -30,6 +30,10 @@ export interface PublicCallView {
   pass: boolean | null;
   items: PublicCallViewItem[];
   feedback_submitted: boolean;
+  // When true, the sharing tenant runs in score-only mode: the public page
+  // shows the score alone and suppresses the overall Pass/Needs-review verdict.
+  // Per-item results still render.
+  score_only: boolean;
 }
 
 export interface CallFeedbackInput {

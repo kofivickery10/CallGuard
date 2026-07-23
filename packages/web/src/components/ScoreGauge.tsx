@@ -1,9 +1,14 @@
 import { useCountUp } from '../hooks/useCountUp';
+import { useScoreOnly } from '../context/AuthContext';
 
 interface ScoreGaugeProps {
   score: number;
   size?: 'sm' | 'lg';
   showBar?: boolean;
+  // Force neutral (non-tiered) colour regardless of the logged-in tenant's
+  // mode — used on the public share page, which has no auth context. When
+  // omitted, the gauge follows the tenant's score-only setting.
+  neutral?: boolean;
 }
 
 const tierColours = (score: number) => ({
@@ -15,10 +20,19 @@ const tierColours = (score: number) => ({
     score >= 80 ? 'stroke-primary' : score >= 65 ? 'stroke-review' : 'stroke-fail',
 });
 
-export function ScoreGauge({ score, size = 'sm', showBar = false }: ScoreGaugeProps) {
+// Score-only mode drops the green/amber/red banding so nothing reads as
+// pass/fail — the score renders in the neutral brand colour instead.
+const neutralColours = {
+  fill: 'bg-primary',
+  text: 'text-text-primary',
+  ringStroke: 'stroke-primary',
+};
+
+export function ScoreGauge({ score, size = 'sm', showBar = false, neutral }: ScoreGaugeProps) {
+  const scoreOnly = useScoreOnly();
   const animated = useCountUp(score);
   const display = Math.round(animated);
-  const c = tierColours(display);
+  const c = (neutral ?? scoreOnly) ? neutralColours : tierColours(display);
 
   if (showBar) {
     return (
