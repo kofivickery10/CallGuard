@@ -298,6 +298,13 @@ export async function processScoreJourney(job: Job<{ journeyId: string; suppress
       // per-call path, where deleting call_scores cascades old breaches away.
       await tx.query('DELETE FROM breaches WHERE journey_id = $1', [journeyId]);
 
+      // Clear prior per-item rows before re-inserting. Without this, a re-score
+      // after the scorecard changed leaves orphaned rows for items that were
+      // removed (or archived) since the last scoring — so a sale keeps showing
+      // the old checkpoint count (e.g. 47) instead of the current one (44). The
+      // loops below re-insert exactly the current scoreable/na/manual set.
+      await tx.query('DELETE FROM journey_item_scores WHERE journey_id = $1', [journeyId]);
+
       for (const { item, itemScore, normalized, sourceCallId } of itemWrites) {
         const result = isItemPass(normalized, scoringSettings.passThreshold) ? 'pass' : 'fail';
         const inserted = await tx.query<{ id: string }>(
