@@ -4,6 +4,7 @@ import { query, queryOne, withTransaction } from '../db/client.js';
 import { AppError } from '../middleware/errors.js';
 import { recordAuditEvent } from '../services/audit.js';
 import { getScoringSettings } from '../services/tenant-settings.js';
+import { pushCallScoreUpdate, pushJourneyScoreUpdate } from '../services/score-writeback.js';
 import { deriveSeverity, isItemPass, callPasses } from '@callguard/shared';
 import type { ManualReviewItem, BreachSeverity } from '@callguard/shared';
 
@@ -56,7 +57,9 @@ reviewRouter.get('/', requireOrgView, async (req, res, next) => {
 
 // POST /api/review-items/resolve — a reviewer marks a manual_review checkpoint
 // pass/fail. Recomputes the parent overall score (scored items only) and
-// raises/clears the breach, mirroring the per-call correction path.
+// raises/clears the breach, mirroring the per-call correction path, then
+// re-pushes the corrected score downstream (webhook + Zoho) so the CRM reflects
+// the human verdict rather than the AI's provisional score.
 reviewRouter.post('/resolve', requireActioner, async (req, res, next) => {
   try {
     const { kind, item_score_id, result, note } = req.body as {
@@ -75,9 +78,14 @@ reviewRouter.post('/resolve', requireActioner, async (req, res, next) => {
     const rawScore = result === 'pass' ? 1 : 0;
 
     if (kind === 'call') {
-      await resolveCallItem(orgId, item_score_id, result, normalized, rawScore, settings.passThreshold);
+      const callId = await resolveCallItem(orgId, item_score_id, result, normalized, rawScore, settings.passThreshold);
+      // Re-push the corrected score downstream (webhook + Zoho), so the CRM
+      // reflects the human verdict rather than the AI's provisional score.
+      // Best-effort and after commit — never blocks the reviewer's response.
+      void pushCallScoreUpdate(orgId, callId);
     } else {
-      await resolveJourneyItem(orgId, item_score_id, result, normalized, rawScore, settings.passThreshold);
+      const journeyId = await resolveJourneyItem(orgId, item_score_id, result, normalized, rawScore, settings.passThreshold);
+      void pushJourneyScoreUpdate(orgId, journeyId);
     }
 
     void recordAuditEvent({
@@ -104,7 +112,7 @@ async function resolveCallItem(
   normalized: number,
   rawScore: number,
   threshold: number
-): Promise<void> {
+): Promise<string> {
   const row = await queryOne<{ call_score_id: string; scorecard_item_id: string; call_id: string; weight: string; severity: string | null }>(
     `SELECT cis.call_score_id, cis.scorecard_item_id, cs.call_id, si.weight::text, si.severity
        FROM call_item_scores cis
@@ -148,6 +156,8 @@ async function resolveCallItem(
       await tx.query('DELETE FROM breaches WHERE call_item_score_id = $1', [itemScoreId]);
     }
   });
+
+  return row.call_id;
 }
 
 async function resolveJourneyItem(
@@ -157,7 +167,7 @@ async function resolveJourneyItem(
   normalized: number,
   rawScore: number,
   threshold: number
-): Promise<void> {
+): Promise<string> {
   const row = await queryOne<{ journey_id: string; scorecard_item_id: string; weight: string; severity: string | null }>(
     `SELECT jis.journey_id, jis.scorecard_item_id, si.weight::text, si.severity
        FROM journey_item_scores jis
@@ -200,6 +210,8 @@ async function resolveJourneyItem(
       await tx.query('DELETE FROM breaches WHERE journey_item_score_id = $1', [itemScoreId]);
     }
   });
+
+  return row.journey_id;
 }
 
 // Weighted overall + list of failing severities, over the pass/fail items only
