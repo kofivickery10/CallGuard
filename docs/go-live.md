@@ -55,13 +55,24 @@ Single API instance + single worker instance is the intended scale (see
 
 ## 4. Build & deploy (app)
 
-From the repo root on the host:
+From the repo root on the host, one command does the whole sequence:
+
+```bash
+npm run deploy           # install -> build -> migrate -> test -> PM2 start/reload -> health check
+```
+
+`scripts/deploy.sh` auto-detects first-deploy vs redeploy (rolling `pm2 reload`
+if `callguard-api` is already running, `pm2 start` otherwise), runs `pm2 save`,
+then polls `/api/health/ready` and exits non-zero if the deploy isn't healthy.
+Toggles: `SKIP_TESTS=1`, `SKIP_INSTALL=1`, `HEALTH_URL=...`, `HEALTH_RETRIES=N`.
+
+The equivalent manual steps (what the script runs):
 
 ```bash
 npm ci
 npm run build            # shared -> api -> web -> admin-web
 npm run migrate          # advisory-locked, transactional; idempotent
-npm test                 # optional gate — 23 unit tests
+npm test                 # optional gate
 pm2 start ecosystem.config.js   # or: pm2 reload ecosystem.config.js on redeploy
 pm2 save
 ```
