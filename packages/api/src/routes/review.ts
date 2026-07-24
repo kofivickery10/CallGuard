@@ -84,7 +84,7 @@ reviewRouter.post('/resolve', requireActioner, async (req, res, next) => {
       // Best-effort and after commit — never blocks the reviewer's response.
       void pushCallScoreUpdate(orgId, callId);
     } else {
-      const journeyId = await resolveJourneyItem(orgId, item_score_id, result, normalized, rawScore, settings.passThreshold);
+      const journeyId = await resolveJourneyItem(orgId, req.user!.userId, item_score_id, result, normalized, rawScore, settings.passThreshold);
       void pushJourneyScoreUpdate(orgId, journeyId);
     }
 
@@ -162,14 +162,15 @@ async function resolveCallItem(
 
 async function resolveJourneyItem(
   orgId: string,
+  userId: string,
   itemScoreId: string,
   result: 'pass' | 'fail',
   normalized: number,
   rawScore: number,
   threshold: number
 ): Promise<string> {
-  const row = await queryOne<{ journey_id: string; scorecard_item_id: string; weight: string; severity: string | null }>(
-    `SELECT jis.journey_id, jis.scorecard_item_id, si.weight::text, si.severity
+  const row = await queryOne<{ journey_id: string; scorecard_item_id: string; weight: string; severity: string | null; evidence: string | null; normalized_score: number | null }>(
+    `SELECT jis.journey_id, jis.scorecard_item_id, si.weight::text, si.severity, jis.evidence, jis.normalized_score
        FROM journey_item_scores jis
        JOIN journeys j ON j.id = jis.journey_id
        JOIN scorecard_items si ON si.id = jis.scorecard_item_id
@@ -183,6 +184,35 @@ async function resolveJourneyItem(
     await tx.query(
       "UPDATE journey_item_scores SET result = $2, score = $3, normalized_score = $4 WHERE id = $1",
       [itemScoreId, result, rawScore, normalized]
+    );
+
+    // Record the reviewer's verdict as calibration, so confirming a manual-
+    // review checkpoint teaches the AI for that criterion (the sales_only path
+    // to calibration — mirrors the per-call correct endpoint). The AI's stored
+    // evidence quote is the excerpt; original_pass is null (manual_review had
+    // no confident AI verdict).
+    await tx.query(
+      `INSERT INTO score_corrections
+         (organization_id, journey_id, journey_item_score_id, scorecard_item_id, corrected_by,
+          original_score, corrected_score, original_pass, corrected_pass, reason, transcript_excerpt)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, NULL, $8, $9, $10)
+       ON CONFLICT (journey_item_score_id) DO UPDATE SET
+         corrected_score = EXCLUDED.corrected_score,
+         corrected_pass = EXCLUDED.corrected_pass,
+         corrected_by = EXCLUDED.corrected_by,
+         created_at = now()`,
+      [
+        orgId,
+        row.journey_id,
+        itemScoreId,
+        row.scorecard_item_id,
+        userId,
+        row.normalized_score ?? 0,
+        normalized,
+        result === 'pass',
+        'Confirmed on manual review',
+        row.evidence,
+      ]
     );
 
     const items = await tx.query<{ normalized_score: string; weight: string; severity: string | null }>(
