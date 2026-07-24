@@ -60,6 +60,25 @@ export function Team() {
     }
   };
 
+  // Hard-remove: deletes the member and unlinks their calls (attribution lost).
+  // Revoke login is the softer path that keeps history, so steer people there.
+  const removeAgent = async (agent: AgentSummary) => {
+    const ok = await confirm(
+      `Remove ${agent.name}? This deletes them and unlinks their past calls — those calls stay in the system but are no longer attributed to anyone, and this can't be undone. To keep their history, revoke login instead.`,
+      { danger: true, confirmLabel: 'Remove member' }
+    );
+    if (!ok) return;
+    setBusyId(agent.id);
+    try {
+      await api.delete(`/agents/${agent.id}`);
+      queryClient.invalidateQueries({ queryKey: ['agents'] });
+    } catch (err) {
+      await notify((err as Error).message);
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   const cols = ['Agent', 'Calls', 'Scored', 'Avg Score', ...(scoreOnly ? [] : ['Pass Rate']), ...(isAdmin ? [''] : [])];
 
   return (
@@ -141,31 +160,42 @@ export function Team() {
                     <td className="px-5 py-3.5 text-right whitespace-nowrap">
                       {agent.id === user?.id ? (
                         <span className="text-xs text-text-muted">You</span>
-                      ) : agent.login_disabled ? (
-                        <button
-                          onClick={() => setEnableTarget(agent)}
-                          disabled={busyId === agent.id}
-                          className="text-table-cell text-primary font-semibold hover:underline disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
-                        >
-                          Enable login
-                        </button>
                       ) : (
                         <span className="inline-flex items-center gap-3">
-                          {agent.pending_invite && (
+                          {agent.login_disabled ? (
                             <button
-                              onClick={() => resendInvite(agent)}
+                              onClick={() => setEnableTarget(agent)}
                               disabled={busyId === agent.id}
                               className="text-table-cell text-primary font-semibold hover:underline disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
                             >
-                              Resend invite
+                              Enable login
                             </button>
+                          ) : (
+                            <>
+                              {agent.pending_invite && (
+                                <button
+                                  onClick={() => resendInvite(agent)}
+                                  disabled={busyId === agent.id}
+                                  className="text-table-cell text-primary font-semibold hover:underline disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
+                                >
+                                  Resend invite
+                                </button>
+                              )}
+                              <button
+                                onClick={() => revokeLogin(agent)}
+                                disabled={busyId === agent.id}
+                                className="text-table-cell text-fail font-semibold hover:underline disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
+                              >
+                                Revoke login
+                              </button>
+                            </>
                           )}
                           <button
-                            onClick={() => revokeLogin(agent)}
+                            onClick={() => removeAgent(agent)}
                             disabled={busyId === agent.id}
                             className="text-table-cell text-fail font-semibold hover:underline disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
                           >
-                            Revoke login
+                            Remove
                           </button>
                         </span>
                       )}
