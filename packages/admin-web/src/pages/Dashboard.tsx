@@ -1,14 +1,29 @@
 import { useEffect, useState, useCallback } from 'react';
 import { api } from '../api/client';
+import { DateRangePicker } from '../components/DateRangePicker';
+import { type DateRange, formatRange, rangeQuery } from '../lib/dateRange';
+
+interface RangeStats {
+  from: string;
+  to: string;
+  days: number;
+  claude_cost_gbp: number;
+  deepgram_cost_gbp: number;
+  total_cost_gbp: number;
+  scored_calls: number;
+  scored_journeys: number;
+  calls_ingested: number;
+}
 
 interface DashboardData {
   active_users_15min: number;
   calls_in_queue: number;
-  calls_processed_today: number;
+  scored_today: number;
   active_live_sessions: number;
   platform_claude_cost_mtd: number;
   platform_deepgram_cost_mtd: number;
   platform_mrr: number;
+  range: RangeStats | null;
 }
 
 interface QueueStat {
@@ -48,28 +63,30 @@ function StatCard({ label, value, sub }: { label: string; value: string | number
 }
 
 export default function Dashboard() {
+  const [range, setRange] = useState<DateRange>({ days: 7 });
   const [data, setData] = useState<DashboardData | null>(null);
   const [health, setHealth] = useState<HealthData | null>(null);
   const [error, setError] = useState('');
 
   const load = useCallback(() => {
-    api.get<DashboardData>('/superadmin/dashboard')
+    api.get<DashboardData>(`/superadmin/dashboard?${rangeQuery(range)}`)
       // Default every numeric field so an older/partial API response degrades to
       // zeros rather than throwing on .toFixed() and blanking the page.
       .then((d) => setData({
         active_users_15min:         d.active_users_15min ?? 0,
         calls_in_queue:             d.calls_in_queue ?? 0,
-        calls_processed_today:      d.calls_processed_today ?? 0,
+        scored_today:               d.scored_today ?? 0,
         active_live_sessions:       d.active_live_sessions ?? 0,
         platform_claude_cost_mtd:   d.platform_claude_cost_mtd ?? 0,
         platform_deepgram_cost_mtd: d.platform_deepgram_cost_mtd ?? 0,
         platform_mrr:               d.platform_mrr ?? 0,
+        range:                      d.range ?? null,
       }))
       .catch((e: Error) => setError(e.message));
     api.get<HealthData>('/superadmin/health')
       .then(setHealth)
       .catch(() => setHealth(null));
-  }, []);
+  }, [range]);
 
   useEffect(() => {
     load();
@@ -83,6 +100,8 @@ export default function Dashboard() {
   const totalCostMtd = data.platform_claude_cost_mtd + data.platform_deepgram_cost_mtd;
   const grossMargin = data.platform_mrr - totalCostMtd;
 
+  const r = data.range;
+
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
@@ -90,7 +109,7 @@ export default function Dashboard() {
         <p className="text-xs text-text-muted">Refreshes every 30 s</p>
       </div>
 
-      {/* Revenue headline */}
+      {/* Revenue headline — always month-to-date, so MRR and cost are comparable */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-card rounded-card p-5 border border-primary">
           <p className="text-xs font-semibold uppercase tracking-wider text-text-muted mb-1">Monthly recurring revenue</p>
@@ -101,21 +120,39 @@ export default function Dashboard() {
         <StatCard label="Gross margin (MTD)" value={`£${grossMargin.toFixed(2)}`} sub="MRR − running cost" />
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+      {/* Right now */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard label="Active users (15 min)" value={data.active_users_15min} />
         <StatCard label="Calls in queue" value={data.calls_in_queue} />
-        <StatCard label="Calls processed today" value={data.calls_processed_today} />
+        <StatCard label="Scored today" value={data.scored_today} sub="Calls + sales scored" />
         <StatCard label="Live sessions" value={data.active_live_sessions} />
-        <StatCard
-          label="Claude cost (MTD)"
-          value={`£${data.platform_claude_cost_mtd.toFixed(2)}`}
-          sub="Estimated from token usage"
-        />
-        <StatCard
-          label="Deepgram cost (MTD)"
-          value={`£${data.platform_deepgram_cost_mtd.toFixed(2)}`}
-          sub="Estimated from call duration"
-        />
+      </div>
+
+      {/* Selected range */}
+      <div className="space-y-3">
+        <div className="flex items-end justify-between flex-wrap gap-3">
+          <div>
+            <h3 className="text-sm font-semibold text-text-primary">Selected range</h3>
+            <p className="text-xs text-text-muted mt-0.5">
+              {r ? formatRange(r.from, r.to) : 'Choose a range'}
+            </p>
+          </div>
+          <DateRangePicker value={range} onChange={setRange} presets={[1, 7, 30]} />
+        </div>
+
+        {r && (
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+            <StatCard label="Cost in range" value={`£${r.total_cost_gbp.toFixed(2)}`} sub="Claude + Deepgram" />
+            <StatCard label="Claude" value={`£${r.claude_cost_gbp.toFixed(2)}`} sub="Scoring, cleanup, insights" />
+            <StatCard label="Deepgram" value={`£${r.deepgram_cost_gbp.toFixed(2)}`} sub="Transcription" />
+            <StatCard
+              label="Scored in range"
+              value={r.scored_calls + r.scored_journeys}
+              sub={`${r.scored_calls} call${r.scored_calls === 1 ? '' : 's'} · ${r.scored_journeys} sale${r.scored_journeys === 1 ? '' : 's'}`}
+            />
+            <StatCard label="Calls ingested" value={r.calls_ingested} sub="New audio received" />
+          </div>
+        )}
       </div>
 
       {/* System health */}

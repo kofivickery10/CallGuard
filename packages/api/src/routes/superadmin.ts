@@ -18,6 +18,7 @@ import {
   currentBillingForOrg,
 } from '../services/billing.js';
 import { deleteOrganizationCascade } from '../services/tenant-deletion.js';
+import { LONDON, inWindow, resolveWindow, windowParams } from '../services/report-window.js';
 import {
   getTranscriptionQueue,
   getScoringQueue,
@@ -33,6 +34,8 @@ superadminRouter.use(authenticate, requireSuperadmin);
 // business reports in GBP, so convert for display.
 const USD_TO_GBP = Number(process.env.USD_TO_GBP) || DEFAULT_USD_TO_GBP;
 const toGbp = (usd: number) => usd * USD_TO_GBP;
+
+// Reporting windows (?days=N or ?from=&to=) — see services/report-window.ts.
 
 // ── Tenant list ───────────────────────────────────────────────────────────────
 
@@ -619,17 +622,18 @@ superadminRouter.post('/users/:id/reset-2fa', async (req, res, next) => {
 
 // ── Usage & cost ledger ───────────────────────────────────────────────────────
 // Actual per-operation cost from usage_events (written live by every processor).
-// Window defaults to 30 days, clamped to 1..365.
+// Window: ?days=N (rolling, default 30) or ?from=&to= (explicit London days).
 superadminRouter.get('/usage', async (req, res, next) => {
   try {
-    const days = Math.min(365, Math.max(1, parseInt(String(req.query.days ?? '30'), 10) || 30));
+    const w = resolveWindow(req.query as Record<string, unknown>, 30);
+    const p = windowParams(w);
     const n = (v: unknown) => Number(v ?? 0);
-    const since = `now() - make_interval(0, 0, 0, $1)`;
+    const range = inWindow('created_at');
 
     const [byProvider, byOperation, byModel, daily, topTenants, scored, totals] = await Promise.all([
       query<{ provider: string; events: string; cost_usd: string }>(
         `SELECT provider, COUNT(*)::text AS events, COALESCE(SUM(est_cost_usd),0)::text AS cost_usd
-           FROM usage_events WHERE created_at >= ${since} GROUP BY provider ORDER BY 3 DESC`, [days]),
+           FROM usage_events WHERE ${range} GROUP BY provider ORDER BY 3 DESC`, p),
       query<{ operation: string; events: string; input_tokens: string; output_tokens: string; cache_read_tokens: string; cache_creation_tokens: string; cost_usd: string }>(
         `SELECT operation, COUNT(*)::text AS events,
                 COALESCE(SUM(input_tokens),0)::text AS input_tokens,
@@ -637,45 +641,65 @@ superadminRouter.get('/usage', async (req, res, next) => {
                 COALESCE(SUM(cache_read_tokens),0)::text AS cache_read_tokens,
                 COALESCE(SUM(cache_creation_tokens),0)::text AS cache_creation_tokens,
                 COALESCE(SUM(est_cost_usd),0)::text AS cost_usd
-           FROM usage_events WHERE created_at >= ${since} GROUP BY operation ORDER BY 7 DESC`, [days]),
+           FROM usage_events WHERE ${range} GROUP BY operation ORDER BY 7 DESC`, p),
       query<{ model_id: string | null; events: string; input_tokens: string; output_tokens: string; cost_usd: string }>(
         `SELECT model_id, COUNT(*)::text AS events,
                 COALESCE(SUM(input_tokens),0)::text AS input_tokens,
                 COALESCE(SUM(output_tokens),0)::text AS output_tokens,
                 COALESCE(SUM(est_cost_usd),0)::text AS cost_usd
-           FROM usage_events WHERE created_at >= ${since} GROUP BY model_id ORDER BY 5 DESC`, [days]),
-      query<{ day: string; cost_usd: string }>(
-        `SELECT to_char(date_trunc('day', created_at AT TIME ZONE 'Europe/London'), 'YYYY-MM-DD') AS day,
-                COALESCE(SUM(est_cost_usd),0)::text AS cost_usd
-           FROM usage_events WHERE created_at >= ${since} GROUP BY 1 ORDER BY 1`, [days]),
+           FROM usage_events WHERE ${range} GROUP BY model_id ORDER BY 5 DESC`, p),
+      // One row per London day in the window, including days with no spend —
+      // otherwise the chart silently closes the gaps and the bars stop lining up
+      // with the dates they claim to represent.
+      query<{ day: string; cost_usd: string; events: string }>(
+        `SELECT to_char(g.d, 'YYYY-MM-DD') AS day,
+                COALESCE(SUM(ue.est_cost_usd),0)::text AS cost_usd,
+                COUNT(ue.id)::text AS events
+           FROM generate_series($1::date, $2::date, interval '1 day') AS g(d)
+           LEFT JOIN usage_events ue
+             ON ue.created_at >= g.d AT TIME ZONE '${LONDON}'
+            AND ue.created_at <  (g.d + interval '1 day') AT TIME ZONE '${LONDON}'
+          GROUP BY g.d ORDER BY g.d`, p),
       query<{ organization_id: string | null; name: string | null; cost_usd: string; events: string }>(
         `SELECT ue.organization_id, o.name,
                 COALESCE(SUM(ue.est_cost_usd),0)::text AS cost_usd, COUNT(*)::text AS events
            FROM usage_events ue LEFT JOIN organizations o ON o.id = ue.organization_id
-          WHERE ue.created_at >= ${since} GROUP BY ue.organization_id, o.name ORDER BY 3 DESC LIMIT 20`, [days]),
-      queryOne<{ scored_calls: string }>(
-        `SELECT COUNT(*)::text AS scored_calls FROM calls
-          WHERE status = 'scored' AND created_at >= ${since}`, [days]),
+          WHERE ${inWindow('ue.created_at')} GROUP BY ue.organization_id, o.name ORDER BY 3 DESC LIMIT 20`, p),
+      // Scored *in the window* — the ledger's costs are incurred at scoring time,
+      // so the denominator has to be keyed off when scoring happened, not when the
+      // call was ingested (a call can be ingested months before it is scored, and
+      // journey/sale scoring never touches calls.status at all).
+      queryOne<{ scored_calls: string; scored_journeys: string }>(
+        `SELECT
+           (SELECT COUNT(*)::text FROM call_scores WHERE ${inWindow('created_at')}) AS scored_calls,
+           (SELECT COUNT(*)::text FROM journeys
+             WHERE scored_at IS NOT NULL AND ${inWindow('scored_at')})              AS scored_journeys`, p),
       queryOne<{ cost_usd: string; events: string; cache_read: string; uncached_input: string }>(
         `SELECT COALESCE(SUM(est_cost_usd),0)::text AS cost_usd, COUNT(*)::text AS events,
                 COALESCE(SUM(cache_read_tokens),0)::text AS cache_read,
                 COALESCE(SUM(input_tokens),0)::text AS uncached_input
-           FROM usage_events WHERE created_at >= ${since}`, [days]),
+           FROM usage_events WHERE ${range}`, p),
     ]);
 
     const totalCostGbp = toGbp(n(totals?.cost_usd));
     const scoredCalls = n(scored?.scored_calls);
+    const scoredJourneys = n(scored?.scored_journeys);
+    const scoredUnits = scoredCalls + scoredJourneys;
     const cacheRead = n(totals?.cache_read);
     const uncachedInput = n(totals?.uncached_input);
 
     res.json({
-      period_days: days,
+      period_days: w.days,
+      from: w.from,
+      to: w.to,
       currency: 'GBP',
       totals: {
         cost_gbp: totalCostGbp,
         events: n(totals?.events),
         scored_calls: scoredCalls,
-        cost_per_call: scoredCalls > 0 ? totalCostGbp / scoredCalls : 0,
+        scored_journeys: scoredJourneys,
+        scored_units: scoredUnits,
+        cost_per_unit: scoredUnits > 0 ? totalCostGbp / scoredUnits : 0,
         cache_hit_ratio: cacheRead + uncachedInput > 0 ? cacheRead / (cacheRead + uncachedInput) : 0,
       },
       by_provider: byProvider.map((r) => ({ provider: r.provider, events: n(r.events), cost_gbp: toGbp(n(r.cost_usd)) })),
@@ -689,7 +713,7 @@ superadminRouter.get('/usage', async (req, res, next) => {
         model_id: r.model_id ?? '(none)', events: n(r.events),
         input_tokens: n(r.input_tokens), output_tokens: n(r.output_tokens), cost_gbp: toGbp(n(r.cost_usd)),
       })),
-      daily: daily.map((r) => ({ day: r.day, cost_gbp: toGbp(n(r.cost_usd)) })),
+      daily: daily.map((r) => ({ day: r.day, cost_gbp: toGbp(n(r.cost_usd)), events: n(r.events) })),
       top_tenants: topTenants.map((r) => ({
         organization_id: r.organization_id, name: r.name ?? '(platform)',
         cost_gbp: toGbp(n(r.cost_usd)), events: n(r.events),
@@ -702,9 +726,14 @@ superadminRouter.get('/usage', async (req, res, next) => {
 
 // ── Live dashboard ────────────────────────────────────────────────────────────
 
-superadminRouter.get('/dashboard', async (_req, res, next) => {
+superadminRouter.get('/dashboard', async (req, res, next) => {
   try {
-    const [activity, queue, scored, costRows, liveSessions] = await Promise.all([
+    // Live tiles, MRR and the month-to-date cost are period-independent; the
+    // window only drives the "selected range" block.
+    const w = resolveWindow(req.query as Record<string, unknown>, 7);
+    const p = windowParams(w);
+
+    const [activity, queue, scored, costRows, liveSessions, rangeCost, rangeScored] = await Promise.all([
       queryOne<{ active_users_15min: string }>(
         `SELECT COUNT(*)::text AS active_users_15min
          FROM users
@@ -715,9 +744,17 @@ superadminRouter.get('/dashboard', async (_req, res, next) => {
         `SELECT COUNT(*)::text AS calls_in_queue
          FROM calls WHERE status IN ('uploaded','transcribing','scoring')`
       ),
-      queryOne<{ calls_processed_today: string }>(
-        `SELECT COUNT(*)::text AS calls_processed_today
-         FROM calls WHERE status = 'scored' AND created_at >= date_trunc('day', now())`
+      // Scored today, keyed off when scoring happened (calls.created_at is the
+      // ingest time — a call scored today may have been ingested weeks ago) and
+      // counting sales alongside calls, since journey scoring never sets
+      // calls.status = 'scored'.
+      queryOne<{ scored_today: string }>(
+        `SELECT (
+           (SELECT COUNT(*) FROM call_scores
+             WHERE created_at >= date_trunc('day', now() AT TIME ZONE '${LONDON}') AT TIME ZONE '${LONDON}')
+         + (SELECT COUNT(*) FROM journeys
+             WHERE scored_at >= date_trunc('day', now() AT TIME ZONE '${LONDON}') AT TIME ZONE '${LONDON}')
+         )::text AS scored_today`
       ),
       // Actual month-to-date cost from the usage ledger (every operation —
       // transcribe, cleanup, score, verify, live-score, insights — priced at
@@ -732,11 +769,28 @@ superadminRouter.get('/dashboard', async (_req, res, next) => {
         `SELECT COUNT(*)::text AS active_live_sessions
          FROM live_sessions WHERE status = 'active'`
       ),
+      query<{ provider: string; cost_usd: string }>(
+        `SELECT provider, COALESCE(SUM(est_cost_usd), 0)::text AS cost_usd
+           FROM usage_events WHERE ${inWindow('created_at')} GROUP BY provider`, p),
+      queryOne<{ scored_calls: string; scored_journeys: string; calls_ingested: string }>(
+        `SELECT
+           (SELECT COUNT(*)::text FROM call_scores WHERE ${inWindow('created_at')}) AS scored_calls,
+           (SELECT COUNT(*)::text FROM journeys
+             WHERE scored_at IS NOT NULL AND ${inWindow('scored_at')})              AS scored_journeys,
+           (SELECT COUNT(*)::text FROM calls WHERE ${inWindow('created_at')})       AS calls_ingested`, p),
     ]);
 
     const costByProvider = new Map(costRows.map((r) => [r.provider, Number(r.cost_usd)]));
     const claudeCostMtd = costByProvider.get('anthropic') ?? 0;
     const deepgramCostMtd = costByProvider.get('deepgram') ?? 0;
+
+    const rangeByProvider = new Map(rangeCost.map((r) => [r.provider, Number(r.cost_usd)]));
+    const rangeClaude = toGbp(rangeByProvider.get('anthropic') ?? 0);
+    const rangeDeepgram = toGbp(rangeByProvider.get('deepgram') ?? 0);
+    // Total across every provider, not just the two broken out, so a new
+    // provider appearing in the ledger can't go missing from the headline.
+    const rangeTotal = toGbp(rangeCost.reduce((sum, r) => sum + Number(r.cost_usd), 0));
+    const gbp4 = (v: number) => parseFloat(v.toFixed(4));
 
     // Platform MRR: headcount billing — every billable seat (all non-exempt
     // tenant users) across active tenants, priced by the tenant's override or
@@ -747,11 +801,22 @@ superadminRouter.get('/dashboard', async (_req, res, next) => {
     res.json({
       active_users_15min:    Number(activity?.active_users_15min || 0),
       calls_in_queue:        Number(queue?.calls_in_queue || 0),
-      calls_processed_today: Number(scored?.calls_processed_today || 0),
+      scored_today:          Number(scored?.scored_today || 0),
       active_live_sessions:  Number(liveSessions?.active_live_sessions || 0),
-      platform_claude_cost_mtd:   parseFloat(toGbp(claudeCostMtd).toFixed(4)),
-      platform_deepgram_cost_mtd: parseFloat(toGbp(deepgramCostMtd).toFixed(4)),
+      platform_claude_cost_mtd:   gbp4(toGbp(claudeCostMtd)),
+      platform_deepgram_cost_mtd: gbp4(toGbp(deepgramCostMtd)),
       platform_mrr:               parseFloat(platformMrr.toFixed(2)),
+      range: {
+        from: w.from,
+        to: w.to,
+        days: w.days,
+        claude_cost_gbp:   gbp4(rangeClaude),
+        deepgram_cost_gbp: gbp4(rangeDeepgram),
+        total_cost_gbp:    gbp4(rangeTotal),
+        scored_calls:      Number(rangeScored?.scored_calls || 0),
+        scored_journeys:   Number(rangeScored?.scored_journeys || 0),
+        calls_ingested:    Number(rangeScored?.calls_ingested || 0),
+      },
     });
   } catch (err) {
     next(err);

@@ -1,13 +1,19 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { api } from '../api/client';
+import { DateRangePicker } from '../components/DateRangePicker';
+import { type DateRange, formatDay, formatRange, rangeQuery } from '../lib/dateRange';
 
 interface UsageReport {
   period_days: number;
+  from: string;
+  to: string;
   totals: {
     cost_gbp: number;
     events: number;
     scored_calls: number;
-    cost_per_call: number;
+    scored_journeys: number;
+    scored_units: number;
+    cost_per_unit: number;
     cache_hit_ratio: number;
   };
   by_provider: { provider: string; events: number; cost_gbp: number }[];
@@ -18,7 +24,7 @@ interface UsageReport {
     cost_gbp: number;
   }[];
   by_model: { model_id: string; events: number; input_tokens: number; output_tokens: number; cost_gbp: number }[];
-  daily: { day: string; cost_gbp: number }[];
+  daily: { day: string; cost_gbp: number; events: number }[];
   top_tenants: { organization_id: string | null; name: string; cost_gbp: number; events: number }[];
 }
 
@@ -35,45 +41,31 @@ const OP_LABELS: Record<string, string> = {
 };
 
 export default function Usage() {
-  const [days, setDays] = useState(30);
+  const [range, setRange] = useState<DateRange>({ days: 30 });
   const [data, setData] = useState<UsageReport | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     setLoading(true);
-    api.get<UsageReport>(`/superadmin/usage?days=${days}`)
+    api.get<UsageReport>(`/superadmin/usage?${rangeQuery(range)}`)
       .then((d) => { setData(d); setError(''); })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
-  }, [days]);
-
-  const maxDaily = data && data.daily.length ? Math.max(...data.daily.map((d) => d.cost_gbp), 0.0001) : 1;
+  }, [range]);
 
   return (
     <div className="p-6 space-y-4 max-w-5xl">
-      <div className="flex items-center justify-between flex-wrap gap-3">
+      <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
           <h2 className="text-page-title text-text-primary">Usage &amp; Costs</h2>
           <p className="text-sm text-text-muted mt-0.5">
-            Live per-operation spend across Deepgram and Claude, converted to GBP.
+            Per-operation spend across Deepgram and Claude, converted to GBP.
+            {data && <> Showing {formatRange(data.from, data.to)}.</>}
+            {loading && data && <span className="text-text-muted"> Updating…</span>}
           </p>
         </div>
-        <div className="flex gap-1">
-          {[7, 30, 90].map((d) => (
-            <button
-              key={d}
-              onClick={() => setDays(d)}
-              className={`px-3 py-1.5 rounded-btn text-sm border ${
-                days === d
-                  ? 'border-primary bg-primary text-white font-semibold'
-                  : 'border-border text-text-secondary hover:border-primary'
-              }`}
-            >
-              {d}d
-            </button>
-          ))}
-        </div>
+        <DateRangePicker value={range} onChange={setRange} presets={[7, 30, 90]} />
       </div>
 
       {error && <p className="text-fail text-sm">{error}</p>}
@@ -83,30 +75,21 @@ export default function Usage() {
         <>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <Card label={`Total cost (${data.period_days}d)`} value={gbp(data.totals.cost_gbp)} accent />
-            <Card label="Scored calls" value={num(data.totals.scored_calls)} />
-            <Card label="Cost / scored call" value={gbp(data.totals.cost_per_call)} />
+            <Card
+              label="Scored in range"
+              value={num(data.totals.scored_units)}
+              sub={`${num(data.totals.scored_calls)} call${data.totals.scored_calls === 1 ? '' : 's'} · ${num(data.totals.scored_journeys)} sale${data.totals.scored_journeys === 1 ? '' : 's'}`}
+            />
+            <Card
+              label="Cost / scored item"
+              value={data.totals.scored_units > 0 ? gbp(data.totals.cost_per_unit) : '—'}
+              sub={data.totals.scored_units > 0 ? undefined : 'nothing scored in range'}
+            />
             <Card label="Scorecard cache hit" value={`${(data.totals.cache_hit_ratio * 100).toFixed(0)}%`} />
           </div>
 
           <Section title="Daily cost">
-            {data.daily.length === 0 ? (
-              <Empty />
-            ) : (
-              <div className="flex items-end gap-1 h-28">
-                {data.daily.map((d) => (
-                  <div
-                    key={d.day}
-                    className="flex-1 flex flex-col justify-end"
-                    title={`${d.day}: ${gbp(d.cost_gbp)}`}
-                  >
-                    <div
-                      className="w-full bg-primary rounded-t"
-                      style={{ height: `${Math.max(2, (d.cost_gbp / maxDaily) * 100)}%` }}
-                    />
-                  </div>
-                ))}
-              </div>
-            )}
+            <DailyChart daily={data.daily} />
           </Section>
 
           <Section title="By operation">
@@ -174,11 +157,68 @@ export default function Usage() {
   );
 }
 
-function Card({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
+function Card({ label, value, sub, accent }: { label: string; value: string; sub?: string; accent?: boolean }) {
   return (
     <div className={`bg-card rounded-card p-4 border ${accent ? 'border-primary' : 'border-border'}`}>
       <p className="text-xs font-semibold uppercase tracking-wider text-text-muted mb-1">{label}</p>
       <p className={`text-card-value ${accent ? 'text-primary' : 'text-text-primary'}`}>{value}</p>
+      {sub && <p className="text-xs text-text-muted mt-1">{sub}</p>}
+    </div>
+  );
+}
+
+/**
+ * One bar per day in the window, including the zero days — the API zero-fills the
+ * series, so gaps are visible instead of being closed up. Quiet days keep a
+ * hairline so the axis reads as a timeline rather than a set of floating bars.
+ */
+function DailyChart({ daily }: { daily: { day: string; cost_gbp: number; events: number }[] }) {
+  const first = daily[0];
+  const last = daily[daily.length - 1];
+  if (!first || !last) return <Empty />;
+
+  const max = Math.max(...daily.map((d) => d.cost_gbp));
+  const total = daily.reduce((sum, d) => sum + d.cost_gbp, 0);
+  if (max <= 0) return <Empty />;
+
+  const peak = daily.reduce((a, b) => (b.cost_gbp > a.cost_gbp ? b : a));
+  const middle = daily[Math.floor((daily.length - 1) / 2)] ?? first;
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-baseline justify-between text-xs text-text-muted">
+        <span>Peak <span className="text-text-primary font-semibold">{gbp(max)}</span> on {formatDay(peak.day)}</span>
+        <span><span className="text-text-primary font-semibold">{gbp(total)}</span> across {daily.length} day{daily.length === 1 ? '' : 's'}</span>
+      </div>
+
+      <div
+        className="flex items-end gap-px h-28"
+        role="img"
+        aria-label={`Daily cost from ${formatDay(first.day)} to ${formatDay(last.day)}. Total ${gbp(total)}, peak ${gbp(max)} on ${formatDay(peak.day)}.`}
+      >
+        {daily.map((d) => (
+          <div
+            key={d.day}
+            className="flex-1 min-w-[2px] h-full flex flex-col justify-end"
+            title={`${formatDay(d.day)}: ${gbp(d.cost_gbp)} · ${num(d.events)} operation${d.events === 1 ? '' : 's'}`}
+          >
+            {d.cost_gbp > 0 ? (
+              <div
+                className="w-full bg-primary rounded-t"
+                style={{ height: `${Math.max(3, (d.cost_gbp / max) * 100)}%` }}
+              />
+            ) : (
+              <div className="w-full h-px bg-border" />
+            )}
+          </div>
+        ))}
+      </div>
+
+      <div className="flex justify-between text-[11px] text-text-muted">
+        <span>{formatDay(first.day)}</span>
+        {daily.length > 2 && <span>{formatDay(middle.day)}</span>}
+        {daily.length > 1 && <span>{formatDay(last.day)}</span>}
+      </div>
     </div>
   );
 }
@@ -208,5 +248,5 @@ function Table({ head, children }: { head: string[]; children: ReactNode }) {
 }
 
 function Empty() {
-  return <p className="text-text-muted text-sm">No usage recorded yet in this window.</p>;
+  return <p className="text-text-muted text-sm">No usage recorded in this range.</p>;
 }
