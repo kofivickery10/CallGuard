@@ -7,7 +7,7 @@ import { recordAuditEvent } from '../services/audit.js';
 import { getScoringSettings } from '../services/tenant-settings.js';
 import { pushJourneyScoreUpdate } from '../services/score-writeback.js';
 import { deriveSeverity, isItemPass, callPasses } from '@callguard/shared';
-import type { Journey, JourneyItemScore, JourneyCallRole, JourneyListItem, JourneyStatus, JourneyProduct, BreachSeverity } from '@callguard/shared';
+import type { Journey, JourneyItemScore, JourneyWithDetail, JourneyListItem, JourneyStatus, JourneyProduct, BreachSeverity } from '@callguard/shared';
 
 export const journeysRouter = Router();
 journeysRouter.use(authenticate);
@@ -76,10 +76,27 @@ journeysRouter.get('/:id', requireOrgView, async (req, res, next) => {
     );
     if (!journey) throw new AppError(404, 'Journey not found');
 
-    const calls = await query<{ id: string; role: JourneyCallRole; call_date: string | null; agent_name: string | null }>(
-      `SELECT c.id, jc.role, c.call_date, c.agent_name
+    // The calls that composed this sale. call_date is only populated when the
+    // ingestion source carried one (dialler payload / parsed filename), so fall
+    // back to created_at the way every other call view does — a linked call
+    // must never render as "Undated". agent_name likewise falls back to the
+    // linked user record when the source payload had no name.
+    const calls = await query<JourneyWithDetail['calls'][number]>(
+      `SELECT c.id, jc.role,
+              COALESCE(c.call_date::timestamptz, c.created_at) AS call_date,
+              COALESCE(u.name, c.agent_name) AS agent_name,
+              c.direction, c.duration_seconds, c.status,
+              cs.overall_score, cs.pass
          FROM journey_calls jc
          JOIN calls c ON c.id = jc.call_id
+         LEFT JOIN users u ON u.id = c.agent_id
+         LEFT JOIN LATERAL (
+           SELECT overall_score, pass
+             FROM call_scores
+            WHERE call_id = c.id
+            ORDER BY created_at DESC
+            LIMIT 1
+         ) cs ON TRUE
         WHERE jc.journey_id = $1
         ORDER BY COALESCE(c.call_date::timestamptz, c.created_at) ASC`,
       [journey.id]

@@ -1,4 +1,5 @@
 import type { ItemResult } from './scorecard.js';
+import type { CallStatus } from './call.js';
 import type { CallCoaching } from './coaching.js';
 import type { ProductSource, JourneyProduct } from './product.js';
 
@@ -62,7 +63,21 @@ export interface JourneyWithDetail extends Journey {
   customer_phone: string | null;
   // The products this sale covered (empty for orgs not using product scoping).
   products: JourneyProduct[];
-  calls: Array<{ id: string; role: JourneyCallRole; call_date: string | null; agent_name: string | null }>;
+  // The calls that composed this sale, oldest first. call_date is already
+  // coalesced to the call's created_at server-side, so it is never null here;
+  // overall_score/pass are null for calls that were only scored as part of the
+  // sale (journey mode) rather than individually.
+  calls: Array<{
+    id: string;
+    role: JourneyCallRole;
+    call_date: string;
+    agent_name: string | null;
+    direction: 'inbound' | 'outbound' | null;
+    duration_seconds: number | null;
+    status: CallStatus;
+    overall_score: number | null;
+    pass: boolean | null;
+  }>;
   item_scores: Array<
     JourneyItemScore & {
       label: string;

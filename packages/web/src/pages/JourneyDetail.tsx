@@ -10,7 +10,8 @@ import { CapturePanel } from '../components/CapturePanel';
 import { ItemResultBadge } from '../components/ItemResultBadge';
 import { SeverityBadge } from '../components/BreachBadges';
 import { ScoreCorrectionModal } from '../components/ScoreCorrectionModal';
-import { formatPhone } from '../lib/format';
+import { CallStatusBadge } from '../components/CallStatusBadge';
+import { formatPhone, formatDuration } from '../lib/format';
 import { isItemPass, hasFeature } from '@callguard/shared';
 import type { JourneyWithDetail, ItemResult, Product } from '@callguard/shared';
 
@@ -386,23 +387,48 @@ export function JourneyDetail() {
               {journey.calls.length === 0 && (
                 <div className="px-5 py-4 text-table-cell text-text-muted">No calls linked.</div>
               )}
-              {journey.calls.map((c) => (
-                <Link
-                  key={c.id}
-                  to={`/calls/${c.id}`}
-                  className="flex items-center justify-between px-5 py-3 border-b border-border-light last:border-0 hover:bg-table-header transition-colors"
-                >
-                  <div>
-                    <div className="text-table-cell text-text-primary">
-                      {c.call_date ? new Date(c.call_date).toLocaleDateString('en-GB') : 'Undated'}
+              {journey.calls.map((c) => {
+                const d = new Date(c.call_date);
+                // Only surface a status pill while a call is still working its
+                // way through the pipeline (or has failed). In journey mode the
+                // member calls sit at 'transcribed' and are scored as the sale,
+                // so a pill there would just be noise.
+                const showStatus = c.status !== 'transcribed' && c.status !== 'scored';
+                return (
+                  <Link
+                    key={c.id}
+                    to={`/calls/${c.id}`}
+                    className="flex items-start justify-between gap-3 px-5 py-3 border-b border-border-light last:border-0 hover:bg-table-header transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-table-cell text-text-primary">
+                        {d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                        <span className="text-text-muted">
+                          {' '}
+                          {d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+                      <div className="text-xs text-text-muted truncate">{c.agent_name || 'Unknown agent'}</div>
+                      <div className="text-xs text-text-muted mt-0.5 flex items-center gap-1.5">
+                        <span>{formatDuration(c.duration_seconds)}</span>
+                        {c.direction && (
+                          <>
+                            <span aria-hidden="true">·</span>
+                            <span className="capitalize">{c.direction}</span>
+                          </>
+                        )}
+                      </div>
                     </div>
-                    <div className="text-xs text-text-muted">{c.agent_name || 'Unknown agent'}</div>
-                  </div>
-                  {c.role === 'wrap_up' && (
-                    <span className="text-[10px] uppercase tracking-wider text-pass font-semibold">Wrap-up</span>
-                  )}
-                </Link>
-              ))}
+                    <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+                      {c.role === 'wrap_up' && (
+                        <span className="text-[10px] uppercase tracking-wider text-pass font-semibold">Wrap-up</span>
+                      )}
+                      {c.overall_score != null && <ScoreGauge score={Number(c.overall_score)} />}
+                      {showStatus && <CallStatusBadge status={c.status} pass={c.pass} />}
+                    </div>
+                  </Link>
+                );
+              })}
             </div>
           </div>
 
