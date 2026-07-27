@@ -1,3 +1,5 @@
+import type { UserRole } from './user.js';
+
 export interface PaginatedResponse<T> {
   data: T[];
   total: number;
@@ -67,6 +69,7 @@ export interface AgentSummary {
   id: string;
   name: string;
   email: string | null;
+  role: UserRole;
   total_calls: number;
   scored_calls: number;
   average_score: number | null;

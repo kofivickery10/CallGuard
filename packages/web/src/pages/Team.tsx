@@ -44,8 +44,12 @@ export function Team() {
   };
 
   const revokeLogin = async (agent: AgentSummary) => {
+    const billingNote =
+      agent.role === 'adviser'
+        ? " and they still count as a billable seat — they just can't log in"
+        : " — they just can't log in (this role isn't billed)";
     const ok = await confirm(
-      `Revoke ${agent.name}'s ability to sign in? Their calls and history stay, and they still count as a billable seat — they just can't log in.`,
+      `Revoke ${agent.name}'s ability to sign in? Their calls and history stay${billingNote}.`,
       { danger: true, confirmLabel: 'Revoke login' }
     );
     if (!ok) return;

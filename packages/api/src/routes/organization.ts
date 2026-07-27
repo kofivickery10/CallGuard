@@ -3,6 +3,7 @@ import { authenticate, requireAdmin, requireOrgView } from '../middleware/auth.j
 import { query, queryOne } from '../db/client.js';
 import { AppError } from '../middleware/errors.js';
 import { recordAuditEvent } from '../services/audit.js';
+import { currentBillingForOrg } from '../services/billing.js';
 import type { OrganizationInfo } from '@callguard/shared';
 
 export const organizationRouter = Router();
@@ -150,11 +151,17 @@ organizationRouter.put('/data-improvement', requireAdmin, async (req, res, next)
   }
 });
 
-// Active seats = distinct advisers with at least one scored call in a month.
-// Returns the current and previous calendar month (basis for per-seat billing).
+// Billing is headcount-based (services/billing.ts): every non-exempt user is a
+// billed seat regardless of call activity - 'adviser' bills, admin/supervisor/
+// viewer don't (see migration 067). `billed_seats`/`billed_total` below are the
+// real current-month bill; `current_advisers`/`*_active_seats` are a separate
+// usage view (distinct advisers with a scored call) kept for visibility into
+// activity, not for working out what's charged.
 organizationRouter.get('/active-seats', requireOrgView, async (req, res, next) => {
   try {
     const orgId = req.user!.organizationId;
+
+    const billing = await currentBillingForOrg(orgId);
 
     const byMonth = await query<{ month: string; active_seats: string }>(
       `SELECT to_char(date_trunc('month', created_at), 'YYYY-MM') AS month,
@@ -182,6 +189,14 @@ organizationRouter.get('/active-seats', requireOrgView, async (req, res, next) =
       [orgId]
     );
 
+    const team = await query<{ id: string; name: string; role: string; billing_exempt: boolean }>(
+      `SELECT id, name, role, billing_exempt
+         FROM users
+        WHERE organization_id = $1 AND role != 'superadmin'
+        ORDER BY (role = 'adviser') DESC, name`,
+      [orgId]
+    );
+
     const now = new Date();
     const fmt = (d: Date) => `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
     const currentMonth = fmt(now);
@@ -190,6 +205,8 @@ organizationRouter.get('/active-seats', requireOrgView, async (req, res, next) =
       parseInt(byMonth.find((r) => r.month === m)?.active_seats || '0', 10);
 
     res.json({
+      billed_seats: billing.seatCount,
+      billed_total: billing.total,
       current_month: currentMonth,
       current_active_seats: seatsFor(currentMonth),
       previous_month: prevMonth,
@@ -200,6 +217,7 @@ organizationRouter.get('/active-seats', requireOrgView, async (req, res, next) =
         scored_calls: parseInt(a.scored_calls, 10),
         plan_override: a.plan_override,
       })),
+      team: team.map((u) => ({ id: u.id, name: u.name, role: u.role, billed: !u.billing_exempt })),
     });
   } catch (err) {
     next(err);

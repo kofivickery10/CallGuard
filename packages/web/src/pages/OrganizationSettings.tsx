@@ -11,6 +11,8 @@ import {
 } from '@callguard/shared';
 
 interface ActiveSeats {
+  billed_seats: number;
+  billed_total: number;
   current_month: string;
   current_active_seats: number;
   previous_month: string;
@@ -218,25 +220,26 @@ export function OrganizationSettings() {
       {isAdmin && seats && (
         <div className="bg-card border border-border rounded-card p-5 mb-5">
           <h3 className="text-table-cell uppercase tracking-wider text-text-muted font-semibold mb-1">
-            Active seats
+            Billed seats
           </h3>
           <p className="text-xs text-text-subtle mb-3">
-            Advisers with at least one scored call in the month. This is the basis for per-seat billing.
+            Every adviser on your team is a billed seat, whether or not they took a call this month.
+            Admins, supervisors and viewers aren&rsquo;t charged.
           </p>
           <div className="flex gap-8">
             <div>
-              <div className="text-card-value text-text-primary leading-none">{seats.current_active_seats}</div>
-              <div className="text-[11px] text-text-muted mt-1">This month ({seats.current_month})</div>
+              <div className="text-card-value text-text-primary leading-none">{seats.billed_seats}</div>
+              <div className="text-[11px] text-text-muted mt-1">Billed this month · £{seats.billed_total.toFixed(2)}</div>
             </div>
             <div>
-              <div className="text-card-value text-text-muted leading-none">{seats.previous_active_seats}</div>
-              <div className="text-[11px] text-text-muted mt-1">Last month ({seats.previous_month})</div>
+              <div className="text-card-value text-text-muted leading-none">{seats.current_active_seats}</div>
+              <div className="text-[11px] text-text-muted mt-1">Advisers with a scored call ({seats.current_month})</div>
             </div>
           </div>
           {seats.current_advisers.length > 0 && (
             <div className="mt-4 border-t border-border-light pt-3">
               <div className="text-[11px] uppercase tracking-wider text-text-muted font-semibold mb-2">
-                Active this month
+                Usage this month (not the billing basis)
               </div>
               <ul className="space-y-1">
                 {seats.current_advisers.map((a) => (
