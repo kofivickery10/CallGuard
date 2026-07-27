@@ -435,11 +435,13 @@ export async function fetchSaleProducts(
   }
 
   const { accessToken, apiDomain } = await ensureAccessToken(conn);
+  // v8 makes `fields` mandatory on a related-records GET (unlike v2) — omitting
+  // it 400s with REQUIRED_PARAM_MISSING rather than defaulting to all fields.
   const res = await zohoApi(
     apiDomain,
     accessToken,
     `/crm/v8/${encodeURIComponent(conn.sale_module)}/${encodeURIComponent(recordId)}/` +
-      `${encodeURIComponent(conn.policies_related_list)}`
+      `${encodeURIComponent(conn.policies_related_list)}?fields=${encodeURIComponent(conn.policy_product_field)}`
   );
   // 204 = the related list exists but has no records yet (policies not created
   // yet — the common case in the gap between the sale and its policies).
