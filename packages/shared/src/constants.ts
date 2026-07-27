@@ -40,6 +40,38 @@ export const ALLOWED_MIME_TYPES = [
   'audio/m4a',
 ];
 
+// Meeting/video recordings — the "off the phone" advice call. Teams, Zoom and
+// Meet all export a single container with the mixed audio inside, so we accept
+// the container, strip the video track on ingest (services/media.ts) and store
+// only the audio. Nothing downstream (storage, retention, transcription,
+// playback) ever sees a video file.
+export const VIDEO_MIME_TYPES = [
+  'video/mp4',
+  'video/quicktime', // .mov
+  'video/webm',
+  'video/x-matroska', // .mkv
+  'video/x-msvideo', // .avi
+  'video/mpeg',
+];
+
+// Extension fallback for sources that stream a container as a generic binary
+// type (the same problem fetchRemoteAudio's magic-byte sniffing solves for
+// audio). Used only when the declared MIME type isn't recognisably video.
+export const VIDEO_FILE_EXTENSIONS = ['.mp4', '.m4v', '.mov', '.webm', '.mkv', '.avi', '.mpg', '.mpeg'];
+
+// A video container is many times the size of the audio we keep from it: a
+// 45-60 minute Teams recording is routinely 300MB+ where the extracted MP3 is
+// under 30MB. This ceiling therefore governs what may ARRIVE; MAX_FILE_SIZE_MB
+// still describes the audio we store.
+export const MAX_VIDEO_FILE_SIZE_MB = 500;
+export const MAX_VIDEO_FILE_SIZE_BYTES = MAX_VIDEO_FILE_SIZE_MB * 1024 * 1024;
+
+// What an upload endpoint accepts before we know whether we're holding audio or
+// a video container. The type is still restricted by ALLOWED_UPLOAD_MIME_TYPES;
+// only the size ceiling is the permissive one.
+export const ALLOWED_UPLOAD_MIME_TYPES = [...ALLOWED_MIME_TYPES, ...VIDEO_MIME_TYPES];
+export const MAX_UPLOAD_FILE_SIZE_BYTES = MAX_VIDEO_FILE_SIZE_BYTES;
+
 export const KB_MAX_FILE_SIZE_MB = 20;
 export const KB_MAX_FILE_SIZE_BYTES = KB_MAX_FILE_SIZE_MB * 1024 * 1024;
 
@@ -56,6 +88,12 @@ export const KB_ALLOWED_MIME_TYPES = [
 export const CLAUDE_MODELS = {
   HAIKU:   'claude-haiku-4-5-20251001',
   SONNET:  'claude-sonnet-4-6',
+  // Current-generation Sonnet, used for scorecard scoring. Kept separate from
+  // SONNET rather than replacing it: the live scorer (services/live-scorer.ts)
+  // runs on a latency-critical real-time path, and Sonnet 5 enables adaptive
+  // thinking by default, which is the wrong trade there. Move those callers
+  // deliberately, not by editing one constant.
+  SONNET_5: 'claude-sonnet-5',
   OPUS:    'claude-opus-4-8',
 } as const;
 
@@ -69,6 +107,10 @@ export const CLAUDE_PRICING: Record<string, { input_per_1m: number; output_per_1
   'claude-haiku-4-5-20251001': { input_per_1m: 1.00,  output_per_1m: 5.00  },
   'claude-haiku-4-5':          { input_per_1m: 1.00,  output_per_1m: 5.00  },
   'claude-sonnet-4-6':         { input_per_1m: 3.00,  output_per_1m: 15.00 },
+  // List rate. Sonnet 5 is on introductory pricing ($2/$10) until 2026-08-31,
+  // so cost estimates read high until then — deliberately the safe direction
+  // for a billing estimate, and correct from 1 September without a code change.
+  'claude-sonnet-5':           { input_per_1m: 3.00,  output_per_1m: 15.00 },
   'claude-opus-4-8':           { input_per_1m: 5.00,  output_per_1m: 25.00 },
   // Retired / legacy IDs — kept for historical billing rows
   'claude-sonnet-4-20250514':  { input_per_1m: 3.00,  output_per_1m: 15.00 },

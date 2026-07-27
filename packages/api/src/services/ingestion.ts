@@ -5,7 +5,8 @@ import { uploadFile } from './storage.js';
 import { transcriptionQueue } from '../jobs/queue.js';
 import { AppError } from '../middleware/errors.js';
 import { assertSafeRemoteUrl } from './url-safety.js';
-import { MAX_FILE_SIZE_BYTES, MAX_FILE_SIZE_MB } from '@callguard/shared';
+import { isVideoMedia, prepareMediaForIngest } from './media.js';
+import { MAX_FILE_SIZE_BYTES, MAX_VIDEO_FILE_SIZE_BYTES } from '@callguard/shared';
 import type { Call } from '@callguard/shared';
 
 export interface IngestCallParams {
@@ -156,6 +157,42 @@ async function resolveAgent(
     if (user) return { agentId: user.id, agentName: user.name };
   }
 
+  // Last resort on the name: diallers frequently send a short display name
+  // ("Lewis") where the CallGuard user is registered under their full name
+  // ("Lewis Moore"). The exact-match pass above leaves every such call
+  // unlinked, so the adviser's own calls never appear under them in reporting
+  // and per-agent learning context misses them.
+  //
+  // Only accept a first-name match when it is UNAMBIGUOUS — exactly one
+  // adviser in the org whose name starts with that word. Two Lewises means we
+  // genuinely cannot tell, and mis-attributing a compliance breach to the
+  // wrong adviser is far worse than leaving it unlinked.
+  if (p.agentName?.trim()) {
+    const firstWord = p.agentName.trim().split(/\s+/)[0]!;
+    // Guard against a one- or two-letter token matching half the org.
+    if (firstWord.length >= 3) {
+      const candidates = await query<{ id: string; name: string }>(
+        `SELECT id, name FROM users
+           WHERE organization_id = $1
+             AND lower(name) LIKE lower($2) || ' %'
+           LIMIT 2`,
+        [organizationId, firstWord]
+      );
+      if (candidates.length === 1) {
+        const match = candidates[0]!;
+        console.log(
+          `[Ingestion] Linked dialler agent "${p.agentName}" to adviser "${match.name}" by unique first-name match`
+        );
+        return { agentId: match.id, agentName: match.name };
+      }
+      if (candidates.length > 1) {
+        console.warn(
+          `[Ingestion] Dialler agent "${p.agentName}" matches more than one adviser in org ${organizationId} — leaving unlinked`
+        );
+      }
+    }
+  }
+
   // No adviser matched - keep the supplied name for display, leave unlinked.
   return { agentId: null, agentName: p.agentName ?? null };
 }
@@ -207,12 +244,21 @@ export async function ingestCall(params: IngestCallParams): Promise<IngestedCall
   }
 
   const callId = uuid();
+  // Reduce a video container (a Teams/Zoom appointment recording) to audio
+  // before storage. A no-op for audio, and idempotent, so a caller that already
+  // went through fetchRemoteAudio is not converted twice.
+  const media = await prepareMediaForIngest({
+    buffer: params.buffer,
+    fileName: params.fileName,
+    mimeType: params.mimeType,
+  });
+
   // path.basename strips any directory component a crafted/dialler-supplied
   // filename (e.g. "../../../etc/x") would otherwise carry into the storage
   // key — this is the shared entry point for API, CloudTalk and SFTP ingest.
-  const safeFileName = path.basename(params.fileName);
+  const safeFileName = path.basename(media.fileName);
   const fileKey = `calls/${params.organizationId}/${callId}/${safeFileName}`;
-  await uploadFile(fileKey, params.buffer, params.mimeType);
+  await uploadFile(fileKey, media.buffer, media.mimeType);
 
   let rows: Call[];
   try {
@@ -232,8 +278,9 @@ export async function ingestCall(params: IngestCallParams): Promise<IngestedCall
         params.uploadedBy ?? null,
         safeFileName,
         fileKey,
-        params.buffer.length,
-        params.mimeType,
+        // The stored audio, not the container it may have arrived in.
+        media.buffer.length,
+        media.mimeType,
         agentId,
         agentName,
         params.customerPhone ?? null,
@@ -366,6 +413,20 @@ export function inferMimeType(fileName: string): string {
       return 'audio/wav';
     case 'm4a':
       return 'audio/x-m4a';
+    // Meeting/video containers. Named here so an SFTP drop of Teams recordings
+    // is recognised as video and routed through audio extraction rather than
+    // being handed to Deepgram as an opaque blob (see services/media.ts).
+    case 'mp4':
+    case 'm4v':
+      return 'video/mp4';
+    case 'mov':
+      return 'video/quicktime';
+    case 'webm':
+      return 'video/webm';
+    case 'mkv':
+      return 'video/x-matroska';
+    case 'avi':
+      return 'video/x-msvideo';
     default:
       return 'application/octet-stream';
   }
@@ -375,14 +436,17 @@ export function inferMimeType(fileName: string): string {
 // Content-Length check alone isn't enough — it can be absent or lie; this
 // enforces the cap against the actual bytes received.
 async function readWithLimit(res: Response, maxBytes: number): Promise<Buffer> {
+  // Reported in MB derived from the cap actually applied — a video container is
+  // allowed a larger one than a plain audio file (see fetchRemoteAudio).
+  const limitMb = Math.round(maxBytes / 1024 / 1024);
   const contentLength = Number(res.headers.get('content-length') ?? '0');
   if (contentLength > maxBytes) {
-    throw new AppError(400, `Remote file exceeds the ${MAX_FILE_SIZE_MB}MB limit`);
+    throw new AppError(400, `Remote file exceeds the ${limitMb}MB limit`);
   }
   if (!res.body) {
     const buf = Buffer.from(await res.arrayBuffer());
     if (buf.length > maxBytes) {
-      throw new AppError(400, `Remote file exceeds the ${MAX_FILE_SIZE_MB}MB limit`);
+      throw new AppError(400, `Remote file exceeds the ${limitMb}MB limit`);
     }
     return buf;
   }
@@ -395,7 +459,7 @@ async function readWithLimit(res: Response, maxBytes: number): Promise<Buffer> {
     total += value.byteLength;
     if (total > maxBytes) {
       await reader.cancel().catch(() => {});
-      throw new AppError(400, `Remote file exceeds the ${MAX_FILE_SIZE_MB}MB limit`);
+      throw new AppError(400, `Remote file exceeds the ${limitMb}MB limit`);
     }
     chunks.push(value);
   }
@@ -403,11 +467,15 @@ async function readWithLimit(res: Response, maxBytes: number): Promise<Buffer> {
 }
 
 /**
- * Fetch a caller-supplied audio URL (API ingest, bulk-import, CloudTalk
- * recording_url) safely: HTTPS + public-address only (see url-safety.ts), no
- * redirect-following (an attacker-controlled 3xx could otherwise point at an
- * internal address after the check already passed), and a hard size cap
- * enforced against the actual stream, not just a trusted Content-Length.
+ * Fetch a caller-supplied recording URL (API ingest, bulk-import, CloudTalk
+ * recording_url, a Teams/Zoom download link) safely: HTTPS + public-address only
+ * (see url-safety.ts), no redirect-following (an attacker-controlled 3xx could
+ * otherwise point at an internal address after the check already passed), and a
+ * hard size cap enforced against the actual stream, not just a trusted
+ * Content-Length.
+ *
+ * A video container is reduced to audio before it is returned, so every caller
+ * gets audio regardless of what the URL served.
  */
 export async function fetchRemoteAudio(
   rawUrl: string,
@@ -427,19 +495,33 @@ export async function fetchRemoteAudio(
     throw new AppError(400, `Failed to download audio from URL: ${res.status} ${res.statusText}`);
   }
 
-  const buffer = await readWithLimit(res, MAX_FILE_SIZE_BYTES);
-
   const pathParts = url.pathname.split('/');
   const lastPart = pathParts[pathParts.length - 1] || 'call.mp3';
   let fileName = lastPart.includes('.') ? lastPart : `${lastPart}.mp3`;
   let mimeType = res.headers.get('content-type')?.split(';')[0]?.trim() || inferMimeType(fileName);
 
+  // Pick the size cap before reading a byte: a meeting recording is legitimately
+  // several times the size of a call recording, and the audio we keep from it is
+  // well inside the audio cap. Judged on the declared type and the URL's
+  // extension — all we know at this point.
+  const looksLikeVideo = isVideoMedia(mimeType, fileName);
+  const buffer = await readWithLimit(
+    res,
+    looksLikeVideo ? MAX_VIDEO_FILE_SIZE_BYTES : MAX_FILE_SIZE_BYTES
+  );
+
   // Some sources (e.g. CloudTalk's recording endpoint, whose URL ends '.json')
-  // stream audio as a generic binary type. Sniff the real format from the magic
-  // bytes so storage + transcription get a correct audio type/extension rather
-  // than 'binary/octet-stream' + a '.json' name.
+  // stream media as a generic binary type. Sniff the real format from the magic
+  // bytes so storage + transcription get a correct type/extension rather than
+  // 'binary/octet-stream' + a '.json' name.
   if (/octet-stream|binary/i.test(mimeType)) {
     const sig = buffer.subarray(0, 4).toString('hex').toLowerCase();
+    // ISO base-media (MP4/MOV/M4A) puts 'ftyp' at offset 4 and its brand at 8.
+    // The brand is the only thing that separates an audio-only .m4a from a video
+    // .mp4 here, and getting it wrong either re-encodes audio needlessly or
+    // hands Deepgram a video file.
+    const isoBox = buffer.subarray(4, 8).toString('latin1');
+    const isoBrand = buffer.subarray(8, 12).toString('latin1');
     const base = fileName.replace(/\.[^.]*$/, '');
     if (sig.startsWith('52494646')) {
       mimeType = 'audio/wav'; // RIFF….WAVE
@@ -447,8 +529,21 @@ export async function fetchRemoteAudio(
     } else if (sig.startsWith('494433') || sig.startsWith('fffb') || sig.startsWith('fff3') || sig.startsWith('fff2')) {
       mimeType = 'audio/mpeg'; // ID3 / MPEG frame sync
       fileName = `${base}.mp3`;
+    } else if (sig.startsWith('1a45dfa3')) {
+      mimeType = 'video/x-matroska'; // EBML — Matroska / WebM
+      fileName = `${base}.mkv`;
+    } else if (isoBox === 'ftyp') {
+      if (isoBrand.startsWith('M4A')) {
+        mimeType = 'audio/mp4';
+        fileName = `${base}.m4a`;
+      } else {
+        mimeType = isoBrand === 'qt  ' ? 'video/quicktime' : 'video/mp4';
+        fileName = `${base}${isoBrand === 'qt  ' ? '.mov' : '.mp4'}`;
+      }
     }
   }
 
-  return { buffer, fileName, mimeType };
+  // Strip the video track if this turned out to be a container. Idempotent for
+  // audio, so the sniffing above and this call can't fight each other.
+  return prepareMediaForIngest({ buffer, fileName, mimeType });
 }

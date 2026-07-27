@@ -2,6 +2,9 @@ import { describe, it, expect } from 'vitest';
 import {
   isItemPass,
   resolveBranch,
+  resolveBranchWithSource,
+  resolveBranchFromCrmStage,
+  isNoScoreCrmStage,
   itemAppliesToBranch,
   productAppliesToItem,
   deriveSeverity,
@@ -42,6 +45,146 @@ describe('resolveBranch', () => {
 
   it('falls back to the first (default) branch when nothing matches', () => {
     expect(resolveBranch('all accepted on standard terms', cfg)).toBe('on_risk');
+  });
+});
+
+describe('resolveBranchFromCrmStage', () => {
+  const cfg: BranchConfig = {
+    branches: ['on_risk', 'referred'],
+    detect: 'crm_field',
+    crm_values: {
+      on_risk: ['On Risk', 'Active'],
+      referred: ['Referred', 'Referred to Underwriting'],
+    },
+  };
+
+  it('maps a stage value to its branch, case- and whitespace-insensitively', () => {
+    expect(resolveBranchFromCrmStage('Referred', cfg)).toBe('referred');
+    expect(resolveBranchFromCrmStage('  referred  ', cfg)).toBe('referred');
+    expect(resolveBranchFromCrmStage('ON RISK', cfg)).toBe('on_risk');
+  });
+
+  it('returns null for an unmapped or empty stage', () => {
+    expect(resolveBranchFromCrmStage('Awaiting Documents', cfg)).toBeNull();
+    expect(resolveBranchFromCrmStage('', cfg)).toBeNull();
+    expect(resolveBranchFromCrmStage(null, cfg)).toBeNull();
+  });
+
+  it('matches exactly, so overlapping picklist values cannot collide', () => {
+    // "Referred" is a substring of "Referred to Underwriting"; a substring
+    // match would make the first configured branch win for both.
+    expect(resolveBranchFromCrmStage('Referred to Underwriting', cfg)).toBe('referred');
+    expect(resolveBranchFromCrmStage('Not Referred', cfg)).toBeNull();
+  });
+
+  it('returns null when the config has no crm_values', () => {
+    expect(resolveBranchFromCrmStage('Referred', { branches: ['a', 'b'], detect: 'keyword' })).toBeNull();
+  });
+});
+
+describe('isNoScoreCrmStage', () => {
+  const cfg: BranchConfig = {
+    branches: ['on_risk', 'referred'],
+    detect: 'crm_field',
+    crm_values: { on_risk: ['On Risk'], referred: ['Referred', 'Referred - Decision Back'] },
+    no_score_crm_values: ['Referred - NTU', 'Referred - Decision Back - NTU'],
+  };
+
+  it('identifies a not-taken-up sale', () => {
+    expect(isNoScoreCrmStage('Referred - NTU', cfg)).toBe(true);
+    expect(isNoScoreCrmStage('referred - decision back - ntu', cfg)).toBe(true);
+  });
+
+  it('does not catch the scoreable stages those values contain', () => {
+    // "Referred" and "Referred - Decision Back" are substrings of the NTU
+    // values; a loose match would stop scoring real sales.
+    expect(isNoScoreCrmStage('Referred', cfg)).toBe(false);
+    expect(isNoScoreCrmStage('Referred - Decision Back', cfg)).toBe(false);
+    expect(isNoScoreCrmStage('On Risk', cfg)).toBe(false);
+  });
+
+  it('is inert when unconfigured', () => {
+    expect(isNoScoreCrmStage('Referred - NTU', { branches: ['a'], detect: 'keyword' })).toBe(false);
+    expect(isNoScoreCrmStage(null, cfg)).toBe(false);
+  });
+});
+
+describe('resolveBranchWithSource', () => {
+  const cfg: BranchConfig = {
+    branches: ['on_risk', 'referred'],
+    detect: 'crm_field',
+    keywords: { referred: ['referred for underwriting'] },
+    crm_values: { on_risk: ['On Risk'], referred: ['Referred'] },
+  };
+
+  it('prefers the CRM stage over the transcript', () => {
+    // The transcript keyword says on_risk (no match -> default), the CRM says
+    // referred. The CRM is the system of record and must win.
+    expect(resolveBranchWithSource('all sorted, policy starts today', cfg, 'Referred')).toEqual({
+      branch: 'referred',
+      source: 'crm',
+      unmappedCrmStage: false,
+    });
+  });
+
+  it('overrides a contradicting keyword match with the CRM stage', () => {
+    expect(
+      resolveBranchWithSource('this is referred for underwriting', cfg, 'On Risk')
+    ).toEqual({ branch: 'on_risk', source: 'crm', unmappedCrmStage: false });
+  });
+
+  it('falls back to keywords when the stage is missing', () => {
+    expect(resolveBranchWithSource('referred for underwriting', cfg, null)).toEqual({
+      branch: 'referred',
+      source: 'keyword',
+      unmappedCrmStage: false,
+    });
+  });
+
+  it('flags a stage the CRM reported but no branch claims', () => {
+    // Picklists grow. "Referred - Decision Back - NTU" appearing after the map
+    // was written must not quietly become the default branch.
+    expect(resolveBranchWithSource('referred for underwriting', cfg, 'Awaiting Docs')).toEqual({
+      branch: 'referred',
+      source: 'keyword',
+      unmappedCrmStage: true,
+    });
+    expect(resolveBranchWithSource('nothing matches here', cfg, 'Awaiting Docs')).toEqual({
+      branch: 'on_risk',
+      source: 'default',
+      unmappedCrmStage: true,
+    });
+  });
+
+  it('does not flag an unmapped stage when the scorecard has no crm_values at all', () => {
+    // An org that never configured CRM branching isn't misconfigured.
+    const keywordOnly: BranchConfig = {
+      branches: ['on_risk', 'referred'],
+      detect: 'keyword',
+      keywords: { referred: ['referred for underwriting'] },
+    };
+    expect(resolveBranchWithSource('all good', keywordOnly, 'Whatever')).toEqual({
+      branch: 'on_risk',
+      source: 'default',
+      unmappedCrmStage: false,
+    });
+  });
+
+  it('reports source=default when nothing matched, so a guess is never silent', () => {
+    // The regression this exists for: an adviser who says "we'll leave it to
+    // the medical underwriter now" matches no configured keyword, and the
+    // journey was silently scored under on_risk.
+    expect(
+      resolveBranchWithSource('we leave it to the medical underwriter now', cfg, null)
+    ).toEqual({ branch: 'on_risk', source: 'default', unmappedCrmStage: false });
+  });
+
+  it('returns a null source alongside a null branch when unconfigured', () => {
+    expect(resolveBranchWithSource('anything', null)).toEqual({
+      branch: null,
+      source: null,
+      unmappedCrmStage: false,
+    });
   });
 });
 

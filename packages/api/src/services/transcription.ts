@@ -1,5 +1,6 @@
 import { config } from '../config.js';
 import { readFile } from './storage.js';
+import { identifyAdviserCluster, type ClusterSpeech } from './speaker-integrity.js';
 import type { TranscriptionMode, MonoFirstSpeaker, DeepgramRegion } from '@callguard/shared';
 
 interface TranscriptionResult {
@@ -75,9 +76,22 @@ const GENERIC_KEYTERMS = [
 function computeSpeakerAttributionConfidence(
   isMultichannel: boolean,
   pinnedAdviserChannel: number | null,
-  speakerCount: number
+  speakerCount: number,
+  // True when the adviser's cluster was identified from what it actually said
+  // across the call, rather than from who happened to speak first.
+  adviserIdentifiedByContent: boolean
 ): number {
   if (isMultichannel) return pinnedAdviserChannel !== null ? 1.0 : 0.7;
+  // Content identification is a materially stronger basis than the positional
+  // guess: it aggregates adviser-specific behaviour over the whole call instead
+  // of betting everything on the first utterance. High enough to clear the
+  // consent-gate floor on its own, so a correctly-attributed mono call no longer
+  // depends on the cleanup model blessing it.
+  //
+  // Deliberately short of the stereo pin's 1.0: this fixes which CLUSTER is the
+  // adviser, but Deepgram can still misassign individual utterances between
+  // clusters, which is what assessSpeakerIntegrity checks for afterwards.
+  if (adviserIdentifiedByContent) return 0.8;
   if (speakerCount === 2) return 0.6;
   return 0.3;
 }
@@ -240,17 +254,58 @@ export async function transcribeCall(
       : null;
   const pinnedAdviserChannel = adviserChannel === 0 || adviserChannel === 1 ? adviserChannel : envChannel;
 
-  // Mono has no channel to pin, so the adviser is guessed from who speaks
-  // first — correct for inbound calls (the adviser greets), backwards for
-  // outbound calling (the customer answers "Hello?" before the adviser
-  // speaks). monoFirstSpeaker flips which role that first speaker is taken
-  // to be; when it's 'customer' the adviser is the next distinct speaker.
+  // Mono has no channel to pin, so the adviser has to be worked out.
+  //
+  // The positional heuristic below ("who speaks first", flipped by the org's
+  // monoFirstSpeaker) rests entirely on ONE utterance, which makes it as
+  // fragile as that utterance's diarisation. Observed failure: on an outbound
+  // call Deepgram put the customer's opening "Hello?" (at 2s) into the
+  // ADVISER's cluster. That made the adviser look like the first speaker, the
+  // org's monoFirstSpeaker='customer' rule concluded the adviser must be the
+  // OTHER cluster, and all 33 minutes came out inverted — a critical
+  // "adviser led the customer" breach was then raised on the customer's own
+  // words. Measured over three real calls the positional rule got 1 of 3 right.
+  //
+  // So try content first: score each cluster's whole speech for adviser-specific
+  // behaviour (reading scripts, compliance wording, quoting prices). That rests
+  // on dozens of signals across the call rather than one word at 2 seconds, and
+  // got 3 of 3 on the same calls. It abstains rather than guess when no single
+  // cluster is clearly the adviser, and only then does the positional rule run.
+  const clusterSpeech: ClusterSpeech[] = [...new Set(ordered.map((u) => u.speaker ?? 0))].map(
+    (key) => ({
+      key,
+      text: ordered
+        .filter((u) => (u.speaker ?? 0) === key)
+        .map((u) => u.transcript)
+        .join(' '),
+    })
+  );
+  const contentPick = isMultichannel ? null : identifyAdviserCluster(clusterSpeech);
+
   const firstSpeakerKey = ordered[0]?.speaker ?? 0;
-  const agentKey = isMultichannel
-    ? pinnedAdviserChannel ?? (ordered[0]?.channel ?? 0)
-    : monoFirstSpeaker === 'customer'
+  const positionalAgentKey =
+    monoFirstSpeaker === 'customer'
       ? ordered.find((u) => (u.speaker ?? 0) !== firstSpeakerKey)?.speaker ?? firstSpeakerKey
       : firstSpeakerKey;
+
+  const agentKey = isMultichannel
+    ? pinnedAdviserChannel ?? (ordered[0]?.channel ?? 0)
+    : contentPick?.key ?? positionalAgentKey;
+
+  if (contentPick) {
+    if (contentPick.key !== positionalAgentKey) {
+      // Worth its own line: this is the inversion the old code shipped silently.
+      console.warn(
+        `[Transcription] Adviser identified by content as cluster ${contentPick.key}, ` +
+          `overriding the positional guess of ${positionalAgentKey} — ${contentPick.detail}`
+      );
+    }
+  } else {
+    console.log(
+      `[Transcription] No cluster clearly identifiable as the adviser; falling back to the ` +
+        `positional heuristic (cluster ${positionalAgentKey}, monoFirstSpeaker=${monoFirstSpeaker})`
+    );
+  }
 
   // Merge consecutive utterances from the same party into single blocks
   const merged: { speaker: string; text: string }[] = [];
@@ -280,7 +335,8 @@ export async function transcribeCall(
     speaker_attribution_confidence: computeSpeakerAttributionConfidence(
       isMultichannel,
       isMultichannel ? pinnedAdviserChannel : null,
-      speakerCount
+      speakerCount,
+      contentPick !== null
     ),
   };
 }

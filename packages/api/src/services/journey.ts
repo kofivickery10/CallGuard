@@ -1,5 +1,5 @@
 import { query, queryOne, withTransaction } from '../db/client.js';
-import { getDialerConnection } from './tenant-settings.js';
+import { getDialerConnection, getJourneyWindowDays } from './tenant-settings.js';
 import { scoringQueue, ingestionQueue } from '../jobs/queue.js';
 import type { ResolvedProduct } from './product-resolution.js';
 import type { JourneyTriggerSource, Scorecard, Call, ProductSource } from '@callguard/shared';
@@ -23,6 +23,12 @@ interface AssembleJourneyParams {
   // How `products` was determined ('crm'), or null when left for the transcript
   // fallback at score time.
   productSource?: ProductSource | null;
+  // The sale's policy stage as the CRM reported it (Zoho Deals' "Stage"),
+  // resolved at assembly. score-journey maps this to a scoring branch via
+  // branch_config.crm_values — the authoritative signal for on-risk vs
+  // referred, in place of matching phrases in the transcript. Null when
+  // unavailable; the keyword fallback then applies (migration 071).
+  crmStage?: string | null;
   // Scalar snapshot of the sale-trigger payload — persisted so capture-form
   // resolution rules (crm_field) can be evaluated at scoring time, when the
   // webhook payload is long gone. Null for non-CRM triggers.
@@ -61,7 +67,7 @@ async function resolveScorecard(organizationId: string, scorecardId?: string | n
  * and belongs in the journey.
  */
 export async function assembleJourney(params: AssembleJourneyParams): Promise<string | null> {
-  const { organizationId, customerId, scorecardId, triggerSource, zohoRecordId, clientName, products = [], productSource = null, triggerContext = null } = params;
+  const { organizationId, customerId, scorecardId, triggerSource, zohoRecordId, clientName, products = [], productSource = null, crmStage = null, triggerContext = null } = params;
 
   const scorecard = await resolveScorecard(organizationId, scorecardId);
   if (!scorecard) {
@@ -84,10 +90,24 @@ export async function assembleJourney(params: AssembleJourneyParams): Promise<st
     return inFlight.id;
   }
 
-  // Window: the CloudTalk connection's configured history window if the
-  // customer's calls came in via that dialer, else the historical default.
-  const dialerConn = await getDialerConnection(organizationId, 'cloudtalk');
-  const windowDays = dialerConn?.history_window_days ?? DEFAULT_HISTORY_WINDOW_DAYS;
+  // Window: how far back to gather the calls that make up this sale, in
+  // precedence order —
+  //   1. the org's own journey_window_days (migration 072), the only setting
+  //      available to a tenant with no dialler connection (manual uploads,
+  //      Teams appointment recordings, SFTP drops, a dialler we don't integrate
+  //      with), and the one to use when a sector's cases simply run longer than
+  //      a month: a mortgage case spans fact find → recommendation → completion
+  //      over weeks, and too short a window drops precisely the calls carrying
+  //      the suitability and disclosure checkpoints;
+  //   2. the CloudTalk connection's configured history window, for tenants whose
+  //      calls arrive that way;
+  //   3. the historical 30-day default.
+  const [orgWindow, dialerConn] = await Promise.all([
+    getJourneyWindowDays(organizationId),
+    getDialerConnection(organizationId, 'cloudtalk'),
+  ]);
+  const windowDays =
+    orgWindow ?? dialerConn?.history_window_days ?? DEFAULT_HISTORY_WINDOW_DAYS;
   const windowStart = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
 
   // Include 'captured' calls (metadata-only, no transcript yet) — under the
@@ -141,10 +161,10 @@ export async function assembleJourney(params: AssembleJourneyParams): Promise<st
     journeyId = await withTransaction(async (tx) => {
       const journeyRow = await tx.queryOne<{ id: string }>(
         `INSERT INTO journeys
-           (organization_id, customer_id, scorecard_id, scorecard_version, window_start, window_end, trigger_source, status, zoho_record_id, client_name, product_source, trigger_context)
-         VALUES ($1, $2, $3, $4, $5, now(), $6, 'pending', $7, $8, $9, $10)
+           (organization_id, customer_id, scorecard_id, scorecard_version, window_start, window_end, trigger_source, status, zoho_record_id, client_name, product_source, crm_stage, trigger_context)
+         VALUES ($1, $2, $3, $4, $5, now(), $6, 'pending', $7, $8, $9, $10, $11)
          RETURNING id`,
-        [organizationId, customerId, scorecard.id, scorecard.version, windowStart.toISOString(), triggerSource, zohoRecordId ?? null, clientName ?? null, productSource, triggerContext ? JSON.stringify(triggerContext) : null]
+        [organizationId, customerId, scorecard.id, scorecard.version, windowStart.toISOString(), triggerSource, zohoRecordId ?? null, clientName ?? null, productSource, crmStage, triggerContext ? JSON.stringify(triggerContext) : null]
       );
       const id = journeyRow!.id;
 

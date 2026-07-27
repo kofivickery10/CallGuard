@@ -86,6 +86,7 @@ journeysRouter.get('/:id', requireOrgView, async (req, res, next) => {
               COALESCE(c.call_date::timestamptz, c.created_at) AS call_date,
               COALESCE(u.name, c.agent_name) AS agent_name,
               c.direction, c.duration_seconds, c.status,
+              c.speaker_integrity_flag,
               cs.overall_score, cs.pass
          FROM journey_calls jc
          JOIN calls c ON c.id = jc.call_id

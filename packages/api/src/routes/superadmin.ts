@@ -18,6 +18,7 @@ import {
   currentBillingForOrg,
 } from '../services/billing.js';
 import { deleteOrganizationCascade } from '../services/tenant-deletion.js';
+import { MAX_JOURNEY_WINDOW_DAYS } from '../services/tenant-settings.js';
 import { LONDON, inWindow, resolveWindow, windowParams } from '../services/report-window.js';
 import {
   getTranscriptionQueue,
@@ -168,11 +169,13 @@ superadminRouter.get('/tenants/:id', async (req, res, next) => {
       retention_days: number;
       transcription_mode: string;
       deepgram_region: string;
+      journey_window_days: number | null;
     }>(
       `SELECT id, name, plan, status, created_at, suspended_at, subscription_notes,
               seat_price_override, feature_overrides,
               adviser_channel, scoring_scope, min_scoreable_seconds, min_scoreable_words,
-              pass_threshold, retention_days, transcription_mode, deepgram_region
+              pass_threshold, retention_days, transcription_mode, deepgram_region,
+              journey_window_days
        FROM organizations WHERE id = $1`,
       [req.params.id]
     );
@@ -332,6 +335,7 @@ superadminRouter.put('/tenants/:id/scoring-settings', async (req, res, next) => 
       retention_days?: number;
       transcription_mode?: string;
       deepgram_region?: string;
+      journey_window_days?: number | null;
     };
 
     if (
@@ -371,6 +375,22 @@ superadminRouter.put('/tenants/:id/scoring-settings', async (req, res, next) => 
     ) {
       throw new AppError(400, 'min_scoreable_words must be a non-negative whole number');
     }
+    // null is a legitimate value (fall back to the dialler window, then 30 days).
+    // A zero or negative window would match no calls at all, so the journey would
+    // be skipped silently rather than scored badly — reject it here as well as in
+    // the column's CHECK.
+    if (
+      body.journey_window_days !== undefined &&
+      body.journey_window_days !== null &&
+      (!Number.isInteger(body.journey_window_days) ||
+        body.journey_window_days < 1 ||
+        body.journey_window_days > MAX_JOURNEY_WINDOW_DAYS)
+    ) {
+      throw new AppError(
+        400,
+        `journey_window_days must be a whole number between 1 and ${MAX_JOURNEY_WINDOW_DAYS}, or null to use the default`
+      );
+    }
 
     const rows = await query(
       `UPDATE organizations SET
@@ -382,11 +402,12 @@ superadminRouter.put('/tenants/:id/scoring-settings', async (req, res, next) => 
          retention_days         = COALESCE($6, retention_days),
          transcription_mode     = COALESCE($7, transcription_mode),
          deepgram_region        = COALESCE($8, deepgram_region),
+         journey_window_days    = CASE WHEN $12::boolean THEN $11 ELSE journey_window_days END,
          updated_at             = now()
        WHERE id = $9
        RETURNING id, adviser_channel, scoring_scope, min_scoreable_seconds,
                  min_scoreable_words, pass_threshold, retention_days,
-                 transcription_mode, deepgram_region`,
+                 transcription_mode, deepgram_region, journey_window_days`,
       [
         // adviser_channel's "unset" state is itself a real value (null =
         // auto-detect), so it can't be COALESCE'd. $10 says whether the caller
@@ -401,6 +422,10 @@ superadminRouter.put('/tenants/:id/scoring-settings', async (req, res, next) => 
         body.deepgram_region,
         req.params.id,
         body.adviser_channel !== undefined,
+        // Same treatment as adviser_channel: null means "use the fallback", so
+        // clearing it has to be distinguishable from not mentioning it.
+        body.journey_window_days ?? null,
+        body.journey_window_days !== undefined,
       ]
     );
     if (!rows.length) throw new AppError(404, 'Tenant not found');

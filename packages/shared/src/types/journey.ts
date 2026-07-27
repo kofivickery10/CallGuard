@@ -1,9 +1,12 @@
-import type { ItemResult } from './scorecard.js';
+import type { ItemResult, BranchSource } from './scorecard.js';
 import type { CallStatus } from './call.js';
 import type { CallCoaching } from './coaching.js';
 import type { ProductSource, JourneyProduct } from './product.js';
 
-export type JourneyStatus = 'pending' | 'scoring' | 'scored' | 'failed';
+// 'skipped' — the CRM stage marks this as a sale that did not complete (an NTU
+// state), so it is deliberately not scored. Distinct from 'failed', which means
+// scoring was attempted and broke.
+export type JourneyStatus = 'pending' | 'scoring' | 'scored' | 'failed' | 'skipped';
 export type JourneyTriggerSource = 'zoho_sale' | 'manual' | 'fallback';
 export type JourneyCallRole = 'wrap_up' | 'context';
 
@@ -18,6 +21,14 @@ export interface Journey {
   trigger_source: JourneyTriggerSource;
   status: JourneyStatus;
   branch: string | null;
+  // How `branch` was decided: 'crm' (the sale's CRM policy stage), 'keyword'
+  // (a phrase matched in the transcript) or 'default' (nothing matched, the
+  // first branch was assumed). Null for journeys scored before migration 071.
+  // A 'default' branch is a guess that silently decides which checkpoints
+  // apply, so the UI must present it as unconfirmed rather than as fact.
+  branch_source: BranchSource | null;
+  // The raw CRM stage value the branch was derived from, for audit.
+  crm_stage: string | null;
   overall_score: number | null;
   pass: boolean | null;
   model_id: string | null;
@@ -77,6 +88,11 @@ export interface JourneyWithDetail extends Journey {
     status: CallStatus;
     overall_score: number | null;
     pass: boolean | null;
+    // Set when automated checks found the Agent/Customer labels contradicted by
+    // the conversation's content (services/speaker-integrity.ts). Any checkpoint
+    // that turns on who said something is unsafe on such a call, so the UI warns
+    // rather than presenting the result as settled.
+    speaker_integrity_flag: string | null;
   }>;
   item_scores: Array<
     JourneyItemScore & {

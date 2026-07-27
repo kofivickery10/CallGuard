@@ -24,6 +24,12 @@ import type {
 // new orgs are created with (see db/migrations/038 and scripts/seed-demo.ts).
 // ============================================================
 
+// Upper bound on organizations.journey_window_days, mirroring the column's CHECK
+// (migration 072). Two years: long enough for the slowest new-build mortgage
+// case, short enough that a mis-set value can't sweep a customer's entire
+// history into a single journey.
+export const MAX_JOURNEY_WINDOW_DAYS = 730;
+
 export interface ScoringSettings {
   scoringScope: ScoringScope;
   minScoreableSeconds: number;
@@ -86,6 +92,44 @@ export async function getScoringSettings(organizationId: string): Promise<Scorin
     // Floor: never let a bad row value disable the opt-out.
     deepgramMipOptOut: row.deepgram_mip_opt_out !== false,
   };
+}
+
+/**
+ * The org's journey lookback window in days (migration 072), or null when the
+ * org has no opinion and the caller should fall back to the dialler
+ * connection's history window and then the default. See services/journey.ts for
+ * the precedence and why a too-short window is a silent scoring hazard rather
+ * than a visible failure.
+ *
+ * Kept out of getScoringSettings deliberately: that object is loaded on the
+ * transcription/scoring path for every call, and this is only needed when a
+ * journey is assembled.
+ */
+export async function getJourneyWindowDays(organizationId: string): Promise<number | null> {
+  const row = await queryOne<{ journey_window_days: number | null }>(
+    'SELECT journey_window_days FROM organizations WHERE id = $1',
+    [organizationId]
+  );
+  return sanitiseJourneyWindowDays(row?.journey_window_days ?? null);
+}
+
+/**
+ * Coerce a stored journey_window_days into either a usable window or null
+ * ("no opinion — use the fallback").
+ *
+ * Guarded in code as well as by the column's CHECK constraint, because a value
+ * can reach us from a route added later, a manual SQL edit, or a restored
+ * backup taken before migration 072. The failure mode is the reason for the
+ * belt and braces: a zero or negative window matches no calls at all, so
+ * assembleJourney finds nothing and skips the journey silently instead of
+ * scoring it badly. Falling back to the default is always the safer reading of
+ * a nonsensical value.
+ */
+export function sanitiseJourneyWindowDays(days: number | null | undefined): number | null {
+  if (days === null || days === undefined) return null;
+  const n = Number(days);
+  if (!Number.isFinite(n) || n < 1) return null;
+  return Math.min(Math.floor(n), MAX_JOURNEY_WINDOW_DAYS);
 }
 
 /**

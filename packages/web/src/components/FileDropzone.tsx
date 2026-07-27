@@ -23,6 +23,12 @@ export function FileDropzone({ onFileSelected, disabled }: FileDropzoneProps) {
       'audio/wav': ['.wav'],
       'audio/x-m4a': ['.m4a'],
       'audio/mp4': ['.m4a'],
+      // Meeting recordings from Teams, Zoom or Meet. The server strips the
+      // video track on ingest and keeps only the audio.
+      'video/mp4': ['.mp4', '.m4v'],
+      'video/quicktime': ['.mov'],
+      'video/webm': ['.webm'],
+      'video/x-matroska': ['.mkv'],
     },
     maxFiles: 1,
     disabled,
@@ -48,14 +54,14 @@ export function FileDropzone({ onFileSelected, disabled }: FileDropzoneProps) {
         </svg>
       </div>
       {isDragActive ? (
-        <div className="text-base font-semibold text-text-primary">Drop audio files here</div>
+        <div className="text-base font-semibold text-text-primary">Drop a recording here</div>
       ) : (
         <>
           <div className="text-base font-semibold text-text-primary mb-1.5">
-            Drop audio files here or click to upload
+            Drop a recording here or click to upload
           </div>
           <div className="text-table-cell text-text-muted">
-            Supports MP3, WAV, M4A — up to 100MB per file
+            Audio (MP3, WAV, M4A) up to 100MB, or a Teams/Zoom recording (MP4, MOV, WebM, MKV) up to 500MB
           </div>
           <div className="mt-5">
             <span className="inline-block px-[18px] py-[9px] bg-primary text-white rounded-btn text-table-cell font-semibold hover:bg-primary-hover transition-colors">

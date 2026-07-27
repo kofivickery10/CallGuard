@@ -16,6 +16,38 @@ interface JobFailureContext {
 }
 
 /**
+ * Email the ops inbox about a degraded-but-not-fatal condition — something that
+ * completed, but produced output nobody should trust silently (e.g. a scoring
+ * verify pass that errored, leaving critical breaches unverified).
+ *
+ * No-op (with a console warning) if OPS_ALERT_EMAIL isn't configured, and
+ * throttled per `throttleKey` so a systemic fault emails once, not per record.
+ */
+export async function sendOpsAlert(
+  subject: string,
+  body: string,
+  throttleKey: string
+): Promise<void> {
+  if (!config.opsAlertEmail) {
+    console.warn(`[ops-alert] ${throttleKey}: ${subject} — OPS_ALERT_EMAIL is unset, not alerting`);
+    return;
+  }
+
+  const now = Date.now();
+  const last = lastAlertAt.get(throttleKey) ?? 0;
+  if (now - last < THROTTLE_MS) return;
+  lastAlertAt.set(throttleKey, now);
+
+  const text = `${body}\n\nFurther alerts for "${throttleKey}" are suppressed for ${THROTTLE_MS / 60000} minutes.`;
+  await sendEmail({
+    to: config.opsAlertEmail,
+    subject: `[CallGuard] ${subject}`,
+    html: `<pre style="font-family:monospace;white-space:pre-wrap">${escapeHtml(text)}</pre>`,
+    text,
+  }).catch((err) => console.error('[ops-alert] send failed:', err));
+}
+
+/**
  * Email the ops inbox when a job dies after exhausting all its retries. No-op
  * (with a console warning) if OPS_ALERT_EMAIL isn't configured, and throttled
  * per queue+job so a systemic outage doesn't flood the inbox.
@@ -25,18 +57,6 @@ export async function sendJobFailureAlert(ctx: JobFailureContext): Promise<void>
   // recovers from is not worth paging anyone.
   if (ctx.attemptsMade < ctx.attempts) return;
 
-  if (!config.opsAlertEmail) {
-    console.warn(`[ops-alert] ${ctx.queue}/${ctx.jobName} exhausted retries but OPS_ALERT_EMAIL is unset — not alerting`);
-    return;
-  }
-
-  const key = `${ctx.queue}:${ctx.jobName}`;
-  const now = Date.now();
-  const last = lastAlertAt.get(key) ?? 0;
-  if (now - last < THROTTLE_MS) return;
-  lastAlertAt.set(key, now);
-
-  const subject = `[CallGuard] Job failed after ${ctx.attempts} attempts: ${ctx.queue}/${ctx.jobName}`;
   const body = [
     `A background job failed after exhausting all retries.`,
     ``,
@@ -44,16 +64,13 @@ export async function sendJobFailureAlert(ctx: JobFailureContext): Promise<void>
     `Job:      ${ctx.jobName} (${ctx.jobId ?? 'no id'})`,
     `Attempts: ${ctx.attemptsMade}/${ctx.attempts}`,
     `Error:    ${ctx.error}`,
-    ``,
-    `Further alerts for this queue/job are suppressed for ${THROTTLE_MS / 60000} minutes.`,
   ].join('\n');
 
-  await sendEmail({
-    to: config.opsAlertEmail,
-    subject,
-    html: `<pre style="font-family:monospace;white-space:pre-wrap">${escapeHtml(body)}</pre>`,
-    text: body,
-  }).catch((err) => console.error('[ops-alert] send failed:', err));
+  await sendOpsAlert(
+    `Job failed after ${ctx.attempts} attempts: ${ctx.queue}/${ctx.jobName}`,
+    body,
+    `${ctx.queue}:${ctx.jobName}`
+  );
 }
 
 function escapeHtml(s: string): string {

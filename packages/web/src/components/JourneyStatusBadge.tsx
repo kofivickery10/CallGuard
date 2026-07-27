@@ -21,6 +21,13 @@ const statusConfig: Record<JourneyStatus, { label: string; className: string }> 
     label: 'Failed',
     className: 'bg-fail-bg text-fail',
   },
+  // Deliberately not scored — the CRM stage marks the sale as not taken up.
+  // Neutral styling, not fail styling: nothing went wrong and there is no
+  // breach here, so it must not read as a bad outcome for the adviser.
+  skipped: {
+    label: 'Not taken up',
+    className: 'bg-table-header text-text-muted',
+  },
 };
 
 export function JourneyStatusBadge({ status }: { status: JourneyStatus }) {

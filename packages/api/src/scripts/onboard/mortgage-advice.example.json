@@ -1,0 +1,36 @@
+{
+  "_comment": "Template for onboarding a UK regulated mortgage advice firm. Copy to <firm>.json, replace every CHANGE_ME, then dry-run first: npm run onboard-tenant --workspace=packages/api -- --config src/scripts/onboard/<firm>.json --dry-run",
+
+  "org": {
+    "name": "CHANGE_ME Mortgage Services",
+    "plan": "core",
+    "industry": "FCA-regulated residential mortgage advice (purchases, remortgages, product transfers)"
+  },
+  "admin": {
+    "name": "CHANGE_ME Admin",
+    "email": "CHANGE_ME@example.com"
+  },
+  "scoring": {
+    "_comment": "sales_only scores a completed case as one unit once a sale trigger fires (CRM webhook or the manual 'this call is a sale' flag). Use 'everything' instead if the firm wants every call scored on its own.",
+    "scoring_scope": "sales_only",
+    "pass_threshold": 70,
+    "retention_days": 1825,
+    "_comment_journey_window": "A mortgage case runs fact find -> recommendation -> completion over weeks or months, so the 30-day default would silently drop the early calls from the case. 120 days suits most firms; raise it for new-build cases, which can run six months or more.",
+    "journey_window_days": 120,
+    "_comment_speaker": "mono_diarize + mono_first_speaker suit phone-based advice. Teams/Zoom appointment recordings arrive as video and have their audio extracted on ingest; they are mono mixes, so leave transcription_mode as mono_diarize.",
+    "transcription_mode": "mono_diarize",
+    "mono_first_speaker": "agent",
+    "deepgram_region": "eu"
+  },
+  "scorecard": {
+    "name": "CHANGE_ME — Mortgage Advice QA (MCOB / Consumer Duty)",
+    "description": "MCOB 4 disclosure and suitability, MCOB 11 affordability and interest-only, MCOB 12 charges, FG21/1 vulnerability and the Consumer Duty outcomes. 34 checkpoints.",
+    "csv": "../../../../../sample_scorecards/mortgage/mcob-mortgage-advice.csv",
+    "scoring_mode": "journey"
+  },
+  "knowledge_base": [
+    { "section": "company_overview", "file": "../../../../../docs/mortgage/kb/company-overview.md" },
+    { "section": "compliance", "file": "../../../../../docs/mortgage/kb/compliance-rules.md" },
+    { "section": "products", "file": "../../../../../docs/mortgage/kb/products.md" }
+  ]
+}

@@ -15,6 +15,10 @@ export interface IngestCallJobData {
   agentExternalId: string | null;
   agentName: string | null;
   customerPhone: string | null;
+  // ISO timestamp of when the call actually happened, resolved from the webhook
+  // payload (routes/ingestion.ts). Null when the dialler sent nothing usable;
+  // ordering then falls back to created_at.
+  callDate?: string | null;
   direction: 'inbound' | 'outbound' | null;
 }
 
@@ -72,6 +76,7 @@ export async function processIngestCall(job: Job<IngestCallJobData>) {
     agentExternalId: data.agentExternalId,
     agentName: data.agentName,
     customerPhone: data.customerPhone,
+    callDate: data.callDate ?? null,
     externalId: data.externalId,
     dialerConnectionId: data.dialerConnectionId,
     direction: data.direction,

@@ -1,17 +1,18 @@
 import { Job } from 'bullmq';
 import { query, queryOne, withTransaction } from '../../db/client.js';
-import { scoreTranscript, verifyItems, normalizeScore } from '../../services/scoring.js';
+import { scoreTranscript, normalizeScore } from '../../services/scoring.js';
 import { getKBContext } from '../../services/kb.js';
 import { getLearningContext } from '../../services/learning-context.js';
 import { recordUsage } from '../../services/usage.js';
 import { getScoringSettings } from '../../services/tenant-settings.js';
 import { classifyItems } from '../../services/checkpoint-classification.js';
 import { deliverCallScored } from '../../services/webhook-delivery.js';
+import { sendOpsAlert } from '../../services/ops-alert.js';
 import { pushJourneyScored } from '../../services/zoho.js';
 import { maybeStartJourneyCapture } from '../../services/capture-runs.js';
 import { buildCombinedTranscript, CALL_MARKER } from '../../services/journey-transcript.js';
 import { detectProductsFromTranscript } from '../../services/product-resolution.js';
-import { isItemPass, deriveSeverity, callPasses, resolveBranch } from '@callguard/shared';
+import { isItemPass, deriveSeverity, callPasses, resolveBranchWithSource, isNoScoreCrmStage } from '@callguard/shared';
 import type { Scorecard, ScorecardItem, WebhookJourneyScoredPayload, ProductSource } from '@callguard/shared';
 
 interface JourneyRow {
@@ -23,6 +24,7 @@ interface JourneyRow {
   zoho_record_id: string | null;
   client_name: string | null;
   product_source: ProductSource | null;
+  crm_stage: string | null;
 }
 
 interface JourneyCallRow {
@@ -34,6 +36,7 @@ interface JourneyCallRow {
   agent_name: string | null;
   transcript_text: string | null;
   speaker_attribution_confidence: number | null;
+  speaker_integrity_flag: string | null;
 }
 
 
@@ -49,7 +52,7 @@ export async function processScoreJourney(job: Job<{ journeyId: string; suppress
   try {
     const journeyCalls = await query<JourneyCallRow>(
       `SELECT c.id, jc.role, c.call_date, c.created_at, c.agent_id, c.agent_name,
-              c.transcript_text, c.speaker_attribution_confidence
+              c.transcript_text, c.speaker_attribution_confidence, c.speaker_integrity_flag
          FROM journey_calls jc
          JOIN calls c ON c.id = jc.call_id
         WHERE jc.journey_id = $1
@@ -84,7 +87,67 @@ export async function processScoreJourney(job: Job<{ journeyId: string; suppress
     );
     if (items.length === 0) throw new Error('Scorecard has no items');
 
-    const branch = resolveBranch(combinedTranscript, scorecard.branch_config);
+    // A sale the customer never took up is not scored (see migration 071).
+    // Assembly already skips these, so reaching here means the stage moved to
+    // NTU after the journey was created, or this is a deliberate re-score.
+    // Either way, record it as skipped rather than minting a breach register
+    // for business that never completed.
+    if (isNoScoreCrmStage(journey.crm_stage, scorecard.branch_config)) {
+      await withTransaction(async (tx) => {
+        // Clear anything a previous scoring left behind — the sale is no longer
+        // one we hold against the adviser.
+        await tx.query('DELETE FROM breaches WHERE journey_id = $1', [journeyId]);
+        await tx.query('DELETE FROM journey_item_scores WHERE journey_id = $1', [journeyId]);
+        await tx.query(
+          `UPDATE journeys SET status = 'skipped', overall_score = NULL, pass = NULL,
+             error_message = $2, updated_at = now()
+           WHERE id = $1`,
+          [journeyId, `Not scored: CRM stage "${journey.crm_stage}" marks this sale as not taken up`]
+        );
+      });
+      console.log(
+        `[ScoreJourney] ${journeyId}: CRM stage "${journey.crm_stage}" is a no-score state — marked skipped, not scored`
+      );
+      return;
+    }
+
+    // Branch decides which checkpoints apply at all, so how it was decided is
+    // recorded alongside it. The CRM's own policy stage wins where available;
+    // transcript keywords are a fallback, and `default` means nothing matched
+    // and the first branch was assumed (migration 071).
+    const { branch, source: branchSource, unmappedCrmStage } = resolveBranchWithSource(
+      combinedTranscript,
+      scorecard.branch_config,
+      journey.crm_stage
+    );
+    if (branchSource === 'default') {
+      console.warn(
+        `[ScoreJourney] ${journeyId}: branch defaulted to "${branch}" — no CRM stage ` +
+          `(${journey.crm_stage ?? 'none'}) and no keyword match. Branch-scoped checkpoints ` +
+          `are being applied on an assumption.`
+      );
+    }
+    // The CRM told us the sale's status and the scorecard has no branch for it.
+    // Unlike a missing stage, this is fixable config — and until it is fixed
+    // every sale at that stage is scored under a guessed branch. Alert rather
+    // than bury it in a log line.
+    if (unmappedCrmStage) {
+      console.error(
+        `[ScoreJourney] ${journeyId}: CRM stage "${journey.crm_stage}" is not mapped to any branch ` +
+          `in scorecard ${scorecard.id}'s branch_config.crm_values — fell back to ${branchSource}, branch "${branch}".`
+      );
+      sendOpsAlert(
+        `Unmapped CRM stage "${journey.crm_stage}" — sales scored on a guessed branch`,
+        `Org:       ${journey.organization_id}\n` +
+          `Journey:   ${journeyId}\n` +
+          `Scorecard: ${scorecard.id}\n` +
+          `Stage:     ${journey.crm_stage}\n` +
+          `Fell back to branch "${branch}" via ${branchSource}.\n\n` +
+          `Add this stage value to the scorecard's branch_config.crm_values. Until then every ` +
+          `sale at this stage is scored against branch-scoped checkpoints that may not apply.`,
+        `score-journey:unmapped-stage:${journey.organization_id}:${journey.crm_stage}`
+      ).catch(() => {});
+    }
 
     // Product-aware scoring: resolve which products this sale covered. CRM
     // values were attached at assembly (product_source='crm'). If still
@@ -181,7 +244,11 @@ export async function processScoreJourney(job: Job<{ journeyId: string; suppress
       true, // withCoaching — journey-level brief
       org?.industry ?? null,
       true, // journeyMode
-      productNames
+      productNames,
+      // Any call in the set with contradicted speaker labels makes the whole
+      // combined transcript unsafe to judge by label — evidence for a given
+      // checkpoint could have come from any of the calls.
+      withTranscript.some((c) => c.speaker_integrity_flag !== null)
     );
 
     await recordUsage({
@@ -195,45 +262,6 @@ export async function processScoreJourney(job: Job<{ journeyId: string; suppress
       cacheReadTokens: usage.cache_read_input_tokens,
       cacheCreationTokens: usage.cache_creation_input_tokens,
     });
-
-    // Second-opinion verify pass on flagged critical/high items — same as
-    // per-call scoring (jobs/processors/score.ts).
-    try {
-      const flagged = output.items.flatMap((it) => {
-        const item = scoreable.find((i) => i.id === it.scorecard_item_id);
-        if (!item) return [];
-        if (isItemPass(normalizeScore(it.score, item.score_type), scoringSettings.passThreshold)) return [];
-        const severity = deriveSeverity(Number(item.weight), item.severity);
-        if (severity !== 'critical' && severity !== 'high') return [];
-        return [{
-          id: item.id,
-          label: item.label,
-          description: item.description,
-          score_type: item.score_type,
-          expectation: item.expectation,
-          consent_gate: item.consent_gate,
-          firstPass: { score: it.score, evidence: it.evidence, reasoning: it.reasoning },
-        }];
-      });
-      if (flagged.length > 0) {
-        const verified = await verifyItems(combinedTranscript, flagged, kbContext, org?.industry ?? null);
-        const byId = new Map(verified.items.map((v) => [v.scorecard_item_id, v]));
-        output.items = output.items.map((it) => byId.get(it.scorecard_item_id) ?? it);
-        await recordUsage({
-          organizationId: journey.organization_id,
-          callId: wrapUp.id,
-          provider: 'anthropic',
-          operation: 'verify',
-          modelId: verified.model,
-          inputTokens: verified.usage.input_tokens,
-          outputTokens: verified.usage.output_tokens,
-          cacheReadTokens: verified.usage.cache_read_input_tokens,
-          cacheCreationTokens: verified.usage.cache_creation_input_tokens,
-        });
-      }
-    } catch (verifyErr) {
-      console.error(`[ScoreJourney] Verify pass failed for ${journeyId}, using first-pass scores:`, (verifyErr as Error).message);
-    }
 
     const scoredIds = new Set(output.items.map((it) => it.scorecard_item_id));
     const expectedIds = new Set(aiItems.map((i) => i.id));
@@ -362,16 +390,17 @@ export async function processScoreJourney(job: Job<{ journeyId: string; suppress
 
       await tx.query(
         `UPDATE journeys SET
-           status = 'scored', branch = $2, overall_score = $3, pass = $4,
-           model_id = $5, coaching = $6, scored_at = now(), updated_at = now()
+           status = 'scored', branch = $2, branch_source = $3, overall_score = $4, pass = $5,
+           model_id = $6, coaching = $7, scored_at = now(), updated_at = now()
          WHERE id = $1`,
-        [journeyId, branch, overallScore, pass, model, output.coaching ? JSON.stringify(output.coaching) : null]
+        [journeyId, branch, branchSource, overallScore, pass, model,
+         output.coaching ? JSON.stringify(output.coaching) : null]
       );
     });
 
     console.log(
       `[ScoreJourney] Journey ${journeyId} scored: ${overallScore.toFixed(1)} (${pass ? 'PASS' : 'FAIL'})` +
-      `${branch ? ` [branch: ${branch}]` : ''} across ${withTranscript.length} call(s)`
+      `${branch ? ` [branch: ${branch} via ${branchSource}]` : ''} across ${withTranscript.length} call(s)`
     );
 
     const customer = await queryOne<{ name: string | null; phone_normalized: string | null; external_crm_id: string | null }>(

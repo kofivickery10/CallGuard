@@ -1,6 +1,6 @@
 import { Job } from 'bullmq';
 import { query, queryOne, withTransaction } from '../../db/client.js';
-import { scoreTranscript, verifyItems, normalizeScore } from '../../services/scoring.js';
+import { scoreTranscript, normalizeScore } from '../../services/scoring.js';
 import { getKBContext } from '../../services/kb.js';
 import { evaluateAlertsForCall } from '../../services/alert-evaluator.js';
 import { getLearningContext } from '../../services/learning-context.js';
@@ -18,7 +18,11 @@ export async function processScoring(job: Job<{ callId: string }>) {
   console.log(`[Scoring] Processing call ${callId}`);
 
   const call = await queryOne<
-    Call & { speaker_attribution_confidence: number | null; customer_id: string | null }
+    Call & {
+      speaker_attribution_confidence: number | null;
+      speaker_integrity_flag: string | null;
+      customer_id: string | null;
+    }
   >('SELECT * FROM calls WHERE id = $1', [callId]);
 
   if (!call || !call.transcript_text) {
@@ -163,7 +167,10 @@ export async function processScoring(job: Job<{ callId: string }>) {
       kbContext,
       learning,
       coachingEnabled,
-      org?.industry ?? null
+      org?.industry ?? null,
+      false, // journeyMode
+      [],    // productsSold — product-aware scoring is journey-level
+      call.speaker_integrity_flag !== null
     );
 
     // Record the scoring call's usage (Haiku first pass, incl. prompt-cache tokens).
@@ -178,59 +185,6 @@ export async function processScoring(job: Job<{ callId: string }>) {
       cacheReadTokens: usage.cache_read_input_tokens,
       cacheCreationTokens: usage.cache_creation_input_tokens,
     });
-
-    // Second opinion: re-check the failed critical/high-severity items on a
-    // stronger model before they become breaches. This catches first-pass false
-    // positives in the compliance register without paying for the bigger model
-    // on every item. Best-effort: a verify failure falls back to first-pass scores.
-    try {
-      const flagged = output.items.flatMap((it) => {
-        const item = scoreable.find((i) => i.id === it.scorecard_item_id);
-        if (!item) return [];
-        if (isItemPass(normalizeScore(it.score, item.score_type), scoringSettings.passThreshold)) return [];
-        const severity = deriveSeverity(Number(item.weight), item.severity);
-        if (severity !== 'critical' && severity !== 'high') return [];
-        return [{
-          id: item.id,
-          label: item.label,
-          description: item.description,
-          score_type: item.score_type,
-          expectation: item.expectation,
-          consent_gate: item.consent_gate,
-          firstPass: { score: it.score, evidence: it.evidence, reasoning: it.reasoning },
-        }];
-      });
-
-      if (flagged.length > 0) {
-        const verified = await verifyItems(
-          call.transcript_text,
-          flagged,
-          kbContext,
-          org?.industry ?? null
-        );
-        const byId = new Map(verified.items.map((v) => [v.scorecard_item_id, v]));
-        output.items = output.items.map((it) => byId.get(it.scorecard_item_id) ?? it);
-        await recordUsage({
-          organizationId: call.organization_id,
-          callId,
-          provider: 'anthropic',
-          operation: 'verify',
-          modelId: verified.model,
-          inputTokens: verified.usage.input_tokens,
-          outputTokens: verified.usage.output_tokens,
-          cacheReadTokens: verified.usage.cache_read_input_tokens,
-          cacheCreationTokens: verified.usage.cache_creation_input_tokens,
-        });
-        console.log(
-          `[Scoring] Verified ${flagged.length} flagged item(s) for call ${callId} on ${verified.model}`
-        );
-      }
-    } catch (verifyErr) {
-      console.error(
-        `[Scoring] Verify pass failed for call ${callId}, using first-pass scores:`,
-        (verifyErr as Error).message
-      );
-    }
 
     // The model must return exactly one score per AI-scoreable item — no
     // fewer (a silently-skipped item would understate the true failure

@@ -136,7 +136,7 @@ export async function cleanupTranscript(
   const speakerCheckBlock = needsSpeakerCheck
     ? `\n\n## Speaker label verification\n\nThe Agent/Customer labels below come from an automated guess (based on who speaks first in a mono recording) and can be swapped throughout — check them against conversational content before cleaning up:\n\n- The **Agent** usually introduces themselves and their company by name, asks fact-find/discovery questions, and explains products, pricing or compliance wording.\n- The **Customer** usually answers personal questions, reacts to what's proposed, and is the one being sold to or advised.\n\nDecide one of three verdicts from the conversational content:
 
-- **swapped** — strong, unambiguous evidence the labels are inverted throughout (e.g. the turns labelled "Customer" are clearly the one introducing the company and asking the fact-find questions). Swap every "Agent:"/"Customer:" label in your output — one full swap, decided once; never reorder turns or swap only some of them.
+- **swapped** — strong, unambiguous evidence the labels are inverted throughout (e.g. the turns labelled "Customer" are clearly the one introducing the company and asking the fact-find questions). Report this verdict but do NOT change any labels yourself: leave every "Agent:"/"Customer:" exactly as given. The swap is applied mechanically to your output afterwards.
 - **confirmed** — clear, positive evidence the labels are already correct: the "Agent" turns really are the one who introduces themselves/the company, asks fact-find questions and explains products/compliance, and the "Customer" turns really are the one answering personal questions and reacting. Leave the labels exactly as given.
 - **unclear** — the content doesn't give strong evidence either way (too short, ambiguous, or heavily redacted). Leave the labels exactly as given. Do NOT report "confirmed" unless you actually see the evidence — a guess is "unclear".`
     : '';
@@ -177,7 +177,7 @@ Fix the transcript while following these rules STRICTLY:
 
 1. **Fix mishearings** using domain context and the examples above
 2. **Fix grammar and punctuation** - clean up sentence structure without changing meaning
-3. **Speaker labels**: ${needsSpeakerCheck ? 'apply the one-time full-swap decision from the Speaker label verification section above, consistently across every turn' : 'keep every speaker label exactly as-is - do not change "Agent:" or "Customer:" labels'} - do not reorder or remove any turns
+3. **Speaker labels**: keep every speaker label exactly as-is - do not change "Agent:" or "Customer:" labels, even if you judged them swapped (report that in the verdict line instead; the swap is applied for you) - and do not reorder or remove any turns
 4. **Do not add, remove, or fabricate any content** - only fix what's clearly wrong
 5. **Keep the exact same format** - each turn starts with "Agent: " or "Customer: " followed by their text, separated by blank lines
 6. **Preserve UK English** spelling (e.g. "organise", "colour", "centre")
@@ -304,5 +304,18 @@ ${needsSpeakerCheck
     return { text: rawTranscript, speakerLabelsSwapped: false, speakerVerdict };
   }
 
-  return { text: cleanedBody, speakerLabelsSwapped: speakerVerdict === 'swapped', speakerVerdict };
+  // Apply the swap ourselves rather than trusting the model to have done it.
+  //
+  // The model used to be asked to invert every label WHILE rewriting the text.
+  // Over a long transcript it applied that inconsistently — swapping the opening
+  // and drifting later — which yielded a transcript that was neither correctly
+  // labelled nor cleanly inverted, and so could not be repaired by any single
+  // flip. Splitting the decision (model) from the edit (code) makes the swap
+  // total and verifiable by construction, and it is the same mechanical path
+  // already used on the truncation fallback above.
+  if (speakerVerdict === 'swapped') {
+    return { text: swapSpeakerLabels(cleanedBody), speakerLabelsSwapped: true, speakerVerdict };
+  }
+
+  return { text: cleanedBody, speakerLabelsSwapped: false, speakerVerdict };
 }

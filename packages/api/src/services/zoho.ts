@@ -73,6 +73,11 @@ interface ZohoConnectionRow {
   sale_module: string | null;
   policies_related_list: string | null;
   policy_product_field: string | null;
+  // API name of the stage/status field on the policies related list (Zoho
+  // Deals' standard "Stage"). Read on the same related-list GET as the product
+  // field, so it costs no extra CRM call. Null = not configured; journey branch
+  // resolution then falls back to transcript keywords (migration 071).
+  policy_stage_field: string | null;
   policies_module: string | null;
   status: 'pending' | 'active' | 'disabled';
 }
@@ -81,7 +86,8 @@ const ROW_COLUMNS = `id, organization_id, dc_region, client_id,
   client_secret_encrypted, refresh_token_encrypted, access_token_encrypted,
   token_expires_at, api_domain, module, field_map,
   inbound_secret_encrypted, sale_phone_field, qa_module, qa_field_map,
-  sale_module, policies_related_list, policy_product_field, policies_module, status`;
+  sale_module, policies_related_list, policy_product_field, policy_stage_field,
+  policies_module, status`;
 
 export function accountsHost(region: ZohoRegion): string {
   return ZOHO_ACCOUNTS_HOST[region] ?? ZOHO_ACCOUNTS_HOST.eu;
@@ -409,6 +415,12 @@ export interface SaleProductsResult {
   // configured=true means the related records don't exist yet (keep polling)
   // — the caller distinguishes this from "not configured".
   products: string[];
+  // Distinct stage values off the same records (policy_stage_field), used to
+  // resolve the journey's scoring branch. Empty when the field isn't configured
+  // or the records carry no value. Multiple policies on one sale can disagree
+  // (one on risk, one referred) — the caller decides what to do with that
+  // rather than this silently picking one.
+  stages: string[];
 }
 
 /**
@@ -431,8 +443,15 @@ export async function fetchSaleProducts(
     !conn.policies_related_list ||
     !conn.policy_product_field
   ) {
-    return { configured: false, products: [] };
+    return { configured: false, products: [], stages: [] };
   }
+
+  // The stage field rides along on the same request when configured — the
+  // journey's scoring branch comes from the CRM's own record of whether the
+  // policy went on risk, not from paraphrases in the transcript (migration 071).
+  const requestedFields = [conn.policy_product_field, conn.policy_stage_field].filter(
+    (f): f is string => !!f
+  );
 
   const { accessToken, apiDomain } = await ensureAccessToken(conn);
   // v8 makes `fields` mandatory on a related-records GET (unlike v2) — omitting
@@ -441,11 +460,11 @@ export async function fetchSaleProducts(
     apiDomain,
     accessToken,
     `/crm/v8/${encodeURIComponent(conn.sale_module)}/${encodeURIComponent(recordId)}/` +
-      `${encodeURIComponent(conn.policies_related_list)}?fields=${encodeURIComponent(conn.policy_product_field)}`
+      `${encodeURIComponent(conn.policies_related_list)}?fields=${encodeURIComponent(requestedFields.join(','))}`
   );
   // 204 = the related list exists but has no records yet (policies not created
   // yet — the common case in the gap between the sale and its policies).
-  if (res.status === 204) return { configured: true, products: [] };
+  if (res.status === 204) return { configured: true, products: [], stages: [] };
   if (!res.ok) {
     throw new Error(
       `Zoho related-list fetch failed: ${res.status} ${(await res.text()).slice(0, 300)}`
@@ -454,12 +473,18 @@ export async function fetchSaleProducts(
 
   const body = (await res.json()) as { data?: Array<Record<string, unknown>> };
   const field = conn.policy_product_field;
+  const stageField = conn.policy_stage_field;
   const products = new Set<string>();
+  const stages = new Set<string>();
   for (const rec of body.data ?? []) {
     const value = relatedFieldValue(rec[field]);
     if (value) products.add(value);
+    if (stageField) {
+      const stage = relatedFieldValue(rec[stageField]);
+      if (stage) stages.add(stage);
+    }
   }
-  return { configured: true, products: [...products] };
+  return { configured: true, products: [...products], stages: [...stages] };
 }
 
 // Raised when a metadata read fails because the token predates the widened

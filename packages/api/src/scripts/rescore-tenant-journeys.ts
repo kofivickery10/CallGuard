@@ -22,7 +22,13 @@
 import { pool, query, queryOne } from '../db/client.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const VALID_STATUSES = ['pending', 'scoring', 'scored', 'failed'] as const;
+// 'skipped' (migration 071) is a deliberate not-taken-up sale. It is a valid
+// --status target so a sale wrongly skipped (e.g. the CRM stage was corrected
+// afterwards) can be pulled back in, but it is NOT in the --all default sweep
+// below for the same reason it was skipped: re-scoring it would put a breach
+// register back on business that never completed.
+const VALID_STATUSES = ['pending', 'scoring', 'scored', 'failed', 'skipped'] as const;
+const ALL_SWEEP_STATUSES = ['pending', 'scoring', 'scored', 'failed'] as const;
 
 async function resolveOrg(idOrName: string): Promise<{ id: string; name: string }> {
   if (UUID_RE.test(idOrName)) {
@@ -60,7 +66,7 @@ async function main() {
   }
 
   const statuses = all
-    ? [...VALID_STATUSES]
+    ? [...ALL_SWEEP_STATUSES]
     : (statusArg ? statusArg.split(',').map((s) => s.trim()) : ['scoring', 'failed']);
   const invalid = statuses.filter((s) => !VALID_STATUSES.includes(s as typeof VALID_STATUSES[number]));
   if (invalid.length) {
