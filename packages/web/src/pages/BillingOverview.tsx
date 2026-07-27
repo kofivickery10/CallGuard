@@ -46,8 +46,8 @@ export default function BillingOverview() {
       <div>
         <h1 className="text-page-title">Billing Overview</h1>
         <p className="text-page-sub text-text-secondary">
-          Every adviser on your team is a billed seat, whether or not they took a call this month.
-          Admins, supervisors and viewers aren&rsquo;t charged.
+          Every person on your team is a billed seat, whatever their role and whether or not they took
+          a call this month.
         </p>
       </div>
 

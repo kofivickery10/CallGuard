@@ -23,7 +23,6 @@ const emptyForm = { name: '', email: '', external_agent_id: '', role: 'adviser',
 
 interface CreatedState {
   can_login: boolean;
-  role: string;
   name: string;
   email: string;
   invite_sent: boolean;
@@ -52,7 +51,6 @@ export function InviteAgentModal({ open, onClose }: InviteAgentModalProps) {
       const res = await api.post<CreatedAgentResponse>('/agents', payload);
       setCreated({
         can_login: form.can_login,
-        role: form.role,
         name: form.name,
         email: form.email,
         invite_sent: res.invite_sent ?? false,
@@ -108,8 +106,8 @@ export function InviteAgentModal({ open, onClose }: InviteAgentModalProps) {
                 <h3 className="text-section-title text-text-primary mb-2">Team member added</h3>
                 <p className="text-table-cell text-text-subtle">
                   <span className="text-text-primary font-medium">{created.name}</span> has been added for call
-                  attribution{created.role === 'adviser' ? ' and billing' : ''}. They can&rsquo;t sign in — you can
-                  enable a login later from the team list.
+                  attribution and billing. They can&rsquo;t sign in — you can enable a login later from the
+                  team list.
                 </p>
               </>
             )}
@@ -140,10 +138,7 @@ export function InviteAgentModal({ open, onClose }: InviteAgentModalProps) {
                 <span>
                   <span className="block text-table-cell font-medium text-text-secondary">Can sign in to CallGuard</span>
                   <span className="block text-[11px] text-text-muted">
-                    Leave off for a front-line adviser you only want calls attributed to.
-                    {form.role === 'adviser'
-                      ? ' They still count as a billable seat.'
-                      : " This role isn't billed either way."}
+                    Leave off for a front-line adviser you only want calls attributed to. They still count as a billable seat.
                   </span>
                 </span>
               </label>
