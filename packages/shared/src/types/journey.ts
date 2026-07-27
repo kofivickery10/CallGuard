@@ -28,6 +28,10 @@ export interface Journey {
   product_source: ProductSource | null;
   error_message: string | null;
   scored_at: string | null;
+  // Firm exemplar: an admin marked this whole sale as "what good looks like".
+  // Fed into the scoring prompt via getLearningContext (requires ai_learning).
+  is_exemplar: boolean;
+  exemplar_reason: string | null;
   created_at: string;
   updated_at: string;
 }

@@ -9,8 +9,9 @@ import { CoachingPanel } from '../components/CoachingPanel';
 import { CapturePanel } from '../components/CapturePanel';
 import { ItemResultBadge } from '../components/ItemResultBadge';
 import { SeverityBadge } from '../components/BreachBadges';
+import { ScoreCorrectionModal } from '../components/ScoreCorrectionModal';
 import { formatPhone } from '../lib/format';
-import { isItemPass } from '@callguard/shared';
+import { isItemPass, hasFeature } from '@callguard/shared';
 import type { JourneyWithDetail, ItemResult, Product } from '@callguard/shared';
 
 const RESULT_ORDER: Record<ItemResult, number> = { fail: 0, manual_review: 1, pass: 2, na: 3 };
@@ -25,7 +26,14 @@ export function JourneyDetail() {
   // Re-scoring re-spends scoring tokens and re-pushes to the CRM, so it's
   // admin-only (see POST /journeys/:id/rescore) and gated behind a confirm.
   const isAdmin = user?.role === 'admin';
+  const canLearn = user ? hasFeature(user.organization_plan, 'ai_learning') : false;
   const [resolvingId, setResolvingId] = useState<string | null>(null);
+  const [correctingItem, setCorrectingItem] = useState<{
+    itemScoreId: string;
+    label: string;
+    pass: boolean;
+    evidence: string | null;
+  } | null>(null);
 
   const { data: journey, isLoading, isError } = useQuery({
     queryKey: ['journey', id],
@@ -62,6 +70,19 @@ export function JourneyDetail() {
       { confirmLabel: 'Re-score' }
     );
     if (ok) rescoreMutation.mutate();
+  };
+
+  const handleToggleExemplar = async () => {
+    if (!journey) return;
+    try {
+      await api.post(`/journeys/${journey.id}/exemplar`, {
+        is_exemplar: !journey.is_exemplar,
+        reason: !journey.is_exemplar ? 'Marked by admin' : undefined,
+      });
+      queryClient.invalidateQueries({ queryKey: ['journey', id] });
+    } catch (err) {
+      await notify('Failed to update exemplar: ' + (err instanceof Error ? err.message : 'unknown error'));
+    }
   };
 
   const resolve = async (itemScoreId: string, result: 'pass' | 'fail') => {
@@ -175,6 +196,26 @@ export function JourneyDetail() {
           )}
         </div>
         <div className="flex items-center gap-3">
+          {canAction && journey.status === 'scored' && canLearn && (
+            <button
+              type="button"
+              onClick={handleToggleExemplar}
+              className="inline-flex items-center gap-1 text-xs text-text-muted hover:text-secondary font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+              title={journey.is_exemplar ? 'Remove exemplar flag' : 'Mark this sale as a firm exemplar — feeds the AI learning system'}
+              aria-pressed={journey.is_exemplar}
+            >
+              {journey.is_exemplar ? (
+                <svg className="w-4 h-4 inline-block text-secondary" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <path d="M12 2l3 7h7l-5.5 4 2 7L12 16l-6.5 4 2-7L2 9h7z" />
+                </svg>
+              ) : (
+                <svg className="w-4 h-4 inline-block" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M12 2l3 7h7l-5.5 4 2 7L12 16l-6.5 4 2-7L2 9h7z" />
+                </svg>
+              )}
+              {journey.is_exemplar ? 'Exemplar' : 'Mark as exemplar'}
+            </button>
+          )}
           {isAdmin && (
             <button
               type="button"
@@ -312,6 +353,22 @@ export function JourneyDetail() {
                         </button>
                       </div>
                     )}
+                    {(item.result === 'pass' || item.result === 'fail') && canAction && canLearn && (
+                      <button
+                        onClick={() =>
+                          setCorrectingItem({
+                            itemScoreId: item.id,
+                            label: item.label,
+                            pass: isItemPass(Number(item.normalized_score ?? 0)),
+                            evidence: item.evidence,
+                          })
+                        }
+                        className="text-badge text-text-muted hover:text-primary font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
+                        title="Override this verdict — saved as a calibration example for the AI"
+                      >
+                        Correct
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -374,6 +431,18 @@ export function JourneyDetail() {
       {/* Data Capture record (module-gated: renders nothing when the sale has
           no capture run). Deliberately below and separate from the QA score. */}
       <CapturePanel journeyId={journey.id} isAdmin={isAdmin} />
+
+      {correctingItem && (
+        <ScoreCorrectionModal
+          kind="journey"
+          parentId={journey.id}
+          itemScoreId={correctingItem.itemScoreId}
+          itemLabel={correctingItem.label}
+          currentPass={correctingItem.pass}
+          evidence={correctingItem.evidence}
+          onClose={() => setCorrectingItem(null)}
+        />
+      )}
     </div>
   );
 }

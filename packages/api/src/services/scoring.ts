@@ -104,7 +104,7 @@ function buildScoringPrompt(
 
   const exemplarBlock = learning?.exemplars && learning.exemplars.length > 0
     ? `\n\n## Firm Exemplars (What Good Looks Like Here)\n\nThe following excerpts are from calls this firm has marked as exemplars - representative of the quality bar. Score the current call against this standard:\n\n${learning.exemplars
-        .map((e, i) => `**Exemplar ${i + 1}${e.reason ? ` - ${e.reason}` : ''}:**\n${e.excerpt.slice(0, 400)}`)
+        .map((e, i) => `**Exemplar ${i + 1}${e.reason ? ` - ${e.reason}` : ''}:**\n${e.excerpt.slice(0, EXEMPLAR_EXCERPT_CHARS)}`)
         .join('\n\n')}\n`
     : '';
 
@@ -181,6 +181,12 @@ ${transcript}
 
   return { cached, dynamic };
 }
+
+// How much of an exemplar transcript to feed the scoring prompt. Lives in the
+// cached prefix (billed once per ~1h window), so a generous cap costs little
+// but lets the model actually see the good behaviour — a compliant close often
+// sits well past the opening 400 chars, especially for a whole-sale exemplar.
+export const EXEMPLAR_EXCERPT_CHARS = 1500;
 
 const DEFAULT_SCORING_MODEL = CLAUDE_MODELS.HAIKU;
 
