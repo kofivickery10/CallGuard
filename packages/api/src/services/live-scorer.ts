@@ -1,5 +1,6 @@
 import { config } from '../config.js';
 import { CLAUDE_MODELS } from '@callguard/shared';
+import { CACHE_1H, CACHE_TTL_HEADERS } from './scoring.js';
 
 interface ScorecardItem {
   id: string;
@@ -36,11 +37,15 @@ const PASS_THRESHOLD_NORMALIZED = 70;
  */
 export async function detectLiveBreaches(input: LiveScoringInput): Promise<{
   breaches: LiveBreach[];
-  usage: { input_tokens: number; output_tokens: number };
+  usage: { input_tokens: number; output_tokens: number; cache_creation_input_tokens: number; cache_read_input_tokens: number };
   model: string;
 }> {
   const model = CLAUDE_MODELS.SONNET;
-  const empty = { breaches: [] as LiveBreach[], usage: { input_tokens: 0, output_tokens: 0 }, model };
+  const empty = {
+    breaches: [] as LiveBreach[],
+    usage: { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+    model,
+  };
   if (!config.anthropic.apiKey) {
     throw new Error('ANTHROPIC_API_KEY not set - required for live scoring');
   }
@@ -55,7 +60,12 @@ export async function detectLiveBreaches(input: LiveScoringInput): Promise<{
   const { default: Anthropic } = await import('@anthropic-ai/sdk');
   const client = new Anthropic({ apiKey: config.anthropic.apiKey });
 
-  const criteriaBlock = remaining
+  // Full scorecard, not `remaining` - the criteria list must stay byte-identical
+  // across passes (and across calls scored against the same scorecard) for the
+  // cache_control breakpoint below to hit. Already-emitted items are filtered
+  // out of the result afterwards (see the alreadyEmittedItemIds check below),
+  // not out of the prompt.
+  const criteriaBlock = input.scorecardItems
     .map((item, i) => {
       return `Criterion ${i + 1} (ID: ${item.id})
   Label: ${item.label}
@@ -63,7 +73,11 @@ export async function detectLiveBreaches(input: LiveScoringInput): Promise<{
     })
     .join('\n\n');
 
-  const prompt = `You are a live compliance monitor watching a sales/service call as it happens. The call is still in progress - the transcript below is everything spoken so far.
+  // Stable prefix (identical for every 30s pass of this call, and for every
+  // other call scored against the same scorecard/KB) - cached so it's billed
+  // once per ~1h window instead of on every pass (see finding 1: this was
+  // previously ~5-6x the cost of a call).
+  const cached = `You are a live compliance monitor watching a sales/service call as it happens. The call is still in progress - the transcript below is everything spoken so far.
 
 Identify ONLY criteria where you are highly confident a breach has already occurred (failed) based on what's been said. Be conservative - if the missing element could plausibly come later in the call, do NOT flag it.
 
@@ -73,9 +87,11 @@ Rules:
 - Confidence threshold: only return items where you'd bet money on the breach being real
 
 ${input.kbContext ? `## Business Context\n${input.kbContext}\n\n` : ''}## Criteria to monitor
-${criteriaBlock}
+${criteriaBlock}`;
 
-## In-progress transcript
+  // Volatile suffix - grows every pass, so it can never be part of the cached
+  // prefix.
+  const dynamic = `## In-progress transcript
 <transcript>
 ${input.partialTranscript}
 </transcript>
@@ -85,7 +101,15 @@ Return only the criteria you are confident have already been breached.`;
   const response = await client.messages.create({
     model,
     max_tokens: 1024,
-    messages: [{ role: 'user', content: prompt }],
+    messages: [
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: cached, cache_control: CACHE_1H },
+          { type: 'text', text: dynamic },
+        ],
+      },
+    ],
     tools: [
       {
         name: 'report_live_breaches',
@@ -111,9 +135,14 @@ Return only the criteria you are confident have already been breached.`;
       },
     ],
     tool_choice: { type: 'tool', name: 'report_live_breaches' },
-  });
+  }, CACHE_TTL_HEADERS);
 
-  const usage = { input_tokens: response.usage.input_tokens, output_tokens: response.usage.output_tokens };
+  const usage = {
+    input_tokens: response.usage.input_tokens,
+    output_tokens: response.usage.output_tokens,
+    cache_creation_input_tokens: response.usage.cache_creation_input_tokens ?? 0,
+    cache_read_input_tokens: response.usage.cache_read_input_tokens ?? 0,
+  };
 
   const toolUse = response.content.find((b) => b.type === 'tool_use');
   if (!toolUse || toolUse.type !== 'tool_use') return { ...empty, usage };

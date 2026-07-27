@@ -184,6 +184,8 @@ export class StreamWorker {
         modelId: model,
         inputTokens: usage.input_tokens,
         outputTokens: usage.output_tokens,
+        cacheReadTokens: usage.cache_read_input_tokens,
+        cacheCreationTokens: usage.cache_creation_input_tokens,
       });
 
       for (const b of breaches) {
