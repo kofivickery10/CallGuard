@@ -38,6 +38,10 @@ interface OnboardConfig {
     mono_first_speaker?: string;
     deepgram_region?: string;
     adviser_channel?: number | null;
+    // How far back assembleJourney gathers a sale's calls (migration 072).
+    // Omit to keep the dialler/30-day default; set it for sectors whose cases
+    // run longer than a month, e.g. mortgage advice.
+    journey_window_days?: number;
   };
   scorecard?: {
     name: string;
@@ -165,6 +169,7 @@ async function main() {
          mono_first_speaker = COALESCE($11, mono_first_speaker),
          deepgram_region = COALESCE($9, deepgram_region),
          adviser_channel = COALESCE($10, adviser_channel),
+         journey_window_days = COALESCE($12, journey_window_days),
          updated_at = now()
        WHERE id = $1`,
       [
@@ -173,10 +178,10 @@ async function main() {
         cfg.scoring?.min_scoreable_words ?? null, cfg.scoring?.pass_threshold ?? null,
         cfg.scoring?.retention_days ?? null, cfg.scoring?.transcription_mode ?? null,
         cfg.scoring?.deepgram_region ?? null, cfg.scoring?.adviser_channel ?? null,
-        cfg.scoring?.mono_first_speaker ?? null,
+        cfg.scoring?.mono_first_speaker ?? null, cfg.scoring?.journey_window_days ?? null,
       ]
     );
-    console.log(`Set scoring policy (scope=${cfg.scoring?.scoring_scope}, retention=${cfg.scoring?.retention_days}d, mode=${cfg.scoring?.transcription_mode}).`);
+    console.log(`Set scoring policy (scope=${cfg.scoring?.scoring_scope}, retention=${cfg.scoring?.retention_days}d, mode=${cfg.scoring?.transcription_mode}, journey window=${cfg.scoring?.journey_window_days ?? 'default'}).`);
   } else {
     log(dry, `Would set scoring policy: ${JSON.stringify(cfg.scoring ?? {})}, industry="${cfg.org.industry ?? ''}".`);
   }

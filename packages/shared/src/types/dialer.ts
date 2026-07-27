@@ -24,6 +24,13 @@ export interface DialerFieldMap {
   // reports e.g. talking_time / billsec). Optional; absent → duration stays
   // null until transcription derives it. Existing stored maps stay valid.
   duration?: string[];
+  // Candidate keys for when the call actually happened. Without this, calls
+  // fall back to created_at (webhook arrival time) everywhere a chronology
+  // matters — which call in a journey is the wrap-up, and whether a call falls
+  // inside the journey's history window. Live webhooks arrive within seconds so
+  // the fallback usually looks right, but a replay, backfill or delayed
+  // delivery silently reorders the sale. Optional; existing maps stay valid.
+  call_date?: string[];
 }
 
 // Public shape returned to the admin UI — never includes encrypted secrets.

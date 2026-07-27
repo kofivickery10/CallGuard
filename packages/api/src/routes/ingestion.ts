@@ -132,7 +132,36 @@ const DEFAULT_CLOUDTALK_FIELD_MAP: DialerFieldMap = {
   // just null and ingestion falls back to the org's mono_first_speaker default.
   direction: ['direction', 'type', 'call_type', 'call_direction'],
   duration: ['talking_time', 'billsec', 'call_duration', 'duration', 'duration_seconds'],
+  // When the call actually happened. CloudTalk's payload naming varies by
+  // tenant/event, so this is tried as tolerantly as every other field.
+  call_date: ['started_at', 'start_time', 'call_started_at', 'started', 'call_time', 'date', 'created_at'],
 };
+
+// Parse a dialler-supplied timestamp into an ISO string. Accepts ISO-8601 and
+// epoch seconds/milliseconds (diallers send all three). Returns null for
+// anything unparseable or implausible rather than a guess — a wrong call_date
+// reorders a journey, which is worse than falling back to created_at.
+//
+// The plausibility window rejects epoch-0 sentinels and far-future values that
+// a bad parse produces; a genuine call is never decades old or tomorrow.
+function parseCallDate(raw: string | null): string | null {
+  if (!raw?.trim()) return null;
+  const value = raw.trim();
+
+  let date: Date;
+  if (/^\d{9,10}$/.test(value)) {
+    date = new Date(Number(value) * 1000); // epoch seconds
+  } else if (/^\d{12,13}$/.test(value)) {
+    date = new Date(Number(value));        // epoch milliseconds
+  } else {
+    date = new Date(value);                // ISO-8601 and friends
+  }
+
+  if (Number.isNaN(date.getTime())) return null;
+  const year = date.getUTCFullYear();
+  if (year < 2015 || date.getTime() > Date.now() + 24 * 60 * 60 * 1000) return null;
+  return date.toISOString();
+}
 const DEFAULT_RECORDING_FETCH_DELAY_SECONDS = 60;
 // Calls shorter than this are dropped at the webhook (no-answers, voicemails,
 // instant hangups) — only when CloudTalk reports a duration; unknown → kept.
@@ -190,6 +219,7 @@ export async function handleCloudTalkWebhook(
     const direction = normalizeCallDirection(pickField(body, fieldMap.direction));
     const durationRaw = pickField(body, fieldMap.duration ?? []);
     const durationSeconds = durationRaw && /^\d+$/.test(durationRaw) ? parseInt(durationRaw, 10) : null;
+    const callDate = parseCallDate(pickField(body, fieldMap.call_date ?? []));
 
     // One-line diagnostic of what CloudTalk actually sent, so field mapping can
     // be verified against a real payload without logging PII values. Lists the
@@ -198,8 +228,20 @@ export async function handleCloudTalkWebhook(
       `[CloudTalk] webhook keys=[${Object.keys(body).join(',')}] ` +
         `resolved: phone=${customerPhone ? 'y' : 'n'} name=${customerName ? 'y' : 'n'} ` +
         `agent=${agentEmail || agentExternalId || agentName ? 'y' : 'n'} ` +
-        `dur=${durationSeconds ?? 'n'} dir=${direction ?? 'n'}`
+        `dur=${durationSeconds ?? 'n'} dir=${direction ?? 'n'} date=${callDate ?? 'n'}`
     );
+
+    // No usable timestamp means journey ordering and the history window both
+    // fall back to webhook arrival time. That is right for a live delivery and
+    // wrong for a replay or a delayed one, so make the gap visible rather than
+    // letting it look deliberate.
+    if (!callDate) {
+      console.warn(
+        `[CloudTalk] no call date resolved for ${externalId ?? 'unknown call'} — ` +
+          `tried [${(fieldMap.call_date ?? []).join(',')}]. Journey ordering will fall back ` +
+          `to webhook arrival time; check the connection's field_map.call_date.`
+      );
+    }
 
     // Minimum-duration gate: no-answers, voicemails and instant hangups carry
     // no compliance content, clutter the list, and would waste transcription
@@ -250,6 +292,7 @@ export async function handleCloudTalkWebhook(
         agentName,
         customerPhone,
         customerName,
+        callDate,
         direction,
         durationSeconds,
         dialerConnectionId: conn?.id ?? null,
@@ -292,6 +335,7 @@ export async function handleCloudTalkWebhook(
           agentExternalId,
           agentName,
           customerPhone,
+          callDate,
           direction,
         },
         {

@@ -2,6 +2,7 @@ import { Job } from 'bullmq';
 import { query, queryOne } from '../../db/client.js';
 import { transcribeCall } from '../../services/transcription.js';
 import { cleanupTranscript, resolveSpeakerConfidence } from '../../services/transcript-cleanup.js';
+import { assessSpeakerIntegrity, UNRELIABLE_SPEAKER_CONFIDENCE } from '../../services/speaker-integrity.js';
 import { getKBContext } from '../../services/kb.js';
 import { evaluateAlertsForCall } from '../../services/alert-evaluator.js';
 import { recordUsage } from '../../services/usage.js';
@@ -118,10 +119,31 @@ export async function processTranscription(job: Job<{ callId: string }>) {
     // confidence above the consent-gate floor so a genuinely-correct mono call
     // no longer routes every consent gate to manual review. 'unclear' (no
     // strong evidence either way) leaves the heuristic confidence untouched.
-    const speakerAttributionConfidence = resolveSpeakerConfidence(
+    let speakerAttributionConfidence = resolveSpeakerConfidence(
       result.speaker_attribution_confidence,
       cleanup.speakerVerdict
     );
+
+    // Deterministic cross-check on the labels the cleanup pass just blessed.
+    // The cleanup verdict is the only thing that can lift a mono call above the
+    // consent-gate floor, so it cannot be the sole judge of its own work: an
+    // observed 33-minute call was 'confirmed' with the labels inverted across
+    // most of it, which auto-scored every consent gate and produced a critical
+    // breach quoting the customer as if they were the adviser. Where the content
+    // markers contradict the verdict, we refuse the lift and pin confidence
+    // below the floor (services/speaker-integrity.ts).
+    const integrity = assessSpeakerIntegrity(cleanup.text, cleanup.speakerVerdict);
+    if (integrity.flag) {
+      speakerAttributionConfidence = Math.min(
+        speakerAttributionConfidence,
+        UNRELIABLE_SPEAKER_CONFIDENCE
+      );
+      console.warn(
+        `[Transcription] Call ${callId}: speaker attribution flagged as ${integrity.flag} — ` +
+          `${integrity.detail}. Confidence pinned to ${speakerAttributionConfidence}; ` +
+          `consent gates will route to manual review.`
+      );
+    }
 
     // Store transcript
     await query(
@@ -130,14 +152,16 @@ export async function processTranscription(job: Job<{ callId: string }>) {
         transcript_text = $2,
         duration_seconds = $3,
         speaker_attribution_confidence = $4,
+        speaker_integrity_flag = $5,
         status = 'transcribed',
         updated_at = now()
-       WHERE id = $5`,
+       WHERE id = $6`,
       [
         JSON.stringify(result.raw),
         cleanup.text,
         result.duration_seconds,
         speakerAttributionConfidence,
+        integrity.flag,
         callId,
       ]
     );

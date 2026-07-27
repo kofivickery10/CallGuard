@@ -13,18 +13,33 @@ const STATUS_FILTERS: Array<{ value: '' | JourneyStatus; label: string }> = [
   { value: 'pending', label: 'Pending' },
   { value: 'scoring', label: 'Scoring' },
   { value: 'failed', label: 'Failed' },
+  // NTU sales are deliberately not scored (migration 071). They still belong in
+  // the list — a compliance manager needs to see the business exists — but they
+  // are not a score anyone should read, so isolating them matters.
+  { value: 'skipped', label: 'Not taken up' },
 ];
 
 export function Journeys() {
   const scoreOnly = useScoreOnly();
   const [status, setStatus] = useState<'' | JourneyStatus>('');
+  const [adviser, setAdviser] = useState('');
   const [page, setPage] = useState(1);
 
+  // Distinct closing advisers, for the filter. Cached separately from the list
+  // so paging or changing the status filter doesn't refetch it.
+  const { data: advisersData } = useQuery({
+    queryKey: ['journey-advisers'],
+    queryFn: () => api.get<{ data: string[] }>('/journeys/advisers'),
+    staleTime: 5 * 60 * 1000,
+  });
+  const advisers = advisersData?.data ?? [];
+
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['journeys', status, page],
+    queryKey: ['journeys', status, adviser, page],
     queryFn: () =>
       api.get<{ data: JourneyListItem[]; total: number; page: number; limit: number }>(
-        `/journeys?page=${page}&limit=50${status ? `&status=${status}` : ''}`
+        `/journeys?page=${page}&limit=50${status ? `&status=${status}` : ''}` +
+          (adviser ? `&agent=${encodeURIComponent(adviser)}` : '')
       ),
     refetchInterval: (query) => {
       // Poll while anything is still in flight so scores appear without a manual refresh.
@@ -38,7 +53,7 @@ export function Journeys() {
 
   // Score-only tenants don't see the pass/fail verdict, so the Result column is
   // dropped entirely rather than left blank.
-  const columns = ['Customer', ...(scoreOnly ? [] : ['Result']), 'Score', 'Branch', 'Calls', 'Status', 'Scored', ''];
+  const columns = ['Customer', 'Adviser', ...(scoreOnly ? [] : ['Result']), 'Score', 'Branch', 'Calls', 'Status', 'Scored', ''];
   const colCount = columns.length;
 
   return (
@@ -68,6 +83,34 @@ export function Journeys() {
               {f.label}
             </button>
           ))}
+
+          {advisers.length > 0 && (
+            <>
+              <label htmlFor="adviser-filter" className="sr-only">
+                Filter by adviser
+              </label>
+              <select
+                id="adviser-filter"
+                value={adviser}
+                onChange={(e) => {
+                  setAdviser(e.target.value);
+                  setPage(1);
+                }}
+                className={`px-3 py-1.5 rounded-btn text-table-cell font-semibold border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
+                  adviser
+                    ? 'border-primary text-primary bg-card'
+                    : 'border-border text-text-secondary bg-card hover:bg-sidebar-hover'
+                }`}
+              >
+                <option value="">All advisers</option>
+                {advisers.map((a) => (
+                  <option key={a} value={a}>
+                    {a}
+                  </option>
+                ))}
+              </select>
+            </>
+          )}
         </div>
       </div>
 
@@ -135,6 +178,23 @@ export function Journeys() {
                       {j.customer_name || 'Unknown customer'}
                     </Link>
                     <div className="text-xs text-text-muted">{formatPhone(j.customer_phone) || '—'}</div>
+                  </td>
+                  <td className="px-5 py-3.5 text-table-cell text-text-cell">
+                    {j.agent_name ? (
+                      <span className="inline-flex items-center gap-1.5">
+                        <span className="truncate max-w-[10rem]">{j.agent_name}</span>
+                        {j.agent_count > 1 && (
+                          <span
+                            className="px-1.5 py-[1px] rounded-full text-badge font-semibold bg-table-header text-text-muted shrink-0"
+                            title={`This sale was handled by ${j.agent_count} advisers. Shown is the one who closed it — the same attribution used for breaches and CRM write-back.`}
+                          >
+                            +{j.agent_count - 1}
+                          </span>
+                        )}
+                      </span>
+                    ) : (
+                      <span className="text-text-muted">—</span>
+                    )}
                   </td>
                   {!scoreOnly && (
                     <td className="px-5 py-3.5">

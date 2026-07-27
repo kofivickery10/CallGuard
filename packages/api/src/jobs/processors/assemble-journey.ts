@@ -4,6 +4,8 @@ import { ingestionQueue } from '../queue.js';
 import { assembleJourney } from '../../services/journey.js';
 import { fetchSaleProducts } from '../../services/zoho.js';
 import { mapCrmValuesToProducts, type ResolvedProduct } from '../../services/product-resolution.js';
+import { isNoScoreCrmStage } from '@callguard/shared';
+import type { BranchConfig } from '@callguard/shared';
 
 export interface AssembleJourneyJobData {
   organizationId: string;
@@ -77,10 +79,28 @@ export async function processAssembleJourney(job: Job<AssembleJourneyJobData>) {
   // sale carried a record id to read the related list off.
   let products: ResolvedProduct[] = [];
   let productSource: 'crm' | null = null;
+  // The policy stage (Zoho Deals' "Stage") off the same related-list read —
+  // the authoritative signal for which scoring branch the sale belongs to
+  // (on risk vs referred). Null when the org hasn't configured the field or
+  // the records carry no value; score-journey then falls back to transcript
+  // keywords and records branch_source='keyword'/'default' (migration 071).
+  let crmStage: string | null = null;
   if (recordId && productDeadlineAt) {
     let landed = false;
     try {
       const sale = await fetchSaleProducts(organizationId, recordId);
+      // Several policies on one sale can sit at different stages. Scoring is
+      // per-sale and has one branch, so an inconsistent set is not something to
+      // silently pick a winner from — leave the stage null and let the fallback
+      // run, with the disagreement logged for the tenant to see.
+      if (sale.stages.length === 1) {
+        crmStage = sale.stages[0]!;
+      } else if (sale.stages.length > 1) {
+        console.warn(
+          `[AssembleJourney] ${phone}: policies disagree on stage (${sale.stages.join(' | ')}) — ` +
+            `leaving branch to the transcript fallback`
+        );
+      }
       if (!sale.configured) {
         // Org isn't set up for CRM product resolution after all — leave products
         // to the transcript fallback at score time.
@@ -132,6 +152,25 @@ export async function processAssembleJourney(job: Job<AssembleJourneyJobData>) {
     }
   }
 
+  // A sale the customer did not take up is not a sale. Bail before assembly so
+  // no journey row is created, no audio is hydrated, nothing is transcribed and
+  // nothing reaches the breach register or the CRM. Checked here rather than at
+  // score time because everything expensive happens in between.
+  if (crmStage) {
+    const scorecard = await queryOne<{ id: string; branch_config: BranchConfig | null }>(
+      `SELECT id, branch_config FROM scorecards
+        WHERE organization_id = $1 AND is_active = true
+        ORDER BY created_at ASC LIMIT 1`,
+      [organizationId]
+    );
+    if (isNoScoreCrmStage(crmStage, scorecard?.branch_config)) {
+      console.log(
+        `[AssembleJourney] ${phone}: CRM stage "${crmStage}" is a no-score state — skipping this sale`
+      );
+      return;
+    }
+  }
+
   const journeyId = await assembleJourney({
     organizationId,
     customerId: customer.id,
@@ -140,6 +179,7 @@ export async function processAssembleJourney(job: Job<AssembleJourneyJobData>) {
     clientName,
     products,
     productSource,
+    crmStage,
     triggerContext: triggerContext ?? null,
   });
 
@@ -149,6 +189,7 @@ export async function processAssembleJourney(job: Job<AssembleJourneyJobData>) {
   }
   console.log(
     `[AssembleJourney] ${phone} → journey ${journeyId}` +
-      (productSource === 'crm' ? ` (${products.length} product(s) from CRM)` : '')
+      (productSource === 'crm' ? ` (${products.length} product(s) from CRM)` : '') +
+      (crmStage ? ` [CRM stage: ${crmStage}]` : ' [no CRM stage]')
   );
 }

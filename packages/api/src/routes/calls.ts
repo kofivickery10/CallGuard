@@ -9,6 +9,7 @@ import { uploadFile, deleteFile, readFile } from '../services/storage.js';
 import { transcriptionQueue } from '../jobs/queue.js';
 import { AppError } from '../middleware/errors.js';
 import { ingestCall, fetchRemoteAudio, upsertCustomer, normalizePhone } from '../services/ingestion.js';
+import { prepareMediaForIngest } from '../services/media.js';
 import { recordAuditEvent } from '../services/audit.js';
 import { getScoringSettings } from '../services/tenant-settings.js';
 import type { Call, CallScore, CallItemScore, BreachSeverity } from '@callguard/shared';
@@ -93,12 +94,21 @@ callRouter.post('/upload', upload.single('audio'), async (req, res, next) => {
     }
 
     const callId = uuid();
+    // A Teams/Zoom recording arrives as a video container — reduce it to audio
+    // before anything is stored, so the rest of the pipeline only ever handles
+    // audio (services/media.ts). A no-op for audio uploads.
+    const media = await prepareMediaForIngest({
+      buffer: req.file.buffer,
+      fileName: req.file.originalname,
+      mimeType: req.file.mimetype,
+    });
+
     // path.basename strips any directory component a crafted originalname
     // (e.g. "../../../etc/x") would otherwise carry into the storage key.
-    const safeFileName = path.basename(req.file.originalname);
+    const safeFileName = path.basename(media.fileName);
     const fileKey = `calls/${req.user!.organizationId}/${callId}/${safeFileName}`;
 
-    await uploadFile(fileKey, req.file.buffer, req.file.mimetype);
+    await uploadFile(fileKey, media.buffer, media.mimeType);
 
     // If member, auto-assign to self
     let agentId = req.body.agent_id || null;
@@ -145,8 +155,10 @@ callRouter.post('/upload', upload.single('audio'), async (req, res, next) => {
         req.user!.userId,
         safeFileName,
         fileKey,
-        req.file.size,
-        req.file.mimetype,
+        // The stored audio's size/type, not the uploaded container's — the
+        // video file itself is never persisted.
+        media.buffer.length,
+        media.mimeType,
         agentId,
         agentName,
         req.body.customer_phone || null,

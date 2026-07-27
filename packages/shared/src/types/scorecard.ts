@@ -12,12 +12,42 @@ export interface AppliesWhen {
 // How a scorecard's branches are detected on a call/journey transcript.
 export interface BranchConfig {
   branches: string[];
-  detect: 'keyword';
+  // 'keyword' = transcript phrase matching only. 'crm_field' = prefer the
+  // sale's CRM stage (see `crm_values`), falling back to keywords when the
+  // stage is missing or unmapped. Both keep `branches[0]` as the last resort.
+  detect: 'keyword' | 'crm_field';
   // Per non-default branch, keyword/phrase triggers checked against the
   // transcript. The first branch with a match wins; no match = the first
   // entry in `branches` (the implicit default).
+  //
+  // Keyword matching is a weak signal — an adviser who says "we'll leave it
+  // to the underwriters now" rather than the literal configured phrase is
+  // silently scored under the default branch, which mutes the branch's real
+  // checkpoints and scores the other branch's against a sale they don't apply
+  // to. Prefer `crm_values` wherever the CRM carries a stage.
   keywords?: Record<string, string[]>;
+  // Per branch, the CRM stage values that map to it (case-insensitive, exact
+  // after trimming). Read off the sale's policy records — for Zoho that is the
+  // `policy_stage_field` on the policies related list. Authoritative when it
+  // resolves: the CRM is the system of record for whether a policy went on
+  // risk, and the transcript only ever paraphrases it.
+  crm_values?: Record<string, string[]>;
+  // CRM stage values that mean "this sale did not complete — do not score it".
+  // Matched exactly, like crm_values, and checked BEFORE branch resolution.
+  //
+  // For a protection firm these are the NTU ("not taken up") states: the
+  // customer walked away, so there is no sale to hold against the adviser and
+  // scoring one would put breaches on the register for business that never
+  // existed. A sale at one of these stages is skipped at assembly — no audio is
+  // fetched, nothing is transcribed, nothing is pushed to the CRM.
+  no_score_crm_values?: string[];
 }
+
+// How a journey's branch was determined, for auditability. A 'default' branch
+// is a guess — no CRM stage and no keyword matched — and must be surfaced as
+// such rather than presented as fact, since it silently decides which
+// checkpoints apply (see resolveBranchWithSource).
+export type BranchSource = 'crm' | 'keyword' | 'default';
 
 export interface ScorecardItem {
   id: string;

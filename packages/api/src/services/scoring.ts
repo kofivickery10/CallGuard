@@ -61,7 +61,13 @@ function buildScoringPrompt(
   // journey, so caching it would bust the per-scorecard cache. Criteria not
   // relevant to these products are already filtered out before scoring; this
   // just gives the model the context to judge the ones that remain.
-  productsSold: string[] = []
+  productsSold: string[] = [],
+  // True when the speaker-integrity check found the Agent/Customer labels
+  // contradicted by conversational content (services/speaker-integrity.ts).
+  // Escalates the standing "labels may be swapped" caveat into a per-call
+  // instruction. Lives in the DYNAMIC block, not the cached prefix — it varies
+  // per call, so caching it would bust the per-scorecard cache.
+  speakerLabelsUnreliable: boolean = false
 ): { cached: string; dynamic: string } {
   const criteriaBlock = items
     .map((item, i) => {
@@ -147,13 +153,17 @@ ${criteriaBlock}
 
 Evaluate the call transcript${journeyMode ? '(s)' : ''} (provided below) against each criterion listed above. For each criterion:
 1. Determine the appropriate score based on the scoring type
-2. Provide a direct quote from the transcript as evidence (or state "No relevant evidence found")
+2. Provide a direct quote from the transcript as evidence. Where the topic was discussed but falls short of what the criterion requires, quote what WAS said and name the missing element — the verdict in that case is still NOT MET. Finding related discussion is not the same as the criterion being satisfied; quoting it only makes your reasoning checkable. Reserve "No relevant evidence found" for criteria the call genuinely never touches, because a reviewer who can see the topic being discussed will not trust a verdict claiming it never was.
 3. Explain your reasoning in 1-2 sentences
 4. Assess your confidence from 0.0 to 1.0
 ${journeyMode ? `
 This is a customer JOURNEY spanning multiple calls, each delimited by a header like "=== Call 2 (2026-01-15, agent: Jane) ===". Score each criterion against the whole journey, not any single call in isolation — a statement, disclosure or consent counts as met if it was given anywhere across the calls, even if the criterion's specific call ended without it. When you cite evidence, prefix the quote with the matching call marker in brackets exactly as shown, e.g. \`[Call 2] "...quote..."\`, so it's clear which call it came from.
 ` : ''}
-Be strict but fair. Only score based on what is explicitly present in the transcript${journeyMode ? '(s)' : ''}.
+Where a criterion requires SEVERAL things — "explained the exclusions and the 30-day cancellation rights", "confirmed the name, address and date of birth" — it is met only if the transcript shows EVERY element. Partial satisfaction is not a pass: score it as not met and name the missing element in your reasoning. Delivering one half of a two-part disclosure convincingly is the single most common way a criterion gets wrongly marked as met.
+
+Be strict but fair, and be equally sceptical in both directions. A wrong failure puts a breach on a regulated firm's compliance register that the adviser will have to dispute. A wrong pass is quieter and worse: it tells the firm a mandatory disclosure was given when it was not, and nobody ever appeals being told they are compliant. Do not mark a criterion met just because the adviser covered the topic — check they actually did the thing the criterion asks for.
+
+Only score based on what is explicitly present in the transcript${journeyMode ? '(s)' : ''}.
 If the transcript${journeyMode ? '(s are)' : ' is'} unclear or the criterion cannot be evaluated, give the lowest score and note low confidence.${withCoaching ? `
 
 ## Coaching Output (REQUIRED)
@@ -171,7 +181,17 @@ Coaching tone: supportive, specific, actionable. Avoid generic platitudes like "
     ? `\n\n## Products Sold On This Sale\n\nThe customer bought: ${productsSold.join(', ')}. Judge each criterion in the context of these products. The criteria you have been given are already scoped to what's relevant to this sale.\n`
     : '';
 
-  const dynamic = `${priorCoachingBlock}${productsBlock}
+  // An automated check found adviser-specific content (scripted questions,
+  // compliance wording, pricing) sitting under "Customer:" turns. Attributing a
+  // customer's own words to the adviser has produced false CRITICAL breaches —
+  // e.g. failing "the adviser did not lead the customer" on evidence that was
+  // the customer speaking — so on these calls the model must judge role from
+  // content and decline to score anything that hinges on an unresolvable label.
+  const speakerWarningBlock = speakerLabelsUnreliable
+    ? `\n\n## ⚠ Speaker labels on THIS transcript are unreliable\n\nAn automated check found content that only an adviser would say appearing under "Customer:" turns (and/or the reverse). The labels below are NOT trustworthy — they may be inverted for part or all of the call.\n\n- Work out who is actually speaking from the CONTENT of each turn, not the label. The adviser reads scripted questions, quotes prices, gives compliance wording and drives the call; the customer answers about their own health, money and circumstances.\n- Where a criterion depends on WHO said something and you cannot establish that from content, score it as not met and set confidence at or below 0.4, stating in your reasoning that speaker attribution was unreliable.\n- Do NOT raise a failure that rests solely on attributing a turn to the adviser when the content suggests it was the customer.\n`
+    : '';
+
+  const dynamic = `${priorCoachingBlock}${productsBlock}${speakerWarningBlock}
 
 ## Call Transcript${journeyMode ? 's (this customer\'s journey)' : ''}
 
@@ -188,7 +208,23 @@ ${transcript}
 // sits well past the opening 400 chars, especially for a whole-sale exemplar.
 export const EXEMPLAR_EXCERPT_CHARS = 1500;
 
-const DEFAULT_SCORING_MODEL = CLAUDE_MODELS.HAIKU;
+// One strong pass, not a cheap pass plus a second opinion.
+//
+// The pipeline used to score on Haiku and re-check flagged items on Sonnet. That
+// made sense when the second opinion touched a handful of items, but it never
+// paid off in practice: the verify stage broke twice on output budgeting, both
+// times silently, and on the sale that exposed it Haiku produced a false breach
+// at 0.95 confidence ("no evidence of GP contact" on a call where it was
+// explained four times), missed two explicit consent "yes" responses, and passed
+// a compound criterion on half its content. Every human correction on record is
+// a Haiku error.
+//
+// Scoring once on Sonnet costs roughly half the two-pass design (~$0.16 vs
+// ~$0.30 per sale on a 44-item scorecard), removes an entire stage and its
+// failure modes, and applies the strictness and compound-criteria rules that
+// used to live in the verify prompt to EVERY item on the first pass rather than
+// only to items that reached a second one.
+const DEFAULT_SCORING_MODEL = CLAUDE_MODELS.SONNET_5;
 
 // How many times to re-sample the scoring call when the model returns a valid
 // but incomplete item set (see the coverage retry in scoreTranscript).
@@ -209,7 +245,10 @@ export async function scoreTranscript(
   journeyMode: boolean = false,
   // Product-aware scoring: names of the products this sale covered, surfaced to
   // the model as context (see buildScoringPrompt).
-  productsSold: string[] = []
+  productsSold: string[] = [],
+  // The speaker-integrity check flagged this transcript's Agent/Customer labels
+  // as contradicted by content — see buildScoringPrompt.
+  speakerLabelsUnreliable: boolean = false
 ): Promise<{ output: ScoringOutput; usage: { input_tokens: number; output_tokens: number; cache_creation_input_tokens: number; cache_read_input_tokens: number }; model: string }> {
   if (!config.anthropic.apiKey) {
     throw new Error('ANTHROPIC_API_KEY is not set in .env - needed for scoring');
@@ -221,7 +260,7 @@ export async function scoreTranscript(
 
   const model = modelOverride ?? DEFAULT_SCORING_MODEL;
 
-  const prompt = buildScoringPrompt(transcript, items, kbContext, withCoaching, learning, industry, journeyMode, productsSold);
+  const prompt = buildScoringPrompt(transcript, items, kbContext, withCoaching, learning, industry, journeyMode, productsSold, speakerLabelsUnreliable);
 
   // Scale the output budget to the scorecard size: each scored item returns an
   // id + score + confidence + an evidence quote + reasoning (~300-400 tokens).
@@ -251,6 +290,23 @@ export async function scoreTranscript(
     // non-streaming request whose max_tokens implies it could run past 10 minutes
     // ("Streaming is strongly recommended..."). finalMessage() returns the same
     // Message shape.
+    // NOTE ON THINKING — deliberately not set.
+    //
+    // Sonnet 5 runs adaptive thinking by default when the parameter is omitted
+    // (Sonnet 4.6 and Haiku do not). Scoring therefore runs WITH thinking, and
+    // that is the configuration measured in scripts/eval-scoring-models.ts:
+    // 8/8 against hand-checked ground truth, ~5.5k output tokens, 76s.
+    //
+    // It is left implicit rather than stated explicitly because the pinned SDK
+    // predates adaptive thinking — its types only admit 'enabled' | 'disabled',
+    // so setting it would mean casting around the type system to send a field
+    // the SDK does not model. Not worth the risk for a parameter whose value is
+    // already the default. Make it explicit when the SDK is next upgraded.
+    //
+    // The consequence to remember: max_tokens caps thinking AND response
+    // together. The per-item budget above has ample headroom (a measured 44-item
+    // run used ~5.5k of ~23.7k), but a model change or a much larger scorecard
+    // should be re-measured rather than assumed.
     const response = await client.messages.stream({
       model,
       max_tokens: maxTokens,
@@ -357,14 +413,28 @@ export async function scoreTranscript(
 
     // Coverage retry (the flaky-omission case above). A complete set is the
     // common outcome, so this usually runs once.
+    //
+    // This must test exactly what the callers' 1:1 guards test (score.ts /
+    // score-journey.ts): missing ids, duplicated ids, AND ids that weren't
+    // requested. Checking only for missing ones let a duplicate or hallucinated
+    // id sail past here and get rejected downstream instead — throwing away the
+    // whole job and burning a BullMQ retry to re-sample something this loop
+    // exists to re-sample for free.
     const got = new Set(candidate.items.map((it) => it.scorecard_item_id));
     const missing = [...requestedIds].filter((id) => !got.has(id));
-    if (missing.length === 0) break;
+    const duplicated = candidate.items.length - got.size;
+    const unknown = candidate.items.filter((it) => !requestedIds.has(it.scorecard_item_id)).length;
+    if (missing.length === 0 && duplicated === 0 && unknown === 0) break;
 
+    const faults = [
+      missing.length > 0 ? `${missing.length} missing` : null,
+      duplicated > 0 ? `${duplicated} duplicated` : null,
+      unknown > 0 ? `${unknown} unrequested` : null,
+    ].filter(Boolean).join(', ');
     if (attempt < SCORING_COVERAGE_ATTEMPTS) {
-      console.warn(`[Scoring] attempt ${attempt}/${SCORING_COVERAGE_ATTEMPTS} omitted ${missing.length} of ${requestedIds.size} item(s) — re-sampling`);
+      console.warn(`[Scoring] attempt ${attempt}/${SCORING_COVERAGE_ATTEMPTS} returned ${faults} of ${requestedIds.size} item(s) — re-sampling`);
     } else {
-      console.error(`[Scoring] still missing ${missing.length} item(s) after ${SCORING_COVERAGE_ATTEMPTS} attempts — returning incomplete set (caller coverage guard will reject)`);
+      console.error(`[Scoring] still ${faults} after ${SCORING_COVERAGE_ATTEMPTS} attempts — returning incomplete set (caller coverage guard will reject)`);
     }
   }
 
@@ -372,152 +442,6 @@ export async function scoreTranscript(
     // output is assigned on every iteration; the loop runs at least once.
     output: output!,
     usage,
-    model,
-  };
-}
-
-/**
- * Independent second opinion on a small set of flagged (failed) criteria, run on
- * a stronger model. Used to confirm or overturn first-pass breaches before they
- * hit the register — high accuracy where it matters, without paying for the
- * bigger model on every item of every call.
- */
-export async function verifyItems(
-  transcript: string,
-  items: Array<ScorecardItemInput & {
-    firstPass: { score: number; evidence: string; reasoning: string };
-  }>,
-  kbContext: string | null = null,
-  industry: string | null = null
-): Promise<{
-  items: ItemScoreOutput[];
-  usage: {
-    input_tokens: number;
-    output_tokens: number;
-    cache_creation_input_tokens: number;
-    cache_read_input_tokens: number;
-  };
-  model: string;
-}> {
-  const model = CLAUDE_MODELS.SONNET;
-  if (!config.anthropic.apiKey) {
-    throw new Error('ANTHROPIC_API_KEY is not set in .env - needed for verification');
-  }
-  if (items.length === 0) {
-    return {
-      items: [],
-      usage: { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
-      model,
-    };
-  }
-
-  const { default: Anthropic } = await import('@anthropic-ai/sdk');
-  const client = new Anthropic({ apiKey: config.anthropic.apiKey });
-
-  const domain = industry?.trim();
-  const headline = domain ? `a UK ${domain} call` : 'a UK sales or customer-service call';
-
-  const criteriaBlock = items
-    .map((item, i) => {
-      const scaleDesc = {
-        binary: 'Score 1 if yes, 0 if no.',
-        scale_1_5: 'Score from 1 (poor) to 5 (excellent).',
-        scale_1_10: 'Score from 1 (poor) to 10 (excellent).',
-      }[item.score_type];
-      const expectationLine = item.expectation ? `\n  Expectation: ${item.expectation}` : '';
-      const consentLine = item.consent_gate
-        ? '\n  CONSENT GATE: only confirm this as met if the customer gives an explicit, affirmative response. Do not accept inferred consent as grounds to overturn a failure.'
-        : '';
-      return `Criterion ${i + 1} (ID: ${item.id}):
-  Label: ${item.label}
-  ${item.description ? `Rubric: ${item.description}` : ''}${expectationLine}${consentLine}
-  Scoring: ${scaleDesc}
-  First-pass verdict (to confirm or overturn): scored ${item.firstPass.score} — ${item.firstPass.reasoning || 'no reasoning given'} (evidence: ${item.firstPass.evidence || 'none cited'})`;
-    })
-    .join('\n\n');
-
-  const kbBlock = kbContext?.trim()
-    ? `\n\n## Business Knowledge Base\n\n${kbContext}\n`
-    : '';
-
-  // Stable per-org prefix (instructions + KB) vs per-call suffix (the flagged
-  // criteria + transcript). The prefix is most of this prompt's tokens when a
-  // KB is configured, and it's identical for every verify in the org — cache
-  // it (1h TTL, same reasoning as scoreTranscript) so only the per-call part
-  // bills at Sonnet's full input rate. Orgs without a KB fall below Sonnet's
-  // minimum cacheable prefix and silently skip caching, which is harmless.
-  const cachedPrefix = `You are a senior compliance QA reviewer providing an independent second opinion on ${headline}. A faster first-pass model marked the criteria below as FAILED (a breach). Re-evaluate each one strictly and independently against the transcript, then either CONFIRM the failure or OVERTURN it if the first pass got it wrong.
-
-Be rigorous in both directions: a wrong breach in a regulated firm's compliance register is costly, and so is a missed one. Only score a criterion as met (passed) if the transcript clearly shows it was satisfied; only confirm a failure if the transcript clearly shows it was not.
-
-Personal/sensitive data is redacted to typed tags like [PII_NAME_1], [PHONE_NUMBER_1] or [CREDIT_CARD_1]. A tag is positive evidence the information was provided/collected - do NOT confirm a failure simply because a value is redacted. Only where a criterion needs the agent to confirm a read-back value MATCHES the customer's, treat the match as unverifiable and judge on whether the confirmation step occurred.
-
-For each criterion return the corrected score, a direct quote from the transcript as evidence (or "No relevant evidence found"), 1-2 sentences of reasoning, and your confidence from 0.0 to 1.0.${kbBlock}`;
-
-  const dynamic = `## Criteria to re-check
-
-${criteriaBlock}
-
-## Call Transcript
-
-<transcript>
-${transcript}
-</transcript>`;
-
-  const response = await client.messages.create({
-    model,
-    max_tokens: 2048,
-    messages: [
-      {
-        role: 'user',
-        content: [
-          { type: 'text', text: cachedPrefix, cache_control: CACHE_1H },
-          { type: 'text', text: dynamic },
-        ],
-      },
-    ],
-    tools: [
-      {
-        name: 'submit_scores',
-        description: 'Submit the re-checked evaluation scores',
-        input_schema: {
-          type: 'object' as const,
-          properties: {
-            items: {
-              type: 'array',
-              items: {
-                type: 'object',
-                properties: {
-                  scorecard_item_id: { type: 'string' },
-                  score: { type: 'number' },
-                  confidence: { type: 'number', minimum: 0, maximum: 1 },
-                  evidence: { type: 'string' },
-                  reasoning: { type: 'string' },
-                },
-                required: ['scorecard_item_id', 'score', 'confidence', 'evidence', 'reasoning'],
-              },
-            },
-          },
-          required: ['items'],
-        },
-      },
-    ],
-    tool_choice: { type: 'tool', name: 'submit_scores' },
-  }, CACHE_TTL_HEADERS);
-
-  const toolUse = response.content.find((block) => block.type === 'tool_use');
-  if (!toolUse || toolUse.type !== 'tool_use') {
-    throw new Error('Verifier did not return structured scores');
-  }
-
-  return {
-    items: (toolUse.input as { items: ItemScoreOutput[] }).items,
-    usage: {
-      input_tokens: response.usage.input_tokens,
-      output_tokens: response.usage.output_tokens,
-      cache_creation_input_tokens: response.usage.cache_creation_input_tokens ?? 0,
-      cache_read_input_tokens: response.usage.cache_read_input_tokens ?? 0,
-    },
     model,
   };
 }

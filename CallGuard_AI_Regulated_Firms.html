@@ -1,0 +1,1425 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8" />
+<title>CallGuard AI — Audit-ready evidence from every customer conversation</title>
+<style>
+  @font-face {
+    font-family: 'Inter';
+    src: url('landing/fonts/InterVariable.woff2') format('woff2-variations');
+    font-weight: 300 700;
+    font-style: normal;
+    font-display: block;
+  }
+
+  @page { size: A4; margin: 0; }
+
+  :root {
+    /* Brand tokens — BRAND_GUIDELINES.md §3 */
+    --primary: #4A9E6E;
+    --primary-hover: #3D8A5E;
+    --primary-light: #E8F0E8;
+    --ai-dark: #6CC18D;
+    --tagline-dark: #E8F0E8;
+
+    --pass: #2D6E4A;
+    --pass-bg: #E8F5E8;
+    --fail: #C0392B;
+    --fail-bg: #FDE8E8;
+    --review: #B8860B;
+    --review-bg: #FEF3E0;
+    --processing: #2D5A9E;
+    --processing-bg: #E8F0FA;
+
+    --page: #F8FAF8;
+    --card: #FFFFFF;
+    --border: #E2E8E2;
+    --border-light: #F0F5F0;
+
+    --text-primary: #1A2E1A;
+    --text-secondary: #5A6E5A;
+    --text-muted: #8A9E8A;
+    --text-subtle: #6A7E6A;
+    --text-cell: #3A4E3A;
+
+    --ink-deep: #12220F;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  html, body {
+    background: var(--page);
+    color: var(--text-primary);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+    font-size: 10.5pt;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    font-feature-settings: 'kern' 1, 'liga' 1;
+  }
+
+  .page {
+    width: 210mm;
+    height: 297mm;
+    padding: 16mm 18mm 14mm;
+    page-break-after: always;
+    break-after: page;
+    position: relative;
+    background: var(--page);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .page:last-child { page-break-after: auto; break-after: auto; }
+
+  .no-break { page-break-inside: avoid; break-inside: avoid; }
+
+  /* ─────────── shared type ─────────── */
+
+  .eyebrow {
+    font-size: 8pt;
+    font-weight: 600;
+    letter-spacing: 0.9pt;
+    text-transform: uppercase;
+    color: var(--primary);
+    margin-bottom: 4mm;
+  }
+
+  h2.sec {
+    font-size: 20pt;
+    font-weight: 700;
+    letter-spacing: -0.4pt;
+    line-height: 1.15;
+    color: var(--text-primary);
+    margin-bottom: 3mm;
+  }
+
+  p.sec-sub {
+    font-size: 10.5pt;
+    color: var(--text-subtle);
+    line-height: 1.6;
+    max-width: 158mm;
+    margin-bottom: 6mm;
+  }
+
+  h3.sub {
+    font-size: 12pt;
+    font-weight: 700;
+    letter-spacing: -0.2pt;
+    color: var(--text-primary);
+    margin-bottom: 2.5mm;
+  }
+
+  strong { font-weight: 600; color: var(--text-primary); }
+  em { font-style: normal; color: var(--primary); font-weight: 600; }
+
+  /* ─────────── cover ─────────── */
+
+  .cover {
+    background:
+      radial-gradient(120% 90% at 84% 4%, rgba(74,158,110,0.34) 0%, rgba(74,158,110,0) 58%),
+      linear-gradient(158deg, #12220F 0%, #1A2E1A 46%, #24401F 100%);
+    color: #FFFFFF;
+    justify-content: space-between;
+    padding: 20mm 18mm 16mm;
+  }
+
+  .cover-logo { width: 74mm; height: auto; display: block; }
+
+  .cover-audience {
+    display: inline-block;
+    align-self: flex-start;
+    padding: 2.2mm 5mm;
+    border: 1px solid rgba(232,240,232,0.34);
+    border-radius: 999px;
+    font-size: 8.5pt;
+    font-weight: 600;
+    letter-spacing: 0.7pt;
+    text-transform: uppercase;
+    color: var(--tagline-dark);
+    margin-bottom: 8mm;
+  }
+
+  .cover h1 {
+    font-size: 33pt;
+    font-weight: 700;
+    letter-spacing: -1pt;
+    line-height: 1.08;
+    color: #FFFFFF;
+    max-width: 150mm;
+  }
+  .cover h1 span { color: var(--ai-dark); }
+
+  .cover-lede {
+    font-size: 11.5pt;
+    line-height: 1.62;
+    color: rgba(232,240,232,0.9);
+    max-width: 142mm;
+    margin-top: 6mm;
+  }
+
+  .cover-rule {
+    width: 26mm;
+    height: 3px;
+    background: var(--ai-dark);
+    border-radius: 2px;
+    margin: 9mm 0 7mm;
+  }
+
+  .cover-stats {
+    display: flex;
+    gap: 0;
+    border-top: 1px solid rgba(232,240,232,0.2);
+    padding-top: 6mm;
+  }
+  .cover-stat { flex: 1; padding-right: 6mm; }
+  .cover-stat:not(:first-child) {
+    border-left: 1px solid rgba(232,240,232,0.2);
+    padding-left: 6mm;
+  }
+  .cover-stat .v {
+    font-size: 19pt;
+    font-weight: 700;
+    letter-spacing: -0.5pt;
+    color: var(--ai-dark);
+    line-height: 1.1;
+  }
+  .cover-stat .l {
+    font-size: 8.5pt;
+    color: rgba(232,240,232,0.78);
+    line-height: 1.45;
+    margin-top: 1.5mm;
+  }
+
+  .cover-foot {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    font-size: 8.5pt;
+    color: rgba(232,240,232,0.6);
+    letter-spacing: 0.3pt;
+    margin-top: 8mm;
+  }
+
+  /* ─────────── running header / footer ─────────── */
+
+  .runhead {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 3mm;
+    margin-bottom: 8mm;
+  }
+  .runhead .mark { display: flex; align-items: center; gap: 2.5mm; }
+  .runhead .mark svg { width: 6mm; height: 6mm; }
+  .runhead .mark span {
+    font-size: 8.5pt;
+    font-weight: 700;
+    letter-spacing: 0.2pt;
+    color: var(--text-primary);
+  }
+  .runhead .sec-name {
+    font-size: 8pt;
+    font-weight: 600;
+    letter-spacing: 0.7pt;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+
+  .runfoot {
+    margin-top: auto;
+    padding-top: 5mm;
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    font-size: 8pt;
+    color: var(--text-muted);
+    letter-spacing: 0.2pt;
+  }
+
+  /* ─────────── comparison ─────────── */
+
+  .compare {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 5mm;
+    margin-bottom: 5.5mm;
+  }
+  .comp-col {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    background: var(--card);
+  }
+  .comp-col.now { background: #FCFBFA; }
+  .comp-head {
+    padding: 3.5mm 5mm;
+    font-size: 9pt;
+    font-weight: 700;
+    letter-spacing: 0.4pt;
+    text-transform: uppercase;
+  }
+  .comp-col.now .comp-head { background: var(--fail-bg); color: var(--fail); }
+  .comp-col.cg .comp-head { background: var(--pass-bg); color: var(--pass); }
+  .comp-list { padding: 4mm 5mm 5mm; }
+  .comp-list li {
+    list-style: none;
+    font-size: 9.5pt;
+    line-height: 1.5;
+    color: var(--text-cell);
+    padding: 1.8mm 0 1.8mm 6mm;
+    position: relative;
+    border-bottom: 1px solid var(--border-light);
+  }
+  .comp-list li:last-child { border-bottom: none; }
+  .comp-list li::before {
+    position: absolute;
+    left: 0;
+    top: 1.8mm;
+    font-weight: 700;
+    font-size: 10pt;
+  }
+  .comp-col.now .comp-list li::before { content: '×'; color: var(--fail); }
+  .comp-col.cg .comp-list li::before { content: '✓'; color: var(--pass); }
+
+  /* ─────────── stat row ─────────── */
+
+  .statrow {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4mm;
+    margin-bottom: 5.5mm;
+  }
+  .stat {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 4mm 4.5mm;
+  }
+  .stat .v {
+    font-size: 21pt;
+    font-weight: 700;
+    letter-spacing: -0.6pt;
+    color: var(--primary);
+    line-height: 1.05;
+  }
+  .stat .k {
+    font-size: 8pt;
+    font-weight: 600;
+    letter-spacing: 0.5pt;
+    text-transform: uppercase;
+    color: var(--text-primary);
+    margin: 2mm 0 1mm;
+  }
+  .stat .d { font-size: 8.5pt; color: var(--text-secondary); line-height: 1.45; }
+
+  /* ─────────── steps ─────────── */
+
+  .steps { display: flex; flex-direction: column; gap: 4mm; }
+  .step {
+    display: grid;
+    grid-template-columns: 11mm 1fr;
+    gap: 5mm;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--primary);
+    border-radius: 10px;
+    padding: 5mm 5.5mm;
+  }
+  .step-n {
+    font-size: 17pt;
+    font-weight: 700;
+    color: var(--primary);
+    line-height: 1;
+    letter-spacing: -0.5pt;
+  }
+  .step h3 { font-size: 11.5pt; font-weight: 700; margin-bottom: 1.5mm; }
+  .step p { font-size: 9.5pt; color: var(--text-secondary); line-height: 1.55; }
+
+  /* ─────────── feature cards ─────────── */
+
+  .features { display: flex; flex-direction: column; gap: 4mm; }
+  .feature {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 5mm 5.5mm;
+    display: grid;
+    grid-template-columns: 9mm 1fr;
+    gap: 5mm;
+  }
+  .feature .ico {
+    width: 9mm; height: 9mm;
+    border-radius: 8px;
+    background: var(--primary-light);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .feature .ico svg { width: 5.2mm; height: 5.2mm; }
+  .feature h3 { font-size: 11.5pt; font-weight: 700; margin-bottom: 1.5mm; letter-spacing: -0.2pt; }
+  .feature p { font-size: 9.5pt; color: var(--text-secondary); line-height: 1.55; }
+
+  /* ─────────── callout ─────────── */
+
+  .callout {
+    background: var(--primary-light);
+    border-left: 3px solid var(--primary);
+    border-radius: 8px;
+    padding: 4.5mm 5.5mm;
+    font-size: 10pt;
+    line-height: 1.6;
+    color: var(--text-cell);
+  }
+  .callout .lbl {
+    display: block;
+    font-size: 8pt;
+    font-weight: 700;
+    letter-spacing: 0.7pt;
+    text-transform: uppercase;
+    color: var(--pass);
+    margin-bottom: 1.5mm;
+  }
+
+  .quiet {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 4mm 4.5mm;
+  }
+
+  .duo {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4mm;
+    align-items: start;
+  }
+
+  /* ─────────── principals grid ─────────── */
+
+  .oblig {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4mm;
+    margin-bottom: 6mm;
+  }
+  .oblig-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 4.5mm 5mm;
+  }
+  .oblig-card .t {
+    font-size: 10pt;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 1.5mm;
+  }
+  .oblig-card .b { font-size: 9pt; color: var(--text-secondary); line-height: 1.5; }
+  .oblig-card .tag {
+    display: inline-block;
+    font-size: 7.5pt;
+    font-weight: 700;
+    letter-spacing: 0.5pt;
+    text-transform: uppercase;
+    color: var(--pass);
+    background: var(--pass-bg);
+    padding: 1mm 2.5mm;
+    border-radius: 5px;
+    margin-top: 2.5mm;
+  }
+
+  /* ─────────── evidence sample ─────────── */
+
+  .evidence {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    margin-bottom: 5mm;
+  }
+  .ev-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 3.5mm 5mm;
+    background: #FAFCFA;
+    border-bottom: 1px solid var(--border);
+  }
+  .ev-head .t { font-size: 10pt; font-weight: 700; color: var(--text-primary); }
+  .ev-body { padding: 4mm 5mm 5mm; }
+  .ev-row {
+    display: grid;
+    grid-template-columns: 22mm 1fr;
+    gap: 4mm;
+    padding: 2.5mm 0;
+    border-bottom: 1px solid var(--border-light);
+  }
+  .ev-row:last-child { border-bottom: none; }
+  .ev-k {
+    font-size: 7.5pt;
+    font-weight: 700;
+    letter-spacing: 0.5pt;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    padding-top: 0.6mm;
+  }
+  .ev-v { font-size: 9.5pt; color: var(--text-cell); line-height: 1.5; }
+  .ev-quote {
+    font-style: italic;
+    color: var(--text-primary);
+    border-left: 2px solid var(--primary);
+    padding-left: 3.5mm;
+  }
+
+  .pill {
+    display: inline-block;
+    font-size: 8pt;
+    font-weight: 700;
+    letter-spacing: 0.4pt;
+    text-transform: uppercase;
+    padding: 1.2mm 3mm;
+    border-radius: 999px;
+  }
+  .pill-fail { background: var(--fail-bg); color: var(--fail); }
+  .pill-pass { background: var(--pass-bg); color: var(--pass); }
+  .pill-review { background: var(--review-bg); color: var(--review); }
+
+  .redact {
+    font-family: 'SF Mono', Menlo, Consolas, monospace;
+    font-size: 8.5pt;
+    background: var(--processing-bg);
+    color: var(--processing);
+    padding: 0.4mm 1.4mm;
+    border-radius: 3px;
+    font-style: normal;
+  }
+
+  /* ─────────── security list ─────────── */
+
+  .seclist { display: flex; flex-direction: column; gap: 3mm; }
+  .secitem {
+    display: grid;
+    grid-template-columns: 46mm 1fr;
+    gap: 5mm;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 4mm 5mm;
+  }
+  .secitem .k {
+    font-size: 9.5pt;
+    font-weight: 700;
+    color: var(--text-primary);
+    line-height: 1.4;
+  }
+  .secitem .v { font-size: 9pt; color: var(--text-secondary); line-height: 1.5; }
+
+  /* ─────────── pricing ─────────── */
+
+  .plans {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4mm;
+    margin-bottom: 6mm;
+  }
+  .plan {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 5mm 4.5mm;
+    display: flex;
+    flex-direction: column;
+  }
+  .plan.mid { border: 2px solid var(--primary); }
+  .plan .nm {
+    font-size: 11pt;
+    font-weight: 700;
+    color: var(--text-primary);
+  }
+  .plan .badge {
+    display: inline-block;
+    font-size: 7pt;
+    font-weight: 700;
+    letter-spacing: 0.5pt;
+    text-transform: uppercase;
+    color: #FFFFFF;
+    background: var(--primary);
+    padding: 0.8mm 2.2mm;
+    border-radius: 4px;
+    margin-left: 2mm;
+    vertical-align: 1.2mm;
+  }
+  .plan .pr {
+    font-size: 16pt;
+    font-weight: 700;
+    letter-spacing: -0.4pt;
+    color: var(--primary);
+    margin: 2mm 0 0.5mm;
+  }
+  .plan .pr small { font-size: 8.5pt; font-weight: 500; color: var(--text-muted); letter-spacing: 0; }
+  .plan .who {
+    font-size: 8.5pt;
+    color: var(--text-secondary);
+    line-height: 1.45;
+    padding-bottom: 3mm;
+    margin-bottom: 3mm;
+    border-bottom: 1px solid var(--border-light);
+    min-height: 11mm;
+  }
+  .plan ul { list-style: none; display: flex; flex-direction: column; gap: 1.8mm; }
+  .plan li {
+    font-size: 8.5pt;
+    color: var(--text-cell);
+    line-height: 1.4;
+    padding-left: 4.5mm;
+    position: relative;
+  }
+  .plan li::before {
+    content: '✓';
+    position: absolute;
+    left: 0;
+    color: var(--primary);
+    font-weight: 700;
+  }
+
+  .timeline { display: flex; gap: 0; margin-bottom: 4.5mm; }
+  .tl {
+    flex: 1;
+    padding: 0 4mm 0 0;
+    position: relative;
+  }
+  .tl:not(:first-child) { padding-left: 5mm; border-left: 1px solid var(--border); }
+  .tl .w {
+    font-size: 8pt;
+    font-weight: 700;
+    letter-spacing: 0.6pt;
+    text-transform: uppercase;
+    color: var(--primary);
+    margin-bottom: 1.5mm;
+  }
+  .tl .t { font-size: 9.5pt; font-weight: 700; color: var(--text-primary); margin-bottom: 1mm; }
+  .tl .d { font-size: 8.5pt; color: var(--text-secondary); line-height: 1.45; }
+
+  .cta {
+    background: linear-gradient(150deg, #1A2E1A 0%, #24401F 100%);
+    border-radius: 12px;
+    padding: 6mm 6.5mm;
+    color: #FFFFFF;
+  }
+  .cta h3 {
+    font-size: 15pt;
+    font-weight: 700;
+    letter-spacing: -0.3pt;
+    color: #FFFFFF;
+    margin-bottom: 2.5mm;
+  }
+  .cta p {
+    font-size: 9.5pt;
+    color: rgba(232,240,232,0.85);
+    line-height: 1.55;
+    max-width: 120mm;
+    margin-bottom: 5mm;
+  }
+  .cta-lines { display: flex; gap: 8mm; }
+  .cta-line .k {
+    font-size: 7.5pt;
+    font-weight: 700;
+    letter-spacing: 0.7pt;
+    text-transform: uppercase;
+    color: rgba(232,240,232,0.55);
+    margin-bottom: 1mm;
+  }
+  .cta-line .v { font-size: 11pt; font-weight: 600; color: var(--ai-dark); }
+
+  .asks {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4mm;
+    margin-bottom: 4mm;
+  }
+  .ask {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-top: 3px solid var(--primary);
+    border-radius: 10px;
+    padding: 4mm 4.5mm 4.5mm;
+  }
+  .ask .n {
+    font-size: 8pt;
+    font-weight: 700;
+    letter-spacing: 0.8pt;
+    color: var(--primary);
+    margin-bottom: 1.5mm;
+  }
+  .ask .t {
+    font-size: 9.5pt;
+    font-weight: 700;
+    color: var(--text-primary);
+    line-height: 1.35;
+    margin-bottom: 1.5mm;
+  }
+  .ask .d { font-size: 8.5pt; color: var(--text-secondary); line-height: 1.45; }
+
+  .pricenote {
+    font-size: 9pt;
+    line-height: 1.5;
+    color: var(--text-secondary);
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 3.5mm 5mm;
+    margin-bottom: 5mm;
+  }
+
+  .faq { display: flex; flex-direction: column; gap: 3.5mm; }
+  .faq-item {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 4mm 5mm;
+  }
+  .faq-item .q { font-size: 9.5pt; font-weight: 700; color: var(--text-primary); margin-bottom: 1.2mm; }
+  .faq-item .a { font-size: 9pt; color: var(--text-secondary); line-height: 1.5; }
+</style>
+</head>
+<body>
+
+<!-- ══════════ 1. COVER ══════════ -->
+<section class="page cover">
+  <svg class="cover-logo" xmlns="http://www.w3.org/2000/svg" viewBox="16 0 2427 512" role="img" aria-label="CallGuard AI"><g stroke-linejoin="round"><path d="M256 25 C310 45 376 60 430 68 Q451 72 451 92 L451 235 C451 345 372 432 256 491 C140 432 61 345 61 235 L61 92 Q61 72 82 68 C136 60 202 45 256 25 Z" fill="none" stroke="#4A9E6E" stroke-width="30"></path><path d="M256 64 C306 83 362 94 408 101 Q413 103 413 122 L413 237 C413 330 348 404 256 449 C164 404 99 330 99 237 L99 122 Q99 103 104 101 C150 94 206 83 256 64 Z" fill="#FFFFFF" stroke="#1A2E1A" stroke-width="22"></path><rect x="152" y="235" width="24" height="42" rx="12" fill="#4A9E6E"></rect><rect x="198" y="202" width="24" height="108" rx="12" fill="#4A9E6E"></rect><rect x="244" y="156" width="24" height="200" rx="12" fill="#4A9E6E"></rect><rect x="290" y="202" width="24" height="108" rx="12" fill="#4A9E6E"></rect><rect x="336" y="235" width="24" height="42" rx="12" fill="#4A9E6E"></rect></g><path d="M606.5 256.9Q606.5 227.9 620.0 204.9Q633.5 181.9 656.6 169.0Q679.8 156.1 707.3 156.1L707.3 156.1Q738.9 156.1 763.4 171.5Q788.0 187.0 799.1 215.4L799.1 215.4L760.2 215.4Q752.5 199.8 738.9 192.1Q725.2 184.5 707.3 184.5L707.3 184.5Q687.7 184.5 672.4 193.3Q657.1 202.1 648.4 218.5Q639.7 235.0 639.7 256.9L639.7 256.9Q639.7 278.8 648.4 295.2Q657.1 311.7 672.4 320.6Q687.7 329.6 707.3 329.6L707.3 329.6Q725.2 329.6 738.9 321.9Q752.5 314.3 760.2 298.6L760.2 298.6L799.1 298.6Q788.0 327.0 763.4 342.4Q738.9 357.7 707.3 357.7L707.3 357.7Q679.5 357.7 656.5 344.8Q633.5 331.9 620.0 308.9Q606.5 285.9 606.5 256.9L606.5 256.9ZM826.0 277.0Q826.0 253.5 835.8 235.3Q845.6 217.1 862.5 207.0Q879.4 197.0 899.9 197.0L899.9 197.0Q918.3 197.0 932.1 204.2Q945.9 211.4 954.1 222.2L954.1 222.2L954.1 199.5L986.8 199.5L986.8 356L954.1 356L954.1 332.7Q945.9 343.8 931.7 351.2Q917.5 358.6 899.3 358.6L899.3 358.6Q879.1 358.6 862.4 348.2Q845.6 337.8 835.8 319.2Q826.0 300.6 826.0 277.0L826.0 277.0ZM954.1 277.6Q954.1 261.4 947.4 249.5Q940.8 237.6 930.0 231.3Q919.2 225.1 906.7 225.1L906.7 225.1Q894.2 225.1 883.4 231.2Q872.6 237.3 865.9 249.1Q859.3 260.9 859.3 277.0L859.3 277.0Q859.3 293.2 865.9 305.4Q872.6 317.7 883.5 324.1Q894.5 330.4 906.7 330.4L906.7 330.4Q919.2 330.4 930.0 324.2Q940.8 317.9 947.4 305.9Q954.1 293.8 954.1 277.6L954.1 277.6ZM1029.4 145.8L1061.8 145.8L1061.8 356L1029.4 356L1029.4 145.8ZM1104.4 145.8L1136.7 145.8L1136.7 356L1104.4 356L1104.4 145.8ZM1361.1 215.4L1322.2 215.4Q1314.5 200.7 1300.9 193.1Q1287.3 185.6 1269.4 185.6L1269.4 185.6Q1249.8 185.6 1234.4 194.4Q1219.1 203.2 1210.4 219.4Q1201.8 235.6 1201.8 256.9L1201.8 256.9Q1201.8 278.2 1210.4 294.5Q1219.1 310.8 1234.4 319.6Q1249.8 328.5 1269.4 328.5L1269.4 328.5Q1295.8 328.5 1312.2 313.7Q1328.7 298.9 1332.4 273.6L1332.4 273.6L1258.3 273.6L1258.3 247.8L1367.1 247.8L1367.1 273.1Q1363.9 296.1 1350.7 315.4Q1337.5 334.7 1316.4 346.2Q1295.2 357.7 1269.4 357.7L1269.4 357.7Q1241.5 357.7 1218.5 344.8Q1195.5 331.9 1182.0 308.9Q1168.5 285.9 1168.5 256.9L1168.5 256.9Q1168.5 227.9 1182.0 204.9Q1195.5 181.9 1218.7 169.0Q1241.8 156.1 1269.4 156.1L1269.4 156.1Q1300.9 156.1 1325.5 171.5Q1350.0 187.0 1361.1 215.4L1361.1 215.4ZM1508.2 199.5L1540.6 199.5L1540.6 356L1508.2 356L1508.2 337.5Q1500.5 347.2 1488.2 352.7Q1475.8 358.3 1461.9 358.3L1461.9 358.3Q1443.5 358.3 1428.8 350.6Q1414.2 342.9 1405.8 327.9Q1397.4 312.8 1397.4 291.5L1397.4 291.5L1397.4 199.5L1429.5 199.5L1429.5 286.7Q1429.5 307.7 1440.0 318.9Q1450.6 330.2 1468.7 330.2L1468.7 330.2Q1486.9 330.2 1497.6 318.9Q1508.2 307.7 1508.2 286.7L1508.2 286.7L1508.2 199.5ZM1572.4 277.0Q1572.4 253.5 1582.2 235.3Q1592.0 217.1 1608.9 207.0Q1625.8 197.0 1646.2 197.0L1646.2 197.0Q1664.7 197.0 1678.5 204.2Q1692.2 211.4 1700.5 222.2L1700.5 222.2L1700.5 199.5L1733.1 199.5L1733.1 356L1700.5 356L1700.5 332.7Q1692.2 343.8 1678.0 351.2Q1663.8 358.6 1645.7 358.6L1645.7 358.6Q1625.5 358.6 1608.7 348.2Q1592.0 337.8 1582.2 319.2Q1572.4 300.6 1572.4 277.0L1572.4 277.0ZM1700.5 277.6Q1700.5 261.4 1693.8 249.5Q1687.1 237.6 1676.3 231.3Q1665.5 225.1 1653.0 225.1L1653.0 225.1Q1640.6 225.1 1629.8 231.2Q1619.0 237.3 1612.3 249.1Q1605.6 260.9 1605.6 277.0L1605.6 277.0Q1605.6 293.2 1612.3 305.4Q1619.0 317.7 1629.9 324.1Q1640.8 330.4 1653.0 330.4L1653.0 330.4Q1665.5 330.4 1676.3 324.2Q1687.1 317.9 1693.8 305.9Q1700.5 293.8 1700.5 277.6L1700.5 277.6ZM1808.1 222.2Q1815.2 210.3 1827.0 203.6Q1838.8 197.0 1855.0 197.0L1855.0 197.0L1855.0 230.5L1846.7 230.5Q1827.7 230.5 1817.9 240.1Q1808.1 249.8 1808.1 273.6L1808.1 273.6L1808.1 356L1775.7 356L1775.7 199.5L1808.1 199.5L1808.1 222.2ZM1874 277.0Q1874 253.5 1883.8 235.3Q1893.6 217.1 1910.5 207.0Q1927.4 197.0 1948.1 197.0L1948.1 197.0Q1963.5 197.0 1978.4 203.6Q1993.3 210.3 2002.1 221.4L2002.1 221.4L2002.1 145.8L2034.7 145.8L2034.7 356L2002.1 356L2002.1 332.4Q1994.1 343.8 1980.1 351.2Q1966.0 358.6 1947.8 358.6L1947.8 358.6Q1927.4 358.6 1910.5 348.2Q1893.6 337.8 1883.8 319.2Q1874 300.6 1874 277.0L1874 277.0ZM2002.1 277.6Q2002.1 261.4 1995.4 249.5Q1988.7 237.6 1977.9 231.3Q1967.2 225.1 1954.7 225.1L1954.7 225.1Q1942.2 225.1 1931.4 231.2Q1920.6 237.3 1913.9 249.1Q1907.2 260.9 1907.2 277.0L1907.2 277.0Q1907.2 293.2 1913.9 305.4Q1920.6 317.7 1931.5 324.1Q1942.4 330.4 1954.7 330.4L1954.7 330.4Q1967.2 330.4 1977.9 324.2Q1988.7 317.9 1995.4 305.9Q2002.1 293.8 2002.1 277.6L2002.1 277.6Z" fill="#FFFFFF"></path><path d="M2284.4 356L2270.2 315.7L2187.5 315.7L2173.3 356L2139.5 356L2210.3 158.3L2247.7 158.3L2318.5 356L2284.4 356ZM2196.6 289.3L2261.1 289.3L2229 197.5L2196.6 289.3ZM2349.1 158.6L2381.5 158.6L2381.5 356L2349.1 356L2349.1 158.6Z" fill="#6CC18D"></path></svg>
+
+  <div>
+    <span class="cover-audience">For FCA-regulated firms, appointed representatives &amp; principals</span>
+    <h1>Audit-ready evidence from<br />every customer <span>conversation.</span></h1>
+    <div class="cover-rule"></div>
+    <p class="cover-lede">
+      CallGuard AI transcribes and scores 100% of your firm's calls against your own compliance
+      scorecard — every verdict backed by the exact quote from the transcript. When the FCA, your
+      auditor or the Ombudsman asks you to show your work, the answer is an export, not a six-month
+      file review.
+    </p>
+  </div>
+
+  <div>
+    <div class="cover-stats">
+      <div class="cover-stat">
+        <div class="v">100%</div>
+        <div class="l">of calls transcribed, scored and evidenced — not a 5% sample</div>
+      </div>
+      <div class="cover-stat">
+        <div class="v">Minutes</div>
+        <div class="l">from call ending to a scored result, versus weeks for manual review</div>
+      </div>
+      <div class="cover-stat">
+        <div class="v">Zero</div>
+        <div class="l">customer personal data reaching the AI — redacted before it is stored</div>
+      </div>
+    </div>
+    <div class="cover-foot">
+      <span>callguardai.co.uk &nbsp;·&nbsp; hello@callguardai.co.uk</span>
+      <span>UK-based · GDPR-compliant by default</span>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════ 2. THE PROBLEM ══════════ -->
+<section class="page">
+  <div class="runhead">
+    <div class="mark">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="40 10 432 492"><g stroke-linejoin="round"><path d="M256 25 C310 45 376 60 430 68 Q451 72 451 92 L451 235 C451 345 372 432 256 491 C140 432 61 345 61 235 L61 92 Q61 72 82 68 C136 60 202 45 256 25 Z" fill="none" stroke="#4A9E6E" stroke-width="30"/><path d="M256 64 C306 83 362 94 408 101 Q413 103 413 122 L413 237 C413 330 348 404 256 449 C164 404 99 330 99 237 L99 122 Q99 103 104 101 C150 94 206 83 256 64 Z" fill="#FFFFFF" stroke="#1A2E1A" stroke-width="22"/><rect x="152" y="235" width="24" height="42" rx="12" fill="#4A9E6E"/><rect x="198" y="202" width="24" height="108" rx="12" fill="#4A9E6E"/><rect x="244" y="156" width="24" height="200" rx="12" fill="#4A9E6E"/><rect x="290" y="202" width="24" height="108" rx="12" fill="#4A9E6E"/><rect x="336" y="235" width="24" height="42" rx="12" fill="#4A9E6E"/></g></svg>
+      <span>CallGuard AI</span>
+    </div>
+    <span class="sec-name">The accountability gap</span>
+  </div>
+
+  <div class="eyebrow">The problem</div>
+  <h2 class="sec">You are accountable for every conversation.<br />You can evidence about five per cent of them.</h2>
+  <p class="sec-sub">
+    Consumer Duty asks firms to demonstrate good outcomes systematically, not anecdotally. The
+    strengthened appointed representative regime asks principals to evidence real oversight of firms
+    they do not own. Both expect proof that manual file sampling cannot produce — and the gap between
+    what you are accountable for and what you can show is where regulatory risk now sits.
+  </p>
+
+  <div class="statrow">
+    <div class="stat">
+      <div class="v">5–10%</div>
+      <div class="k">Calls reviewed today</div>
+      <div class="d">The typical sample rate for manual file checking. The other 90% are never heard.</div>
+    </div>
+    <div class="stat">
+      <div class="v">60–90 min</div>
+      <div class="k">Per file reviewed</div>
+      <div class="d">Senior reviewer time per advice file — your scarcest and most expensive resource.</div>
+    </div>
+    <div class="stat">
+      <div class="v">Weeks</div>
+      <div class="k">Until a breach surfaces</div>
+      <div class="d">By which point the recommendation has gone out and the customer has acted on it.</div>
+    </div>
+  </div>
+
+  <div class="compare">
+    <div class="comp-col now">
+      <div class="comp-head">Manual sampling today</div>
+      <ul class="comp-list">
+        <li>A single-digit sample; the rest are invisible</li>
+        <li>Scoring varies between reviewers, and between weeks</li>
+        <li>Findings land days or weeks after the advice was given</li>
+        <li>Vulnerability signals slip past unflagged</li>
+        <li>Outcomes evidenced by anecdote and spreadsheet</li>
+      </ul>
+    </div>
+    <div class="comp-col cg">
+      <div class="comp-head">With CallGuard AI</div>
+      <ul class="comp-list">
+        <li>Every call transcribed, scored and filed as evidence</li>
+        <li>One consistent standard, calibrated to your interpretation</li>
+        <li>Critical breaches flagged within minutes — or mid-call</li>
+        <li>Vulnerability indicators screened on every conversation</li>
+        <li>Outcomes evidenced systematically, with quotes</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="callout no-break">
+    <span class="lbl">The question behind all of it</span>
+    Every firm can describe its compliance process. Far fewer can produce, on demand, the evidence
+    that it happened on a specific call, with a specific customer, on a specific date.
+    <strong>That evidence is what CallGuard AI produces — automatically, for every conversation.</strong>
+  </div>
+
+  <div class="runfoot">
+    <span>CallGuard AI — Smarter calls. Safer business.</span>
+    <span>2</span>
+  </div>
+</section>
+
+<!-- ══════════ 3. HOW IT WORKS ══════════ -->
+<section class="page">
+  <div class="runhead">
+    <div class="mark">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="40 10 432 492"><g stroke-linejoin="round"><path d="M256 25 C310 45 376 60 430 68 Q451 72 451 92 L451 235 C451 345 372 432 256 491 C140 432 61 345 61 235 L61 92 Q61 72 82 68 C136 60 202 45 256 25 Z" fill="none" stroke="#4A9E6E" stroke-width="30"/><path d="M256 64 C306 83 362 94 408 101 Q413 103 413 122 L413 237 C413 330 348 404 256 449 C164 404 99 330 99 237 L99 122 Q99 103 104 101 C150 94 206 83 256 64 Z" fill="#FFFFFF" stroke="#1A2E1A" stroke-width="22"/><rect x="152" y="235" width="24" height="42" rx="12" fill="#4A9E6E"/><rect x="198" y="202" width="24" height="108" rx="12" fill="#4A9E6E"/><rect x="244" y="156" width="24" height="200" rx="12" fill="#4A9E6E"/><rect x="290" y="202" width="24" height="108" rx="12" fill="#4A9E6E"/><rect x="336" y="235" width="24" height="42" rx="12" fill="#4A9E6E"/></g></svg>
+      <span>CallGuard AI</span>
+    </div>
+    <span class="sec-name">How it works</span>
+  </div>
+
+  <div class="eyebrow">How it works</div>
+  <h2 class="sec">Calls in. Compliance evidence out.</h2>
+  <p class="sec-sub">
+    CallGuard sits alongside the telephony you already use. There is no rip-and-replace, no new
+    dialler, and no integration project — whether your team uses a cloud dialler, a compliance
+    recorder, Microsoft Teams, or simply uploads recorded advice files.
+  </p>
+
+  <div class="steps">
+    <div class="step no-break">
+      <div class="step-n">1</div>
+      <div>
+        <h3>Bring in your calls, however they arrive</h3>
+        <p>
+          Drag-and-drop upload, automated collection from your recording server, a webhook from your
+          dialler, or our REST API. CloudTalk and Zoho CRM connect natively; Twilio and AWS Connect
+          stream live. Audio is encrypted the moment it lands.
+        </p>
+      </div>
+    </div>
+    <div class="step no-break">
+      <div class="step-n">2</div>
+      <div>
+        <h3>Score against <em>your</em> scorecard, not a generic one</h3>
+        <p>
+          Upload your existing QA scorecard — the one your compliance team already uses. Add your
+          suitability rules, product guides and call standards to the knowledge base. Every call is
+          transcribed with the adviser and customer separated, then judged criterion by criterion
+          against your firm's standard.
+        </p>
+      </div>
+    </div>
+    <div class="step no-break">
+      <div class="step-n">3</div>
+      <div>
+        <h3>Act on it, and keep the proof</h3>
+        <p>
+          Pass or fail per criterion with a supporting quote, a weighted overall score, a breach
+          register, and a coaching brief for the adviser. Critical breaches alert by email, Slack or
+          webhook. Results write back to your CRM. Everything is retained as the audit record.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <div class="quiet no-break" style="margin-top:6mm">
+    <h3 class="sub">It learns your firm's interpretation, not a textbook's</h3>
+    <p style="font-size:9.5pt;color:var(--text-secondary);line-height:1.6">
+      Where the AI is uncertain, or where a consent step is borderline, the call is routed to a review
+      queue rather than being scored automatically — no false pass, no false breach. When your
+      compliance officer corrects a verdict, that correction becomes a worked example that shapes
+      future scoring. Mark your best calls as exemplars and they set the reference standard. After a
+      few dozen corrections, CallGuard scores the way your senior reviewer scores. <strong>Your
+      interpretation of "suitable", "fair value" and "good outcome" is the one that counts.</strong>
+    </p>
+  </div>
+
+  <div class="runfoot">
+    <span>CallGuard AI — Smarter calls. Safer business.</span>
+    <span>3</span>
+  </div>
+</section>
+
+<!-- ══════════ 4. FIVE THINGS ══════════ -->
+<section class="page">
+  <div class="runhead">
+    <div class="mark">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="40 10 432 492"><g stroke-linejoin="round"><path d="M256 25 C310 45 376 60 430 68 Q451 72 451 92 L451 235 C451 345 372 432 256 491 C140 432 61 345 61 235 L61 92 Q61 72 82 68 C136 60 202 45 256 25 Z" fill="none" stroke="#4A9E6E" stroke-width="30"/><path d="M256 64 C306 83 362 94 408 101 Q413 103 413 122 L413 237 C413 330 348 404 256 449 C164 404 99 330 99 237 L99 122 Q99 103 104 101 C150 94 206 83 256 64 Z" fill="#FFFFFF" stroke="#1A2E1A" stroke-width="22"/><rect x="152" y="235" width="24" height="42" rx="12" fill="#4A9E6E"/><rect x="198" y="202" width="24" height="108" rx="12" fill="#4A9E6E"/><rect x="244" y="156" width="24" height="200" rx="12" fill="#4A9E6E"/><rect x="290" y="202" width="24" height="108" rx="12" fill="#4A9E6E"/><rect x="336" y="235" width="24" height="42" rx="12" fill="#4A9E6E"/></g></svg>
+      <span>CallGuard AI</span>
+    </div>
+    <span class="sec-name">What you get</span>
+  </div>
+
+  <div class="eyebrow">The platform</div>
+  <h2 class="sec">Five things CallGuard does that a QA spreadsheet cannot.</h2>
+
+  <div class="features">
+    <div class="feature no-break">
+      <div class="ico">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#4A9E6E" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+      </div>
+      <div>
+        <h3>Every call scored, with the proof attached</h3>
+        <p>
+          Not a sample — every conversation. Each criterion on your scorecard returns a pass or fail,
+          a confidence level, and the exact sentence from the transcript that justifies it. You are
+          never asked to take the AI's word for it; you can read the line it relied on.
+        </p>
+      </div>
+    </div>
+
+    <div class="feature no-break">
+      <div class="ico">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#4A9E6E" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="6" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="18" r="2"/><path d="M7 6h3a2 2 0 012 2v2M14 12h3a2 2 0 012 2v2"/></svg>
+      </div>
+      <div>
+        <h3>We score the sale, not just the call</h3>
+        <p>
+          A single recommendation usually spans three or four conversations. CallGuard joins them into
+          one customer journey and assesses compliance across the whole thing — so a disclosure made
+          on the second call still counts, and one missed everywhere is caught. That is how the
+          regulator looks at an outcome, so it is how we score it.
+        </p>
+      </div>
+    </div>
+
+    <div class="feature no-break">
+      <div class="ico">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#4A9E6E" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 013 3v6a3 3 0 01-6 0V5a3 3 0 013-3z"/><path d="M19 10v1a7 7 0 01-14 0v-1M12 18v4"/></svg>
+      </div>
+      <div>
+        <h3>Breaches caught mid-call, not next week</h3>
+        <p>
+          For teams that stream live, CallGuard listens as the conversation happens and flags a
+          critical compliance failure before the adviser hangs up — only when it is confident, so
+          supervisors are not swamped with noise. A breach prevented costs nothing to remediate.
+        </p>
+      </div>
+    </div>
+
+    <div class="feature no-break">
+      <div class="ico">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#4A9E6E" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+      </div>
+      <div>
+        <h3>Customer personal data never reaches the AI</h3>
+        <p>
+          Names, addresses, card numbers and health details are stripped out at the moment of
+          transcription and replaced with typed tags. They are never stored in our system and never
+          sent to a language model. It is the first question your DPO will ask, and it is designed
+          into the pipeline rather than bolted on afterwards.
+        </p>
+      </div>
+    </div>
+
+    <div class="feature no-break">
+      <div class="ico">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#4A9E6E" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M9 15h6M9 11h3"/></svg>
+      </div>
+      <div>
+        <h3>The audit pack, on demand</h3>
+        <p>
+          When the FCA, your auditor, your principal or the Ombudsman asks you to show your work,
+          export it: every call, every verdict, every supporting quote, every correction your
+          compliance team made, and who made it. What used to be a file-review project becomes a
+          download.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <div class="runfoot">
+    <span>CallGuard AI — Smarter calls. Safer business.</span>
+    <span>4</span>
+  </div>
+</section>
+
+<!-- ══════════ 5. PRINCIPALS & ARs ══════════ -->
+<section class="page">
+  <div class="runhead">
+    <div class="mark">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="40 10 432 492"><g stroke-linejoin="round"><path d="M256 25 C310 45 376 60 430 68 Q451 72 451 92 L451 235 C451 345 372 432 256 491 C140 432 61 345 61 235 L61 92 Q61 72 82 68 C136 60 202 45 256 25 Z" fill="none" stroke="#4A9E6E" stroke-width="30"/><path d="M256 64 C306 83 362 94 408 101 Q413 103 413 122 L413 237 C413 330 348 404 256 449 C164 404 99 330 99 237 L99 122 Q99 103 104 101 C150 94 206 83 256 64 Z" fill="#FFFFFF" stroke="#1A2E1A" stroke-width="22"/><rect x="152" y="235" width="24" height="42" rx="12" fill="#4A9E6E"/><rect x="198" y="202" width="24" height="108" rx="12" fill="#4A9E6E"/><rect x="244" y="156" width="24" height="200" rx="12" fill="#4A9E6E"/><rect x="290" y="202" width="24" height="108" rx="12" fill="#4A9E6E"/><rect x="336" y="235" width="24" height="42" rx="12" fill="#4A9E6E"/></g></svg>
+      <span>CallGuard AI</span>
+    </div>
+    <span class="sec-name">Principals &amp; AR networks</span>
+  </div>
+
+  <div class="eyebrow">For principal firms</div>
+  <h2 class="sec">You carry the regulatory risk for conversations<br />happening in firms you don't own.</h2>
+  <p class="sec-sub">
+    A principal is responsible for the regulated activity of every appointed representative it
+    accepts. Since the regime was strengthened, that comes with an annual review of each AR and an
+    annual self-assessment of your oversight arrangements. Most principals meet it with periodic file
+    requests, an annual visit and a great deal of trust. CallGuard replaces the trust with evidence.
+  </p>
+
+  <div class="oblig">
+    <div class="oblig-card no-break">
+      <div class="t">Consistent oversight across the network</div>
+      <div class="b">
+        One scorecard applied identically to every AR, adviser and call — so comparing two ARs means
+        something. No reviewer variance, no differing local standards.
+      </div>
+      <span class="tag">Evidence for the annual AR review</span>
+    </div>
+    <div class="oblig-card no-break">
+      <div class="t">Risk ranked, so attention goes where it belongs</div>
+      <div class="b">
+        Adviser- and firm-level risk scoring surfaces the AR whose disclosure rates are slipping,
+        before it becomes a complaint file. Oversight follows the data, not the rota.
+      </div>
+      <span class="tag">Targets your monitoring plan</span>
+    </div>
+    <div class="oblig-card no-break">
+      <div class="t">Separate portals, one standard</div>
+      <div class="b">
+        Each AR sees their own firm's calls, scores and coaching. You see everything, across the whole
+        network, in one view. Data stays properly partitioned between representatives.
+      </div>
+      <span class="tag">Multi-firm by design</span>
+    </div>
+    <div class="oblig-card no-break">
+      <div class="t">A defensible record, not a recollection</div>
+      <div class="b">
+        Every verdict is quoted, dated, attributed and retained. When you write your self-assessment,
+        the supporting evidence is already assembled rather than reconstructed from memory.
+      </div>
+      <span class="tag">Evidence for your self-assessment</span>
+    </div>
+  </div>
+
+  <div class="duo">
+    <div class="callout no-break">
+      <span class="lbl">For appointed representatives</span>
+      The same platform works in the other direction. If your principal has asked how you monitor
+      advice quality, CallGuard is the answer you can show them: 100% of your calls scored against
+      their standards and available for inspection. <strong>It turns your next oversight visit from a
+      document hunt into a login.</strong>
+    </div>
+
+    <div class="quiet no-break">
+      <h3 class="sub">A worked example</h3>
+      <p style="font-size:9pt;color:var(--text-secondary);line-height:1.55">
+        A principal with 18 ARs and 60 advisers samples roughly 5% of calls. At 90 minutes a file,
+        full coverage would need several more reviewers. With CallGuard all 60 are scored on every
+        call, breaches surface the day they happen, and each AR's review evidence compiles itself.
+        <strong>Oversight stops scaling with the network.</strong>
+      </p>
+    </div>
+  </div>
+
+  <div class="runfoot">
+    <span>CallGuard AI — Smarter calls. Safer business.</span>
+    <span>5</span>
+  </div>
+</section>
+
+<!-- ══════════ 6. THE EVIDENCE ══════════ -->
+<section class="page">
+  <div class="runhead">
+    <div class="mark">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="40 10 432 492"><g stroke-linejoin="round"><path d="M256 25 C310 45 376 60 430 68 Q451 72 451 92 L451 235 C451 345 372 432 256 491 C140 432 61 345 61 235 L61 92 Q61 72 82 68 C136 60 202 45 256 25 Z" fill="none" stroke="#4A9E6E" stroke-width="30"/><path d="M256 64 C306 83 362 94 408 101 Q413 103 413 122 L413 237 C413 330 348 404 256 449 C164 404 99 330 99 237 L99 122 Q99 103 104 101 C150 94 206 83 256 64 Z" fill="#FFFFFF" stroke="#1A2E1A" stroke-width="22"/><rect x="152" y="235" width="24" height="42" rx="12" fill="#4A9E6E"/><rect x="198" y="202" width="24" height="108" rx="12" fill="#4A9E6E"/><rect x="244" y="156" width="24" height="200" rx="12" fill="#4A9E6E"/><rect x="290" y="202" width="24" height="108" rx="12" fill="#4A9E6E"/><rect x="336" y="235" width="24" height="42" rx="12" fill="#4A9E6E"/></g></svg>
+      <span>CallGuard AI</span>
+    </div>
+    <span class="sec-name">What a verdict looks like</span>
+  </div>
+
+  <div class="eyebrow">The evidence</div>
+  <h2 class="sec">Every verdict shows its working.</h2>
+  <p class="sec-sub">
+    This is what a scored criterion looks like in CallGuard. Two things to notice: the evidence is a
+    direct quote, and the customer's personal details have already been replaced with typed tags
+    before anything was stored or analysed.
+  </p>
+
+  <div class="evidence no-break">
+    <div class="ev-head">
+      <span class="t">Discloses that the policy has no cash-in value</span>
+      <span class="pill pill-fail">Fail · Critical</span>
+    </div>
+    <div class="ev-body">
+      <div class="ev-row">
+        <div class="ev-k">Evidence</div>
+        <div class="ev-v ev-quote">
+          "So that's <span class="redact">[MONEY_1]</span> a month and it covers you right through to
+          <span class="redact">[AGE_1]</span> — shall I get that set up for you today,
+          <span class="redact">[NAME_GIVEN_1]</span>?"
+        </div>
+      </div>
+      <div class="ev-row">
+        <div class="ev-k">Reasoning</div>
+        <div class="ev-v">
+          The adviser moved from premium confirmation directly to closing. No statement was made at
+          any point in the call that the policy has no surrender or cash-in value.
+        </div>
+      </div>
+      <div class="ev-row">
+        <div class="ev-k">Confidence</div>
+        <div class="ev-v">0.93 — scored automatically. Below 0.70 this item would route to your review queue instead.</div>
+      </div>
+      <div class="ev-row">
+        <div class="ev-k">Where</div>
+        <div class="ev-v">Call 2 of 3 · 11:42 · Adviser: J. Whitfield · Customer journey #4821</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="evidence no-break">
+    <div class="ev-head">
+      <span class="t">Explores indicators of customer vulnerability</span>
+      <span class="pill pill-pass">Pass</span>
+    </div>
+    <div class="ev-body">
+      <div class="ev-row">
+        <div class="ev-k">Evidence</div>
+        <div class="ev-v ev-quote">
+          "You mentioned you'd been unwell recently — is now a good time to be going through this, or
+          would you rather I called back when someone can sit with you?"
+        </div>
+      </div>
+      <div class="ev-row">
+        <div class="ev-k">Reasoning</div>
+        <div class="ev-v">
+          The adviser identified a health disclosure, checked capacity to proceed, and offered a
+          deferral with support present. Recorded against the firm's vulnerable customer standard.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="oblig" style="margin-top:6mm;margin-bottom:0">
+    <div class="oblig-card no-break">
+      <div class="t">Uncertainty goes to a human, not a guess</div>
+      <div class="b">
+        Where the AI is not confident — particularly on consent and affordability steps — the item is
+        placed in a review queue for your compliance officer instead of being auto-scored. Their
+        decision is recorded, and it teaches the model your standard.
+      </div>
+    </div>
+    <div class="oblig-card no-break">
+      <div class="t">Corrections are the audit trail too</div>
+      <div class="b">
+        Every override is logged with who made it, when, and why. That record is as useful in an
+        oversight conversation as the original verdict: it shows a compliance function actively
+        supervising its own controls.
+      </div>
+    </div>
+  </div>
+
+  <div class="runfoot">
+    <span>CallGuard AI — Smarter calls. Safer business.</span>
+    <span>6</span>
+  </div>
+</section>
+
+<!-- ══════════ 7. DATA & SECURITY ══════════ -->
+<section class="page">
+  <div class="runhead">
+    <div class="mark">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="40 10 432 492"><g stroke-linejoin="round"><path d="M256 25 C310 45 376 60 430 68 Q451 72 451 92 L451 235 C451 345 372 432 256 491 C140 432 61 345 61 235 L61 92 Q61 72 82 68 C136 60 202 45 256 25 Z" fill="none" stroke="#4A9E6E" stroke-width="30"/><path d="M256 64 C306 83 362 94 408 101 Q413 103 413 122 L413 237 C413 330 348 404 256 449 C164 404 99 330 99 237 L99 122 Q99 103 104 101 C150 94 206 83 256 64 Z" fill="#FFFFFF" stroke="#1A2E1A" stroke-width="22"/><rect x="152" y="235" width="24" height="42" rx="12" fill="#4A9E6E"/><rect x="198" y="202" width="24" height="108" rx="12" fill="#4A9E6E"/><rect x="244" y="156" width="24" height="200" rx="12" fill="#4A9E6E"/><rect x="290" y="202" width="24" height="108" rx="12" fill="#4A9E6E"/><rect x="336" y="235" width="24" height="42" rx="12" fill="#4A9E6E"/></g></svg>
+      <span>CallGuard AI</span>
+    </div>
+    <span class="sec-name">Data protection</span>
+  </div>
+
+  <div class="eyebrow">Security &amp; data protection</div>
+  <h2 class="sec">Built for a firm that has to answer for its processors.</h2>
+  <p class="sec-sub">
+    You are accountable for your data processors as well as your advisers. These are the answers your
+    DPO, your IT reviewer and your principal will ask for — set out plainly so you can pass this page
+    straight to them.
+  </p>
+
+  <div class="seclist">
+    <div class="secitem no-break">
+      <div class="k">Personal data is removed before storage</div>
+      <div class="v">
+        Names, addresses, postcodes, phone numbers, card and bank details and health information are
+        detected and replaced with typed tags at the point of transcription. The raw values are never
+        written to our database and never form part of any AI prompt.
+      </div>
+    </div>
+    <div class="secitem no-break">
+      <div class="k">Audio encrypted at rest</div>
+      <div class="v">AES-256-GCM encryption for every stored recording, with keys held separately from the data.</div>
+    </div>
+    <div class="secitem no-break">
+      <div class="k">Encrypted in transit</div>
+      <div class="v">TLS 1.2 or above for all connections, including dialler webhooks, live audio streams and CRM write-back.</div>
+    </div>
+    <div class="secitem no-break">
+      <div class="k">UK data residency</div>
+      <div class="v">Data is hosted in the UK, and speech processing is pinned to the EU region with model-improvement use explicitly opted out.</div>
+    </div>
+    <div class="secitem no-break">
+      <div class="k">Role-based access, with an audit log</div>
+      <div class="v">
+        Administrator, supervisor, viewer and adviser roles; advisers see only their own calls. Two-factor
+        authentication is available, and privileged actions are written to an immutable audit log.
+      </div>
+    </div>
+    <div class="secitem no-break">
+      <div class="k">Your retention policy, enforced automatically</div>
+      <div class="v">
+        Set the retention period your firm requires. Recordings and transcripts are purged on schedule
+        without anyone having to remember, and deletion is recorded.
+      </div>
+    </div>
+    <div class="secitem no-break">
+      <div class="k">UK GDPR Article 28 DPA</div>
+      <div class="v">
+        A data processing agreement is available on request, and our sub-processor list is published
+        publicly — so you know exactly who touches your data before you sign anything.
+      </div>
+    </div>
+    <div class="secitem no-break">
+      <div class="k">Your data is not used to train models</div>
+      <div class="v">
+        Improvement using anonymised customer-derived data is opt-in, off by default, and recorded with
+        a timestamp if you ever choose to enable it.
+      </div>
+    </div>
+  </div>
+
+  <div class="runfoot">
+    <span>CallGuard AI — Smarter calls. Safer business.</span>
+    <span>7</span>
+  </div>
+</section>
+
+<!-- ══════════ 8. PRICING & NEXT STEPS ══════════ -->
+<section class="page">
+  <div class="runhead">
+    <div class="mark">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="40 10 432 492"><g stroke-linejoin="round"><path d="M256 25 C310 45 376 60 430 68 Q451 72 451 92 L451 235 C451 345 372 432 256 491 C140 432 61 345 61 235 L61 92 Q61 72 82 68 C136 60 202 45 256 25 Z" fill="none" stroke="#4A9E6E" stroke-width="30"/><path d="M256 64 C306 83 362 94 408 101 Q413 103 413 122 L413 237 C413 330 348 404 256 449 C164 404 99 330 99 237 L99 122 Q99 103 104 101 C150 94 206 83 256 64 Z" fill="#FFFFFF" stroke="#1A2E1A" stroke-width="22"/><rect x="152" y="235" width="24" height="42" rx="12" fill="#4A9E6E"/><rect x="198" y="202" width="24" height="108" rx="12" fill="#4A9E6E"/><rect x="244" y="156" width="24" height="200" rx="12" fill="#4A9E6E"/><rect x="290" y="202" width="24" height="108" rx="12" fill="#4A9E6E"/><rect x="336" y="235" width="24" height="42" rx="12" fill="#4A9E6E"/></g></svg>
+      <span>CallGuard AI</span>
+    </div>
+    <span class="sec-name">Pricing &amp; next steps</span>
+  </div>
+
+  <div class="eyebrow">Pricing</div>
+  <h2 class="sec">Published prices. No enterprise quote required.</h2>
+  <p class="sec-sub">
+    A seat is any user account on the platform: the advisers whose calls we score, and the compliance
+    officers and supervisors who review the results. Seats are billed per account, not per call. Volume
+    discounts apply as the team grows, and there is no multi-year minimum.
+  </p>
+
+  <div class="plans">
+    <div class="plan no-break">
+      <div class="nm">Starter</div>
+      <div class="pr">From £199<small> / seat / mo</small></div>
+      <div class="who">For firms replacing manual sample QA with scoring on every call.</div>
+      <ul>
+        <li>100% of calls transcribed and scored</li>
+        <li>Your own scorecard</li>
+        <li>Evidence quotes per criterion</li>
+        <li>Breach register and dashboards</li>
+        <li>Email alerts on critical breaches</li>
+        <li>Upload and REST API ingest</li>
+      </ul>
+    </div>
+    <div class="plan mid no-break">
+      <div class="nm">Growth<span class="badge">Most firms</span></div>
+      <div class="pr">From £299<small> / seat / mo</small></div>
+      <div class="who">For compliance teams who want the AI calibrated to their own interpretation.</div>
+      <ul>
+        <li>Everything in Starter</li>
+        <li>Learning from your corrections</li>
+        <li>Exemplar call library</li>
+        <li>Per-adviser coaching memory</li>
+        <li>Slack alerts and signed webhooks</li>
+        <li>CRM write-back, including Zoho</li>
+      </ul>
+    </div>
+    <div class="plan no-break">
+      <div class="nm">Pro</div>
+      <div class="pr">From £399<small> / seat / mo</small></div>
+      <div class="who">For principals, AR networks and firms with audit-grade requirements.</div>
+      <ul>
+        <li>Everything in Growth</li>
+        <li>Journey (sale-level) scoring</li>
+        <li>Multi-firm scorecards and portals</li>
+        <li>Live mid-call breach detection</li>
+        <li>Priority support</li>
+        <li>DPA and security review support</li>
+      </ul>
+    </div>
+  </div>
+
+  <p class="pricenote">
+    <strong>No change to your phone system, and no separate transcription bill.</strong>
+    If you can produce a recording, CallGuard can score it — by upload, from your recording server, or
+    through your dialler's webhook. Live streaming is optional, not a prerequisite. Transcription,
+    redaction, scoring and coaching are all included in the seat price, so there is no per-minute bill
+    to forecast.
+  </p>
+
+  <div class="faq">
+    <div class="faq-item no-break">
+      <div class="q">How does this work across an AR network?</div>
+      <div class="a">
+        Each appointed representative is set up as its own firm with its own users and data, and the
+        principal gets a view across all of them. Seats are counted across the network, so the volume
+        discount applies to the whole group rather than firm by firm.
+      </div>
+    </div>
+    <div class="faq-item no-break">
+      <div class="q">Is there a minimum term?</div>
+      <div class="a">
+        No multi-year minimum. Annual billing attracts a discount, but you can start monthly and move
+        to annual once the product has proved itself on your own calls.
+      </div>
+    </div>
+  </div>
+
+  <div class="runfoot">
+    <span>CallGuard AI — Smarter calls. Safer business.</span>
+    <span>8</span>
+  </div>
+</section>
+
+<!-- ══════════ 9. NEXT STEPS ══════════ -->
+<section class="page">
+  <div class="runhead">
+    <div class="mark">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="40 10 432 492"><g stroke-linejoin="round"><path d="M256 25 C310 45 376 60 430 68 Q451 72 451 92 L451 235 C451 345 372 432 256 491 C140 432 61 345 61 235 L61 92 Q61 72 82 68 C136 60 202 45 256 25 Z" fill="none" stroke="#4A9E6E" stroke-width="30"/><path d="M256 64 C306 83 362 94 408 101 Q413 103 413 122 L413 237 C413 330 348 404 256 449 C164 404 99 330 99 237 L99 122 Q99 103 104 101 C150 94 206 83 256 64 Z" fill="#FFFFFF" stroke="#1A2E1A" stroke-width="22"/><rect x="152" y="235" width="24" height="42" rx="12" fill="#4A9E6E"/><rect x="198" y="202" width="24" height="108" rx="12" fill="#4A9E6E"/><rect x="244" y="156" width="24" height="200" rx="12" fill="#4A9E6E"/><rect x="290" y="202" width="24" height="108" rx="12" fill="#4A9E6E"/><rect x="336" y="235" width="24" height="42" rx="12" fill="#4A9E6E"/></g></svg>
+      <span>CallGuard AI</span>
+    </div>
+    <span class="sec-name">Getting started</span>
+  </div>
+
+  <div class="eyebrow">Getting started</div>
+  <h2 class="sec">From first call to full coverage, in days.</h2>
+  <p class="sec-sub">
+    No implementation project, no solution architect, no 90-day pilot — most firms are scoring live
+    calls in the same week they decide to go ahead.
+  </p>
+
+  <div class="timeline no-break">
+    <div class="tl">
+      <div class="w">Step one</div>
+      <div class="t">A 15-minute call</div>
+      <div class="d">Bring five of your own recordings. We score them live, against your scorecard, on your data.</div>
+    </div>
+    <div class="tl">
+      <div class="w">Step two</div>
+      <div class="t">Set-up</div>
+      <div class="d">We load your scorecard and compliance material, and connect your recordings or dialler.</div>
+    </div>
+    <div class="tl">
+      <div class="w">Step three</div>
+      <div class="t">Calibration</div>
+      <div class="d">Your compliance officer reviews the first scored calls and corrects anything that reads wrong.</div>
+    </div>
+    <div class="tl">
+      <div class="w">Then</div>
+      <div class="t">Full coverage</div>
+      <div class="d">Every call from that point forward is scored, evidenced and retained automatically.</div>
+    </div>
+  </div>
+
+  <div class="duo" style="margin-bottom:4.5mm">
+    <div class="quiet no-break">
+      <h3 class="sub">What we need from you</h3>
+      <p style="font-size:9pt;color:var(--text-secondary);line-height:1.55">
+        Your existing QA scorecard, in whatever form it exists today. Any compliance manuals or call
+        standards you want the AI to know. A way to reach your recordings. That is the list.
+      </p>
+    </div>
+    <div class="quiet no-break">
+      <h3 class="sub">What we do not need</h3>
+      <p style="font-size:9pt;color:var(--text-secondary);line-height:1.55">
+        A change of dialler. A new recording platform. Your customers' personal data — it is redacted
+        before it reaches us. Or a year of your compliance team's time to configure it.
+      </p>
+    </div>
+  </div>
+
+  <div class="eyebrow" style="margin-bottom:3mm">Before you choose any vendor</div>
+  <div class="asks no-break">
+    <div class="ask">
+      <div class="n">01</div>
+      <div class="t">"Show me the evidence behind one verdict."</div>
+      <div class="d">
+        A score with no supporting quote is an opinion. If they cannot show the sentence that
+        justified the verdict, it is not evidence you can put in front of a regulator.
+      </div>
+    </div>
+    <div class="ask">
+      <div class="n">02</div>
+      <div class="t">"Where does our customers' personal data go?"</div>
+      <div class="d">
+        Ask whether names, card details and health information reach the AI model, and whether
+        they are stored. The answer should be no on both counts, by design.
+      </div>
+    </div>
+    <div class="ask">
+      <div class="n">03</div>
+      <div class="t">"How do you score a sale that spans four calls?"</div>
+      <div class="d">
+        Most tools score calls in isolation. Consumer Duty is about the customer's outcome, which
+        rarely happens in one conversation.
+      </div>
+    </div>
+  </div>
+
+  <div class="cta no-break">
+    <h3>Bring five of your calls. We'll score them live.</h3>
+    <p>
+      The fastest way to judge CallGuard is to watch it score your own conversations against your
+      own scorecard — not a demo tenant, and not someone else's data.
+    </p>
+    <div class="cta-lines">
+      <div class="cta-line">
+        <div class="k">Email</div>
+        <div class="v">hello@callguardai.co.uk</div>
+      </div>
+      <div class="cta-line">
+        <div class="k">Web</div>
+        <div class="v">callguardai.co.uk</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="runfoot">
+    <span>CallGuard AI — Smarter calls. Safer business.</span>
+    <span>9</span>
+  </div>
+</section>
+
+</body>
+</html>

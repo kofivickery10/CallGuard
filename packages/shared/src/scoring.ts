@@ -1,6 +1,6 @@
 import { PASS_THRESHOLD } from './constants.js';
 import type { BreachSeverity } from './types/breaches.js';
-import type { AppliesWhen, BranchConfig } from './types/scorecard.js';
+import type { AppliesWhen, BranchConfig, BranchSource } from './types/scorecard.js';
 
 /**
  * Whether a single scorecard item's normalized score (0-100) is a pass.
@@ -14,25 +14,102 @@ export function isItemPass(normalizedScore: number, threshold: number = PASS_THR
 }
 
 /**
- * Resolve which branch a scorecard's checkpoints should apply under, from
- * the call/journey transcript(s). Keyword detection: the first non-default
- * branch whose configured keywords/phrases appear (case-insensitive
- * substring match) anywhere in the combined transcript text wins; no match
- * falls back to `branches[0]` (the implicit default, e.g. "on_risk"). A null
- * branch_config (the common case — most scorecards have a single implicit
- * branch) returns null, and `itemAppliesToBranch` then only excludes items
- * that explicitly set `applies_when` anyway.
+ * Map a CRM stage value (e.g. a Zoho Deal's "Stage") onto a configured branch.
+ * Case-insensitive exact match after trimming — deliberately not a substring
+ * match, since stage picklists routinely contain values that contain each
+ * other ("Referred" / "Referred - Declined"), and a loose match would silently
+ * pick the wrong one. Returns null when there is no mapping or no match, and
+ * the caller then falls back to keywords.
  */
-export function resolveBranch(transcriptText: string, branchConfig: BranchConfig | null | undefined): string | null {
-  if (!branchConfig || !branchConfig.branches?.length) return null;
+export function resolveBranchFromCrmStage(
+  crmStage: string | null | undefined,
+  branchConfig: BranchConfig | null | undefined
+): string | null {
+  if (!crmStage?.trim() || !branchConfig?.crm_values) return null;
+  const needle = crmStage.trim().toLowerCase();
+  for (const branch of branchConfig.branches ?? []) {
+    const values = branchConfig.crm_values[branch] ?? [];
+    if (values.some((v) => v.trim().toLowerCase() === needle)) return branch;
+  }
+  return null;
+}
+
+/**
+ * Whether a CRM stage marks a sale that should not be scored at all (e.g. an
+ * NTU / "not taken up" state, where the customer walked away). Exact match,
+ * case- and whitespace-insensitive, for the same reason as crm_values: these
+ * picklist values contain one another.
+ *
+ * Checked before branch resolution — a non-sale has no branch.
+ */
+export function isNoScoreCrmStage(
+  crmStage: string | null | undefined,
+  branchConfig: BranchConfig | null | undefined
+): boolean {
+  if (!crmStage?.trim() || !branchConfig?.no_score_crm_values?.length) return false;
+  const needle = crmStage.trim().toLowerCase();
+  return branchConfig.no_score_crm_values.some((v) => v.trim().toLowerCase() === needle);
+}
+
+/**
+ * Resolve which branch a scorecard's checkpoints should apply under, and say
+ * how that was decided.
+ *
+ * Precedence, strongest evidence first:
+ *  1. `crm` — the sale's CRM stage mapped through `branch_config.crm_values`.
+ *     The CRM is the system of record for whether a policy went on risk; the
+ *     transcript only ever paraphrases it.
+ *  2. `keyword` — the first non-default branch whose configured phrases appear
+ *     (case-insensitive substring) in the transcript.
+ *  3. `default` — `branches[0]`. A guess, and flagged as such: it decides which
+ *     checkpoints apply, so a silently-defaulted branch both mutes the real
+ *     branch's items and raises breaches for items that never applied.
+ *
+ * A null branch_config (most scorecards have a single implicit branch) returns
+ * a null branch; `itemAppliesToBranch` then only excludes items that set
+ * `applies_when` anyway.
+ */
+export function resolveBranchWithSource(
+  transcriptText: string,
+  branchConfig: BranchConfig | null | undefined,
+  crmStage?: string | null
+): {
+  branch: string | null;
+  source: BranchSource | null;
+  // True when the CRM DID report a stage but no branch claims it. This is a
+  // configuration gap, not a missing signal: the sale's real status is known
+  // and we threw it away, then fell back to guessing. A picklist grows over
+  // time ("Referred - Decision Back - NTU" appearing after the map was written),
+  // so this must be loud rather than degrade quietly into the default branch —
+  // that silent degradation is the exact failure this whole path exists to stop.
+  unmappedCrmStage: boolean;
+} {
+  if (!branchConfig || !branchConfig.branches?.length) {
+    return { branch: null, source: null, unmappedCrmStage: false };
+  }
+
+  const fromCrm = resolveBranchFromCrmStage(crmStage, branchConfig);
+  if (fromCrm) return { branch: fromCrm, source: 'crm', unmappedCrmStage: false };
+
+  // A stage was reported, a mapping exists, and nothing matched it.
+  const unmappedCrmStage = !!crmStage?.trim() && !!branchConfig.crm_values;
+
   const haystack = transcriptText.toLowerCase();
   for (const branch of branchConfig.branches.slice(1)) {
     const keywords = branchConfig.keywords?.[branch] ?? [];
     if (keywords.some((kw) => haystack.includes(kw.toLowerCase()))) {
-      return branch;
+      return { branch, source: 'keyword', unmappedCrmStage };
     }
   }
-  return branchConfig.branches[0]!;
+  return { branch: branchConfig.branches[0]!, source: 'default', unmappedCrmStage };
+}
+
+/**
+ * Branch only, for callers that don't record provenance (per-call scoring).
+ * Prefer `resolveBranchWithSource` anywhere the result is persisted.
+ */
+export function resolveBranch(transcriptText: string, branchConfig: BranchConfig | null | undefined): string | null {
+  return resolveBranchWithSource(transcriptText, branchConfig).branch;
 }
 
 /**

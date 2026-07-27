@@ -138,6 +138,53 @@ export function JourneyDetail() {
   const productNameList = (ids: string[]): string[] =>
     ids.map((pid) => productNames.get(pid)).filter((n): n is string => !!n);
 
+  // Conditions under which this score is less trustworthy than it looks. Each
+  // one silently changed the result before this fix, so each is now stated
+  // plainly on the sale rather than left in the worker logs.
+  const scoringCaveats: Array<{ key: string; title: string; detail: string }> = [];
+  if (journey.branch) {
+    if (journey.crm_stage && journey.branch_source !== 'crm') {
+      // The CRM knew the sale's status and the scorecard had no branch for it.
+      // Distinct from "no stage at all": this one is a config fix, and it will
+      // recur on every sale at that stage until someone makes it.
+      scoringCaveats.push({
+        key: 'branch',
+        title: `The CRM stage "${journey.crm_stage}" isn't mapped to a branch.`,
+        detail:
+          `This sale was scored as "${journey.branch}" instead, which may apply the wrong ` +
+          'checkpoints. Add the stage to the scorecard’s branch settings so future sales at ' +
+          'this stage score correctly.',
+      });
+    } else if (journey.branch_source === 'default') {
+      scoringCaveats.push({
+        key: 'branch',
+        title: `Branch "${journey.branch}" was assumed, not confirmed.`,
+        detail:
+          'No policy stage came from the CRM and nothing in the calls matched a branch keyword, ' +
+          'so the default branch was used. Checkpoints that only apply to the other branch may ' +
+          'have been scored, and its own checkpoints marked N/A.',
+      });
+    } else if (journey.branch_source === 'keyword') {
+      scoringCaveats.push({
+        key: 'branch',
+        title: `Branch "${journey.branch}" came from the transcript, not the CRM.`,
+        detail:
+          'A phrase in the calls matched this branch. Confirm it against the policy stage in the CRM ' +
+          'if the checkpoint set looks wrong.',
+      });
+    }
+  }
+  const unreliableSpeakerCalls = journey.calls.filter((c) => c.speaker_integrity_flag);
+  if (unreliableSpeakerCalls.length > 0) {
+    scoringCaveats.push({
+      key: 'speakers',
+      title: `Speaker labels are unreliable on ${unreliableSpeakerCalls.length} of ${journey.calls.length} calls.`,
+      detail:
+        'Automated checks found adviser and customer turns mixed up in the transcript. Any checkpoint ' +
+        'that depends on who said something may be wrong, and consent checkpoints were sent to manual review.',
+    });
+  }
+
   return (
     <div>
       <Link
@@ -260,6 +307,45 @@ export function JourneyDetail() {
           <div className="w-10 h-10 border-[3px] border-border border-t-primary rounded-full animate-spin mx-auto mb-4" />
           <div className="text-base font-semibold text-text-primary">
             {journey.status === 'pending' ? 'Queued for scoring' : 'Scoring the sale'}
+          </div>
+        </div>
+      )}
+
+      {/* Scoring-confidence caveats. These change how the result below should be
+          read, so they sit above it rather than in a footnote: a branch nobody
+          confirmed decides which checkpoints applied at all, unverified breaches
+          never got their second opinion, and unreliable speaker labels mean any
+          "who said it" judgement may be wrong. */}
+      {journey.status === 'scored' && scoringCaveats.length > 0 && (
+        <div className="bg-review-bg border-l-[3px] border-l-review rounded-r-lg p-4 mb-4">
+          <div className="flex items-start gap-2.5">
+            <svg
+              className="w-4 h-4 text-review shrink-0 mt-0.5"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" />
+              <line x1="12" y1="9" x2="12" y2="13" />
+              <line x1="12" y1="17" x2="12.01" y2="17" />
+            </svg>
+            <div className="min-w-0">
+              <div className="text-table-cell font-semibold text-text-primary mb-1">
+                Read this score with care
+              </div>
+              <ul className="space-y-1">
+                {scoringCaveats.map((caveat) => (
+                  <li key={caveat.key} className="text-table-cell text-text-secondary">
+                    <span className="font-semibold text-text-primary">{caveat.title}</span>{' '}
+                    {caveat.detail}
+                  </li>
+                ))}
+              </ul>
+            </div>
           </div>
         </div>
       )}

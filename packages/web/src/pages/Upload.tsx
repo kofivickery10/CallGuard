@@ -136,7 +136,7 @@ export function Upload() {
       <div className="mb-7">
         <h2 className="text-page-title text-text-primary">Upload</h2>
         <p className="text-page-sub text-text-subtle mt-1">
-          Upload audio files to transcribe and analyse for compliance
+          Upload a call recording, or a Teams/Zoom appointment recording, to transcribe and analyse for compliance
         </p>
       </div>
 
