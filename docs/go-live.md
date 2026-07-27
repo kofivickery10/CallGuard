@@ -95,6 +95,23 @@ location / {
   ingress to Cloudflare IP ranges — the rate-limit/audit IP trusts the
   `cf-connecting-ip` header (security-review item).
 
+### Front-end caching across a deploy
+
+Route chunks are content-hashed, so every deploy renames them. The API already
+sets the headers that make that safe (`app.ts`, production block) — don't let a
+proxy override them:
+
+- `/assets/*` → `max-age=1y, immutable`, and a **404** when the hash is gone.
+  Never rewrite a missing asset to `index.html`: HTML in place of a module script
+  is what turns a stale tab into a blank screen.
+- `index.html` → `no-cache, must-revalidate`, so a reload always picks up the
+  current chunk hashes. If Cloudflare is caching HTML for the app host, add a
+  bypass/`no-cache` page rule for it.
+
+A tab left open across a deploy repairs itself: `lazyWithRetry`
+(`packages/web/src/lib/lazyWithRetry.ts`) reloads once on a failed chunk import,
+and `ChunkErrorBoundary` prompts a manual reload if it still fails.
+
 ---
 
 ## 6. Superadmin app (separate hosting)
