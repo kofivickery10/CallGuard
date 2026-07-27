@@ -381,7 +381,8 @@ export function CallDetail() {
 
       {correctingItem && (
         <ScoreCorrectionModal
-          callId={call.id}
+          kind="call"
+          parentId={call.id}
           itemScoreId={correctingItem.itemScoreId}
           itemLabel={correctingItem.label}
           currentPass={correctingItem.pass}

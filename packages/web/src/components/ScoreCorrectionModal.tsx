@@ -3,7 +3,10 @@ import { useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
 
 interface ScoreCorrectionModalProps {
-  callId: string;
+  // Which entity the checkpoint belongs to — a call or a whole sale (journey).
+  // Both hit a matching /correct endpoint that records a calibration example.
+  kind: 'call' | 'journey';
+  parentId: string;
   itemScoreId: string;
   itemLabel: string;
   currentPass: boolean;
@@ -12,7 +15,8 @@ interface ScoreCorrectionModalProps {
 }
 
 export function ScoreCorrectionModal({
-  callId,
+  kind,
+  parentId,
   itemScoreId,
   itemLabel,
   currentPass,
@@ -30,12 +34,17 @@ export function ScoreCorrectionModal({
     setSaving(true);
     setError('');
     try {
-      await api.post(`/calls/${callId}/scores/items/${itemScoreId}/correct`, {
+      const base = kind === 'journey' ? 'journeys' : 'calls';
+      await api.post(`/${base}/${parentId}/scores/items/${itemScoreId}/correct`, {
         corrected_pass: correctedPass,
         reason: reason || undefined,
       });
-      queryClient.invalidateQueries({ queryKey: ['call-scores', callId] });
-      queryClient.invalidateQueries({ queryKey: ['call', callId] });
+      if (kind === 'journey') {
+        queryClient.invalidateQueries({ queryKey: ['journey', parentId] });
+      } else {
+        queryClient.invalidateQueries({ queryKey: ['call-scores', parentId] });
+        queryClient.invalidateQueries({ queryKey: ['call', parentId] });
+      }
       queryClient.invalidateQueries({ queryKey: ['breaches'] });
       queryClient.invalidateQueries({ queryKey: ['breach-summary'] });
       onClose();

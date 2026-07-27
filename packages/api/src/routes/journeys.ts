@@ -3,7 +3,11 @@ import { authenticate, requireOrgView, requireActioner, requireAdmin } from '../
 import { query, queryOne } from '../db/client.js';
 import { AppError } from '../middleware/errors.js';
 import { assembleJourney } from '../services/journey.js';
-import type { Journey, JourneyItemScore, JourneyCallRole, JourneyListItem, JourneyStatus, JourneyProduct } from '@callguard/shared';
+import { recordAuditEvent } from '../services/audit.js';
+import { getScoringSettings } from '../services/tenant-settings.js';
+import { pushJourneyScoreUpdate } from '../services/score-writeback.js';
+import { deriveSeverity, isItemPass, callPasses } from '@callguard/shared';
+import type { Journey, JourneyItemScore, JourneyCallRole, JourneyListItem, JourneyStatus, JourneyProduct, BreachSeverity } from '@callguard/shared';
 
 export const journeysRouter = Router();
 journeysRouter.use(authenticate);
@@ -201,6 +205,183 @@ journeysRouter.post('/:id/rescore', requireAdmin, async (req, res, next) => {
     );
 
     res.json({ message: 'Re-scoring initiated' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/journeys/:id/exemplar — mark/unmark a sale as a firm exemplar
+// ("what good looks like"). The sales_only counterpart to POST /calls/:id/
+// exemplar: getLearningContext feeds a marked sale's combined transcript into
+// the scoring prompt. Takes effect on the next scoring run, not retroactively.
+journeysRouter.post('/:id/exemplar', requireActioner, async (req, res, next) => {
+  try {
+    const { is_exemplar, reason } = req.body as { is_exemplar?: unknown; reason?: string };
+    if (typeof is_exemplar !== 'boolean') {
+      throw new AppError(400, 'is_exemplar must be boolean');
+    }
+
+    const result = await queryOne<{ id: string }>(
+      `UPDATE journeys SET
+         is_exemplar = $1,
+         exemplar_reason = CASE WHEN $1 THEN $2 ELSE NULL END,
+         updated_at = now()
+       WHERE id = $3 AND organization_id = $4
+       RETURNING id`,
+      [is_exemplar, reason || 'Manually marked by admin', req.params.id, req.user!.organizationId]
+    );
+    if (!result) throw new AppError(404, 'Sale not found');
+
+    void recordAuditEvent({
+      organizationId: req.user!.organizationId,
+      userId: req.user!.userId,
+      actionType: 'exemplar.toggle',
+      entityType: 'journey',
+      entityId: req.params.id,
+      summary: is_exemplar
+        ? `Marked sale ${req.params.id} as exemplar`
+        : `Removed exemplar flag from sale ${req.params.id}`,
+      metadata: { is_exemplar, reason: reason || null },
+      req,
+    });
+
+    res.json({ message: 'Exemplar flag updated' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/journeys/:id/scores/items/:itemScoreId/correct — override a scored
+// checkpoint's pass/fail on a SALE. The sales_only counterpart to the per-call
+// correct endpoint: it records a calibration row (score_corrections), flips the
+// item, recomputes the sale's overall + breach, and re-pushes the corrected
+// score to the CRM. This is what gives sales the same human-control + AI
+// learning loop calls have.
+journeysRouter.post('/:id/scores/items/:itemScoreId/correct', requireActioner, async (req, res, next) => {
+  try {
+    const { corrected_pass, reason } = req.body as { corrected_pass?: unknown; reason?: string };
+    if (typeof corrected_pass !== 'boolean') {
+      throw new AppError(400, 'corrected_pass must be boolean');
+    }
+
+    const orgId = req.user!.organizationId;
+    const journey = await queryOne<{ id: string }>(
+      'SELECT id FROM journeys WHERE id = $1 AND organization_id = $2',
+      [req.params.id, orgId]
+    );
+    if (!journey) throw new AppError(404, 'Sale not found');
+
+    const itemScore = await queryOne<{
+      id: string;
+      scorecard_item_id: string;
+      normalized_score: number | null;
+      evidence: string | null;
+      weight: string;
+      severity: string | null;
+    }>(
+      `SELECT jis.id, jis.scorecard_item_id, jis.normalized_score, jis.evidence,
+              si.weight::text AS weight, si.severity
+         FROM journey_item_scores jis
+         JOIN scorecard_items si ON si.id = jis.scorecard_item_id
+        WHERE jis.id = $1 AND jis.journey_id = $2`,
+      [req.params.itemScoreId, journey.id]
+    );
+    if (!itemScore) throw new AppError(404, 'Checkpoint not found on this sale');
+
+    const settings = await getScoringSettings(orgId);
+    const correctedNormalized = corrected_pass ? 100 : 0;
+    const correctedRawScore = corrected_pass ? 1 : 0;
+    const originalPass =
+      itemScore.normalized_score != null ? isItemPass(Number(itemScore.normalized_score), settings.passThreshold) : null;
+    const severity = deriveSeverity(Number(itemScore.weight), itemScore.severity);
+
+    // Record the calibration example (upsert, one per journey item) and apply
+    // the correction to the item, then recompute + reconcile the breach.
+    await query(
+      `INSERT INTO score_corrections
+         (organization_id, journey_id, journey_item_score_id, scorecard_item_id, corrected_by,
+          original_score, corrected_score, original_pass, corrected_pass, reason, transcript_excerpt)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+       ON CONFLICT (journey_item_score_id) DO UPDATE SET
+         corrected_score = EXCLUDED.corrected_score,
+         corrected_pass = EXCLUDED.corrected_pass,
+         reason = EXCLUDED.reason,
+         corrected_by = EXCLUDED.corrected_by,
+         created_at = now()`,
+      [
+        orgId,
+        journey.id,
+        itemScore.id,
+        itemScore.scorecard_item_id,
+        req.user!.userId,
+        itemScore.normalized_score ?? 0,
+        correctedNormalized,
+        originalPass,
+        corrected_pass,
+        reason || null,
+        itemScore.evidence,
+      ]
+    );
+
+    await query(
+      "UPDATE journey_item_scores SET result = $2, score = $3, normalized_score = $4 WHERE id = $1",
+      [itemScore.id, corrected_pass ? 'pass' : 'fail', correctedRawScore, correctedNormalized]
+    );
+
+    // Recompute the sale's overall over pass/fail items only (na / manual_review
+    // carry no numeric score), mirroring the per-call correction path.
+    const items = await query<{ normalized_score: string; weight: string; severity: string | null }>(
+      `SELECT jis.normalized_score::text, si.weight::text, si.severity
+         FROM journey_item_scores jis
+         JOIN scorecard_items si ON si.id = jis.scorecard_item_id
+        WHERE jis.journey_id = $1 AND jis.result IN ('pass', 'fail')`,
+      [journey.id]
+    );
+    let totalWeighted = 0;
+    let totalWeight = 0;
+    const failing: BreachSeverity[] = [];
+    for (const it of items) {
+      const w = Number(it.weight);
+      const n = Number(it.normalized_score);
+      totalWeighted += n * w;
+      totalWeight += w;
+      if (!isItemPass(n, settings.passThreshold)) failing.push(deriveSeverity(w, it.severity));
+    }
+    const newOverall = totalWeight > 0 ? totalWeighted / totalWeight : 0;
+    const newPass = callPasses(newOverall, failing, settings.passThreshold);
+
+    await query('UPDATE journeys SET overall_score = $1, pass = $2, updated_at = now() WHERE id = $3', [
+      newOverall,
+      newPass,
+      journey.id,
+    ]);
+
+    if (corrected_pass) {
+      await query('DELETE FROM breaches WHERE journey_item_score_id = $1', [itemScore.id]);
+    } else {
+      await query(
+        `INSERT INTO breaches (organization_id, journey_id, journey_item_score_id, scorecard_item_id, severity, detected_at)
+         VALUES ($1, $2, $3, $4, $5, now())
+         ON CONFLICT (journey_item_score_id) DO NOTHING`,
+        [orgId, journey.id, itemScore.id, itemScore.scorecard_item_id, severity]
+      );
+    }
+
+    void recordAuditEvent({
+      organizationId: orgId,
+      userId: req.user!.userId,
+      actionType: 'score.correct',
+      entityType: 'score',
+      entityId: req.params.itemScoreId,
+      summary: `Corrected checkpoint ${req.params.itemScoreId} on sale ${journey.id} to ${corrected_pass ? 'pass' : 'fail'}`,
+      metadata: { journey_id: journey.id, corrected_pass, reason: reason || null, new_overall: newOverall, new_pass: newPass },
+      req,
+    });
+
+    // Push the corrected score downstream (webhook + Zoho), after the writes.
+    void pushJourneyScoreUpdate(orgId, journey.id);
+
+    res.json({ message: 'Correction saved', overall_score: newOverall, pass: newPass });
   } catch (err) {
     next(err);
   }
