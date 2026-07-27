@@ -241,8 +241,26 @@ app.post('/webhooks/zoho', authenticateApiKey, apiKeyLimiter, handleZohoSaleTrig
 // Serve React static build in production
 if (process.env.NODE_ENV === 'production') {
   const webDist = path.resolve(__dirname, '../../web/dist');
-  app.use(express.static(webDist));
+
+  // Hashed build output: safe to cache forever, but a miss must 404 rather than
+  // fall through to the SPA handler. Returning index.html for a stale
+  // /assets/Page-<hash>.js request (a tab open across a deploy) serves HTML for
+  // a module script; the browser rejects it on MIME grounds and the lazy route
+  // renders a blank screen. A clean 404 lets the client reload into the new build.
+  app.use('/assets', express.static(path.join(webDist, 'assets'), {
+    immutable: true,
+    maxAge: '1y',
+  }));
+  app.use('/assets', (_req, res) => {
+    res.status(404).type('text/plain').send('Not found');
+  });
+
+  app.use(express.static(webDist, { index: false }));
+
   app.get('*', (_req, res) => {
+    // index.html is the manifest of current chunk hashes — it must always be
+    // revalidated, or a cached copy keeps requesting the previous build's files.
+    res.setHeader('Cache-Control', 'no-cache, must-revalidate');
     res.sendFile(path.join(webDist, 'index.html'));
   });
 }

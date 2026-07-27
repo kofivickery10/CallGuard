@@ -1,7 +1,9 @@
-import { lazy, Suspense } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Suspense } from 'react';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import { Layout } from './components/Layout';
+import { ChunkErrorBoundary } from './components/ChunkErrorBoundary';
+import { lazyWithRetry } from './lib/lazyWithRetry';
 import { Login } from './pages/Login';
 import { TwoFactorEnroll } from './pages/TwoFactorEnroll';
 import { Dashboard } from './pages/Dashboard';
@@ -14,33 +16,33 @@ import { Welcome } from './pages/Welcome';
 import { Impersonate } from './pages/Impersonate';
 
 // Lazy-loaded admin-heavy pages (most users never visit)
-const Scorecards = lazy(() => import('./pages/Scorecards').then((m) => ({ default: m.Scorecards })));
-const ScorecardEditor = lazy(() => import('./pages/ScorecardEditor').then((m) => ({ default: m.ScorecardEditor })));
-const DataCaptureForms = lazy(() => import('./pages/DataCaptureForms').then((m) => ({ default: m.DataCaptureForms })));
-const DataCaptureFormEditor = lazy(() => import('./pages/DataCaptureFormEditor').then((m) => ({ default: m.DataCaptureFormEditor })));
-const DataCapture = lazy(() => import('./pages/DataCapture').then((m) => ({ default: m.DataCapture })));
-const Team = lazy(() => import('./pages/Team').then((m) => ({ default: m.Team })));
-const KnowledgeBase = lazy(() => import('./pages/KnowledgeBase').then((m) => ({ default: m.KnowledgeBase })));
-const Integrations = lazy(() => import('./pages/Integrations').then((m) => ({ default: m.Integrations })));
-const Alerts = lazy(() => import('./pages/Alerts').then((m) => ({ default: m.Alerts })));
-const Notifications = lazy(() => import('./pages/Notifications').then((m) => ({ default: m.Notifications })));
-const Breaches = lazy(() => import('./pages/Breaches').then((m) => ({ default: m.Breaches })));
-const AdviserRiskPage = lazy(() => import('./pages/AdviserRisk').then((m) => ({ default: m.AdviserRiskPage })));
-const ComplianceDocs = lazy(() => import('./pages/ComplianceDocs').then((m) => ({ default: m.ComplianceDocs })));
-const OrganizationSettings = lazy(() => import('./pages/OrganizationSettings').then((m) => ({ default: m.OrganizationSettings })));
-const AIInsights = lazy(() => import('./pages/AIInsights').then((m) => ({ default: m.AIInsights })));
-const ReviewQueue = lazy(() => import('./pages/ReviewQueue').then((m) => ({ default: m.ReviewQueue })));
-const AuditLog = lazy(() => import('./pages/AuditLog').then((m) => ({ default: m.AuditLog })));
-const Calibration = lazy(() => import('./pages/Calibration').then((m) => ({ default: m.Calibration })));
-const SupportInbox = lazy(() => import('./pages/SupportInbox').then((m) => ({ default: m.SupportInbox })));
-const Customers = lazy(() => import('./pages/Customers'));
-const CustomerProfile = lazy(() => import('./pages/CustomerProfile'));
-const Journeys = lazy(() => import('./pages/Journeys').then((m) => ({ default: m.Journeys })));
-const JourneyDetail = lazy(() => import('./pages/JourneyDetail').then((m) => ({ default: m.JourneyDetail })));
-const Account = lazy(() => import('./pages/Account'));
-const BillingOverview = lazy(() => import('./pages/BillingOverview'));
-const Settings = lazy(() => import('./pages/Settings'));
-const Products = lazy(() => import('./pages/Products'));
+const Scorecards = lazyWithRetry(() => import('./pages/Scorecards').then((m) => ({ default: m.Scorecards })));
+const ScorecardEditor = lazyWithRetry(() => import('./pages/ScorecardEditor').then((m) => ({ default: m.ScorecardEditor })));
+const DataCaptureForms = lazyWithRetry(() => import('./pages/DataCaptureForms').then((m) => ({ default: m.DataCaptureForms })));
+const DataCaptureFormEditor = lazyWithRetry(() => import('./pages/DataCaptureFormEditor').then((m) => ({ default: m.DataCaptureFormEditor })));
+const DataCapture = lazyWithRetry(() => import('./pages/DataCapture').then((m) => ({ default: m.DataCapture })));
+const Team = lazyWithRetry(() => import('./pages/Team').then((m) => ({ default: m.Team })));
+const KnowledgeBase = lazyWithRetry(() => import('./pages/KnowledgeBase').then((m) => ({ default: m.KnowledgeBase })));
+const Integrations = lazyWithRetry(() => import('./pages/Integrations').then((m) => ({ default: m.Integrations })));
+const Alerts = lazyWithRetry(() => import('./pages/Alerts').then((m) => ({ default: m.Alerts })));
+const Notifications = lazyWithRetry(() => import('./pages/Notifications').then((m) => ({ default: m.Notifications })));
+const Breaches = lazyWithRetry(() => import('./pages/Breaches').then((m) => ({ default: m.Breaches })));
+const AdviserRiskPage = lazyWithRetry(() => import('./pages/AdviserRisk').then((m) => ({ default: m.AdviserRiskPage })));
+const ComplianceDocs = lazyWithRetry(() => import('./pages/ComplianceDocs').then((m) => ({ default: m.ComplianceDocs })));
+const OrganizationSettings = lazyWithRetry(() => import('./pages/OrganizationSettings').then((m) => ({ default: m.OrganizationSettings })));
+const AIInsights = lazyWithRetry(() => import('./pages/AIInsights').then((m) => ({ default: m.AIInsights })));
+const ReviewQueue = lazyWithRetry(() => import('./pages/ReviewQueue').then((m) => ({ default: m.ReviewQueue })));
+const AuditLog = lazyWithRetry(() => import('./pages/AuditLog').then((m) => ({ default: m.AuditLog })));
+const Calibration = lazyWithRetry(() => import('./pages/Calibration').then((m) => ({ default: m.Calibration })));
+const SupportInbox = lazyWithRetry(() => import('./pages/SupportInbox').then((m) => ({ default: m.SupportInbox })));
+const Customers = lazyWithRetry(() => import('./pages/Customers'));
+const CustomerProfile = lazyWithRetry(() => import('./pages/CustomerProfile'));
+const Journeys = lazyWithRetry(() => import('./pages/Journeys').then((m) => ({ default: m.Journeys })));
+const JourneyDetail = lazyWithRetry(() => import('./pages/JourneyDetail').then((m) => ({ default: m.JourneyDetail })));
+const Account = lazyWithRetry(() => import('./pages/Account'));
+const BillingOverview = lazyWithRetry(() => import('./pages/BillingOverview'));
+const Settings = lazyWithRetry(() => import('./pages/Settings'));
+const Products = lazyWithRetry(() => import('./pages/Products'));
 
 function PageLoader() {
   return (
@@ -69,6 +71,7 @@ function EnrolRoute({ children }: { children: React.ReactNode }) {
 }
 
 export function App() {
+  const location = useLocation();
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
@@ -82,43 +85,45 @@ export function App() {
         element={
           <PrivateRoute>
             <Layout>
-              <Suspense fallback={<PageLoader />}>
-                <Routes>
-                  <Route path="/" element={<Dashboard />} />
-                  <Route path="/calls" element={<Calls />} />
-                  <Route path="/calls/upload" element={<Upload />} />
-                  <Route path="/calls/:id" element={<CallDetail />} />
-                  <Route path="/scorecards" element={<Scorecards />} />
-                  <Route path="/products" element={<Products />} />
-                  <Route path="/scorecards/new" element={<ScorecardEditor />} />
-                  <Route path="/scorecards/:id/edit" element={<ScorecardEditor />} />
-                  <Route path="/capture-forms" element={<DataCaptureForms />} />
-                  <Route path="/capture-forms/new" element={<DataCaptureFormEditor />} />
-                  <Route path="/capture-forms/:id/edit" element={<DataCaptureFormEditor />} />
-                  <Route path="/data-capture" element={<DataCapture />} />
-                  <Route path="/team" element={<Team />} />
-                  <Route path="/knowledge-base" element={<KnowledgeBase />} />
-                  <Route path="/integrations" element={<Integrations />} />
-                  <Route path="/alerts" element={<Alerts />} />
-                  <Route path="/notifications" element={<Notifications />} />
-                  <Route path="/breaches" element={<Breaches />} />
-                  <Route path="/adviser-risk" element={<AdviserRiskPage />} />
-                  <Route path="/compliance-docs" element={<ComplianceDocs />} />
-                  <Route path="/settings" element={<Settings />} />
-                  <Route path="/settings/organization" element={<OrganizationSettings />} />
-                  <Route path="/insights" element={<AIInsights />} />
-                  <Route path="/review-queue" element={<ReviewQueue />} />
-                  <Route path="/audit-log" element={<AuditLog />} />
-                  <Route path="/calibration" element={<Calibration />} />
-                  <Route path="/support-inbox" element={<SupportInbox />} />
-                  <Route path="/customers" element={<Customers />} />
-                  <Route path="/customers/:id" element={<CustomerProfile />} />
-                  <Route path="/journeys" element={<Journeys />} />
-                  <Route path="/journeys/:id" element={<JourneyDetail />} />
-                  <Route path="/account" element={<Account />} />
-                  <Route path="/billing" element={<BillingOverview />} />
-                </Routes>
-              </Suspense>
+              <ChunkErrorBoundary resetKey={location.pathname}>
+                <Suspense fallback={<PageLoader />}>
+                  <Routes>
+                    <Route path="/" element={<Dashboard />} />
+                    <Route path="/calls" element={<Calls />} />
+                    <Route path="/calls/upload" element={<Upload />} />
+                    <Route path="/calls/:id" element={<CallDetail />} />
+                    <Route path="/scorecards" element={<Scorecards />} />
+                    <Route path="/products" element={<Products />} />
+                    <Route path="/scorecards/new" element={<ScorecardEditor />} />
+                    <Route path="/scorecards/:id/edit" element={<ScorecardEditor />} />
+                    <Route path="/capture-forms" element={<DataCaptureForms />} />
+                    <Route path="/capture-forms/new" element={<DataCaptureFormEditor />} />
+                    <Route path="/capture-forms/:id/edit" element={<DataCaptureFormEditor />} />
+                    <Route path="/data-capture" element={<DataCapture />} />
+                    <Route path="/team" element={<Team />} />
+                    <Route path="/knowledge-base" element={<KnowledgeBase />} />
+                    <Route path="/integrations" element={<Integrations />} />
+                    <Route path="/alerts" element={<Alerts />} />
+                    <Route path="/notifications" element={<Notifications />} />
+                    <Route path="/breaches" element={<Breaches />} />
+                    <Route path="/adviser-risk" element={<AdviserRiskPage />} />
+                    <Route path="/compliance-docs" element={<ComplianceDocs />} />
+                    <Route path="/settings" element={<Settings />} />
+                    <Route path="/settings/organization" element={<OrganizationSettings />} />
+                    <Route path="/insights" element={<AIInsights />} />
+                    <Route path="/review-queue" element={<ReviewQueue />} />
+                    <Route path="/audit-log" element={<AuditLog />} />
+                    <Route path="/calibration" element={<Calibration />} />
+                    <Route path="/support-inbox" element={<SupportInbox />} />
+                    <Route path="/customers" element={<Customers />} />
+                    <Route path="/customers/:id" element={<CustomerProfile />} />
+                    <Route path="/journeys" element={<Journeys />} />
+                    <Route path="/journeys/:id" element={<JourneyDetail />} />
+                    <Route path="/account" element={<Account />} />
+                    <Route path="/billing" element={<BillingOverview />} />
+                  </Routes>
+                </Suspense>
+              </ChunkErrorBoundary>
             </Layout>
           </PrivateRoute>
         }

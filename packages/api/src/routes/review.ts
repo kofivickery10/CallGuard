@@ -36,12 +36,26 @@ reviewRouter.get('/', requireOrgView, async (req, res, next) => {
       `SELECT 'journey' AS kind, jis.id AS item_score_id, jis.scorecard_item_id,
               si.label, si.section, si.severity,
               jis.journey_id AS parent_id,
-              cust.name AS customer_name, NULL AS agent_name,
+              cust.name AS customer_name, ja.agent_name,
               jis.created_at AS detected_at
          FROM journey_item_scores jis
          JOIN journeys j ON j.id = jis.journey_id
          JOIN scorecard_items si ON si.id = jis.scorecard_item_id
          LEFT JOIN customers cust ON cust.id = j.customer_id
+         -- A journey has no call of its own: attribute it to the wrap-up
+         -- (closing) agent — earliest call flagged wrap_up, else the latest
+         -- call in the set — as journeys are attributed elsewhere.
+         LEFT JOIN LATERAL (
+           SELECT jac.agent_name
+             FROM journey_calls jajc
+             JOIN calls jac ON jac.id = jajc.call_id
+            WHERE jajc.journey_id = j.id
+            ORDER BY (jajc.role = 'wrap_up') DESC,
+                     CASE WHEN jajc.role = 'wrap_up'
+                          THEN COALESCE(jac.call_date, jac.created_at) END ASC,
+                     COALESCE(jac.call_date, jac.created_at) DESC
+            LIMIT 1
+         ) ja ON true
         WHERE j.organization_id = $1 AND jis.result = 'manual_review'`,
       [orgId]
     );
