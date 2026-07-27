@@ -24,13 +24,38 @@ journeysRouter.get('/', requireOrgView, async (req, res, next) => {
     const parts = ['j.organization_id = $1'];
     const params: unknown[] = [req.user!.organizationId];
     const status = req.query.status as string | undefined;
-    if (status && ['pending', 'scoring', 'scored', 'failed'].includes(status)) {
+    // 'skipped' included: NTU sales are a real, filterable state (migration
+    // 071). Omitting it here made ?status=skipped silently return everything,
+    // which reads as a broken filter rather than an unsupported one.
+    if (status && ['pending', 'scoring', 'scored', 'failed', 'skipped'].includes(status)) {
       params.push(status as JourneyStatus);
       parts.push(`j.status = $${params.length}`);
     }
     if (typeof req.query.customer_id === 'string') {
       params.push(req.query.customer_id);
       parts.push(`j.customer_id = $${params.length}`);
+    }
+    // Filter by the sale's closing adviser. Matched on the RESOLVED name (the
+    // linked user's name where the call is linked, else the raw dialler string)
+    // rather than on agent_id: a large share of calls arrive unlinked because
+    // the dialler sends a short display name, and an id filter would silently
+    // drop every one of those sales. Matching what the column actually shows
+    // keeps the filter and the list consistent with each other.
+    const agent = typeof req.query.agent === 'string' ? req.query.agent.trim() : '';
+    if (agent) {
+      params.push(agent);
+      parts.push(`(
+        SELECT COALESCE(fu.name, fc.agent_name)
+          FROM journey_calls fjc
+          JOIN calls fc ON fc.id = fjc.call_id
+          LEFT JOIN users fu ON fu.id = fc.agent_id
+         WHERE fjc.journey_id = j.id
+         ORDER BY (fjc.role = 'wrap_up') DESC,
+                  CASE WHEN fjc.role = 'wrap_up'
+                       THEN COALESCE(fc.call_date, fc.created_at) END ASC,
+                  COALESCE(fc.call_date, fc.created_at) DESC
+         LIMIT 1
+      ) = $${params.length}`);
     }
     const whereSQL = parts.join(' AND ');
 
@@ -44,10 +69,39 @@ journeysRouter.get('/', requireOrgView, async (req, res, next) => {
               cust.name AS customer_name,
               cust.phone_normalized AS customer_phone,
               sc.name AS scorecard_name,
-              (SELECT COUNT(*)::int FROM journey_calls jc WHERE jc.journey_id = j.id) AS call_count
+              ja.agent_name,
+              (SELECT COUNT(*)::int FROM journey_calls jc WHERE jc.journey_id = j.id) AS call_count,
+              -- How many distinct advisers worked the sale. A quarter of sales
+              -- span two, so the single agent_name above would misrepresent
+              -- them; the UI shows a "+N" against the closer rather than
+              -- implying sole ownership.
+              (SELECT COUNT(DISTINCT COALESCE(au.name, ac.agent_name))::int
+                 FROM journey_calls ajc
+                 JOIN calls ac ON ac.id = ajc.call_id
+                 LEFT JOIN users au ON au.id = ac.agent_id
+                WHERE ajc.journey_id = j.id
+                  AND COALESCE(au.name, ac.agent_name) IS NOT NULL) AS agent_count
          FROM journeys j
          LEFT JOIN customers cust ON cust.id = j.customer_id
          LEFT JOIN scorecards sc ON sc.id = j.scorecard_id
+         -- The sale's closing adviser, resolved exactly as breaches, review,
+         -- the dashboard and the Zoho write-back do (JOURNEY_AGENT_JOIN in
+         -- routes/breaches.ts): earliest call flagged wrap_up, else the latest
+         -- call in the set. Prefers the linked user's name over the raw dialler
+         -- string, so a call the dialler labelled "Lewis" shows as the adviser
+         -- record it resolves to.
+         LEFT JOIN LATERAL (
+           SELECT COALESCE(wu.name, wc.agent_name) AS agent_name
+             FROM journey_calls wjc
+             JOIN calls wc ON wc.id = wjc.call_id
+             LEFT JOIN users wu ON wu.id = wc.agent_id
+            WHERE wjc.journey_id = j.id
+            ORDER BY (wjc.role = 'wrap_up') DESC,
+                     CASE WHEN wjc.role = 'wrap_up'
+                          THEN COALESCE(wc.call_date, wc.created_at) END ASC,
+                     COALESCE(wc.call_date, wc.created_at) DESC
+            LIMIT 1
+         ) ja ON TRUE
         WHERE ${whereSQL}
         ORDER BY j.created_at DESC
         LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
@@ -68,6 +122,44 @@ journeysRouter.get('/', requireOrgView, async (req, res, next) => {
 
 // GET /api/journeys/:id — full journey detail: which calls composed it, and
 // the per-checkpoint result across the whole set (spec §9).
+// GET /api/journeys/advisers — distinct closing advisers across the org's
+// sales, for the sales-list filter dropdown.
+//
+// Registered BEFORE '/:id' or Express matches "advisers" as a journey id.
+//
+// Deliberately not reusing GET /agents: that endpoint is requireAdmin and
+// returns per-adviser performance stats, so a supervisor could not populate
+// this filter without being handed data they are not otherwise shown. This
+// returns only names that already appear in the sales list the caller can see,
+// so it adds no new exposure.
+journeysRouter.get('/advisers', requireOrgView, async (req, res, next) => {
+  try {
+    const rows = await query<{ agent_name: string }>(
+      `SELECT DISTINCT ja.agent_name
+         FROM journeys j
+         JOIN LATERAL (
+           SELECT COALESCE(wu.name, wc.agent_name) AS agent_name
+             FROM journey_calls wjc
+             JOIN calls wc ON wc.id = wjc.call_id
+             LEFT JOIN users wu ON wu.id = wc.agent_id
+            WHERE wjc.journey_id = j.id
+            ORDER BY (wjc.role = 'wrap_up') DESC,
+                     CASE WHEN wjc.role = 'wrap_up'
+                          THEN COALESCE(wc.call_date, wc.created_at) END ASC,
+                     COALESCE(wc.call_date, wc.created_at) DESC
+            LIMIT 1
+         ) ja ON TRUE
+        WHERE j.organization_id = $1
+          AND ja.agent_name IS NOT NULL
+        ORDER BY ja.agent_name`,
+      [req.user!.organizationId]
+    );
+    res.json({ data: rows.map((r) => r.agent_name) });
+  } catch (err) {
+    next(err);
+  }
+});
+
 journeysRouter.get('/:id', requireOrgView, async (req, res, next) => {
   try {
     const journey = await queryOne<Journey>(

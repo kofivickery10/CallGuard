@@ -113,6 +113,14 @@ export interface JourneyListItem extends Journey {
   customer_phone: string | null;
   call_count: number;
   scorecard_name: string | null;
+  // The sale's closing adviser — the same attribution used by breaches, the
+  // review queue, adviser scores and the Zoho QA write-back, so a sale reads
+  // consistently wherever it appears. Null when no call carries an agent.
+  agent_name: string | null;
+  // Distinct advisers across the sale's calls. More than one is common enough
+  // (roughly a quarter of sales) that showing only the closer would misstate
+  // who handled the business, so the UI flags it rather than hiding it.
+  agent_count: number;
 }
 
 // A checkpoint awaiting human review (item_type='manual' or a consent gate
