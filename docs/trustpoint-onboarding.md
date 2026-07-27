@@ -53,7 +53,9 @@ Create the org + first admin in one step (`POST /api/superadmin/tenants`):
   not email/chat. They change it on first login (2FA enrolment is mandatory).
 - Plans are `core | professional | enterprise`. Trust Point should be
   `enterprise` (multi-adviser, journey scoring, learning context).
-- Seat billing = advisers with ≥1 scored call in the month; nothing to set now.
+- Seat billing = headcount: every user on the tenant is a billed seat whatever
+  their role, whether or not they took a call that month. A seat is only excluded
+  if a superadmin ticks "Exempt" against that user; nothing to set now.
 
 ---
 

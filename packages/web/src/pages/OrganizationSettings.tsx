@@ -223,8 +223,8 @@ export function OrganizationSettings() {
             Billed seats
           </h3>
           <p className="text-xs text-text-subtle mb-3">
-            Every adviser on your team is a billed seat, whether or not they took a call this month.
-            Admins, supervisors and viewers aren&rsquo;t charged.
+            Every person on your team is a billed seat, whatever their role and whether or not they took
+            a call this month.
           </p>
           <div className="flex gap-8">
             <div>

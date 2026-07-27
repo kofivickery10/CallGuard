@@ -151,12 +151,13 @@ organizationRouter.put('/data-improvement', requireAdmin, async (req, res, next)
   }
 });
 
-// Billing is headcount-based (services/billing.ts): every non-exempt user is a
-// billed seat regardless of call activity - 'adviser' bills, admin/supervisor/
-// viewer don't (see migration 067). `billed_seats`/`billed_total` below are the
-// real current-month bill; `current_advisers`/`*_active_seats` are a separate
-// usage view (distinct advisers with a scored call) kept for visibility into
-// activity, not for working out what's charged.
+// Billing is headcount-based (services/billing.ts): every tenant user is a billed
+// seat regardless of role or call activity, unless a superadmin has exempted them
+// by hand (billing_exempt, migration 052 - role does not decide it, see 070).
+// `billed_seats`/`billed_total` below are the real current-month bill;
+// `current_advisers`/`*_active_seats` are a separate usage view (distinct advisers
+// with a scored call) kept for visibility into activity, not for working out what's
+// charged.
 organizationRouter.get('/active-seats', requireOrgView, async (req, res, next) => {
   try {
     const orgId = req.user!.organizationId;
