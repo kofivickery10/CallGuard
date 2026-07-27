@@ -65,7 +65,7 @@ export default function Usage() {
             {loading && data && <span className="text-text-muted"> Updating…</span>}
           </p>
         </div>
-        <DateRangePicker value={range} onChange={setRange} presets={[7, 30, 90]} />
+        <DateRangePicker value={range} onChange={setRange} presets={[1, 7, 30, 90]} />
       </div>
 
       {error && <p className="text-fail text-sm">{error}</p>}
