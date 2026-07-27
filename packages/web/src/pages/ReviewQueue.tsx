@@ -88,7 +88,7 @@ export function ReviewQueue() {
             <table className="w-full min-w-[640px]">
               <thead>
                 <tr>
-                  {['Checkpoint', 'Where', 'Customer', 'Severity', ''].map((h) => (
+                  {['Checkpoint', 'Where', 'Customer', 'Agent', 'Severity', ''].map((h) => (
                     <th key={h} className="text-left px-5 py-2.5 text-table-header uppercase text-text-muted bg-table-header border-b border-border">{h}</th>
                   ))}
                 </tr>
@@ -109,6 +109,7 @@ export function ReviewQueue() {
                       </Link>
                     </td>
                     <td className="px-5 py-3 text-table-cell text-text-cell">{item.customer_name || '—'}</td>
+                    <td className="px-5 py-3 text-table-cell text-text-cell">{item.agent_name || '—'}</td>
                     <td className="px-5 py-3">{item.severity && <SeverityBadge severity={item.severity} />}</td>
                     <td className="px-5 py-3 text-right">
                       {canAction && (

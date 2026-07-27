@@ -31,6 +31,24 @@ interface BreachFilters {
   search?: string;
 }
 
+// A journey-level breach has no call_id, so joining `calls` on it gives no
+// agent. Attribute those to the journey's wrap-up (closing) agent — the
+// earliest call flagged `wrap_up`, else the latest call in the set — which is
+// how journeys are attributed everywhere else (adviser scores, Zoho
+// write-back). Joined only when there's no call, so per-call breaches skip it.
+const JOURNEY_AGENT_JOIN = `
+        LEFT JOIN LATERAL (
+          SELECT jac.agent_name, jac.agent_id
+            FROM journey_calls jajc
+            JOIN calls jac ON jac.id = jajc.call_id
+           WHERE jajc.journey_id = b.journey_id
+           ORDER BY (jajc.role = 'wrap_up') DESC,
+                    CASE WHEN jajc.role = 'wrap_up'
+                         THEN COALESCE(jac.call_date, jac.created_at) END ASC,
+                    COALESCE(jac.call_date, jac.created_at) DESC
+           LIMIT 1
+        ) ja ON b.call_id IS NULL`;
+
 function parseFilters(req: Request): BreachFilters {
   const f: BreachFilters = {};
   const q = req.query;
@@ -59,8 +77,10 @@ function buildWhere(orgId: string, f: BreachFilters): { sql: string; params: unk
     parts.push(`b.status = $${params.length}`);
   }
   if (f.agent_id) {
+    // COALESCE so filtering by agent keeps that agent's journey-level
+    // breaches, which carry no call of their own.
     params.push(f.agent_id);
-    parts.push(`c.agent_id = $${params.length}`);
+    parts.push(`COALESCE(c.agent_id, ja.agent_id) = $${params.length}`);
   }
   if (f.scorecard_id) {
     params.push(f.scorecard_id);
@@ -157,8 +177,8 @@ breachesRouter.get('/review-queue', async (req, res, next) => {
           b.*,
           COALESCE(c.file_name, 'Journey — ' || COALESCE(jcust.name, 'customer')) as call_file_name,
           jcust.name as customer_name,
-          c.agent_name,
-          c.agent_id,
+          COALESCE(c.agent_name, ja.agent_name) as agent_name,
+          COALESCE(c.agent_id, ja.agent_id) as agent_id,
           u.name as assigned_to_name,
           si.label as breach_type,
           sc.name as scorecard_name,
@@ -184,6 +204,7 @@ breachesRouter.get('/review-queue', async (req, res, next) => {
           ) AS risk_score
         FROM breaches b
         LEFT JOIN calls c ON c.id = b.call_id
+        ${JOURNEY_AGENT_JOIN}
         LEFT JOIN call_item_scores cis ON cis.id = b.call_item_score_id
         LEFT JOIN journeys j ON j.id = b.journey_id
         LEFT JOIN journey_item_scores jis ON jis.id = b.journey_item_score_id
@@ -221,6 +242,7 @@ breachesRouter.get('/', async (req, res, next) => {
       `SELECT COUNT(*)::text as count
          FROM breaches b
          LEFT JOIN calls c ON c.id = b.call_id
+         ${JOURNEY_AGENT_JOIN}
          JOIN scorecard_items si ON si.id = b.scorecard_item_id
         WHERE ${whereSQL}`,
       params
@@ -231,8 +253,8 @@ breachesRouter.get('/', async (req, res, next) => {
           b.*,
           COALESCE(c.file_name, 'Journey — ' || COALESCE(jcust.name, 'customer')) as call_file_name,
           jcust.name as customer_name,
-          c.agent_name,
-          c.agent_id,
+          COALESCE(c.agent_name, ja.agent_name) as agent_name,
+          COALESCE(c.agent_id, ja.agent_id) as agent_id,
           u.name as assigned_to_name,
           si.label as breach_type,
           sc.name as scorecard_name,
@@ -241,6 +263,7 @@ breachesRouter.get('/', async (req, res, next) => {
           COALESCE(cis.normalized_score, jis.normalized_score) as normalized_score
         FROM breaches b
         LEFT JOIN calls c ON c.id = b.call_id
+        ${JOURNEY_AGENT_JOIN}
         LEFT JOIN call_item_scores cis ON cis.id = b.call_item_score_id
         LEFT JOIN journeys j ON j.id = b.journey_id
         LEFT JOIN journey_item_scores jis ON jis.id = b.journey_item_score_id
@@ -279,7 +302,7 @@ breachesRouter.get('/export.csv', async (req, res, next) => {
           b.*,
           COALESCE(c.file_name, 'Journey — ' || COALESCE(jcust.name, 'customer')) as call_file_name,
           jcust.name as customer_name,
-          c.agent_name,
+          COALESCE(c.agent_name, ja.agent_name) as agent_name,
           u.name as assigned_to_name,
           si.label as breach_type,
           sc.name as scorecard_name,
@@ -288,6 +311,7 @@ breachesRouter.get('/export.csv', async (req, res, next) => {
           COALESCE(cis.normalized_score, jis.normalized_score) as normalized_score
         FROM breaches b
         LEFT JOIN calls c ON c.id = b.call_id
+        ${JOURNEY_AGENT_JOIN}
         LEFT JOIN call_item_scores cis ON cis.id = b.call_item_score_id
         LEFT JOIN journeys j ON j.id = b.journey_id
         LEFT JOIN journey_item_scores jis ON jis.id = b.journey_item_score_id
@@ -369,13 +393,14 @@ breachesRouter.get('/report', async (req, res, next) => {
           b.*,
           COALESCE(c.file_name, 'Journey — ' || COALESCE(jcust.name, 'customer')) as call_file_name,
           jcust.name as customer_name,
-          c.agent_name,
+          COALESCE(c.agent_name, ja.agent_name) as agent_name,
           u.name as assigned_to_name,
           si.label as breach_type,
           sc.name as scorecard_name,
           COALESCE(cis.normalized_score, jis.normalized_score) as normalized_score
         FROM breaches b
         LEFT JOIN calls c ON c.id = b.call_id
+        ${JOURNEY_AGENT_JOIN}
         LEFT JOIN call_item_scores cis ON cis.id = b.call_item_score_id
         LEFT JOIN journeys j ON j.id = b.journey_id
         LEFT JOIN journey_item_scores jis ON jis.id = b.journey_item_score_id
@@ -423,8 +448,8 @@ breachesRouter.get('/:id', async (req, res, next) => {
           b.*,
           COALESCE(c.file_name, 'Journey — ' || COALESCE(jcust.name, 'customer')) as call_file_name,
           jcust.name as customer_name,
-          c.agent_name,
-          c.agent_id,
+          COALESCE(c.agent_name, ja.agent_name) as agent_name,
+          COALESCE(c.agent_id, ja.agent_id) as agent_id,
           u.name as assigned_to_name,
           si.label as breach_type,
           sc.name as scorecard_name,
@@ -433,6 +458,7 @@ breachesRouter.get('/:id', async (req, res, next) => {
           COALESCE(cis.normalized_score, jis.normalized_score) as normalized_score
         FROM breaches b
         LEFT JOIN calls c ON c.id = b.call_id
+        ${JOURNEY_AGENT_JOIN}
         LEFT JOIN call_item_scores cis ON cis.id = b.call_item_score_id
         LEFT JOIN journeys j ON j.id = b.journey_id
         LEFT JOIN journey_item_scores jis ON jis.id = b.journey_item_score_id
