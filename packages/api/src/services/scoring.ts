@@ -403,10 +403,26 @@ export async function scoreTranscript(
     // If the model hit the token ceiling mid tool-call, the input JSON is
     // incomplete and `items` is missing — fail clearly here rather than letting
     // an undefined `output.items` blow up downstream (score.ts / score-journey.ts).
+    //
+    // Report what actually happened rather than assuming truncation. The
+    // previous message asserted "likely truncated" unconditionally, which sent
+    // a real investigation down the wrong path: the failure it was diagnosing
+    // had stop_reason=tool_use, meaning the model finished normally and the
+    // problem was the payload shape, not the budget. On a thinking model
+    // max_tokens covers reasoning AND output together, so genuine exhaustion is
+    // worth distinguishing from a malformed result.
     const candidate = toolUse.input as ScoringOutput;
     if (!candidate || !Array.isArray(candidate.items)) {
+      const truncated = response.stop_reason === 'max_tokens';
+      const shape = candidate ? `keys=[${Object.keys(candidate).join(',')}]` : 'no tool input';
       throw new Error(
-        `Claude returned incomplete scores (stop_reason=${response.stop_reason}, items=${items.length}, max_tokens=${maxTokens}) — likely truncated`
+        truncated
+          ? `Claude ran out of output budget before finishing the scores ` +
+            `(max_tokens=${maxTokens}, requested ${items.length} items). On a thinking model this ` +
+            `budget covers reasoning as well as output — raise it or score fewer items at once.`
+          : `Claude returned a malformed submit_scores payload — expected an "items" array, got ` +
+            `${shape} (stop_reason=${response.stop_reason}, requested ${items.length} items). ` +
+            `Not a truncation: the model stopped of its own accord.`
       );
     }
     output = candidate;

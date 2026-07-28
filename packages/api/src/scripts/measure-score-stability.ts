@@ -27,7 +27,6 @@ import { scoreTranscript, normalizeScore } from '../services/scoring.js';
 import { getKBContext } from '../services/kb.js';
 import { classifyItems } from '../services/checkpoint-classification.js';
 import { buildCombinedTranscript } from '../services/journey-transcript.js';
-import { getScoringSettings } from '../services/tenant-settings.js';
 import { isItemPass, resolveBranchWithSource } from '@callguard/shared';
 import type { ScorecardItem, Scorecard } from '@callguard/shared';
 
@@ -87,7 +86,13 @@ async function measureJourney(journeyId: string, stats: Map<string, ItemStat>): 
   // Resolve exactly as scoring does, so the item set matches the real run.
   const { branch, source } = resolveBranchWithSource(transcript, scorecard?.branch_config, journey.crm_stage);
   const { scoreable, na } = classifyItems(items, branch, 1.0);
-  const settings = await getScoringSettings(journey.organization_id);
+  // Read pass_threshold directly rather than through getScoringSettings: this
+  // is a diagnostic that must run against any database, including one that has
+  // not had the latest migrations applied yet.
+  const thresholdRow = await queryOne<{ pass_threshold: string }>(
+    'SELECT pass_threshold FROM organizations WHERE id = $1', [journey.organization_id]
+  );
+  const passThreshold = Number(thresholdRow?.pass_threshold ?? 70);
   const org = await queryOne<{ industry: string | null }>(
     'SELECT industry FROM organizations WHERE id = $1', [journey.organization_id]
   );
@@ -131,7 +136,7 @@ async function measureJourney(journeyId: string, stats: Map<string, ItemStat>): 
       const item = scoreable.find((i) => i.id === it.scorecard_item_id);
       if (!item) continue;
       const normalized = normalizeScore(it.score, item.score_type);
-      const passed = isItemPass(normalized, settings.passThreshold);
+      const passed = isItemPass(normalized, passThreshold);
       const w = Number(item.weight);
       weighted += normalized * w;
       weight += w;
