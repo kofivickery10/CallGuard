@@ -30,6 +30,58 @@ export function fetchRecordingUrlByCallId(
   return `${conn.api_base_url}/calls/recording/${encodeURIComponent(callId)}.json`;
 }
 
+export interface CloudTalkAgent {
+  id: string;
+  name: string | null;
+  email: string | null;
+}
+
+interface CloudTalkRawAgentRecord {
+  Agent?: { id?: number | string; firstname?: string; lastname?: string; email?: string };
+}
+
+/**
+ * The dialler's agent roster: a stable numeric id, name and email per adviser.
+ *
+ * This is what attribution should key on. Matching a dialler's agent to a
+ * CallGuard user by NAME is unreliable in both directions — CloudTalk's webhook
+ * sends a short display name ("Vish") where the roster sends a full one ("Vish
+ * Bhalla") and CallGuard has a third spelling ("Vishall Bhalla"); real rosters
+ * also carry double spaces and surname typos ("Fazal" vs "Fazel"). The numeric
+ * id has none of those problems and does not change when someone's email does.
+ *
+ * Paged like every other CloudTalk index endpoint, though a roster fits one page
+ * for any realistic firm.
+ */
+export async function fetchAgents(conn: DialerConnectionRow, maxPages = 20): Promise<CloudTalkAgent[]> {
+  const headers = cloudTalkBasicAuthHeader(conn);
+  if (!headers) return [];
+
+  const limit = 100;
+  const out: CloudTalkAgent[] = [];
+  for (let page = 1; page <= maxPages; page++) {
+    const res = await fetch(`${conn.api_base_url}/agents/index.json?limit=${limit}&page=${page}`, { headers });
+    if (!res.ok) {
+      console.warn(`[CloudTalk] agents page ${page} returned ${res.status} — stopping`);
+      break;
+    }
+    const body = (await res.json().catch(() => null)) as
+      | { responseData?: { data?: CloudTalkRawAgentRecord[] }; data?: { items?: CloudTalkRawAgentRecord[] } }
+      | null;
+    const items = body?.responseData?.data ?? body?.data?.items ?? [];
+    if (items.length === 0) break;
+
+    for (const item of items) {
+      const a = item.Agent;
+      if (a?.id == null) continue;
+      const name = [a.firstname, a.lastname].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
+      out.push({ id: String(a.id), name: name || null, email: a.email?.trim() || null });
+    }
+    if (items.length < limit) break;
+  }
+  return out;
+}
+
 /**
  * Recover CloudTalk's numeric CDR id from a recording URL, which embeds it as
  * base64 in the path: https://my.cloudtalk.io/pub/r/<base64(id)>/<hash>.wav
