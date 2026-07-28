@@ -7,7 +7,7 @@ import { recordAuditEvent } from '../services/audit.js';
 import { getScoringSettings } from '../services/tenant-settings.js';
 import { pushJourneyScoreUpdate } from '../services/score-writeback.js';
 import { deriveSeverity, isItemPass, callPasses } from '@callguard/shared';
-import type { Journey, JourneyItemScore, JourneyWithDetail, JourneyListItem, JourneyStatus, JourneyProduct, BreachSeverity } from '@callguard/shared';
+import type { Journey, JourneyItemScore, JourneyWithDetail, JourneyListItem, JourneyStatus, JourneyProduct, JourneyScoreRun, BreachSeverity } from '@callguard/shared';
 
 export const journeysRouter = Router();
 journeysRouter.use(authenticate);
@@ -221,6 +221,21 @@ journeysRouter.get('/:id', requireOrgView, async (req, res, next) => {
       [journey.id]
     );
 
+    // Scoring history (migration 074). Returned on every sale so the UI can
+    // show that a score has been re-run and what it was before, rather than
+    // presenting the latest number as though it were the only one there has
+    // ever been. Ordered newest-first; run 1 is the original.
+    const scoreRuns = await query<JourneyScoreRun>(
+      `SELECT r.id, r.run_number, r.overall_score, r.pass, r.branch, r.branch_source,
+              r.model_id, r.items_passed, r.items_failed, r.items_na, r.items_manual_review,
+              r.calls_scored, r.trigger_source, r.created_at, u.name AS triggered_by_name
+         FROM journey_score_runs r
+         LEFT JOIN users u ON u.id = r.triggered_by
+        WHERE r.journey_id = $1
+        ORDER BY r.run_number DESC`,
+      [journey.id]
+    );
+
     // trigger_context is a server-only routing field: a raw snapshot of the
     // Zoho sale-trigger payload (used to resolve capture forms), which can
     // carry customer PII. It's kept off the shared Journey type, but SELECT *
@@ -233,6 +248,7 @@ journeysRouter.get('/:id', requireOrgView, async (req, res, next) => {
       calls,
       item_scores: itemScores,
       products,
+      score_runs: scoreRuns,
       customer_name: customer?.name ?? null,
       customer_phone: customer?.phone_normalized ?? null,
     });
@@ -293,8 +309,8 @@ journeysRouter.post('/trigger', requireActioner, async (req, res, next) => {
 // each run spends scoring tokens, so it must be a considered action.
 journeysRouter.post('/:id/rescore', requireAdmin, async (req, res, next) => {
   try {
-    const journey = await queryOne<{ id: string; status: JourneyStatus }>(
-      'SELECT id, status FROM journeys WHERE id = $1 AND organization_id = $2',
+    const journey = await queryOne<{ id: string; status: JourneyStatus; overall_score: string | null }>(
+      'SELECT id, status, overall_score FROM journeys WHERE id = $1 AND organization_id = $2',
       [req.params.id, req.user!.organizationId]
     );
     if (!journey) throw new AppError(404, 'Sale not found');
@@ -307,10 +323,36 @@ journeysRouter.post('/:id/rescore', requireAdmin, async (req, res, next) => {
       [journey.id]
     );
 
+    // Audit the request, not the result. Scoring is async and can still fail,
+    // so this records that a named admin asked for the sale to be re-scored and
+    // what the score was at that moment. The resulting number lands in
+    // journey_score_runs (migration 074) when the job completes.
+    //
+    // This exists because a compliance score changing with no attributable
+    // cause is indefensible to a regulated firm — the score itself moving is
+    // expected (LLM scoring is not deterministic), being unable to say who
+    // caused it is not.
+    await recordAuditEvent({
+      organizationId: req.user!.organizationId,
+      userId: req.user!.userId,
+      actionType: 'journey.rescore',
+      entityType: 'journey',
+      entityId: journey.id,
+      summary:
+        journey.overall_score == null
+          ? 'Re-score requested (sale had no score)'
+          : `Re-score requested (score at request: ${Number(journey.overall_score).toFixed(2)}%)`,
+      metadata: {
+        previous_score: journey.overall_score == null ? null : Number(journey.overall_score),
+        previous_status: journey.status,
+      },
+      req,
+    });
+
     const { scoringQueue } = await import('../jobs/queue.js');
     await scoringQueue.add(
       'score-journey',
-      { journeyId: journey.id },
+      { journeyId: journey.id, rescoredBy: req.user!.userId },
       { jobId: `rescore-journey-${journey.id}-${Date.now()}` }
     );
 

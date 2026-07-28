@@ -25,6 +25,9 @@ interface JourneyRow {
   client_name: string | null;
   product_source: ProductSource | null;
   crm_stage: string | null;
+  // The score this run is about to replace, if any. Read before scoring purely
+  // so a re-score logs what it changed — the durable record is journey_score_runs.
+  overall_score: string | number | null;
 }
 
 interface JourneyCallRow {
@@ -40,9 +43,26 @@ interface JourneyCallRow {
 }
 
 
-export async function processScoreJourney(job: Job<{ journeyId: string; suppressCrm?: boolean }>) {
-  const { journeyId, suppressCrm } = job.data;
+export interface ScoreJourneyJobData {
+  journeyId: string;
+  suppressCrm?: boolean;
+  // Who pressed "re-score", for the score-history row (migration 074). Absent
+  // for automatic scoring off the sale trigger and for bulk operational runs.
+  rescoredBy?: string | null;
+}
+
+export async function processScoreJourney(job: Job<ScoreJourneyJobData>) {
+  const { journeyId, suppressCrm, rescoredBy } = job.data;
   console.log(`[ScoreJourney] Processing journey ${journeyId}${suppressCrm ? ' (CRM write-back suppressed)' : ''}`);
+
+  // Which kind of run this is, for the history row. A human pressing the button
+  // is the case that has to be distinguishable after the fact — that is the one
+  // someone will later ask about when a score has moved.
+  const runTrigger: 'initial' | 'rescore' | 'bulk' = rescoredBy
+    ? 'rescore'
+    : suppressCrm
+      ? 'bulk'
+      : 'initial';
 
   const journey = await queryOne<JourneyRow>('SELECT * FROM journeys WHERE id = $1', [journeyId]);
   if (!journey) throw new Error(`Journey ${journeyId} not found`);
@@ -396,11 +416,62 @@ export async function processScoreJourney(job: Job<{ journeyId: string; suppress
         [journeyId, branch, branchSource, overallScore, pass, model,
          output.coaching ? JSON.stringify(output.coaching) : null]
       );
+
+      // Append this run to the sale's score history (migration 074). Inside the
+      // same transaction as the score itself, so the history can never disagree
+      // with the number it is meant to explain.
+      //
+      // run_number is derived here rather than counted outside: the SELECT and
+      // the INSERT share this transaction, and the UNIQUE (journey_id,
+      // run_number) constraint turns any surviving race into a rolled-back
+      // scoring run rather than a duplicated history entry.
+      //
+      // The item counts are stored alongside the score because a score can move
+      // for two very different reasons — different verdicts on the same items,
+      // or a different set of items being scoreable at all (a branch flip, a
+      // consent gate routing to manual review, a scorecard edit). Recording only
+      // the percentage makes those indistinguishable afterwards.
+      const priorRuns = await tx.queryOne<{ next: number }>(
+        'SELECT COALESCE(max(run_number), 0) + 1 AS next FROM journey_score_runs WHERE journey_id = $1',
+        [journeyId]
+      );
+      await tx.query(
+        `INSERT INTO journey_score_runs
+           (journey_id, organization_id, run_number, overall_score, pass, branch, branch_source,
+            model_id, items_passed, items_failed, items_na, items_manual_review, calls_scored,
+            triggered_by, trigger_source)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+        [
+          journeyId,
+          journey.organization_id,
+          priorRuns?.next ?? 1,
+          overallScore,
+          pass,
+          branch,
+          branchSource,
+          model,
+          itemWrites.length - failures.length,
+          failures.length,
+          na.length,
+          manualReview.length + provisionalWrites.length,
+          withTranscript.length,
+          rescoredBy ?? null,
+          runTrigger,
+        ]
+      );
     });
 
+    // Log the movement, not just the result. A re-score that lands on a
+    // different number is the thing worth seeing in the logs; the previous
+    // score is otherwise gone from view the moment it is overwritten.
+    const priorScore = journey.overall_score == null ? null : Number(journey.overall_score);
+    const delta =
+      priorScore == null
+        ? ''
+        : ` [was ${priorScore.toFixed(1)}, ${overallScore >= priorScore ? '+' : ''}${(overallScore - priorScore).toFixed(1)} via ${runTrigger}]`;
     console.log(
       `[ScoreJourney] Journey ${journeyId} scored: ${overallScore.toFixed(1)} (${pass ? 'PASS' : 'FAIL'})` +
-      `${branch ? ` [branch: ${branch} via ${branchSource}]` : ''} across ${withTranscript.length} call(s)`
+      `${branch ? ` [branch: ${branch} via ${branchSource}]` : ''} across ${withTranscript.length} call(s)${delta}`
     );
 
     const customer = await queryOne<{ name: string | null; phone_normalized: string | null; external_crm_id: string | null }>(

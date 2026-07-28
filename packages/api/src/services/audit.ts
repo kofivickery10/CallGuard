@@ -14,6 +14,7 @@ export type AuditActionType =
   | 'call.upload'
   | 'call.bulk_import'
   | 'call.rescore'
+  | 'journey.rescore'
   | 'call.reviewed'
   | 'call.review_cleared'
   | 'score.correct'

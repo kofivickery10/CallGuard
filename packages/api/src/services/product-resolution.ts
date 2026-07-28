@@ -187,7 +187,14 @@ ${transcript}
 
   const response = await client.messages.create({
     model: CLAUDE_MODELS.HAIKU,
-    max_tokens: 512,
+    // 512 is ample for a list of product names, but scale it with the catalogue
+    // so a large one cannot quietly clip the tail (see the stop_reason guard
+    // below — a truncated list is indistinguishable from "nothing was sold").
+    max_tokens: Math.min(4096, 512 + catalogue.length * 24),
+    // Product resolution feeds the scoring denominator: which items apply to a
+    // sale. Pinned so the same transcript resolves to the same products every
+    // run — Haiku accepts the parameter (Sonnet 5 does not).
+    temperature: 0,
     messages: [{ role: 'user', content: prompt }],
     tools: [
       {
@@ -209,6 +216,23 @@ ${transcript}
     tool_choice: { type: 'tool', name: 'report_products' },
   });
 
+  // A response cut off at the token ceiling leaves the tool-call JSON
+  // incomplete, so `product_names` parses as undefined and we fall through to
+  // [] — the same value as "the model looked and found nothing sold".
+  //
+  // Deliberately NOT thrown. Unlike the verify pass removed in migration 073,
+  // this degradation is in the safe direction: an empty product set makes every
+  // product-scoped item apply (productAppliesToItem), so scoring gets stricter,
+  // not laxer. Throwing would instead fail the whole scoring job and, once
+  // BullMQ retries are exhausted, leave the sale unscored — a worse outcome
+  // than a conservative denominator. Log it loudly so it is visible if the
+  // widened max_tokens above ever stops being enough.
+  if (response.stop_reason === 'max_tokens') {
+    console.error(
+      `[ProductResolution] Detection truncated at max_tokens (catalogue=${catalogue.length}) — ` +
+        `falling back to no products, which scores every product-scoped item`
+    );
+  }
   const toolUse = response.content.find((b) => b.type === 'tool_use');
   if (!toolUse || toolUse.type !== 'tool_use') return [];
   const names = (toolUse.input as { product_names?: unknown }).product_names;
