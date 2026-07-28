@@ -28,6 +28,11 @@ export interface IngestCallParams {
   customerExternalCrmId?: string | null;
   callDate?: string | null;
   externalId?: string | null;
+  // The dialler's own numeric call id (migration 075). Recorded alongside
+  // externalId so a call captured live and the same call seen later through the
+  // history API resolve to one row — the two routes disagree on what goes in
+  // externalId. Null for non-dialler sources.
+  dialerCallId?: string | null;
   tags?: string[];
   // Call direction, when the dialler's payload carries it (see
   // routes/ingestion.ts's DialerFieldMap.direction) — null when absent/
@@ -130,6 +135,33 @@ export interface IngestedCall {
 }
 
 /**
+ * Find a call already on file under either identity key.
+ *
+ * A CloudTalk call has two identifiers and which one we hold depends on how it
+ * reached us: the live webhook records `call_uuid` in external_id, the history
+ * API records the numeric CDR id. Checking only external_id is what made
+ * backfilling duplicate every call already captured live (migration 075).
+ *
+ * The NULL guards matter: without them a null parameter would match every row
+ * whose column is also null.
+ */
+async function findExistingCall(
+  organizationId: string,
+  externalId: string | null | undefined,
+  dialerCallId: string | null | undefined
+): Promise<Call | null> {
+  if (!externalId && !dialerCallId) return null;
+  return queryOne<Call>(
+    `SELECT * FROM calls
+      WHERE organization_id = $1
+        AND (($2::text IS NOT NULL AND external_id = $2)
+          OR ($3::text IS NOT NULL AND dialer_call_id = $3))
+      LIMIT 1`,
+    [organizationId, externalId ?? null, dialerCallId ?? null]
+  );
+}
+
+/**
  * Resolve a dialler-supplied agent identifier to a CallGuard adviser, so calls
  * attribute correctly regardless of which dialler / CRM the customer uses.
  * Precedence: explicit CallGuard user id > email > the dialler's external agent
@@ -204,14 +236,10 @@ async function resolveAgent(
  * the existing call instead of creating a duplicate.
  */
 export async function ingestCall(params: IngestCallParams): Promise<IngestedCall> {
-  // Idempotency check
-  if (params.externalId) {
-    const existing = await queryOne<Call>(
-      'SELECT * FROM calls WHERE organization_id = $1 AND external_id = $2',
-      [params.organizationId, params.externalId]
-    );
-    if (existing) return { call: existing, isDuplicate: true };
-  }
+  // Idempotency check — on either identity key, so a backfill of a call already
+  // captured live is recognised rather than duplicated.
+  const existing = await findExistingCall(params.organizationId, params.externalId, params.dialerCallId);
+  if (existing) return { call: existing, isDuplicate: true };
 
   // Validate scorecard_id (if provided) belongs to this org
   let scorecardId: string | null = null;
@@ -268,9 +296,9 @@ export async function ingestCall(params: IngestCallParams): Promise<IngestedCall
          file_size_bytes, mime_type, agent_id, agent_name,
          customer_phone, customer_id, call_date, tags, status,
          external_id, ingestion_source, encrypted_at_rest, scorecard_id,
-         dialer_connection_id, direction
+         dialer_connection_id, direction, dialer_call_id
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'uploaded', $14, $15, true, $16, $17, $18)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'uploaded', $14, $15, true, $16, $17, $18, $19)
        RETURNING *`,
       [
         callId,
@@ -292,20 +320,18 @@ export async function ingestCall(params: IngestCallParams): Promise<IngestedCall
         scorecardId,
         params.dialerConnectionId ?? null,
         params.direction ?? null,
+        params.dialerCallId ?? null,
       ]
     );
   } catch (err) {
     // Two concurrent deliveries of the same webhook both pass the
     // idempotency SELECT above before either INSERTs (TOCTOU) — the second
-    // hits idx_calls_org_external_id instead of erroring out to the caller.
-    // Treat that race the same as the idempotency check: return the row the
-    // other request just created.
-    if (params.externalId && (err as { code?: string }).code === '23505') {
-      const existing = await queryOne<Call>(
-        'SELECT * FROM calls WHERE organization_id = $1 AND external_id = $2',
-        [params.organizationId, params.externalId]
-      );
-      if (existing) return { call: existing, isDuplicate: true };
+    // hits idx_calls_org_external_id (or idx_calls_org_dialer_call_id) instead
+    // of erroring out to the caller. Treat that race the same as the
+    // idempotency check: return the row the other request just created.
+    if ((err as { code?: string }).code === '23505') {
+      const raced = await findExistingCall(params.organizationId, params.externalId, params.dialerCallId);
+      if (raced) return { call: raced, isDuplicate: true };
     }
     throw err;
   }
@@ -320,6 +346,9 @@ export interface CaptureCallParams {
   externalId: string;
   // The CloudTalk call UUID, used to re-fetch the recording at sale time.
   cloudtalkCallId: string | null;
+  // The dialler's numeric call id (migration 075) — the key shared with the
+  // history API, so a backfill recognises this call instead of duplicating it.
+  dialerCallId?: string | null;
   // The webhook's recording URL if it carried one — stored as a hint only;
   // hydration prefers a fresh fetch by cloudtalkCallId to dodge URL expiry.
   recordingPointer: string | null;
@@ -344,10 +373,9 @@ export interface CaptureCallParams {
 export async function captureCallMetadata(
   params: CaptureCallParams
 ): Promise<IngestedCall> {
-  const existing = await queryOne<Call>(
-    'SELECT * FROM calls WHERE organization_id = $1 AND external_id = $2',
-    [params.organizationId, params.externalId]
-  );
+  // On either identity key — this is the path the backfill script drives, so it
+  // is the one that must recognise a call already captured live (migration 075).
+  const existing = await findExistingCall(params.organizationId, params.externalId, params.dialerCallId);
   if (existing) return { call: existing, isDuplicate: true };
 
   const { agentId, agentName } = await resolveAgent(params.organizationId, params);
@@ -367,10 +395,11 @@ export async function captureCallMetadata(
          id, organization_id, uploaded_by, file_name, file_key,
          mime_type, agent_id, agent_name, customer_phone, customer_id,
          call_date, status, external_id, ingestion_source, encrypted_at_rest,
-         dialer_connection_id, direction, recording_pointer, duration_seconds
+         dialer_connection_id, direction, recording_pointer, duration_seconds,
+         dialer_call_id
        )
        VALUES ($1, $2, NULL, $3, NULL, NULL, $4, $5, $6, $7, $8,
-               'captured', $9, 'dialer_webhook', false, $10, $11, $12, $13)
+               'captured', $9, 'dialer_webhook', false, $10, $11, $12, $13, $14)
        RETURNING *`,
       [
         callId,
@@ -386,6 +415,7 @@ export async function captureCallMetadata(
         params.direction ?? null,
         params.recordingPointer ?? null,
         params.durationSeconds ?? null,
+        params.dialerCallId ?? null,
       ]
     );
     return { call: rows[0]!, isDuplicate: false };
@@ -393,10 +423,7 @@ export async function captureCallMetadata(
     // Same TOCTOU race as ingestCall: two concurrent webhook deliveries both
     // pass the SELECT above before either INSERTs. Return the row the other won.
     if ((err as { code?: string }).code === '23505') {
-      const raced = await queryOne<Call>(
-        'SELECT * FROM calls WHERE organization_id = $1 AND external_id = $2',
-        [params.organizationId, params.externalId]
-      );
+      const raced = await findExistingCall(params.organizationId, params.externalId, params.dialerCallId);
       if (raced) return { call: raced, isDuplicate: true };
     }
     throw err;

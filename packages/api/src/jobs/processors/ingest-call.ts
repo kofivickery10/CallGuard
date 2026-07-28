@@ -1,7 +1,7 @@
 import { Job } from 'bullmq';
 import { queryOne } from '../../db/client.js';
 import { getDialerConnection } from '../../services/tenant-settings.js';
-import { fetchRecordingUrlByCallId, cloudTalkBasicAuthHeader } from '../../services/cloudtalk.js';
+import { fetchRecordingUrlByCallId, cloudTalkBasicAuthHeader, resolveCloudTalkCallId } from '../../services/cloudtalk.js';
 import { fetchRemoteAudio, ingestCall } from '../../services/ingestion.js';
 
 export interface IngestCallJobData {
@@ -10,6 +10,9 @@ export interface IngestCallJobData {
   dialerConnectionId: string | null;
   recordingUrl: string | null;
   cloudtalkCallId: string | null;
+  // The dialler's numeric call id (migration 075). Optional so jobs already
+  // queued when this shipped still run — it is re-derived below when absent.
+  dialerCallId?: string | null;
   externalId: string;
   agentEmail: string | null;
   agentExternalId: string | null;
@@ -38,8 +41,11 @@ export async function processIngestCall(job: Job<IngestCallJobData>) {
   // BullMQ jobId and is deduped there, but a retry that arrives after this
   // job already completed goes through the same check here.
   const existing = await queryOne<{ id: string }>(
-    'SELECT id FROM calls WHERE organization_id = $1 AND external_id = $2',
-    [data.organizationId, data.externalId]
+    `SELECT id FROM calls
+      WHERE organization_id = $1
+        AND (external_id = $2 OR ($3::text IS NOT NULL AND dialer_call_id = $3))
+      LIMIT 1`,
+    [data.organizationId, data.externalId, data.dialerCallId ?? null]
   );
   if (existing) {
     console.log(`[IngestCall] ${data.externalId} already ingested as ${existing.id}, skipping`);
@@ -65,6 +71,12 @@ export async function processIngestCall(job: Job<IngestCallJobData>) {
   const headers = conn ? cloudTalkBasicAuthHeader(conn) ?? {} : {};
   const downloaded = await fetchRemoteAudio(recordingUrl, headers);
 
+  // Derive from the resolved recording URL when the enqueuing route didn't
+  // supply one. That covers jobs queued before migration 075 shipped, and the
+  // case where the URL was only fetched here (by call id) rather than carried
+  // on the webhook.
+  const dialerCallId = data.dialerCallId ?? resolveCloudTalkCallId(data.cloudtalkCallId, recordingUrl);
+
   const { call, isDuplicate } = await ingestCall({
     organizationId: data.organizationId,
     uploadedBy: null,
@@ -78,6 +90,7 @@ export async function processIngestCall(job: Job<IngestCallJobData>) {
     customerPhone: data.customerPhone,
     callDate: data.callDate ?? null,
     externalId: data.externalId,
+    dialerCallId,
     dialerConnectionId: data.dialerConnectionId,
     direction: data.direction,
   });

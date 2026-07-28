@@ -24,7 +24,7 @@
  */
 
 import fs from 'fs';
-import { queryOne } from '../db/client.js';
+import { query, queryOne } from '../db/client.js';
 import { getDialerConnection } from '../services/tenant-settings.js';
 import { fetchCallsInWindow, natSig, type CloudTalkHistoryEntry } from '../services/cloudtalk.js';
 import { captureCallMetadata, normalizePhone } from '../services/ingestion.js';
@@ -102,10 +102,28 @@ async function run() {
     const contactName = history.find((e) => e.contactName)?.contactName ?? null;
 
     if (dryRun) {
+      // Split into "already on file" vs "would be created" using the same key
+      // captureCallMetadata dedupes on (migration 075). This is the check worth
+      // running before a real backfill: if the dedupe key were wrong, every
+      // call already captured live would show up here as new, and the sale
+      // would end up scored twice over the same conversations.
+      const held = await query<{ dialer_call_id: string | null; external_id: string | null }>(
+        `SELECT dialer_call_id, external_id FROM calls
+          WHERE organization_id = $1
+            AND (dialer_call_id = ANY($2::text[]) OR external_id = ANY($2::text[]))`,
+        [orgId as string, usable.map((e) => e.id)]
+      );
+      const heldIds = new Set(held.flatMap((r) => [r.dialer_call_id, r.external_id].filter(Boolean) as string[]));
+      const fresh = usable.filter((e) => !heldIds.has(e.id));
       console.log(
         `[Backfill] ${phone} — ${history.length} matched call(s), ${usable.length} ≥15s` +
-          `${contactName ? ` (contact: ${contactName})` : ''} (dry run, not ingesting)`
+          `${contactName ? ` (contact: ${contactName})` : ''}: ` +
+          `${fresh.length} to ingest, ${usable.length - fresh.length} already on file (dry run)`
       );
+      for (const e of fresh) {
+        const mins = e.durationSeconds == null ? '?' : Math.round(e.durationSeconds / 60);
+        console.log(`             + ${e.startedAt ?? 'unknown date'}  ${mins}m  ${e.agentName ?? 'unknown agent'}  (${e.id})`);
+      }
       continue;
     }
 
@@ -124,6 +142,12 @@ async function run() {
         organizationId: orgId as string,
         externalId: entry.id,
         cloudtalkCallId: entry.id,
+        // The shared key with live capture (migration 075). Without it this
+        // dedupes on external_id alone, which the webhook fills with CloudTalk's
+        // call_uuid rather than this numeric CDR id — so every call already
+        // captured live would be re-ingested here as a second row, and the sale
+        // scored twice over the same conversations.
+        dialerCallId: entry.id,
         recordingPointer: null,
         agentEmail: entry.agentEmail,
         agentExternalId: entry.agentExternalId,
