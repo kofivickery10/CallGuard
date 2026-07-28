@@ -505,7 +505,12 @@ journeysRouter.post('/:id/scores/items/:itemScoreId/correct', requireActioner, a
          (organization_id, journey_id, journey_item_score_id, scorecard_item_id, corrected_by,
           original_score, corrected_score, original_pass, corrected_pass, reason, transcript_excerpt)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-       ON CONFLICT (journey_item_score_id) DO UPDATE SET
+       -- Keyed on (journey, checkpoint), not the item-score row: that row is
+       -- dropped and recreated on every scoring run, so keying the ruling to it
+       -- is what let a re-score cascade-delete it (migration 077).
+       ON CONFLICT (journey_id, scorecard_item_id) WHERE journey_id IS NOT NULL
+       DO UPDATE SET
+         journey_item_score_id = EXCLUDED.journey_item_score_id,
          corrected_score = EXCLUDED.corrected_score,
          corrected_pass = EXCLUDED.corrected_pass,
          reason = EXCLUDED.reason,

@@ -320,6 +320,39 @@ export async function processScoreJourney(job: Job<ScoreJourneyJobData>) {
     // checkpoint gets decided by a person rather than by sampling luck.
     const disputedIds = new Set(consensusItems.filter((i) => i.disputed).map((i) => i.scorecard_item_id));
     const agreementById = new Map(consensusItems.map((i) => [i.scorecard_item_id, i.agreement]));
+
+    // A checkpoint a human has already ruled on is not re-decided.
+    //
+    // This is what makes a score stop moving. The model cannot be made
+    // deterministic — it samples, so a genuinely borderline checkpoint can land
+    // either way between runs. But a checkpoint settled by a person has a
+    // verdict that is simply replayed, and no amount of model variance can
+    // touch it. Overlaid BEFORE the weighted score is computed, so the breach
+    // register, the pass/fail gate and the CRM write-back all reflect the human
+    // verdict rather than the machine's.
+    //
+    // Keyed on (journey_id, scorecard_item_id) rather than the item-score row,
+    // which is dropped and recreated on every run (migration 077).
+    const rulings = await query<{ scorecard_item_id: string; corrected_score: string; corrected_pass: boolean }>(
+      `SELECT scorecard_item_id, corrected_score::text, corrected_pass
+         FROM score_corrections WHERE journey_id = $1`,
+      [journeyId]
+    );
+    const ruledIds = new Set(rulings.map((r) => r.scorecard_item_id));
+    if (rulings.length > 0) {
+      const byItem = new Map(rulings.map((r) => [r.scorecard_item_id, r]));
+      for (const it of consensusItems) {
+        const ruling = byItem.get(it.scorecard_item_id);
+        if (!ruling) continue;
+        it.score = ruling.corrected_pass ? 1 : 0;
+        it.confidence = 1;
+        it.reasoning = `Ruled by a reviewer: ${ruling.corrected_pass ? 'met' : 'not met'}. ${it.reasoning}`.slice(0, 2000);
+        // A human ruling settles a disputed checkpoint — it must not be sent
+        // back to the review queue it just came out of.
+        disputedIds.delete(it.scorecard_item_id);
+      }
+      console.log(`[ScoreJourney] ${journeyId}: ${rulings.length} human ruling(s) re-applied over the model's verdicts`);
+    }
     if (samples > 1) {
       console.log(
         `[ScoreJourney] ${journeyId}: ${samples} scoring runs, ` +
@@ -379,7 +412,9 @@ export async function processScoreJourney(job: Job<ScoreJourneyJobData>) {
       // a low-confidence consent gate is handled, and keep it out of the
       // weighted score — which is what makes the resulting number stable: it
       // covers only checkpoints every run agreed on.
-      if (provisionalIds.has(item.id) || disputedIds.has(item.id)) {
+      // ruledIds wins over both: a checkpoint a person has already settled is
+      // scored on their verdict, not sent back to the queue they ruled it out of.
+      if (!ruledIds.has(item.id) && (provisionalIds.has(item.id) || disputedIds.has(item.id))) {
         provisionalWrites.push({ item, itemScore, normalized, sourceCallId });
         continue;
       }
@@ -473,6 +508,23 @@ export async function processScoreJourney(job: Job<ScoreJourneyJobData>) {
              source_call_id = EXCLUDED.source_call_id, agreement = EXCLUDED.agreement`,
           [journeyId, item.id, itemScore.score, normalized, itemScore.confidence, itemScore.evidence, itemScore.reasoning, sourceCallId,
            agreementById.get(item.id) ?? null]
+        );
+      }
+
+      // Re-point each ruling at the item-score row that now exists. The rows
+      // above replaced the ones the ruling was originally attached to, so
+      // without this the pointer stays NULL until someone rules again — the
+      // ruling still applies (it is keyed on journey + checkpoint), but the UI
+      // could not show which row it belongs to.
+      if (ruledIds.size > 0) {
+        await tx.query(
+          `UPDATE score_corrections sc
+              SET journey_item_score_id = jis.id
+             FROM journey_item_scores jis
+            WHERE sc.journey_id = $1
+              AND jis.journey_id = $1
+              AND jis.scorecard_item_id = sc.scorecard_item_id`,
+          [journeyId]
         );
       }
 
