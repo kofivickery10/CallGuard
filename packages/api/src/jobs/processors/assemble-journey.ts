@@ -2,7 +2,7 @@ import { Job } from 'bullmq';
 import { query, queryOne } from '../../db/client.js';
 import { ingestionQueue } from '../queue.js';
 import { assembleJourney } from '../../services/journey.js';
-import { fetchSaleProducts } from '../../services/zoho.js';
+import { fetchSaleProducts, fetchSaleClientName } from '../../services/zoho.js';
 import { mapCrmValuesToProducts, type ResolvedProduct } from '../../services/product-resolution.js';
 import { isNoScoreCrmStage } from '@callguard/shared';
 import type { BranchConfig } from '@callguard/shared';
@@ -70,8 +70,22 @@ export async function processAssembleJourney(job: Job<AssembleJourneyJobData>) {
   // Backfill the customer's real name from the CRM. CloudTalk dials often carry
   // only a number (customer shows as "Unknown" until conversion); the sold-
   // customer record in Zoho is the authoritative name, so set it here.
-  if (clientName) {
-    await query('UPDATE customers SET name = $1 WHERE id = $2', [clientName, customer.id]);
+  //
+  // When the sale trigger didn't carry a name, read it off the sale record
+  // instead of giving up. Whether the webhook includes one depends on how the
+  // tenant built their Zoho workflow — Trust Point's sends only `id` and
+  // `Phone`, which left client_name null on every sale they have ever pushed
+  // and every QA record written back to their CRM reading "Unknown". We already
+  // have the record id and are about to call the CRM anyway.
+  let resolvedName = clientName;
+  if (!resolvedName && recordId) {
+    resolvedName = await fetchSaleClientName(organizationId, recordId);
+    if (resolvedName) {
+      console.log(`[AssembleJourney] ${phone}: client name resolved from the CRM record`);
+    }
+  }
+  if (resolvedName) {
+    await query('UPDATE customers SET name = $1 WHERE id = $2', [resolvedName, customer.id]);
   }
 
   // Resolve products from the CRM related list (primary source). Only attempted
@@ -176,7 +190,10 @@ export async function processAssembleJourney(job: Job<AssembleJourneyJobData>) {
     customerId: customer.id,
     triggerSource: 'zoho_sale',
     zohoRecordId: recordId,
-    clientName,
+    // The CRM-resolved name where the trigger didn't carry one, so the journey's
+    // client_name (and the QA record built from it) gets a real name too, not
+    // just the customer record.
+    clientName: resolvedName,
     products,
     productSource,
     crmStage,

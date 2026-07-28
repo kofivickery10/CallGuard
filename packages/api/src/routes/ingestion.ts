@@ -12,6 +12,7 @@ import { AppError } from '../middleware/errors.js';
 import { generateApiKey } from '../services/api-keys.js';
 import { encrypt } from '../services/crypto.js';
 import { ingestCall, fetchRemoteAudio, captureCallMetadata, pickField } from '../services/ingestion.js';
+import { resolveCloudTalkCallId } from '../services/cloudtalk.js';
 import { recordAuditEvent } from '../services/audit.js';
 import * as sftp from '../services/sftp.js';
 import {
@@ -265,9 +266,17 @@ export async function handleCloudTalkWebhook(
       return;
     }
 
+    // CloudTalk's numeric CDR id, recovered from the recording URL when the
+    // payload's own id is the UUID (migration 075). Stored on the call so the
+    // history-API backfill can tell this call is already on file.
+    const dialerCallId = resolveCloudTalkCallId(cloudtalkCallId, recordingUrl);
+
     const existing = await queryOne<{ id: string }>(
-      'SELECT id FROM calls WHERE organization_id = $1 AND external_id = $2',
-      [orgId, externalId]
+      `SELECT id FROM calls
+        WHERE organization_id = $1
+          AND (external_id = $2 OR ($3::text IS NOT NULL AND dialer_call_id = $3))
+        LIMIT 1`,
+      [orgId, externalId, dialerCallId]
     );
     if (existing) {
       res.status(200).json({ status: 'duplicate', call_id: existing.id, external_id: externalId });
@@ -286,6 +295,7 @@ export async function handleCloudTalkWebhook(
         organizationId: orgId,
         externalId,
         cloudtalkCallId,
+        dialerCallId,
         recordingPointer: recordingUrl,
         agentEmail,
         agentExternalId,
@@ -330,6 +340,7 @@ export async function handleCloudTalkWebhook(
           dialerConnectionId: conn?.id ?? null,
           recordingUrl,
           cloudtalkCallId,
+          dialerCallId,
           externalId,
           agentEmail,
           agentExternalId,
