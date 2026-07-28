@@ -8,7 +8,7 @@ import { getScoringSettings } from '../../services/tenant-settings.js';
 import { classifyItems } from '../../services/checkpoint-classification.js';
 import { deliverCallScored } from '../../services/webhook-delivery.js';
 import { sendOpsAlert } from '../../services/ops-alert.js';
-import { pushJourneyScored } from '../../services/zoho.js';
+import { pushJourneyScored, fetchSaleProducts } from '../../services/zoho.js';
 import { maybeStartJourneyCapture } from '../../services/capture-runs.js';
 import { buildCombinedTranscript, CALL_MARKER } from '../../services/journey-transcript.js';
 import { detectProductsFromTranscript } from '../../services/product-resolution.js';
@@ -102,6 +102,49 @@ export async function processScoreJourney(job: Job<ScoreJourneyJobData>) {
       [scorecard.id]
     );
     if (items.length === 0) throw new Error('Scorecard has no items');
+
+    // Fill in the CRM stage if we're scoring a sale that hasn't got one.
+    //
+    // crm_stage is normally captured once, at assembly. Anything assembled
+    // before that existed — or mended in place by the backfill, which extends a
+    // journey rather than re-assembling it — reaches scoring with a null stage
+    // and falls back to guessing the branch from transcript keywords. That guess
+    // is the original defect this whole path exists to remove: it decides which
+    // checkpoints apply, so a wrong branch both mutes the real branch's items
+    // and raises breaches for items that never applied.
+    //
+    // Measured, not hypothetical: a backfilled Trust Point sale whose CRM says
+    // "Referred" was re-scored under 'on_risk' because nothing re-read the
+    // stage. Resolving it here rather than in the mend path fixes every route
+    // into scoring — backfill, manual re-score, and any historical journey.
+    //
+    // Only when it could change the answer: the scorecard resolves branches from
+    // the CRM, the sale carries a record id, and we have no stage yet.
+    if (
+      !journey.crm_stage &&
+      journey.zoho_record_id &&
+      scorecard.branch_config?.detect === 'crm_field'
+    ) {
+      try {
+        const sale = await fetchSaleProducts(journey.organization_id, journey.zoho_record_id);
+        // Same rule as assembly: policies disagreeing on stage is not something
+        // to silently pick a winner from.
+        if (sale.stages.length === 1) {
+          journey.crm_stage = sale.stages[0]!;
+          await query('UPDATE journeys SET crm_stage = $2 WHERE id = $1', [journeyId, journey.crm_stage]);
+          console.log(`[ScoreJourney] ${journeyId}: resolved CRM stage "${journey.crm_stage}" at score time`);
+        } else if (sale.stages.length > 1) {
+          console.warn(
+            `[ScoreJourney] ${journeyId}: policies disagree on stage (${sale.stages.join(' | ')}) — ` +
+              `leaving branch to the transcript fallback`
+          );
+        }
+      } catch (err) {
+        // Best-effort. A CRM outage must not stop a sale being scored; it just
+        // falls back to keywords, which is what it would have done anyway.
+        console.warn(`[ScoreJourney] ${journeyId}: CRM stage lookup failed:`, (err as Error).message);
+      }
+    }
 
     // A sale the customer never took up is not scored (see migration 071).
     // Assembly already skips these, so reaching here means the stage moved to
