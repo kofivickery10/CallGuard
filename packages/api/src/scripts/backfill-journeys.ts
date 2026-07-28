@@ -54,6 +54,27 @@ function readPhones(): string[] {
 }
 
 async function run() {
+  // Preflight: calls.dialer_call_id (migration 075) is what stops this script
+  // re-ingesting calls already captured live. Running without it would either
+  // blow up mid-sweep on the dry-run check, or — worse, on a real run — dedupe
+  // on external_id alone and silently duplicate every live-captured call.
+  //
+  // Checked before the CloudTalk sweep rather than after: that sweep pages tens
+  // of thousands of CDRs and takes a minute, and there is no reason to spend it
+  // only to fail on a missing column.
+  const hasColumn = await queryOne<{ n: number }>(
+    `SELECT count(*)::int AS n FROM information_schema.columns
+      WHERE table_name = 'calls' AND column_name = 'dialer_call_id'`
+  );
+  if (!hasColumn?.n) {
+    console.error(
+      'Migration 075 has not been applied to this database — calls.dialer_call_id is missing.\n' +
+        'Without it a backfill cannot tell which calls are already on file and would duplicate them.\n' +
+        'Run `npm run migrate` against this DATABASE_URL first, then re-run this script.'
+    );
+    process.exit(1);
+  }
+
   const conn = await getDialerConnection(orgId as string, 'cloudtalk');
   if (!conn) {
     console.error(`No CloudTalk connection for org ${orgId}`);
