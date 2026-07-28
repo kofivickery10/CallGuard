@@ -201,6 +201,13 @@ ${needsSpeakerCheck
     const stream = client.messages.stream({
       model: CLAUDE_MODELS.HAIKU,
       max_tokens: 64000,
+      // Faithful transcription repair, not composition: the task is to fix
+      // mishearings and speaker labels while changing nothing else, so there is
+      // no upside to sampling variety. Pinning it also makes re-transcribing a
+      // call reproducible, which matters when a transcript is the evidence
+      // behind a breach. Haiku accepts the parameter; Sonnet 5 rejects it,
+      // which is why scoring itself cannot be pinned the same way.
+      temperature: 0,
       messages: [
         {
           role: 'user',

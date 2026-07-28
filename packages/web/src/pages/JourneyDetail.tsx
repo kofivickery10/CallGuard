@@ -138,6 +138,11 @@ export function JourneyDetail() {
   const productNameList = (ids: string[]): string[] =>
     ids.map((pid) => productNames.get(pid)).filter((n): n is string => !!n);
 
+  // Scoring history, newest first. Absent on a sale scored before the history
+  // table existed (migration 074 backfills one row per already-scored sale, so
+  // in practice this is only empty for an unscored sale).
+  const scoreRuns = journey.score_runs ?? [];
+
   // Conditions under which this score is less trustworthy than it looks. Each
   // one silently changed the result before this fix, so each is now stated
   // plainly on the sale rather than left in the worker logs.
@@ -307,6 +312,105 @@ export function JourneyDetail() {
           <div className="w-10 h-10 border-[3px] border-border border-t-primary rounded-full animate-spin mx-auto mb-4" />
           <div className="text-base font-semibold text-text-primary">
             {journey.status === 'pending' ? 'Queued for scoring' : 'Scoring the sale'}
+          </div>
+        </div>
+      )}
+
+      {/* Scoring history. Only shown once a sale has been scored more than
+          once, because that is the only time the current number needs
+          explaining: an unexplained change to a compliance score is the thing a
+          regulated firm cannot accept, and AI scoring genuinely is not
+          reproducible run to run. Showing every run, with what moved and who
+          asked for it, is the honest alternative to pretending the number is
+          fixed. */}
+      {scoreRuns.length > 1 && (
+        <div className="bg-card border border-border rounded-card mb-6">
+          <div className="px-5 py-4 border-b border-border flex items-start gap-2.5">
+            <svg
+              className="w-[18px] h-[18px] text-text-muted shrink-0 mt-0.5"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M3 3v5h5" />
+              <path d="M3.05 13A9 9 0 106 5.3L3 8" />
+              <path d="M12 7v5l3 2" />
+            </svg>
+            <div>
+              <h2 className="text-table-cell font-semibold text-text-primary">
+                Scored {scoreRuns.length} times
+              </h2>
+              <p className="text-xs text-text-secondary mt-0.5 max-w-2xl">
+                AI scoring is not fully repeatable, so re-running it can reach a different
+                result on the same evidence. Every run is kept here. A change in the
+                checkpoint count means a different set of checkpoints applied, not just a
+                different verdict on the same ones.
+              </p>
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="bg-table-header">
+                  <th scope="col" className="text-left text-table-header text-text-secondary px-5 py-2.5">Run</th>
+                  <th scope="col" className="text-left text-table-header text-text-secondary px-5 py-2.5">Score</th>
+                  <th scope="col" className="text-left text-table-header text-text-secondary px-5 py-2.5">Change</th>
+                  <th scope="col" className="text-left text-table-header text-text-secondary px-5 py-2.5">Checkpoints</th>
+                  <th scope="col" className="text-left text-table-header text-text-secondary px-5 py-2.5">Calls</th>
+                  <th scope="col" className="text-left text-table-header text-text-secondary px-5 py-2.5">Run by</th>
+                  <th scope="col" className="text-left text-table-header text-text-secondary px-5 py-2.5">When</th>
+                </tr>
+              </thead>
+              <tbody>
+                {scoreRuns.map((run, i) => {
+                  // score_runs arrives newest-first, so the run to compare
+                  // against is the next entry in the list.
+                  const prev = scoreRuns[i + 1];
+                  const change =
+                    prev && run.overall_score != null && prev.overall_score != null
+                      ? Number(run.overall_score) - Number(prev.overall_score)
+                      : null;
+                  const scored =
+                    (run.items_passed ?? 0) + (run.items_failed ?? 0);
+                  return (
+                    <tr key={run.id} className="border-b border-border-light last:border-0">
+                      <td className="px-5 py-3 text-table-cell text-text-secondary">{run.run_number}</td>
+                      <td className="px-5 py-3 text-table-cell font-semibold text-text-primary">
+                        {run.overall_score == null ? '—' : `${Number(run.overall_score).toFixed(2)}%`}
+                      </td>
+                      <td className="px-5 py-3 text-table-cell">
+                        {change == null ? (
+                          <span className="text-text-muted">—</span>
+                        ) : (
+                          // Signed text, not colour alone — the arrow and sign
+                          // carry the meaning for anyone who cannot separate the
+                          // two hues.
+                          <span className={change > 0 ? 'text-pass' : change < 0 ? 'text-fail' : 'text-text-muted'}>
+                            {change > 0 ? '+' : ''}{change.toFixed(2)}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-5 py-3 text-table-cell text-text-secondary">
+                        {scored > 0 ? `${run.items_passed ?? 0}/${scored} passed` : '—'}
+                      </td>
+                      <td className="px-5 py-3 text-table-cell text-text-secondary">{run.calls_scored ?? '—'}</td>
+                      <td className="px-5 py-3 text-table-cell text-text-secondary">
+                        {run.trigger_source === 'initial'
+                          ? 'Automatic'
+                          : run.triggered_by_name ?? (run.trigger_source === 'bulk' ? 'Bulk re-score' : 'Re-score')}
+                      </td>
+                      <td className="px-5 py-3 text-table-cell text-text-muted">
+                        {new Date(run.created_at).toLocaleString('en-GB')}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         </div>
       )}

@@ -69,9 +69,47 @@ export interface JourneyItemScore {
   created_at: string;
 }
 
+/**
+ * One completed scoring run for a sale (migration 074). Append-only: the
+ * journey row holds the current score, this is the history behind it.
+ *
+ * Exists because LLM scoring is not reproducible and cannot be made so — Sonnet
+ * 5 rejects `temperature` outright, and temperature 0 never guaranteed identical
+ * output on models that accept it. Since the number can legitimately move, what
+ * a regulated firm needs is not a frozen score but a complete record of every
+ * score the system produced, and who caused each one.
+ *
+ * The item counts matter as much as the score: they distinguish "the model
+ * changed its mind about the same checkpoints" from "a different set of
+ * checkpoints applied", which the percentage alone cannot.
+ */
+export interface JourneyScoreRun {
+  id: string;
+  // 1 for the original scoring, incrementing per re-score.
+  run_number: number;
+  overall_score: number | null;
+  pass: boolean | null;
+  branch: string | null;
+  branch_source: BranchSource | null;
+  model_id: string | null;
+  items_passed: number | null;
+  items_failed: number | null;
+  items_na: number | null;
+  items_manual_review: number | null;
+  calls_scored: number | null;
+  // 'initial' — first scoring off the sale trigger. 'rescore' — a human pressed
+  // the button. 'bulk' — an operational re-score script.
+  trigger_source: 'initial' | 'rescore' | 'bulk';
+  // Null for automatic runs, and for a user since deleted.
+  triggered_by_name: string | null;
+  created_at: string;
+}
+
 export interface JourneyWithDetail extends Journey {
   customer_name: string | null;
   customer_phone: string | null;
+  // Scoring history, newest first. Always at least one entry for a scored sale.
+  score_runs: JourneyScoreRun[];
   // The products this sale covered (empty for orgs not using product scoping).
   products: JourneyProduct[];
   // The calls that composed this sale, oldest first. call_date is already
