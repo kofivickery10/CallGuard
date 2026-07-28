@@ -172,11 +172,16 @@ async function resolveAgent(
   organizationId: string,
   p: Pick<IngestCallParams, 'agentId' | 'agentEmail' | 'agentExternalId' | 'agentName'>
 ): Promise<{ agentId: string | null; agentName: string | null }> {
+  // Whitespace-insensitive on the name: real dialler rosters carry double
+  // spaces ("Harry  Fearnehough"), and trim() alone only strips the ends, so an
+  // otherwise perfect name match was failing on nothing more than that.
   const lookups: Array<[string, string] | null> = [
     p.agentId ? ['id = $2', p.agentId] : null,
     p.agentEmail ? ['lower(email) = lower($2)', p.agentEmail] : null,
     p.agentExternalId ? ['external_agent_id = $2', p.agentExternalId] : null,
-    p.agentName ? ['lower(trim(name)) = lower(trim($2))', p.agentName] : null,
+    p.agentName
+      ? [`lower(regexp_replace(trim(name), '\\s+', ' ', 'g')) = lower(regexp_replace(trim($2), '\\s+', ' ', 'g'))`, p.agentName]
+      : null,
   ];
 
   for (const lookup of lookups) {
@@ -223,10 +228,66 @@ async function resolveAgent(
         );
       }
     }
+
+    // Surname-anchored: the dialler sends a full name whose FIRST name is a
+    // shortening of the adviser's ("Vish Bhalla" for "Vishall Bhalla"), which
+    // defeats both the exact match and the first-name pass above — "vish " is
+    // not a prefix of "vishall bhalla".
+    //
+    // The surname is what makes this safe. Requiring an exact last-name match
+    // plus one first name being a prefix of the other is a much stronger signal
+    // than a fuzzy whole-string similarity, and it will not quietly pair two
+    // different people the way an edit-distance threshold can. Still gated on
+    // being unambiguous.
+    const parts = p.agentName.trim().split(/\s+/).filter(Boolean);
+    if (parts.length >= 2) {
+      const first = parts[0]!;
+      const last = parts[parts.length - 1]!;
+      if (first.length >= 3 && last.length >= 2) {
+        const candidates = await query<{ id: string; name: string }>(
+          `SELECT id, name FROM users
+             WHERE organization_id = $1
+               AND lower(split_part(regexp_replace(trim(name), '\\s+', ' ', 'g'), ' ',
+                     array_length(string_to_array(regexp_replace(trim(name), '\\s+', ' ', 'g'), ' '), 1))) = lower($2)
+               AND (lower(split_part(trim(name), ' ', 1)) LIKE lower($3) || '%'
+                 OR lower($3) LIKE lower(split_part(trim(name), ' ', 1)) || '%')
+             LIMIT 2`,
+          [organizationId, last, first]
+        );
+        if (candidates.length === 1) {
+          const match = candidates[0]!;
+          console.log(
+            `[Ingestion] Linked dialler agent "${p.agentName}" to adviser "${match.name}" by surname + first-name prefix`
+          );
+          return { agentId: match.id, agentName: match.name };
+        }
+        if (candidates.length > 1) {
+          console.warn(
+            `[Ingestion] Dialler agent "${p.agentName}" matches more than one adviser by surname in org ${organizationId} — leaving unlinked`
+          );
+        }
+      }
+    }
   }
 
   // No adviser matched - keep the supplied name for display, leave unlinked.
   return { agentId: null, agentName: p.agentName ?? null };
+}
+
+/**
+ * Re-resolve the adviser for calls that were ingested without one, using the
+ * current matching rules and the current user list. Exposed for the relink
+ * script (scripts/relink-call-agents.ts).
+ *
+ * Historical calls only stored the dialler's display name, not its agent id, so
+ * this is necessarily name-based — which is why the matching above had to
+ * improve before a relink was worth running.
+ */
+export async function reresolveAgentForName(
+  organizationId: string,
+  agentName: string
+): Promise<{ agentId: string | null; agentName: string | null }> {
+  return resolveAgent(organizationId, { agentName });
 }
 
 /**
