@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
 import { SeverityBadge, StatusBadge } from '../components/BreachBadges';
 import { BreachDetailDrawer } from '../components/BreachDetailDrawer';
+import { ReviewEvidencePanel } from '../components/ReviewEvidencePanel';
 import { useAuth } from '../context/AuthContext';
 import { useDialog } from '../components/DialogProvider';
 import type { BreachStatus, BreachWithDetail, ManualReviewItem } from '@callguard/shared';
@@ -18,6 +19,18 @@ export function ReviewQueue() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [resolvingKey, setResolvingKey] = useState<string | null>(null);
+  // Which awaiting-review rows have their evidence open. A set, not one id — a
+  // reviewer working down a sale's checkpoints compares them side by side.
+  const [openEvidence, setOpenEvidence] = useState<Set<string>>(new Set());
+
+  const toggleEvidence = (key: string) => {
+    setOpenEvidence((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
 
   const { data, isLoading } = useQuery({
     queryKey: ['review-queue'],
@@ -94,11 +107,40 @@ export function ReviewQueue() {
                 </tr>
               </thead>
               <tbody>
-                {manualItems.map((item) => (
-                  <tr key={`${item.kind}-${item.item_score_id}`} className="border-b border-border-light last:border-0 hover:bg-table-header transition-colors">
+                {manualItems.map((item) => {
+                  const key = `${item.kind}-${item.item_score_id}`;
+                  const isOpen = openEvidence.has(key);
+                  return (
+                  <Fragment key={key}>
+                  <tr className="border-b border-border-light last:border-0 hover:bg-table-header transition-colors">
                     <td className="px-5 py-3 text-table-cell text-text-primary">
-                      {item.section && <span className="text-text-muted">{item.section}: </span>}
-                      {item.label}
+                      <div className="flex items-start gap-2">
+                        {/* Straight to the evidence: the quote, the transcript
+                            around it and the recording, without leaving the queue. */}
+                        <button
+                          onClick={() => toggleEvidence(key)}
+                          aria-expanded={isOpen}
+                          aria-label={isOpen ? `Hide evidence for ${item.label}` : `Show evidence for ${item.label}`}
+                          className="mt-0.5 shrink-0 text-text-muted hover:text-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
+                        >
+                          <svg
+                            className={`w-4 h-4 transition-transform ${isOpen ? 'rotate-90' : ''}`}
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.8"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            aria-hidden="true"
+                          >
+                            <path d="M9 6l6 6-6 6" />
+                          </svg>
+                        </button>
+                        <span>
+                          {item.section && <span className="text-text-muted">{item.section}: </span>}
+                          {item.label}
+                        </span>
+                      </div>
                     </td>
                     <td className="px-5 py-3 text-table-cell">
                       <Link
@@ -112,27 +154,45 @@ export function ReviewQueue() {
                     <td className="px-5 py-3 text-table-cell text-text-cell">{item.agent_name || '—'}</td>
                     <td className="px-5 py-3">{item.severity && <SeverityBadge severity={item.severity} />}</td>
                     <td className="px-5 py-3 text-right">
-                      {canAction && (
-                        <div className="inline-flex gap-1.5">
-                          <button
-                            onClick={() => resolveManual(item, 'pass')}
-                            disabled={resolvingKey === item.item_score_id}
-                            className="text-xs text-pass hover:text-white hover:bg-pass px-2 py-1 rounded border border-pass/30 hover:border-pass transition-colors disabled:opacity-50"
-                          >
-                            Pass
-                          </button>
-                          <button
-                            onClick={() => resolveManual(item, 'fail')}
-                            disabled={resolvingKey === item.item_score_id}
-                            className="text-xs text-fail hover:text-white hover:bg-fail px-2 py-1 rounded border border-fail/30 hover:border-fail transition-colors disabled:opacity-50"
-                          >
-                            Fail
-                          </button>
-                        </div>
-                      )}
+                      <div className="inline-flex items-center gap-3">
+                        <button
+                          onClick={() => toggleEvidence(key)}
+                          aria-expanded={isOpen}
+                          className="text-xs font-semibold text-text-muted hover:text-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
+                        >
+                          {isOpen ? 'Hide evidence' : 'Evidence'}
+                        </button>
+                        {canAction && (
+                          <span className="inline-flex gap-1.5">
+                            <button
+                              onClick={() => resolveManual(item, 'pass')}
+                              disabled={resolvingKey === item.item_score_id}
+                              className="text-xs text-pass hover:text-white hover:bg-pass px-2 py-1 rounded border border-pass/30 hover:border-pass transition-colors disabled:opacity-50"
+                            >
+                              Pass
+                            </button>
+                            <button
+                              onClick={() => resolveManual(item, 'fail')}
+                              disabled={resolvingKey === item.item_score_id}
+                              className="text-xs text-fail hover:text-white hover:bg-fail px-2 py-1 rounded border border-fail/30 hover:border-fail transition-colors disabled:opacity-50"
+                            >
+                              Fail
+                            </button>
+                          </span>
+                        )}
+                      </div>
                     </td>
                   </tr>
-                ))}
+                  {isOpen && (
+                    <tr className="border-b border-border-light last:border-0">
+                      <td colSpan={6} className="p-0">
+                        <ReviewEvidencePanel item={item} />
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>

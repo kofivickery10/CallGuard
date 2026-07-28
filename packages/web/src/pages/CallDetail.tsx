@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
 import { useAuth, useScoreOnly } from '../context/AuthContext';
@@ -13,9 +13,10 @@ import { CoachingPanel } from '../components/CoachingPanel';
 import { ScoreCorrectionModal } from '../components/ScoreCorrectionModal';
 import { useDialog } from '../components/DialogProvider';
 import { ItemResultBadge } from '../components/ItemResultBadge';
-import { formatDuration } from '../lib/format';
+import { AudioPlayer } from '../components/AudioPlayer';
+import { formatClock, formatDuration } from '../lib/format';
 import { hasFeature, isItemPass } from '@callguard/shared';
-import type { Call, CallScore, CallItemScore, CallCoaching } from '@callguard/shared';
+import type { Call, CallScore, CallItemScore, CallCoaching, EvidenceLocation } from '@callguard/shared';
 
 type ScoreWithItems = CallScore & {
   coaching: CallCoaching | null;
@@ -42,6 +43,17 @@ type CallWithJourney = Call & { journey?: JourneyContext | null };
 export function CallDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  // ?evidence=<kind>:<item_score_id> — arriving from the review queue to check
+  // one checkpoint's quote. The position is re-resolved here rather than passed
+  // in the URL, so the link stays short and can't go stale against a
+  // re-transcribed call.
+  const [searchParams] = useSearchParams();
+  const evidenceParam = searchParams.get('evidence');
+  const [evidenceKind, evidenceItemId] = (evidenceParam ?? '').split(':');
+  const evidenceRef =
+    (evidenceKind === 'call' || evidenceKind === 'journey') && evidenceItemId
+      ? { kind: evidenceKind, itemScoreId: evidenceItemId }
+      : null;
   const { user } = useAuth();
   const scoreOnly = useScoreOnly();
   const queryClient = useQueryClient();
@@ -110,6 +122,21 @@ export function CallDetail() {
     queryFn: () => api.get<{ data: ScoreWithItems[] }>(`/calls/${id}/scores`),
     enabled: call?.status === 'scored',
   });
+
+  const { data: evidence } = useQuery({
+    queryKey: ['review-evidence', evidenceRef?.kind, evidenceRef?.itemScoreId],
+    queryFn: () =>
+      api.get<EvidenceLocation>(
+        `/review-items/${evidenceRef!.kind}/${evidenceRef!.itemScoreId}/evidence`
+      ),
+    enabled: Boolean(evidenceRef),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Only honour the highlight when the located evidence really belongs to the
+  // call being viewed (a hand-edited URL otherwise highlights an unrelated line).
+  const evidenceForThisCall = evidence && evidence.call_id === id ? evidence : null;
+  const highlightIndex = evidenceForThisCall?.excerpt.find((line) => line.is_match)?.index ?? null;
 
   if (callError || (!callLoading && !call)) {
     return (
@@ -353,8 +380,30 @@ export function CallDetail() {
           <div className="bg-card border border-border rounded-card overflow-hidden flex flex-col">
             <div className="px-5 py-4 border-b border-border">
               <h3 className="text-section-title text-text-primary">Transcript</h3>
+              {/* Listen alongside reading — cued to the checkpoint's quote when
+                  the reviewer arrived from the review queue. */}
+              {call.file_key && (
+                <AudioPlayer
+                  callId={call.id}
+                  startAt={evidenceForThisCall?.timestamp_seconds ?? null}
+                  duration={call.duration_seconds}
+                  label={call.file_name}
+                  className="mt-3"
+                />
+              )}
+              {evidenceForThisCall && (
+                <p className="text-xs text-text-muted mt-2">
+                  {highlightIndex != null
+                    ? `Highlighted below: the passage quoted for the checkpoint you were reviewing${
+                        evidenceForThisCall.timestamp_seconds != null
+                          ? ` (${formatClock(evidenceForThisCall.timestamp_seconds)})`
+                          : ''
+                      }.`
+                    : 'No passage in this transcript matched that checkpoint’s evidence — read it in full to check the checkpoint.'}
+                </p>
+              )}
             </div>
-            <TranscriptViewer transcript={call.transcript_text} />
+            <TranscriptViewer transcript={call.transcript_text} highlightIndex={highlightIndex} />
           </div>
         )}
       </div>

@@ -176,4 +176,44 @@ export interface ManualReviewItem {
   customer_name: string | null;
   agent_name: string | null;
   detected_at: string;
+  // What the AI had to say about this checkpoint, so the reviewer decides on the
+  // evidence rather than on the label alone. All null for an item_type='manual'
+  // checkpoint, which is never sent to the scorer at all.
+  evidence: string | null;
+  reasoning: string | null;
+  confidence: number | null;
+  // The AI's provisional verdict, present only for a consent gate routed to
+  // manual review on low speaker-attribution confidence (the human confirms it
+  // rather than scoring from scratch).
+  normalized_score: number | null;
+  // The call whose transcript and recording carry the evidence: the call itself
+  // for a per-call checkpoint, the scorer's cited source call for a journey one.
+  // Null when a journey checkpoint cited no particular call.
+  source_call_id: string | null;
+  source_call_name: string | null;
+  // Whether that call still has audio stored (retention purges it before the
+  // score), so the UI offers playback only when there is something to play.
+  has_audio: boolean;
+}
+
+// Where a checkpoint's evidence quote sits in the call — recovered from the
+// transcript on demand (services/evidence-locator.ts), not stored.
+export interface EvidenceLocation {
+  call_id: string;
+  call_file_name: string | null;
+  call_date: string | null;
+  has_audio: boolean;
+  duration_seconds: number | null;
+  // Second of the recording the quote starts at. Null when it couldn't be
+  // pinned to an utterance — playback then starts at the beginning.
+  timestamp_seconds: number | null;
+  // False when the quote couldn't be found in the transcript (or there is no
+  // quote): the excerpt is empty and the reviewer gets the full transcript.
+  matched: boolean;
+  excerpt: Array<{
+    index: number;
+    speaker: 'Agent' | 'Customer' | null;
+    text: string;
+    is_match: boolean;
+  }>;
 }

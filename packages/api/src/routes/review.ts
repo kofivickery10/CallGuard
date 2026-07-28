@@ -5,8 +5,9 @@ import { AppError } from '../middleware/errors.js';
 import { recordAuditEvent } from '../services/audit.js';
 import { getScoringSettings } from '../services/tenant-settings.js';
 import { pushCallScoreUpdate, pushJourneyScoreUpdate } from '../services/score-writeback.js';
+import { locateEvidence } from '../services/evidence-locator.js';
 import { deriveSeverity, isItemPass, callPasses } from '@callguard/shared';
-import type { ManualReviewItem, BreachSeverity } from '@callguard/shared';
+import type { ManualReviewItem, BreachSeverity, EvidenceLocation } from '@callguard/shared';
 
 export const reviewRouter = Router();
 reviewRouter.use(authenticate);
@@ -22,7 +23,13 @@ reviewRouter.get('/', requireOrgView, async (req, res, next) => {
               si.label, si.section, si.severity,
               cs.call_id AS parent_id,
               cust.name AS customer_name, c.agent_name,
-              cis.created_at AS detected_at
+              cis.created_at AS detected_at,
+              cis.evidence, cis.reasoning,
+              cis.confidence::float AS confidence,
+              cis.normalized_score::float AS normalized_score,
+              -- A per-call checkpoint's evidence is, by definition, in its own call.
+              cs.call_id AS source_call_id, c.file_name AS source_call_name,
+              c.file_key IS NOT NULL AS has_audio
          FROM call_item_scores cis
          JOIN call_scores cs ON cs.id = cis.call_score_id
          JOIN calls c ON c.id = cs.call_id
@@ -37,11 +44,19 @@ reviewRouter.get('/', requireOrgView, async (req, res, next) => {
               si.label, si.section, si.severity,
               jis.journey_id AS parent_id,
               cust.name AS customer_name, ja.agent_name,
-              jis.created_at AS detected_at
+              jis.created_at AS detected_at,
+              jis.evidence, jis.reasoning,
+              jis.confidence::float AS confidence,
+              jis.normalized_score::float AS normalized_score,
+              jis.source_call_id, sc.file_name AS source_call_name,
+              sc.file_key IS NOT NULL AS has_audio
          FROM journey_item_scores jis
          JOIN journeys j ON j.id = jis.journey_id
          JOIN scorecard_items si ON si.id = jis.scorecard_item_id
          LEFT JOIN customers cust ON cust.id = j.customer_id
+         -- The call the scorer quoted, when it cited one — the transcript and
+         -- recording the reviewer needs to check the quote against.
+         LEFT JOIN calls sc ON sc.id = jis.source_call_id AND sc.organization_id = j.organization_id
          -- A journey has no call of its own: attribute it to the wrap-up
          -- (closing) agent — earliest call flagged wrap_up, else the latest
          -- call in the set — as journeys are attributed elsewhere.
@@ -68,6 +83,73 @@ reviewRouter.get('/', requireOrgView, async (req, res, next) => {
     next(err);
   }
 });
+
+// GET /api/review-items/:kind/:itemScoreId/evidence — where this checkpoint's
+// evidence quote sits in the call: the transcript around it and the second of
+// audio it starts at, so a reviewer can read and hear the moment before marking
+// pass or fail. Resolved on demand (the position is never stored) and kept off
+// the list endpoint, which would otherwise load every raw transcript at once.
+reviewRouter.get('/:kind/:itemScoreId/evidence', requireOrgView, async (req, res, next) => {
+  try {
+    const { kind, itemScoreId } = req.params as { kind: string; itemScoreId: string };
+    if (kind !== 'call' && kind !== 'journey') throw new AppError(400, "kind must be 'call' or 'journey'");
+    const orgId = req.user!.organizationId;
+
+    const row =
+      kind === 'call'
+        ? await queryOne<EvidenceRow>(
+            `SELECT cis.evidence, c.id AS call_id, c.file_name, c.call_date,
+                    c.duration_seconds, c.file_key, c.transcript_text, c.transcript_raw
+               FROM call_item_scores cis
+               JOIN call_scores cs ON cs.id = cis.call_score_id
+               JOIN calls c ON c.id = cs.call_id
+              WHERE cis.id = $1 AND c.organization_id = $2`,
+            [itemScoreId, orgId]
+          )
+        : await queryOne<EvidenceRow>(
+            `SELECT jis.evidence, c.id AS call_id, c.file_name, c.call_date,
+                    c.duration_seconds, c.file_key, c.transcript_text, c.transcript_raw
+               FROM journey_item_scores jis
+               JOIN journeys j ON j.id = jis.journey_id
+               JOIN calls c ON c.id = jis.source_call_id AND c.organization_id = j.organization_id
+              WHERE jis.id = $1 AND j.organization_id = $2`,
+            [itemScoreId, orgId]
+          );
+
+    // Either the checkpoint isn't this org's, or (journeys) the scorer cited no
+    // source call — there is no single call to show evidence in.
+    if (!row) throw new AppError(404, 'No source call for this checkpoint');
+
+    const located = locateEvidence({
+      quote: row.evidence,
+      transcriptText: row.transcript_text,
+      transcriptRaw: row.transcript_raw,
+    });
+
+    const location: EvidenceLocation = {
+      call_id: row.call_id,
+      call_file_name: row.file_name,
+      call_date: row.call_date,
+      has_audio: row.file_key !== null,
+      duration_seconds: row.duration_seconds === null ? null : Number(row.duration_seconds),
+      ...located,
+    };
+    res.json(location);
+  } catch (err) {
+    next(err);
+  }
+});
+
+interface EvidenceRow {
+  evidence: string | null;
+  call_id: string;
+  file_name: string | null;
+  call_date: string | null;
+  duration_seconds: number | string | null;
+  file_key: string | null;
+  transcript_text: string | null;
+  transcript_raw: unknown;
+}
 
 // POST /api/review-items/resolve — a reviewer marks a manual_review checkpoint
 // pass/fail. Recomputes the parent overall score (scored items only) and
