@@ -1,6 +1,6 @@
 import { Job } from 'bullmq';
 import { query, queryOne, withTransaction } from '../../db/client.js';
-import { scoreTranscript, normalizeScore } from '../../services/scoring.js';
+import { scoreTranscriptConsensus, normalizeScore, type ScoringOutput } from '../../services/scoring.js';
 import { getKBContext } from '../../services/kb.js';
 import { getLearningContext } from '../../services/learning-context.js';
 import { recordUsage } from '../../services/usage.js';
@@ -286,7 +286,12 @@ export async function processScoreJourney(job: Job<ScoreJourneyJobData>) {
     // improvements / next actions across all the calls), stored on the journey.
     // Deliberately journey-level, not per-call — a sale can span advisers, so
     // the useful unit is the sale as a whole.
-    const { output, usage, model } = await scoreTranscript(
+    // Consensus scoring (migration 076). samples=1 is a single pass and the
+    // historical behaviour; above 1 the runs vote, and checkpoints they
+    // disagree on are routed to manual review below rather than settled by
+    // whichever sample happened to be drawn.
+    const { items: consensusItems, coaching, usage, model, samples } = await scoreTranscriptConsensus(
+      scoringSettings.scoringSamples,
       combinedTranscript,
       aiItems.map((i) => ({
         id: i.id,
@@ -309,6 +314,19 @@ export async function processScoreJourney(job: Job<ScoreJourneyJobData>) {
       // checkpoint could have come from any of the calls.
       withTranscript.some((c) => c.speaker_integrity_flag !== null)
     );
+    const output: ScoringOutput = { items: consensusItems, coaching };
+    // Checkpoints the runs could not agree on. Excluded from the weighted score
+    // and sent to a human — the whole point of voting is that an ambiguous
+    // checkpoint gets decided by a person rather than by sampling luck.
+    const disputedIds = new Set(consensusItems.filter((i) => i.disputed).map((i) => i.scorecard_item_id));
+    const agreementById = new Map(consensusItems.map((i) => [i.scorecard_item_id, i.agreement]));
+    if (samples > 1) {
+      console.log(
+        `[ScoreJourney] ${journeyId}: ${samples} scoring runs, ` +
+          `${consensusItems.length - disputedIds.size}/${consensusItems.length} unanimous, ` +
+          `${disputedIds.size} disputed -> manual review`
+      );
+    }
 
     await recordUsage({
       organizationId: journey.organization_id,
@@ -356,7 +374,12 @@ export async function processScoreJourney(job: Job<ScoreJourneyJobData>) {
       const markerMatch = itemScore.evidence?.match(CALL_MARKER);
       const callIndex = markerMatch ? Number(markerMatch[1]) - 1 : -1;
       const sourceCallId = callIndex >= 0 && callIndex < callIdsInOrder.length ? callIdsInOrder[callIndex]! : null;
-      if (provisionalIds.has(item.id)) {
+      // A checkpoint the independent runs disagreed on is genuinely ambiguous.
+      // Send it to the reviewer with the majority verdict attached, exactly as
+      // a low-confidence consent gate is handled, and keep it out of the
+      // weighted score — which is what makes the resulting number stable: it
+      // covers only checkpoints every run agreed on.
+      if (provisionalIds.has(item.id) || disputedIds.has(item.id)) {
         provisionalWrites.push({ item, itemScore, normalized, sourceCallId });
         continue;
       }
@@ -400,14 +423,15 @@ export async function processScoreJourney(job: Job<ScoreJourneyJobData>) {
         const result = isItemPass(normalized, scoringSettings.passThreshold) ? 'pass' : 'fail';
         const inserted = await tx.query<{ id: string }>(
           `INSERT INTO journey_item_scores
-             (journey_id, scorecard_item_id, result, score, normalized_score, confidence, evidence, reasoning, source_call_id)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+             (journey_id, scorecard_item_id, result, score, normalized_score, confidence, evidence, reasoning, source_call_id, agreement)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
            ON CONFLICT (journey_id, scorecard_item_id) DO UPDATE SET
              result = EXCLUDED.result, score = EXCLUDED.score, normalized_score = EXCLUDED.normalized_score,
              confidence = EXCLUDED.confidence, evidence = EXCLUDED.evidence, reasoning = EXCLUDED.reasoning,
-             source_call_id = EXCLUDED.source_call_id
+             source_call_id = EXCLUDED.source_call_id, agreement = EXCLUDED.agreement
            RETURNING id`,
-          [journeyId, item.id, result, itemScore.score, normalized, itemScore.confidence, itemScore.evidence, itemScore.reasoning, sourceCallId]
+          [journeyId, item.id, result, itemScore.score, normalized, itemScore.confidence, itemScore.evidence, itemScore.reasoning, sourceCallId,
+           agreementById.get(item.id) ?? null]
         );
         if (result === 'fail') {
           const severity = deriveSeverity(Number(item.weight), item.severity);
@@ -441,13 +465,14 @@ export async function processScoreJourney(job: Job<ScoreJourneyJobData>) {
       for (const { item, itemScore, normalized, sourceCallId } of provisionalWrites) {
         await tx.query(
           `INSERT INTO journey_item_scores
-             (journey_id, scorecard_item_id, result, score, normalized_score, confidence, evidence, reasoning, source_call_id)
-           VALUES ($1, $2, 'manual_review', $3, $4, $5, $6, $7, $8)
+             (journey_id, scorecard_item_id, result, score, normalized_score, confidence, evidence, reasoning, source_call_id, agreement)
+           VALUES ($1, $2, 'manual_review', $3, $4, $5, $6, $7, $8, $9)
            ON CONFLICT (journey_id, scorecard_item_id) DO UPDATE SET
              result = 'manual_review', score = EXCLUDED.score, normalized_score = EXCLUDED.normalized_score,
              confidence = EXCLUDED.confidence, evidence = EXCLUDED.evidence, reasoning = EXCLUDED.reasoning,
-             source_call_id = EXCLUDED.source_call_id`,
-          [journeyId, item.id, itemScore.score, normalized, itemScore.confidence, itemScore.evidence, itemScore.reasoning, sourceCallId]
+             source_call_id = EXCLUDED.source_call_id, agreement = EXCLUDED.agreement`,
+          [journeyId, item.id, itemScore.score, normalized, itemScore.confidence, itemScore.evidence, itemScore.reasoning, sourceCallId,
+           agreementById.get(item.id) ?? null]
         );
       }
 

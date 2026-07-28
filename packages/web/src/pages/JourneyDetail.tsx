@@ -61,8 +61,14 @@ export function JourneyDetail() {
       queryClient.invalidateQueries({ queryKey: ['journey', id] });
       void notify('Re-scoring started — the result will update here shortly.');
     },
+    // The API refuses a re-score that cannot tell us anything new (same calls,
+    // same transcripts, same scorecard) and there is deliberately no override:
+    // an "are you sure?" that can be clicked through gets clicked through, and
+    // re-running the AI on identical input is exactly how a score ends up
+    // moving for no reason anyone can explain. Surfaced as-is — the message
+    // says what would have to change for a re-score to mean anything.
     onError: (err) =>
-      void notify('Failed to re-score: ' + (err instanceof Error ? err.message : 'unknown error')),
+      void notify(err instanceof Error ? err.message : 'Failed to re-score'),
   });
 
   const handleRescore = async () => {
@@ -513,8 +519,13 @@ export function JourneyDetail() {
                     {item.evidence && (
                       <blockquote className="text-xs text-text-muted italic border-l-2 border-border pl-2.5 mt-1.5 leading-relaxed">
                         {item.evidence}
+                        {/* Lands on the call with this quote highlighted in the
+                            transcript and the recording cued to it. */}
                         {item.source_call_id && (
-                          <Link to={`/calls/${item.source_call_id}`} className="not-italic ml-2 text-primary hover:underline">
+                          <Link
+                            to={`/calls/${item.source_call_id}?evidence=journey:${item.id}`}
+                            className="not-italic ml-2 text-primary hover:underline"
+                          >
                             source call →
                           </Link>
                         )}

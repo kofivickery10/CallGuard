@@ -1,5 +1,5 @@
 import { config } from '../config.js';
-import { CLAUDE_MODELS } from '@callguard/shared';
+import { CLAUDE_MODELS, isItemPass } from '@callguard/shared';
 import type { CallCoaching } from '@callguard/shared';
 
 // 1-hour prompt-cache TTL (2x write, 0.1x read). The pinned SDK's types
@@ -444,6 +444,102 @@ export async function scoreTranscript(
     usage,
     model,
   };
+}
+
+/** One checkpoint's verdict after voting across independent scoring runs. */
+export interface ConsensusItem extends ItemScoreOutput {
+  // Fraction of runs that reached this verdict (1.0 = unanimous).
+  agreement: number;
+  // True when the runs did not all agree. The caller routes these to manual
+  // review rather than auto-scoring them, which is the entire point: a
+  // checkpoint the model cannot decide consistently should be decided by a
+  // person, not by whichever sample happened to be drawn.
+  disputed: boolean;
+}
+
+export interface ConsensusResult {
+  items: ConsensusItem[];
+  coaching?: CallCoaching;
+  usage: { input_tokens: number; output_tokens: number; cache_creation_input_tokens: number; cache_read_input_tokens: number };
+  model: string;
+  samples: number;
+}
+
+/**
+ * Score a transcript several times and let the runs vote on each checkpoint.
+ *
+ * Why this exists, measured rather than assumed: across three Trust Point sales
+ * at four runs each, ~85% of checkpoints scored identically every time and the
+ * remaining ~15% produced a consistent ~7-point spread in the headline score.
+ * One checkpoint split exactly 6/6 on all three sales — a pure coin toss, on a
+ * compliance register.
+ *
+ * The sampling cannot be disabled. Sonnet 5 rejects `temperature` outright, and
+ * even where it is accepted, temperature 0 never guaranteed identical output —
+ * it would simply return the same side of a 55/45 judgement every time, which
+ * is stable but arbitrary and conceals the ambiguity.
+ *
+ * Voting uses the distribution instead. Where runs agree, the verdict is solid.
+ * Where they disagree, the checkpoint is genuinely ambiguous and is marked
+ * `disputed` so the caller can send it to a human. Because disputed items are
+ * then excluded from the weighted denominator, the resulting score is computed
+ * only over unanimous verdicts and is stable by construction.
+ *
+ * Runs are sequential, not parallel: the prompt's cached prefix is written by
+ * the first call and read by the rest, which firing them together would miss.
+ */
+export async function scoreTranscriptConsensus(
+  samples: number,
+  ...args: Parameters<typeof scoreTranscript>
+): Promise<ConsensusResult> {
+  const runs: ScoringOutput[] = [];
+  const usage = { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 };
+  let model = '';
+
+  for (let i = 0; i < Math.max(1, samples); i++) {
+    const r = await scoreTranscript(...args);
+    runs.push(r.output);
+    model = r.model;
+    usage.input_tokens += r.usage.input_tokens;
+    usage.output_tokens += r.usage.output_tokens;
+    usage.cache_creation_input_tokens += r.usage.cache_creation_input_tokens;
+    usage.cache_read_input_tokens += r.usage.cache_read_input_tokens;
+  }
+
+  const items = args[1];
+  const byType = new Map(items.map((i) => [i.id, i.score_type]));
+  const out: ConsensusItem[] = [];
+
+  for (const item of items) {
+    const verdicts = runs
+      .map((r) => r.items.find((it) => it.scorecard_item_id === item.id))
+      .filter((v): v is ItemScoreOutput => !!v);
+    if (verdicts.length === 0) continue;
+
+    // Vote on the pass/fail outcome rather than the raw number: a 1-5 item
+    // scored 4 and 5 by two runs agrees on the verdict even though the numbers
+    // differ, and it is the verdict that drives the breach register.
+    const scoreType = byType.get(item.id) ?? 'binary';
+    const passes = verdicts.filter((v) => isItemPass(normalizeScore(v.score, scoreType)));
+    const majorityPassed = passes.length * 2 > verdicts.length;
+    const agreeing = majorityPassed ? passes : verdicts.filter((v) => !passes.includes(v));
+
+    // Represent the majority with its most confident run, so the stored
+    // evidence quote and reasoning come from a run that actually reached the
+    // recorded verdict rather than being stitched together across runs.
+    const representative = agreeing.reduce((best, v) => (v.confidence > best.confidence ? v : best), agreeing[0]!);
+    const agreement = agreeing.length / verdicts.length;
+
+    out.push({
+      ...representative,
+      agreement,
+      disputed: agreeing.length !== verdicts.length,
+    });
+  }
+
+  // Coaching is narrative rather than a verdict, so there is nothing to vote
+  // on — take the first run's.
+  return { items: out, coaching: runs[0]?.coaching, usage, model, samples: runs.length };
 }
 
 // Clamped to [0, 100] — Claude's raw score is expected within the scale's
