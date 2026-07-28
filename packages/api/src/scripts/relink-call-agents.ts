@@ -43,6 +43,32 @@ if (!orgId) {
   process.exit(1);
 }
 
+/**
+ * Final tally. The remaining count is read back from the database rather than
+ * tracked arithmetically: the two passes cover overlapping but different
+ * populations (the name pass only sees calls that HAVE a name, the dialler pass
+ * also reaches those that don't), and subtracting one running total from the
+ * other produced a negative "left unlinked". The database is the only source
+ * that cannot drift.
+ */
+async function report(relinked: number): Promise<void> {
+  const row = await query<{ n: number }>(
+    'SELECT count(*)::int AS n FROM calls WHERE organization_id = $1 AND agent_id IS NULL',
+    [orgId as string]
+  );
+  const remaining = row[0]?.n ?? 0;
+  console.log(
+    `[Relink] done: ${relinked} call(s) attributed${dryRun ? ' (not written)' : ''}, ` +
+      `${dryRun ? remaining - relinked : remaining} still unlinked`
+  );
+  if (!dryRun && remaining > 0) {
+    console.log(
+      '[Relink] Remaining calls have no agent on the dialler side either (an unanswered ' +
+        'or system call), or their agent has no CallGuard user.'
+    );
+  }
+}
+
 async function run() {
   const names = await query<{ agent_name: string; calls: number }>(
     `SELECT agent_name, count(*)::int AS calls
@@ -56,26 +82,27 @@ async function run() {
     [orgId as string]
   );
 
-  if (names.length === 0) {
-    console.log('[Relink] No unlinked calls with an agent name — nothing to do');
-    process.exit(0);
-  }
-
+  // Note: no early exit when this is empty. Calls whose webhook carried no
+  // agent name at all are invisible to the name pass but are exactly what the
+  // dialler-id pass below exists for, so skipping straight to it is right.
   const totalCalls = names.reduce((sum, r) => sum + r.calls, 0);
   console.log(
-    `[Relink] org=${orgId}: ${totalCalls} unlinked call(s) across ${names.length} distinct name(s)` +
-      `${dryRun ? ' (DRY RUN)' : ''}`
+    `[Relink] org=${orgId}: ${totalCalls} unlinked call(s) with a name across ` +
+      `${names.length} distinct name(s)${dryRun ? ' (DRY RUN)' : ''}`
   );
 
   let relinked = 0;
-  let stillUnlinked = 0;
+  // Names pass 1 handled. The dialler-id pass below must skip these: on a dry
+  // run nothing has been written, so they would still look unlinked and get
+  // counted twice.
+  const handledNames: string[] = [];
   for (const row of names) {
     const { agentId, agentName } = await reresolveAgentForName(orgId as string, row.agent_name);
     if (!agentId) {
       console.log(`[Relink] "${row.agent_name}" (${row.calls} calls) — still no match`);
-      stillUnlinked += row.calls;
       continue;
     }
+    handledNames.push(row.agent_name);
 
     console.log(`[Relink] "${row.agent_name}" (${row.calls} calls) -> "${agentName}"`);
     if (!dryRun) {
@@ -105,15 +132,20 @@ async function run() {
   // sync-dialer-agents.ts has already mapped to an adviser. So look the call up
   // and read the answer rather than inferring it. Exact, and it needs no
   // assumption about how names are spelled.
-  if (stillUnlinked > 0) {
+  {
     const conn = await getDialerConnection(orgId as string, 'cloudtalk');
     if (!conn) {
       console.log('[Relink] No CloudTalk connection — cannot resolve the remainder from the dialler');
     } else {
+      // Deliberately NOT restricted to calls that have an agent name. The
+      // dialler knows who handled a call even when its webhook sent no name at
+      // all, so this pass reaches calls the name pass could never have touched —
+      // on the first run against Trust Point, 120 of the 217 it resolved.
       const remaining = await query<{ id: string; dialer_call_id: string }>(
         `SELECT id, dialer_call_id FROM calls
-          WHERE organization_id = $1 AND agent_id IS NULL AND dialer_call_id IS NOT NULL`,
-        [orgId as string]
+          WHERE organization_id = $1 AND agent_id IS NULL AND dialer_call_id IS NOT NULL
+            AND (agent_name IS NULL OR NOT (agent_name = ANY($2::text[])))`,
+        [orgId as string, handledNames]
       );
       if (remaining.length === 0) {
         console.log('[Relink] Nothing left that carries a dialler call id');
@@ -134,10 +166,7 @@ async function run() {
             '[Relink] No advisers have a dialler agent id yet — run sync-dialer-agents.ts first, ' +
               'then re-run this to resolve the remainder exactly'
           );
-          console.log(
-            `[Relink] done: ${relinked} call(s) attributed${dryRun ? ' (not written)' : ''}, ` +
-              `${stillUnlinked} left unlinked`
-          );
+          await report(relinked);
           process.exit(0);
         }
 
@@ -173,7 +202,6 @@ async function run() {
           console.log(`[Relink] ${n} call(s) -> "${name}" by dialler agent id (exact)`);
         }
         relinked += exact;
-        stillUnlinked -= exact;
         if (noHistory > 0) {
           console.log(
             `[Relink] ${noHistory} call(s) not resolvable — outside the ${spanDays}d history window, ` +
@@ -184,10 +212,7 @@ async function run() {
     }
   }
 
-  console.log(
-    `[Relink] done: ${relinked} call(s) attributed${dryRun ? ' (not written)' : ''}, ` +
-      `${stillUnlinked} left unlinked`
-  );
+  await report(relinked);
   process.exit(0);
 }
 
