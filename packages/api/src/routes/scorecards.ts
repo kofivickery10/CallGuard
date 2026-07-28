@@ -19,14 +19,42 @@ function validateBranchConfig(branchConfig: unknown): void {
   if (!Array.isArray(bc.branches) || bc.branches.length < 2) {
     throw new AppError(400, 'branch_config.branches must list at least 2 branches');
   }
-  if (bc.detect !== 'keyword') {
-    throw new AppError(400, "branch_config.detect must be 'keyword'");
+  // 'crm_field' has been a valid mode since migration 071 — it is how a sale's
+  // branch is resolved from the CRM's own policy stage instead of guessed from
+  // transcript phrases. This validator was never widened, so every save of a
+  // scorecard using it was rejected: Trust Point could not edit their own
+  // scorecard at all, which is exactly what they were about to be asked to do.
+  if (bc.detect !== 'keyword' && bc.detect !== 'crm_field') {
+    throw new AppError(400, "branch_config.detect must be 'keyword' or 'crm_field'");
   }
   if (bc.keywords) {
     for (const branch of Object.keys(bc.keywords)) {
       if (!bc.branches.includes(branch)) {
         throw new AppError(400, `branch_config.keywords references unknown branch "${branch}"`);
       }
+    }
+  }
+  // Same containment check as keywords: a stage mapped to a branch that does not
+  // exist silently never resolves, and the sale falls back to a guessed branch.
+  if (bc.crm_values) {
+    for (const branch of Object.keys(bc.crm_values)) {
+      if (!bc.branches.includes(branch)) {
+        throw new AppError(400, `branch_config.crm_values references unknown branch "${branch}"`);
+      }
+    }
+  }
+  // A stage listed as both "do not score" and a branch mapping is contradictory,
+  // and the no-score check runs first — so the branch mapping would be dead.
+  if (bc.no_score_crm_values && bc.crm_values) {
+    const mapped = new Set(
+      Object.values(bc.crm_values).flat().map((v) => v.trim().toLowerCase())
+    );
+    const clash = bc.no_score_crm_values.find((v) => mapped.has(v.trim().toLowerCase()));
+    if (clash) {
+      throw new AppError(
+        400,
+        `branch_config: "${clash}" is listed both as a no-score stage and as a branch value — it cannot be both`
+      );
     }
   }
 }
