@@ -53,6 +53,11 @@ interface ItemStat {
   passes: number;
   fails: number;
   confidences: number[];
+  // Every run's actual verdict, so an unstable checkpoint can be shown as the
+  // disagreement it is rather than as a count. Seeing "run 1 passed it quoting
+  // X, run 2 failed it saying no evidence" is what makes the problem concrete
+  // to whoever owns the scorecard wording.
+  detail: Array<{ journey: string; run: number; passed: boolean; confidence: number; evidence: string; reasoning: string }>;
   // Sales on which this checkpoint disagreed with itself between runs.
   unstableOn: Set<string>;
   // Sales on which it was scored at all (branch/product gating varies).
@@ -143,10 +148,14 @@ async function measureJourney(journeyId: string, stats: Map<string, ItemStat>): 
 
       const stat = stats.get(item.id) ?? {
         label: item.label, sort: item.sort_order, passes: 0, fails: 0,
-        confidences: [], unstableOn: new Set<string>(), seenOn: new Set<string>(),
+        confidences: [], detail: [], unstableOn: new Set<string>(), seenOn: new Set<string>(),
       };
       passed ? stat.passes++ : stat.fails++;
       if (typeof it.confidence === 'number') stat.confidences.push(it.confidence);
+      stat.detail.push({
+        journey: journeyId.slice(0, 8), run, passed,
+        confidence: it.confidence, evidence: it.evidence ?? '', reasoning: it.reasoning ?? '',
+      });
       stat.seenOn.add(journeyId);
       const perSale = local.get(item.id) ?? { p: 0, f: 0 };
       passed ? perSale.p++ : perSale.f++;
@@ -214,6 +223,27 @@ async function main() {
       `\n  Mean confidence: ${avg(everUnstable.flatMap((s) => s.confidences)).toFixed(2)} unstable, ` +
         `${avg(stable.flatMap((s) => s.confidences)).toFixed(2)} stable.`
     );
+
+    if (process.env.VERBOSE) {
+      console.log('\n' + '='.repeat(78));
+      console.log('WHAT THE RUNS ACTUALLY SAID — only checkpoints that disagreed\n');
+      for (const st of everUnstable.sort((a, b) => a.sort - b.sort)) {
+        // Only show sales where THIS checkpoint actually split; a run-by-run
+        // dump of a sale everyone agreed on is noise.
+        for (const j of st.unstableOn) {
+          const rows = st.detail.filter((d) => d.journey === j.slice(0, 8));
+          if (rows.length === 0) continue;
+          console.log(`${'-'.repeat(78)}`);
+          console.log(`Checkpoint ${st.sort}. ${st.label}`);
+          console.log(`Sale ${j.slice(0, 8)}\n`);
+          for (const r of rows.sort((a, b) => a.run - b.run)) {
+            console.log(`  run ${r.run}: ${r.passed ? 'PASS' : 'FAIL'}  (confidence ${r.confidence.toFixed(2)})`);
+            console.log(`    evidence:  ${(r.evidence || '(none cited)').replace(/\s+/g, ' ').slice(0, 220)}`);
+            console.log(`    reasoning: ${(r.reasoning || '').replace(/\s+/g, ' ').slice(0, 220)}\n`);
+          }
+        }
+      }
+    }
   }
   console.log('='.repeat(78));
 
