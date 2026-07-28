@@ -33,6 +33,18 @@ interface AssembleJourneyParams {
   // resolution rules (crm_field) can be evaluated at scoring time, when the
   // webhook payload is long gone. Null for non-CRM triggers.
   triggerContext?: Record<string, string> | null;
+  // Mend the customer's existing sale rather than opening a second one.
+  //
+  // For the backfill (scripts/backfill-journeys.ts) the recovered calls belong
+  // to a sale that has already been scored — they were missing only because
+  // they predate the tenant's dialler webhook going live. Creating a fresh
+  // journey would leave the tenant looking at two entries for one customer,
+  // one scored on partial evidence, with no indication which to believe.
+  //
+  // NOT the default, and deliberately not applied to the Zoho sale trigger: a
+  // customer who buys a second policy months later is a genuinely new sale, and
+  // folding that into the first would merge two compliance records into one.
+  extendExisting?: boolean;
 }
 
 /**
@@ -67,7 +79,7 @@ async function resolveScorecard(organizationId: string, scorecardId?: string | n
  * and belongs in the journey.
  */
 export async function assembleJourney(params: AssembleJourneyParams): Promise<string | null> {
-  const { organizationId, customerId, scorecardId, triggerSource, zohoRecordId, clientName, products = [], productSource = null, crmStage = null, triggerContext = null } = params;
+  const { organizationId, customerId, scorecardId, triggerSource, zohoRecordId, clientName, products = [], productSource = null, crmStage = null, triggerContext = null, extendExisting = false } = params;
 
   const scorecard = await resolveScorecard(organizationId, scorecardId);
   if (!scorecard) {
@@ -129,6 +141,99 @@ export async function assembleJourney(params: AssembleJourneyParams): Promise<st
     return null;
   }
   const callIds = calls.map((c) => c.id).sort();
+
+  // Mend-in-place: attach any calls the customer's existing sale is missing and
+  // re-score it, instead of standing up a second journey beside it. See
+  // `extendExisting` on the params for why this is opt-in.
+  //
+  // Runs before the idempotency check below because the two answer different
+  // questions: that one asks "has this exact call set already been scored", this
+  // one asks "is there a sale here that should absorb these calls".
+  if (extendExisting) {
+    const target = await queryOne<{ id: string; window_start: string | null }>(
+      `SELECT id, window_start FROM journeys
+         WHERE organization_id = $1 AND customer_id = $2
+           AND status IN ('scored', 'failed')
+         ORDER BY created_at DESC LIMIT 1`,
+      [organizationId, customerId]
+    );
+    if (target) {
+      const linked = await query<{ call_id: string }>(
+        'SELECT call_id FROM journey_calls WHERE journey_id = $1',
+        [target.id]
+      );
+      const linkedIds = new Set(linked.map((r) => r.call_id));
+      const missing = calls.filter((c) => !linkedIds.has(c.id));
+      if (missing.length === 0) {
+        console.log(`[Journey] ${target.id} already covers every call for customer ${customerId} — nothing to mend`);
+        return target.id;
+      }
+
+      await withTransaction(async (tx) => {
+        for (const c of missing) {
+          await tx.query(
+            "INSERT INTO journey_calls (journey_id, call_id, role) VALUES ($1, $2, 'context') ON CONFLICT DO NOTHING",
+            [target.id, c.id]
+          );
+        }
+        await tx.query('UPDATE calls SET journey_id = $1 WHERE id = ANY($2::uuid[])', [
+          target.id,
+          missing.map((c) => c.id),
+        ]);
+        // Recompute wrap-up across the whole set: a recovered call can be newer
+        // than the previous closing call, and the wrap-up drives both the QA
+        // write-back's agent and the "who closed this sale" attribution.
+        await tx.query(
+          `UPDATE journey_calls SET role = 'context' WHERE journey_id = $1`,
+          [target.id]
+        );
+        await tx.query(
+          `UPDATE journey_calls SET role = 'wrap_up'
+             WHERE journey_id = $1
+               AND call_id = (
+                 SELECT c.id FROM journey_calls jc JOIN calls c ON c.id = jc.call_id
+                  WHERE jc.journey_id = $1
+                  ORDER BY COALESCE(c.call_date::timestamptz, c.created_at) DESC
+                  LIMIT 1)`,
+          [target.id]
+        );
+        // Widen the window to cover a recovered call older than the original
+        // assembly, so the stored window still describes what was scored. The
+        // previous score is deliberately left in place: it stays visible while
+        // the re-score runs, and score-journey records the move in
+        // journey_score_runs (migration 074).
+        await tx.query(
+          `UPDATE journeys
+              SET status = 'pending',
+                  window_start = LEAST(window_start, $2::timestamptz),
+                  updated_at = now()
+            WHERE id = $1`,
+          [target.id, windowStart.toISOString()]
+        );
+      });
+
+      const toHydrateExisting = missing.filter((c) => c.status === 'captured');
+      for (const c of toHydrateExisting) {
+        await ingestionQueue.add(
+          'hydrate-call',
+          { callId: c.id },
+          { jobId: `hydrate-${c.id}`, attempts: 6, backoff: { type: 'exponential', delay: 60_000 } }
+        );
+      }
+      if (toHydrateExisting.length === 0) {
+        await scoringQueue.add(
+          'score-journey',
+          { journeyId: target.id, triggerSource: 'backfill' },
+          { jobId: `score-journey-${target.id}-${missing.length}` }
+        );
+      }
+      console.log(
+        `[Journey] Mended journey ${target.id} for customer ${customerId}: +${missing.length} recovered call(s), ` +
+          `${toHydrateExisting.length} hydrating, re-scoring ${toHydrateExisting.length ? 'deferred' : 'now'}`
+      );
+      return target.id;
+    }
+  }
 
   // Dedup #2: the most recent scored journey already covers this exact set of
   // calls. A Zoho re-save with no new calls since is idempotent — return the

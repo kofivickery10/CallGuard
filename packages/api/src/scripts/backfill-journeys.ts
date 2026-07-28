@@ -2,10 +2,15 @@
  * One-off backfill: score already-sold customers whose calls predate live
  * capture, by pulling their call history from CloudTalk on demand.
  *
- * For each phone number, this fetches the customer's calls from CloudTalk
- * (by phone, within the window), records any we don't already have as
- * 'captured' metadata rows, then assembles + scores the journey — the exact
- * same pipeline the Zoho sale trigger drives, just kicked off manually.
+ * For each customer, this fetches their calls from CloudTalk (by phone, within
+ * the window), records any we don't already have as 'captured' metadata rows,
+ * then scores them through the exact same pipeline the Zoho sale trigger
+ * drives, just kicked off manually.
+ *
+ * Where the customer already has a scored sale, the recovered calls are
+ * attached to THAT sale and it is re-scored in place — the tenant ends up with
+ * one corrected sale, not a second one beside the original. A customer with no
+ * scored sale yet gets a new journey as before.
  *
  * The worker MUST be running: this enqueues hydrate/transcribe/score jobs and
  * returns; the worker fetches the recordings, transcribes and scores async.
@@ -17,6 +22,8 @@
  *     npx tsx src/scripts/backfill-journeys.ts
  *   # or from a file, one phone per line:
  *   ORG=<org-uuid> PHONE_FILE=./phones.txt npx tsx src/scripts/backfill-journeys.ts
+ *   # or target sales directly by journey id (keeps phone numbers out of the shell):
+ *   ORG=<org-uuid> JOURNEYS="<journey-uuid>,<journey-uuid>" npx tsx src/scripts/backfill-journeys.ts
  *   # preview only (fetch history, no capture/scoring):
  *   ORG=<org-uuid> PHONES="+447700900001" DRY_RUN=1 npx tsx src/scripts/backfill-journeys.ts
  *   # override the history window (default: connection's history_window_days):
@@ -33,6 +40,7 @@ import { assembleJourney } from '../services/journey.js';
 const orgId = process.env.ORG;
 const phonesEnv = process.env.PHONES;
 const phoneFile = process.env.PHONE_FILE;
+const journeyIdsEnv = process.env.JOURNEYS;
 const dryRun = process.env.DRY_RUN === '1' || process.env.DRY_RUN === 'true';
 const daysOverride = process.env.DAYS ? parseInt(process.env.DAYS, 10) : null;
 
@@ -41,16 +49,47 @@ if (!orgId) {
   process.exit(1);
 }
 
-function readPhones(): string[] {
+/**
+ * Resolve JOURNEYS=<uuid,uuid> to the customers' phone numbers.
+ *
+ * Targeting a sale by its id is the natural way to drive this: the sales whose
+ * calls need recovering are identified from the sale list, and it keeps
+ * customer phone numbers out of shell history and process arguments.
+ */
+async function phonesForJourneys(ids: string[]): Promise<string[]> {
+  const rows = await query<{ journey_id: string; phone: string | null }>(
+    `SELECT j.id AS journey_id, cu.phone_normalized AS phone
+       FROM journeys j JOIN customers cu ON cu.id = j.customer_id
+      WHERE j.organization_id = $1 AND j.id = ANY($2::uuid[])`,
+    [orgId as string, ids]
+  );
+  const found = new Map(rows.map((r) => [r.journey_id, r.phone]));
+  const phones: string[] = [];
+  for (const id of ids) {
+    const phone = found.get(id);
+    if (!phone) {
+      console.warn(`[Backfill] journey ${id} — not found in this org, or its customer has no phone; skipping`);
+      continue;
+    }
+    phones.push(phone);
+  }
+  return phones;
+}
+
+async function readPhones(): Promise<string[]> {
   const raw: string[] = [];
   if (phonesEnv) raw.push(...phonesEnv.split(','));
   if (phoneFile) raw.push(...fs.readFileSync(phoneFile, 'utf8').split(/\r?\n/));
+  if (journeyIdsEnv) {
+    raw.push(...(await phonesForJourneys(journeyIdsEnv.split(',').map((s) => s.trim()).filter(Boolean))));
+  }
   const cleaned = raw.map((p) => p.trim()).filter(Boolean);
   if (cleaned.length === 0) {
-    console.error('No phone numbers provided (set PHONES or PHONE_FILE)');
+    console.error('No customers to process (set PHONES, PHONE_FILE or JOURNEYS)');
     process.exit(1);
   }
-  return cleaned;
+  // De-duplicate: two journey ids can belong to one customer.
+  return [...new Set(cleaned)];
 }
 
 async function run() {
@@ -82,7 +121,7 @@ async function run() {
   }
   const windowDays = daysOverride ?? conn.history_window_days;
 
-  const phones = readPhones();
+  const phones = await readPhones();
   console.log(
     `[Backfill] org=${orgId} phones=${phones.length} window=${windowDays}d${dryRun ? ' (DRY RUN)' : ''}`
   );
@@ -189,10 +228,17 @@ async function run() {
       continue;
     }
 
+    // Mend the customer's existing sale rather than opening a second one. The
+    // recovered calls belong to a sale that has already been scored — they were
+    // missing only because they predate the dialler webhook going live — so a
+    // new journey would leave the tenant with two entries for one customer, the
+    // older one scored on partial evidence. Falls back to creating a journey
+    // when the customer has no scored sale yet.
     const journeyId = await assembleJourney({
       organizationId: orgId as string,
       customerId,
       triggerSource: 'manual',
+      extendExisting: true,
     });
     if (journeyId) {
       console.log(`[Backfill] ${phone} — ${usable.length} call(s) → journey ${journeyId} (scoring async)`);

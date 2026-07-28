@@ -54,11 +54,16 @@ CREATE TABLE IF NOT EXISTS journey_score_runs (
     -- Who caused this run. NULL for automatic scoring (the Zoho sale trigger)
     -- and for runs whose actor is gone.
     triggered_by         UUID REFERENCES users(id) ON DELETE SET NULL,
-    -- 'initial' — first scoring off the sale trigger or assembly.
-    -- 'rescore' — a human pressed the button.
-    -- 'bulk'    — an operational re-score script (suppressCrm path).
+    -- 'initial'  — first scoring off the sale trigger or assembly.
+    -- 'rescore'  — a human pressed the button.
+    -- 'bulk'     — an operational re-score script (suppressCrm path).
+    -- 'backfill' — calls recovered from the dialler's history API were attached
+    --              to an already-scored sale, so it was scored again on more
+    --              evidence than the first time. The one case where a moved
+    --              score has a concrete, defensible cause, which is why it is
+    --              distinguishable from the others.
     trigger_source       TEXT NOT NULL
-                           CHECK (trigger_source IN ('initial', 'rescore', 'bulk')),
+                           CHECK (trigger_source IN ('initial', 'rescore', 'bulk', 'backfill')),
 
     created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
 
