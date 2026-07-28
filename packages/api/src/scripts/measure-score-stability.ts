@@ -31,12 +31,20 @@ import { getScoringSettings } from '../services/tenant-settings.js';
 import { isItemPass, resolveBranchWithSource } from '@callguard/shared';
 import type { ScorecardItem, Scorecard } from '@callguard/shared';
 
-const journeyId = process.env.JOURNEY;
+// JOURNEY takes one; JOURNEYS takes several and aggregates across them.
+// Measuring more than one sale matters: a checkpoint can look unstable on a
+// single call simply because that call's evidence happened to be marginal for
+// it. A criterion whose WORDING is the problem is unstable on sale after sale,
+// and only the cross-sale view separates the two.
+const journeyIds = (process.env.JOURNEYS ?? process.env.JOURNEY ?? '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
 const runs = Number(process.env.RUNS ?? 5);
 const modelOverride = process.env.MODEL ?? null;
 
-if (!journeyId) {
-  console.error('JOURNEY (journey uuid) is required');
+if (journeyIds.length === 0) {
+  console.error('JOURNEY (one uuid) or JOURNEYS (comma-separated) is required');
   process.exit(1);
 }
 
@@ -46,9 +54,13 @@ interface ItemStat {
   passes: number;
   fails: number;
   confidences: number[];
+  // Sales on which this checkpoint disagreed with itself between runs.
+  unstableOn: Set<string>;
+  // Sales on which it was scored at all (branch/product gating varies).
+  seenOn: Set<string>;
 }
 
-async function main() {
+async function measureJourney(journeyId: string, stats: Map<string, ItemStat>): Promise<void> {
   const journey = await queryOne<{
     organization_id: string; scorecard_id: string; crm_stage: string | null;
   }>('SELECT organization_id, scorecard_id, crm_stage FROM journeys WHERE id = $1', [journeyId as string]);
@@ -90,7 +102,9 @@ async function main() {
   console.log(`  each checkpoint is worth ${(100 / scoreable.length).toFixed(2)} points`);
   console.log(`  runs:       ${runs}\n`);
 
-  const stats = new Map<string, ItemStat>();
+  // Per-sale pass/fail tally, so instability can be attributed to THIS sale
+  // rather than smeared across the aggregate.
+  const local = new Map<string, { p: number; f: number }>();
   const scores: number[] = [];
 
   for (let run = 1; run <= runs; run++) {
@@ -123,10 +137,15 @@ async function main() {
       weight += w;
 
       const stat = stats.get(item.id) ?? {
-        label: item.label, sort: item.sort_order, passes: 0, fails: 0, confidences: [],
+        label: item.label, sort: item.sort_order, passes: 0, fails: 0,
+        confidences: [], unstableOn: new Set<string>(), seenOn: new Set<string>(),
       };
       passed ? stat.passes++ : stat.fails++;
       if (typeof it.confidence === 'number') stat.confidences.push(it.confidence);
+      stat.seenOn.add(journeyId);
+      const perSale = local.get(item.id) ?? { p: 0, f: 0 };
+      passed ? perSale.p++ : perSale.f++;
+      local.set(item.id, perSale);
       stats.set(item.id, stat);
     }
     const score = weight > 0 ? weighted / weight : 0;
@@ -137,33 +156,61 @@ async function main() {
   const min = Math.min(...scores);
   const max = Math.max(...scores);
   const mean = scores.reduce((a, b) => a + b, 0) / scores.length;
-  console.log(`\n  spread: ${min.toFixed(2)}% – ${max.toFixed(2)}%  (range ${(max - min).toFixed(2)} points, mean ${mean.toFixed(2)}%)\n`);
+  console.log(`\n  spread: ${min.toFixed(2)}% – ${max.toFixed(2)}%  (range ${(max - min).toFixed(2)} points, mean ${mean.toFixed(2)}%)`);
 
-  // A checkpoint is unstable when the runs disagree about it at all. This is
-  // the actionable output: these are the criteria whose wording leaves the
-  // verdict open, and the only ones worth arguing about.
-  const unstable = [...stats.values()].filter((s) => s.passes > 0 && s.fails > 0);
-  const stable = stats.size - unstable.length;
-  const avg = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);
+  // Attribute instability to THIS sale before folding into the aggregate.
+  let unstableHere = 0;
+  for (const [id, t] of local) {
+    if (t.p > 0 && t.f > 0) {
+      stats.get(id)!.unstableOn.add(journeyId);
+      unstableHere++;
+    }
+  }
+  console.log(`  ${local.size - unstableHere}/${local.size} checkpoints identical across every run, ${unstableHere} disagreed\n`);
+}
 
-  console.log(`  ${stable}/${stats.size} checkpoints identical across every run.`);
-  if (unstable.length === 0) {
-    console.log('  No checkpoint disagreed. Any score movement came from elsewhere.\n');
-  } else {
-    console.log(`  ${unstable.length} disagreed — these account for the whole spread:\n`);
-    console.log('  pass/fail | mean conf | checkpoint');
-    for (const s of unstable.sort((a, b) => b.passes * b.fails - a.passes * a.fails)) {
+const avg = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);
+
+async function main() {
+  const stats = new Map<string, ItemStat>();
+  for (const id of journeyIds) {
+    await measureJourney(id, stats);
+  }
+
+  const everUnstable = [...stats.values()].filter((s) => s.unstableOn.size > 0);
+  const stable = [...stats.values()].filter((s) => s.unstableOn.size === 0);
+
+  console.log('='.repeat(78));
+  console.log(`AGGREGATE across ${journeyIds.length} sale(s), ${runs} runs each\n`);
+  console.log(`  ${stable.length} checkpoint(s) never disagreed with themselves.`);
+  console.log(`  ${everUnstable.length} disagreed on at least one sale.\n`);
+
+  if (everUnstable.length > 0) {
+    console.log('  unstable_on | pass/fail | mean conf | checkpoint');
+    for (const s of everUnstable.sort(
+      (a, b) => b.unstableOn.size - a.unstableOn.size || avg(a.confidences) - avg(b.confidences)
+    )) {
+      const on = `${s.unstableOn.size}/${s.seenOn.size}`.padStart(11);
       const split = `${s.passes}/${s.fails}`.padStart(9);
-      console.log(`  ${split} |      ${avg(s.confidences).toFixed(2)} | ${s.sort}. ${s.label}`);
+      console.log(`  ${on} | ${split} |      ${avg(s.confidences).toFixed(2)} | ${s.sort}. ${s.label}`);
+    }
+
+    // Unstable on MORE THAN ONE sale is the strong signal: the criterion's
+    // wording is the problem, not one call's evidence being marginal.
+    const systemic = everUnstable.filter((s) => s.unstableOn.size > 1);
+    if (systemic.length > 0) {
+      console.log(`\n  ${systemic.length} unstable on more than one sale — these are wording problems,`);
+      console.log('  not one call being borderline. Fix these first:');
+      for (const s of systemic.sort((a, b) => b.unstableOn.size - a.unstableOn.size)) {
+        console.log(`    ${s.sort}. ${s.label}  (${s.unstableOn.size}/${s.seenOn.size} sales)`);
+      }
     }
     console.log(
-      `\n  Mean confidence: ${avg(unstable.flatMap((s) => s.confidences)).toFixed(2)} on the unstable ones, ` +
-        `${avg([...stats.values()].filter((s) => !unstable.includes(s)).flatMap((s) => s.confidences)).toFixed(2)} on the stable ones.`
+      `\n  Mean confidence: ${avg(everUnstable.flatMap((s) => s.confidences)).toFixed(2)} unstable, ` +
+        `${avg(stable.flatMap((s) => s.confidences)).toFixed(2)} stable.`
     );
-    console.log('  Low confidence on exactly the ones that move is the signature of an');
-    console.log('  ambiguous criterion, not a flaky model: the wording does not say where');
-    console.log('  the bar is, so the same evidence can fall either side of it.\n');
   }
+  console.log('='.repeat(78));
 
   await pool.end();
   process.exit(0);
