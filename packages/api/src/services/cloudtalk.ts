@@ -30,6 +30,48 @@ export function fetchRecordingUrlByCallId(
   return `${conn.api_base_url}/calls/recording/${encodeURIComponent(callId)}.json`;
 }
 
+/**
+ * Recover CloudTalk's numeric CDR id from a recording URL, which embeds it as
+ * base64 in the path: https://my.cloudtalk.io/pub/r/<base64(id)>/<hash>.wav
+ *
+ * This is the bridge between the two ingest routes. The live webhook identifies
+ * a call by `call_uuid` (a UUID); the history API identifies the same call by
+ * its numeric CDR `id`. Without a shared key, backfilling a customer duplicates
+ * every call already captured live (see migration 075).
+ *
+ * Returns null unless the decode yields digits, so a URL in any other shape
+ * produces no key rather than a junk one.
+ */
+export function cloudTalkCallIdFromRecordingUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  const match = url.match(/\/pub\/r\/([^/]+)\//);
+  if (!match) return null;
+  try {
+    const decoded = Buffer.from(decodeURIComponent(match[1]!), 'base64').toString('utf8');
+    return /^\d+$/.test(decoded) ? decoded : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The numeric CloudTalk call id for a webhook delivery: the payload's own id
+ * when it is already numeric, otherwise recovered from the recording URL.
+ *
+ * The tenant's field map resolves `call_id` from the first matching key of
+ * ['call_uuid', 'uuid', 'call_id', 'id'], so on a payload carrying both it wins
+ * the UUID. Rather than reorder that (it is the webhook's idempotency key, and
+ * changing it would break replay handling on every existing tenant), derive the
+ * numeric id separately.
+ */
+export function resolveCloudTalkCallId(
+  payloadCallId: string | null | undefined,
+  recordingUrl: string | null | undefined
+): string | null {
+  if (payloadCallId && /^\d+$/.test(payloadCallId)) return payloadCallId;
+  return cloudTalkCallIdFromRecordingUrl(recordingUrl);
+}
+
 // Parsed from a CloudTalk /calls/index.json item (Cdr + Agent + Contact),
 // carrying everything the backfill needs to record the call accurately.
 export interface CloudTalkHistoryEntry {

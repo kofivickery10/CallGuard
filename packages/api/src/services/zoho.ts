@@ -487,6 +487,69 @@ export async function fetchSaleProducts(
   return { configured: true, products: [...products], stages: [...stages] };
 }
 
+/**
+ * Read the client's name straight off the sale record in the CRM.
+ *
+ * The sale-trigger webhook is supposed to carry the name, but whether it does
+ * depends entirely on how the tenant built their Zoho workflow. Trust Point's
+ * sends exactly two fields — `id` and `Phone` — so `client_name` was null on
+ * every sale they have ever pushed. The visible consequences: customers showed
+ * as a bare phone number in CallGuard, and every QA record written back to
+ * their CRM carried the literal fallback "Unknown" (see pushQARecord).
+ *
+ * We already hold the sale record's id and already call the CRM at assembly for
+ * products and stage, so the name costs one more GET against a record we know
+ * exists. Reading it here rather than depending on the webhook makes it work for
+ * every tenant regardless of how their workflow was configured, and takes the
+ * name from the system of record rather than from a payload.
+ *
+ * Tries the standard Zoho name fields in order of specificity. Returns null
+ * rather than throwing on any failure: a missing name must never stop a sale
+ * being assembled and scored.
+ */
+export async function fetchSaleClientName(
+  organizationId: string,
+  recordId: string
+): Promise<string | null> {
+  try {
+    const conn = await getConnectionRow(organizationId);
+    if (!conn || conn.status !== 'active' || !conn.sale_module) return null;
+
+    const { accessToken, apiDomain } = await ensureAccessToken(conn);
+    // v8 requires an explicit field list. Full_Name is a Zoho system field on
+    // Contacts/Leads; Account_Name covers a sale module keyed to a company, and
+    // Name covers custom modules whose primary field is literally "Name".
+    const fields = 'Full_Name,First_Name,Last_Name,Name,Account_Name';
+    const res = await zohoApi(
+      apiDomain,
+      accessToken,
+      `/crm/v8/${encodeURIComponent(conn.sale_module)}/${encodeURIComponent(recordId)}?fields=${encodeURIComponent(fields)}`
+    );
+    if (!res.ok) {
+      console.warn(`[Zoho] client-name lookup for ${recordId} returned ${res.status}`);
+      return null;
+    }
+
+    const body = (await res.json()) as { data?: Array<Record<string, unknown>> };
+    const rec = body.data?.[0];
+    if (!rec) return null;
+
+    const direct = relatedFieldValue(rec.Full_Name) ?? relatedFieldValue(rec.Name) ?? relatedFieldValue(rec.Account_Name);
+    if (direct) return direct;
+
+    // Fall back to assembling it, for modules that expose the parts but not the
+    // composite (custom modules rarely define Full_Name).
+    const composed = [relatedFieldValue(rec.First_Name), relatedFieldValue(rec.Last_Name)]
+      .filter((p): p is string => !!p)
+      .join(' ')
+      .trim();
+    return composed || null;
+  } catch (err) {
+    console.warn(`[Zoho] client-name lookup for ${recordId} failed:`, (err as Error).message);
+    return null;
+  }
+}
+
 // Raised when a metadata read fails because the token predates the widened
 // scope (OAUTH_SCOPE) — the tenant must reconnect. Surfaced distinctly so the
 // UI can prompt for a reconnect rather than showing a generic error.

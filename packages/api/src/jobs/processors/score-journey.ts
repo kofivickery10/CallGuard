@@ -43,26 +43,22 @@ interface JourneyCallRow {
 }
 
 
+export type ScoreRunTrigger = 'initial' | 'rescore' | 'bulk' | 'backfill';
+
 export interface ScoreJourneyJobData {
   journeyId: string;
   suppressCrm?: boolean;
   // Who pressed "re-score", for the score-history row (migration 074). Absent
   // for automatic scoring off the sale trigger and for bulk operational runs.
   rescoredBy?: string | null;
+  // Explicit run kind, when the enqueuer knows something the derivation below
+  // cannot infer — currently only the backfill mending an existing sale.
+  triggerSource?: ScoreRunTrigger;
 }
 
 export async function processScoreJourney(job: Job<ScoreJourneyJobData>) {
-  const { journeyId, suppressCrm, rescoredBy } = job.data;
+  const { journeyId, suppressCrm, rescoredBy, triggerSource } = job.data;
   console.log(`[ScoreJourney] Processing journey ${journeyId}${suppressCrm ? ' (CRM write-back suppressed)' : ''}`);
-
-  // Which kind of run this is, for the history row. A human pressing the button
-  // is the case that has to be distinguishable after the fact — that is the one
-  // someone will later ask about when a score has moved.
-  const runTrigger: 'initial' | 'rescore' | 'bulk' = rescoredBy
-    ? 'rescore'
-    : suppressCrm
-      ? 'bulk'
-      : 'initial';
 
   const journey = await queryOne<JourneyRow>('SELECT * FROM journeys WHERE id = $1', [journeyId]);
   if (!journey) throw new Error(`Journey ${journeyId} not found`);
@@ -338,6 +334,10 @@ export async function processScoreJourney(job: Job<ScoreJourneyJobData>) {
       }));
     const pass = callPasses(overallScore, failures.map((f) => f.severity), scoringSettings.passThreshold);
 
+    // Assigned inside the scoring transaction (it depends on the run number),
+    // read afterwards for the log line.
+    let runTrigger: ScoreRunTrigger = 'initial';
+
     await withTransaction(async (tx) => {
       // Supersede any breaches from a prior scoring of this journey (a BullMQ
       // retry after a committed first pass, or a re-trigger): without this an
@@ -435,6 +435,16 @@ export async function processScoreJourney(job: Job<ScoreJourneyJobData>) {
         'SELECT COALESCE(max(run_number), 0) + 1 AS next FROM journey_score_runs WHERE journey_id = $1',
         [journeyId]
       );
+      const runNumber = priorRuns?.next ?? 1;
+
+      // Which kind of run this is. Explicit wins; otherwise derive. The
+      // prior-runs check is what catches a mended sale re-scored through the
+      // deferred hydrate path (maybeScoreJourneyWhenReady), which enqueues
+      // without knowing why the journey went back to 'pending' — a journey
+      // reaching scoring with runs already on record was extended, not new.
+      runTrigger =
+        triggerSource ??
+        (rescoredBy ? 'rescore' : suppressCrm ? 'bulk' : runNumber > 1 ? 'backfill' : 'initial');
       await tx.query(
         `INSERT INTO journey_score_runs
            (journey_id, organization_id, run_number, overall_score, pass, branch, branch_source,
@@ -444,7 +454,7 @@ export async function processScoreJourney(job: Job<ScoreJourneyJobData>) {
         [
           journeyId,
           journey.organization_id,
-          priorRuns?.next ?? 1,
+          runNumber,
           overallScore,
           pass,
           branch,
