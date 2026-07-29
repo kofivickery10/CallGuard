@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../api/client';
 import { SeverityBadge, StatusBadge } from '../components/BreachBadges';
+import { BREACH_CAVEAT_LABELS } from '@callguard/shared';
 import { BreachDetailDrawer } from '../components/BreachDetailDrawer';
 import {
   BREACH_SEVERITIES,
@@ -221,7 +222,30 @@ export function Breaches() {
                     </Link>
                   </td>
                   <td className="px-5 py-3.5 text-table-cell text-text-cell">{b.agent_name || '--'}</td>
-                  <td className="px-5 py-3.5 text-table-cell text-text-primary">{b.breach_type}</td>
+                  <td className="px-5 py-3.5 text-table-cell text-text-primary">
+                    {b.breach_type}
+                    {/* Findings whose evidence has known weaknesses are marked, not
+                        hidden. Suppressing an uncertain breach risks losing a real
+                        compliance failure, which is the worse error; asserting it
+                        as settled is what a regulated firm cannot rely on. */}
+                    {b.evidence_caveats?.length > 0 && !b.confirmed_at && (
+                      <span
+                        className="ml-2 inline-flex items-center gap-1 px-2 py-[2px] rounded-full text-badge font-semibold bg-review-bg text-review align-middle"
+                        title={b.evidence_caveats.map((c) => BREACH_CAVEAT_LABELS[c] ?? c).join('\n')}
+                      >
+                        <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <path d="M12 9v4" /><path d="M12 17h.01" />
+                          <path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" />
+                        </svg>
+                        Unconfirmed
+                      </span>
+                    )}
+                    {b.confirmed_at && (
+                      <span className="ml-2 inline-block px-2 py-[2px] rounded-full text-badge font-semibold bg-pass-bg text-pass align-middle">
+                        Confirmed
+                      </span>
+                    )}
+                  </td>
                   <td className="px-5 py-3.5"><SeverityBadge severity={b.severity} /></td>
                   <td className="px-5 py-3.5 text-table-cell text-fail font-mono font-semibold">
                     {Math.round(Number(b.normalized_score))}%
