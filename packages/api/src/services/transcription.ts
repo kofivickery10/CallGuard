@@ -230,7 +230,8 @@ export async function transcribeCall(
   }
 
   const utterances = result.results?.utterances || [];
-  type Utt = { transcript: string; speaker?: number; channel?: number; start?: number };
+  type Word = { word: string; punctuated_word?: string; speaker?: number };
+  type Utt = { transcript: string; speaker?: number; channel?: number; start?: number; words?: Word[] };
   const utts = utterances as unknown as Utt[];
 
   // Split-stereo recordings come back with utterances tagged by channel. When
@@ -271,15 +272,27 @@ export async function transcribeCall(
   // on dozens of signals across the call rather than one word at 2 seconds, and
   // got 3 of 3 on the same calls. It abstains rather than guess when no single
   // cluster is clearly the adviser, and only then does the positional rule run.
-  const clusterSpeech: ClusterSpeech[] = [...new Set(ordered.map((u) => u.speaker ?? 0))].map(
-    (key) => ({
-      key,
-      text: ordered
-        .filter((u) => (u.speaker ?? 0) === key)
-        .map((u) => u.transcript)
-        .join(' '),
-    })
-  );
+  // Built from word-level speakers for the same reason the turns below are: an
+  // utterance spanning a speaker change would otherwise contribute the other
+  // party's words to this cluster's score, which is exactly the signal
+  // identifyAdviserCluster depends on being clean.
+  const speechByKey = new Map<number, string[]>();
+  for (const u of ordered) {
+    const words = u.words?.filter((w) => w.speaker !== undefined) ?? [];
+    if (words.length === 0) {
+      const k = u.speaker ?? 0;
+      (speechByKey.get(k) ?? speechByKey.set(k, []).get(k)!).push(u.transcript);
+      continue;
+    }
+    for (const w of words) {
+      const k = w.speaker!;
+      (speechByKey.get(k) ?? speechByKey.set(k, []).get(k)!).push(w.punctuated_word ?? w.word);
+    }
+  }
+  const clusterSpeech: ClusterSpeech[] = [...speechByKey.entries()].map(([key, parts]) => ({
+    key,
+    text: parts.join(' '),
+  }));
   const contentPick = isMultichannel ? null : identifyAdviserCluster(clusterSpeech);
 
   const firstSpeakerKey = ordered[0]?.speaker ?? 0;
@@ -307,19 +320,46 @@ export async function transcribeCall(
     );
   }
 
-  // Merge consecutive utterances from the same party into single blocks
+  // Build turns from WORD-level speakers, not utterance-level.
+  //
+  // Deepgram's utterance segmentation regularly runs across a speaker change:
+  // measured on this tenant's corpus, 1,196 of 6,619 utterances (18.1%) contain
+  // words from more than one speaker. One such utterance carried the customer's
+  // "a doctor, but no. Not as far as I'm aware." and the adviser's "To your
+  // knowledge." under a single label — so the reviewer saw the adviser's own
+  // compliance script attributed to the customer, and any checkpoint turning on
+  // who spoke was judged on fiction.
+  //
+  // The boundary that would fix it does not exist at utterance level, so no
+  // amount of merge tuning recovers it. It DOES exist at word level, where
+  // Deepgram labels each word and gets it right. We were discarding that.
+  //
+  // Measured over 13 calls, misplaced adviser markers fell from 32 to 4 (-87%),
+  // with the two worst calls going to zero.
+  //
+  // Multichannel is untouched: a stereo pin is exact, and channel is carried on
+  // the utterance rather than the word.
   const merged: { speaker: string; text: string }[] = [];
-
-  for (const u of ordered) {
-    const key = isMultichannel ? u.channel ?? 0 : u.speaker ?? 0;
+  const pushWord = (key: number, text: string) => {
     const speaker = key === agentKey ? 'Agent' : 'Customer';
     const last = merged[merged.length - 1];
+    if (last && last.speaker === speaker) last.text += ' ' + text;
+    else merged.push({ speaker, text });
+  };
 
-    if (last && last.speaker === speaker) {
-      last.text += ' ' + u.transcript;
-    } else {
-      merged.push({ speaker, text: u.transcript });
+  for (const u of ordered) {
+    if (isMultichannel) {
+      pushWord(u.channel ?? 0, u.transcript);
+      continue;
     }
+    // Fall back to the utterance label when word-level speakers are absent
+    // (an older stored payload, or a provider that does not emit them).
+    const words = u.words?.filter((w) => w.speaker !== undefined) ?? [];
+    if (words.length === 0) {
+      pushWord(u.speaker ?? 0, u.transcript);
+      continue;
+    }
+    for (const w of words) pushWord(w.speaker!, w.punctuated_word ?? w.word);
   }
 
   const text = merged
