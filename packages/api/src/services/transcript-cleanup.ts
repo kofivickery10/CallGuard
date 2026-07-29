@@ -7,12 +7,23 @@ import { CACHE_1H, CACHE_TTL_HEADERS } from './scoring.js';
 // The model's content-based verdict on the Agent/Customer labels:
 // - 'swapped'     — clear evidence the labels were inverted throughout; corrected.
 // - 'confirmed'   — clear evidence the labels were already correct.
+// - 'partial'     — some stretch of the call is inverted but not all of it.
+//                   Cannot be corrected by the whole-transcript swap below, so
+//                   the labels are left alone and confidence stays low.
 // - 'unclear'     — no strong evidence either way; labels left as given.
 // - 'not_checked' — speakerAttributionConfidence was 1.0 (exact channel pin),
 //                   so the speaker check was skipped entirely.
-// Only ever 'swapped'/'confirmed'/'unclear' when the check runs
-// (speakerAttributionConfidence < 1 — see needsSpeakerCheck below).
-export type SpeakerVerdict = 'swapped' | 'confirmed' | 'unclear' | 'not_checked';
+//
+// 'partial' exists because a real Trust Point call had the adviser's own
+// compliance script attributed to the customer while turns either side of it
+// were labelled correctly. Offered only swapped/confirmed/unclear, the model
+// answered 'confirmed' — the least-bad fit, since the inversion was not
+// "throughout" and the transcript was neither short nor ambiguous. That false
+// 'confirmed' is the dangerous answer: it is one of only two verdicts that
+// LIFTS attribution confidence above the consent-gate floor. It was caught
+// here only because the deterministic marker check contradicted it
+// (services/speaker-integrity.ts, 'model_verdict_conflict').
+export type SpeakerVerdict = 'swapped' | 'confirmed' | 'partial' | 'unclear' | 'not_checked';
 
 export interface CleanupResult {
   text: string;
@@ -33,6 +44,10 @@ export function resolveSpeakerConfidence(
   baseConfidence: number,
   verdict: SpeakerVerdict
 ): number {
+  // 'partial' deliberately grouped with 'unclear': knowing PART of the call is
+  // inverted is not a basis for trusting any of it, and the whole-transcript
+  // swap cannot fix it. Confidence stays low so who-said-it checkpoints route
+  // to a human.
   return verdict === 'swapped' || verdict === 'confirmed'
     ? Math.max(baseConfidence, 0.75)
     : baseConfidence;
@@ -53,13 +68,13 @@ function swapSpeakerLabels(transcript: string): string {
 // as a backward-compatible alias for 'unclear' (older prompt / stale model).
 function parseSpeakerVerdict(
   text: string
-): 'swapped' | 'confirmed' | 'unclear' | null {
+): 'swapped' | 'confirmed' | 'partial' | 'unclear' | null {
   const m = text
     .trimStart()
-    .match(/^SPEAKER_LABELS:\s*(swapped|confirmed|unclear|unchanged)/i);
+    .match(/^SPEAKER_LABELS:\s*(swapped|confirmed|partial|unclear|unchanged)/i);
   if (!m) return null;
   const v = m[1]!.toLowerCase();
-  return v === 'unchanged' ? 'unclear' : (v as 'swapped' | 'confirmed' | 'unclear');
+  return v === 'unchanged' ? 'unclear' : (v as 'swapped' | 'confirmed' | 'partial' | 'unclear');
 }
 
 // A faithful cleanup fixes mishearings and punctuation, so its output is
@@ -138,7 +153,10 @@ export async function cleanupTranscript(
 
 - **swapped** — strong, unambiguous evidence the labels are inverted throughout (e.g. the turns labelled "Customer" are clearly the one introducing the company and asking the fact-find questions). Report this verdict but do NOT change any labels yourself: leave every "Agent:"/"Customer:" exactly as given. The swap is applied mechanically to your output afterwards.
 - **confirmed** — clear, positive evidence the labels are already correct: the "Agent" turns really are the one who introduces themselves/the company, asks fact-find questions and explains products/compliance, and the "Customer" turns really are the one answering personal questions and reacting. Leave the labels exactly as given.
-- **unclear** — the content doesn't give strong evidence either way (too short, ambiguous, or heavily redacted). Leave the labels exactly as given. Do NOT report "confirmed" unless you actually see the evidence — a guess is "unclear".`
+- **partial** — SOME stretch of the call is inverted but not all of it: you can see adviser speech (introductions, fact-find questions, compliance wording, pricing) under "Customer" in one part while other parts look correct. Leave the labels exactly as given. Report this rather than "confirmed" whenever any run of turns looks inverted, even if most of the transcript is fine.
+- **unclear** — the content doesn't give strong evidence either way (too short, ambiguous, or heavily redacted). Leave the labels exactly as given. Do NOT report "confirmed" unless you actually see the evidence — a guess is "unclear".
+
+"confirmed" means the labels are correct THROUGHOUT. If any part of the call contradicts them, the verdict is "partial", not "confirmed".`
     : '';
 
   const { default: Anthropic } = await import('@anthropic-ai/sdk');
