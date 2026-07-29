@@ -9,7 +9,7 @@ import { deliverCallScored } from '../../services/webhook-delivery.js';
 import { pushCallScored } from '../../services/zoho.js';
 import { getScoringSettings } from '../../services/tenant-settings.js';
 import { maybeStartCallCapture } from '../../services/capture-runs.js';
-import { classifyItems } from '../../services/checkpoint-classification.js';
+import { classifyItems, CONSENT_SPEAKER_CONFIDENCE_FLOOR } from '../../services/checkpoint-classification.js';
 import { hasFeature, isItemPass, deriveSeverity, callPasses, resolveBranch } from '@callguard/shared';
 import type { Call, Scorecard, ScorecardItem, Plan, WebhookCallScoredPayload } from '@callguard/shared';
 
@@ -170,7 +170,14 @@ export async function processScoring(job: Job<{ callId: string }>) {
       org?.industry ?? null,
       false, // journeyMode
       [],    // productsSold — product-aware scoring is journey-level
-      call.speaker_integrity_flag !== null
+      // Judge who spoke from content, not the label, whenever the labels are
+      // not trustworthy — either actively contradicted (integrity flag) or
+      // never established (attribution abstained, leaving a positional guess
+      // measured at 1 in 3). Mirrors score-journey.ts; the per-call path had
+      // the same gap.
+      call.speaker_integrity_flag !== null ||
+        (call.speaker_attribution_confidence !== null &&
+          Number(call.speaker_attribution_confidence) < CONSENT_SPEAKER_CONFIDENCE_FLOOR)
     );
 
     // Record the scoring call's usage (Haiku first pass, incl. prompt-cache tokens).
