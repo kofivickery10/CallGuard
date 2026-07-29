@@ -42,15 +42,34 @@ export interface CleanupResult {
 // for calls we genuinely can't attribute.
 export function resolveSpeakerConfidence(
   baseConfidence: number,
-  verdict: SpeakerVerdict
+  verdict: SpeakerVerdict,
+  // Whether the deterministic content check independently identified which
+  // cluster is the adviser (services/speaker-integrity.ts). Defaults true so
+  // existing callers keep their behaviour; the transcribe path passes the real
+  // value.
+  contentIdentifiedAdviser: boolean = true
 ): number {
   // 'partial' deliberately grouped with 'unclear': knowing PART of the call is
   // inverted is not a basis for trusting any of it, and the whole-transcript
   // swap cannot fix it. Confidence stays low so who-said-it checkpoints route
   // to a human.
-  return verdict === 'swapped' || verdict === 'confirmed'
-    ? Math.max(baseConfidence, 0.75)
-    : baseConfidence;
+  //
+  // 'confirmed' only lifts when the deterministic check ALSO identified the
+  // adviser. On a call where that check abstained, "the labels look right" is
+  // not independent evidence — the cleanup model is reading the same weak
+  // signal that already failed to separate the clusters, and it is confirming
+  // labels we assigned by positional guess.
+  //
+  // Measured: on 97701e4c the content check abstained, the cleanup model said
+  // 'confirmed', confidence was lifted 0.6 -> 0.75, and the transcript is
+  // inverted (flipping the labels takes misplaced adviser markers from 4/5 to
+  // 1/5). The system became more confident about a more wrong transcript.
+  //
+  // 'swapped' still lifts unconditionally: that is an active correction the
+  // model made on stated evidence, not an assertion that nothing is wrong.
+  if (verdict === 'swapped') return Math.max(baseConfidence, 0.75);
+  if (verdict === 'confirmed' && contentIdentifiedAdviser) return Math.max(baseConfidence, 0.75);
+  return baseConfidence;
 }
 
 // Mechanically flip every Agent:/Customer: turn label. Used when the model's

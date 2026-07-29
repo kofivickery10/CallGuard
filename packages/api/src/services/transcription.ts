@@ -12,6 +12,11 @@ interface TranscriptionResult {
   // (migration 040) and read by services/scoring.ts to decide whether a
   // consent_gate item can be auto-scored or must go to manual_review.
   speaker_attribution_confidence: number;
+  // Whether the adviser's cluster was established from what was actually said,
+  // rather than from a positional guess. Callers need this to decide whether a
+  // later "labels look right" verdict is independent corroboration or just the
+  // same weak signal a second time — see resolveSpeakerConfidence.
+  adviser_identified_by_content: boolean;
 }
 
 const DEEPGRAM_BASE_URLS: Record<DeepgramRegion, string> = {
@@ -92,7 +97,23 @@ function computeSpeakerAttributionConfidence(
   // adviser, but Deepgram can still misassign individual utterances between
   // clusters, which is what assessSpeakerIntegrity checks for afterwards.
   if (adviserIdentifiedByContent) return 0.8;
-  if (speakerCount === 2) return 0.6;
+  // Content identification ABSTAINED, so which cluster is the adviser rests
+  // entirely on the positional guess — and the comment above is not rhetorical:
+  // measured over three real calls that rule got 1 of 3 right.
+  //
+  // This used to return 0.6, above CONSENT_SPEAKER_CONFIDENCE_FLOOR (0.5), so a
+  // coin-flip attribution still had its consent gates auto-scored. Measured on
+  // Trust Point: content abstains on 18 of 29 transcribed calls, 15 of which
+  // were sitting at or above the floor. One (97701e4c) had its confidence
+  // LIFTED to 0.75 by the cleanup pass while its adviser markers got worse —
+  // the cleanup model reports the labels are self-consistent, which they are;
+  // they are consistently attached to the wrong cluster.
+  //
+  // 0.45 keeps the ordering (a two-speaker guess is better evidenced than a
+  // three-way one) while sitting below the floor, so a call we cannot actually
+  // attribute sends its consent gates to a person instead of guessing. That is
+  // the whole purpose of the floor.
+  if (speakerCount === 2) return 0.45;
   return 0.3;
 }
 
@@ -378,5 +399,8 @@ export async function transcribeCall(
       speakerCount,
       contentPick !== null
     ),
+    // A stereo pin is a stronger form of the same thing: the adviser is known
+    // from the channel, not guessed.
+    adviser_identified_by_content: contentPick !== null || (isMultichannel && pinnedAdviserChannel !== null),
   };
 }

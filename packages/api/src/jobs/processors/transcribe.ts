@@ -121,7 +121,8 @@ export async function processTranscription(job: Job<{ callId: string }>) {
     // strong evidence either way) leaves the heuristic confidence untouched.
     let speakerAttributionConfidence = resolveSpeakerConfidence(
       result.speaker_attribution_confidence,
-      cleanup.speakerVerdict
+      cleanup.speakerVerdict,
+      result.adviser_identified_by_content
     );
 
     // Deterministic cross-check on the labels the cleanup pass just blessed.
