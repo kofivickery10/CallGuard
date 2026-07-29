@@ -99,7 +99,8 @@ reviewRouter.get('/:kind/:itemScoreId/evidence', requireOrgView, async (req, res
       kind === 'call'
         ? await queryOne<EvidenceRow>(
             `SELECT cis.evidence, c.id AS call_id, c.file_name, c.call_date,
-                    c.duration_seconds, c.file_key, c.transcript_text, c.transcript_raw
+                    c.duration_seconds, c.file_key, c.transcript_text, c.transcript_raw,
+                    c.speaker_integrity_flag
                FROM call_item_scores cis
                JOIN call_scores cs ON cs.id = cis.call_score_id
                JOIN calls c ON c.id = cs.call_id
@@ -108,7 +109,8 @@ reviewRouter.get('/:kind/:itemScoreId/evidence', requireOrgView, async (req, res
           )
         : await queryOne<EvidenceRow>(
             `SELECT jis.evidence, c.id AS call_id, c.file_name, c.call_date,
-                    c.duration_seconds, c.file_key, c.transcript_text, c.transcript_raw
+                    c.duration_seconds, c.file_key, c.transcript_text, c.transcript_raw,
+                    c.speaker_integrity_flag
                FROM journey_item_scores jis
                JOIN journeys j ON j.id = jis.journey_id
                JOIN calls c ON c.id = jis.source_call_id AND c.organization_id = j.organization_id
@@ -132,6 +134,12 @@ reviewRouter.get('/:kind/:itemScoreId/evidence', requireOrgView, async (req, res
       call_date: row.call_date,
       has_audio: row.file_key !== null,
       duration_seconds: row.duration_seconds === null ? null : Number(row.duration_seconds),
+      // Whether the Agent/Customer labels on this transcript were found to be
+      // contradicted by what was actually said (services/speaker-integrity.ts).
+      // The reviewer is the last line of defence on a checkpoint the scorer
+      // could not settle, and handing them mislabelled speakers as fact is how
+      // a wrong verdict gets confirmed by a human and made permanent.
+      speaker_integrity_flag: row.speaker_integrity_flag ?? null,
       ...located,
     };
     res.json(location);
@@ -142,6 +150,7 @@ reviewRouter.get('/:kind/:itemScoreId/evidence', requireOrgView, async (req, res
 
 interface EvidenceRow {
   evidence: string | null;
+  speaker_integrity_flag: string | null;
   call_id: string;
   file_name: string | null;
   call_date: string | null;

@@ -140,6 +140,27 @@ export function ReviewEvidencePanel({ item }: ReviewEvidencePanelProps) {
             </p>
           )}
 
+          {/* Speaker labels on this transcript were found to contradict what was
+              actually said. Shown above the excerpt, not below it, because a
+              reviewer who reads the transcript first has already formed a view
+              by the time a footnote arrives — and the whole point of this panel
+              is that they decide on the evidence. Without it the panel presents
+              "Agent:" and "Customer:" as fact on a call the pipeline scored at
+              0.30 confidence, which is how a wrong verdict gets confirmed by a
+              human and made permanent. */}
+          {data?.speaker_integrity_flag && (
+            <div className="rounded-btn bg-review-bg border-l-[3px] border-l-review p-2.5 mb-2.5">
+              <p className="text-xs text-text-primary font-semibold">
+                Who said what may be wrong on this call
+              </p>
+              <p className="text-xs text-text-secondary mt-0.5">
+                Automated checks found speech that only an adviser would say appearing under
+                "Customer" (or the reverse), so the labels below are not trustworthy. Judge this
+                checkpoint from the recording rather than the labels.
+              </p>
+            </div>
+          )}
+
           {data && (
             <>
               {data.matched ? (
