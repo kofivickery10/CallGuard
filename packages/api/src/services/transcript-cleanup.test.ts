@@ -81,3 +81,33 @@ describe('partial speaker verdict', () => {
     expect(resolveSpeakerConfidence(0.3, 'swapped')).toBe(0.75);
   });
 });
+
+// The lift is what carries a mono call over CONSENT_SPEAKER_CONFIDENCE_FLOOR,
+// so it is the single most consequential number in the speaker pipeline.
+describe('confidence lift requires independent corroboration', () => {
+  it('does NOT lift a "confirmed" when the content check abstained', () => {
+    // The cleanup model is reading the same weak signal that already failed to
+    // separate the clusters, so its agreement is not independent evidence.
+    // Measured on a real call: content abstained, cleanup said confirmed,
+    // confidence rose 0.6 -> 0.75, and the transcript was inverted.
+    expect(resolveSpeakerConfidence(0.45, 'confirmed', false)).toBe(0.45);
+  });
+
+  it('lifts a "confirmed" when the content check agreed', () => {
+    expect(resolveSpeakerConfidence(0.8, 'confirmed', true)).toBe(0.8);
+    expect(resolveSpeakerConfidence(0.45, 'confirmed', true)).toBe(0.75);
+  });
+
+  it('lifts a "swapped" either way — an active correction, not an all-clear', () => {
+    expect(resolveSpeakerConfidence(0.45, 'swapped', false)).toBe(0.75);
+  });
+
+  it('keeps an abstained call below the consent-gate floor', () => {
+    // The point of the whole change: a call we cannot attribute sends its
+    // consent gates to a person rather than guessing at them.
+    expect(resolveSpeakerConfidence(0.45, 'confirmed', false))
+      .toBeLessThan(CONSENT_SPEAKER_CONFIDENCE_FLOOR);
+    expect(resolveSpeakerConfidence(0.45, 'unclear', false))
+      .toBeLessThan(CONSENT_SPEAKER_CONFIDENCE_FLOOR);
+  });
+});
