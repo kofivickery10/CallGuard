@@ -13,6 +13,7 @@ import { maybeStartJourneyCapture } from '../../services/capture-runs.js';
 import { buildCombinedTranscript, CALL_MARKER } from '../../services/journey-transcript.js';
 import { detectProductsFromTranscript } from '../../services/product-resolution.js';
 import { isItemPass, deriveSeverity, callPasses, resolveBranchWithSource, isNoScoreCrmStage } from '@callguard/shared';
+import { CONSENT_SPEAKER_CONFIDENCE_FLOOR } from '../../services/checkpoint-classification.js';
 import type { Scorecard, ScorecardItem, WebhookJourneyScoredPayload, ProductSource } from '@callguard/shared';
 
 interface JourneyRow {
@@ -242,9 +243,11 @@ export async function processScoreJourney(job: Job<ScoreJourneyJobData>) {
       .filter((id): id is string => id !== null);
     const productNames = journeyProducts.map((p) => p.product_name);
 
-    // Conservative: if any call in the journey has an unreliable speaker
-    // split, treat the whole journey's consent gates as unreliable too — a
-    // consent quote could have come from any of the calls.
+    // Conservative BEFORE scoring: a consent quote could have come from any of
+    // the calls, and which one is not known until the scorer cites it. So the
+    // weakest call gates the lot here, and anything whose evidence turns out to
+    // come from a well-attributed call is released again below, once
+    // source_call_id is known.
     const confidences = withTranscript
       .map((c) => c.speaker_attribution_confidence)
       .filter((c): c is number => c !== null);
@@ -399,6 +402,11 @@ export async function processScoreJourney(job: Job<ScoreJourneyJobData>) {
     // stays out of the weighted score and the breach register until a human
     // confirms it (see checkpoint-classification.ts).
     const provisionalIds = new Set(provisional.map((i) => i.id));
+    // Per-call speaker confidence, for releasing provisional gates whose
+    // evidence came from a call we can actually attribute.
+    const speakerConfidenceByCall = new Map(
+      withTranscript.map((c) => [c.id, c.speaker_attribution_confidence === null ? 0 : Number(c.speaker_attribution_confidence)])
+    );
     const provisionalWrites: typeof itemWrites = [];
 
     for (const itemScore of output.items) {
@@ -407,14 +415,31 @@ export async function processScoreJourney(job: Job<ScoreJourneyJobData>) {
       const markerMatch = itemScore.evidence?.match(CALL_MARKER);
       const callIndex = markerMatch ? Number(markerMatch[1]) - 1 : -1;
       const sourceCallId = callIndex >= 0 && callIndex < callIdsInOrder.length ? callIdsInOrder[callIndex]! : null;
+      // Release a consent gate whose evidence actually came from a call we CAN
+      // attribute. The pre-scoring pass had to assume the worst because it did
+      // not know which call the quote would come from; now it does.
+      //
+      // Without this, one 24-second call at 0.30 drags every consent gate on a
+      // 95-minute sale into manual review, including checkpoints quoted from a
+      // 57-minute call attributed at 0.80. Measured on a real Trust Point sale,
+      // which is what surfaced it.
+      //
+      // A null sourceCallId means the scorer cited no particular call, so there
+      // is nothing to release against and the conservative routing stands.
+      const sourceCallConfidence = sourceCallId ? speakerConfidenceByCall.get(sourceCallId) : undefined;
+      const evidenceIsWellAttributed =
+        sourceCallConfidence !== undefined && sourceCallConfidence >= CONSENT_SPEAKER_CONFIDENCE_FLOOR;
+
       // A checkpoint the independent runs disagreed on is genuinely ambiguous.
-      // Send it to the reviewer with the majority verdict attached, exactly as
-      // a low-confidence consent gate is handled, and keep it out of the
-      // weighted score — which is what makes the resulting number stable: it
-      // covers only checkpoints every run agreed on.
+      // Send it to the reviewer with the majority verdict attached, and keep it
+      // out of the weighted score — which is what makes the resulting number
+      // stable: it covers only checkpoints every run agreed on. Unlike the
+      // speaker case this cannot be released, since the disagreement is about
+      // the verdict itself, not about who was speaking.
       // ruledIds wins over both: a checkpoint a person has already settled is
       // scored on their verdict, not sent back to the queue they ruled it out of.
-      if (!ruledIds.has(item.id) && (provisionalIds.has(item.id) || disputedIds.has(item.id))) {
+      const stillProvisional = provisionalIds.has(item.id) && !evidenceIsWellAttributed;
+      if (!ruledIds.has(item.id) && (stillProvisional || disputedIds.has(item.id))) {
         provisionalWrites.push({ item, itemScore, normalized, sourceCallId });
         continue;
       }

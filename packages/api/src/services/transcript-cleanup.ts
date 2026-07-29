@@ -115,6 +115,38 @@ export function isCleanupContentLoss(rawTranscript: string, cleaned: string): bo
   return cleaned.trim().length < rawLen * CLEANUP_MIN_RETAINED_RATIO;
 }
 
+/** The ordered run of speaker labels, e.g. ['Agent','Customer','Agent']. */
+function speakerSequence(transcript: string): string[] {
+  return [...transcript.matchAll(/^(Agent|Customer):/gm)].map((m) => m[1]!);
+}
+
+/**
+ * Whether the cleanup moved a speaker boundary.
+ *
+ * Cleanup is told to fix mishearings and punctuation and to leave every
+ * "Agent:"/"Customer:" label exactly as given. It does not always comply, and
+ * the failure is invisible: an observed call had the customer's own words ("I've
+ * been dealing with them for my mum, and I've never touched them with a barge
+ * pole") merged into the adviser's preceding turn, because Deepgram had split
+ * mid-phrase ("I can" / "tell you") and re-joining it looked to the model like a
+ * repair.
+ *
+ * That is worse than a mishearing. Word-level segmentation had correctly
+ * separated those speakers and the cleanup put them back together, so a
+ * checkpoint about who said what was then judged on the merged block. The
+ * transcript reads perfectly and attributes half a turn to the wrong person.
+ *
+ * Comparing the ordered run of labels catches it without caring about wording:
+ * cleanup may change the words inside a turn, never how many turns there are or
+ * who they belong to.
+ */
+export function didCleanupAlterSpeakers(rawTranscript: string, cleaned: string): boolean {
+  const before = speakerSequence(rawTranscript);
+  const after = speakerSequence(cleaned);
+  if (before.length !== after.length) return true;
+  return before.some((label, i) => label !== after[i]);
+}
+
 export async function cleanupTranscript(
   rawTranscript: string,
   organizationId?: string,
@@ -339,6 +371,28 @@ ${needsSpeakerCheck
   // max_tokens) is as harmful as a truncated one — see isCleanupContentLoss.
   // Fall back to the raw transcript, keeping the speaker decision: a raw-but-
   // complete transcript scores far better than a cleaned one with a hole in it.
+  // A cleanup that moved a speaker boundary is rejected outright, before the
+  // length check: the text can be the right length, read beautifully, and
+  // attribute a turn to the wrong person. A raw-but-correctly-attributed
+  // transcript is worth more than a polished one that quietly reassigns speech.
+  //
+  // The speaker VERDICT is still honoured — if the model judged the labels
+  // swapped, that decision is applied mechanically to the raw text below.
+  if (didCleanupAlterSpeakers(rawTranscript, cleanedBody)) {
+    const before = (rawTranscript.match(/^(Agent|Customer):/gm) ?? []).length;
+    const after = (cleanedBody.match(/^(Agent|Customer):/gm) ?? []).length;
+    console.error(
+      `[TranscriptCleanup] Cleanup altered speaker boundaries for call ${callId ?? 'unknown'} ` +
+        `(${before} turns in, ${after} out) — discarding the cleaned text and keeping the raw ` +
+        `transcript, which is correctly attributed`
+    );
+    return {
+      text: speakerVerdict === 'swapped' ? swapSpeakerLabels(rawTranscript) : rawTranscript,
+      speakerLabelsSwapped: speakerVerdict === 'swapped',
+      speakerVerdict,
+    };
+  }
+
   if (isCleanupContentLoss(rawTranscript, cleanedBody)) {
     const retained = Math.round((cleanedBody.trim().length / Math.max(1, rawTranscript.trim().length)) * 100);
     console.error(`[TranscriptCleanup] Cleaned transcript for call ${callId ?? 'unknown'} retained only ${retained}% of the raw length — likely dropped content; using raw transcript (speaker verdict: ${speakerVerdict})`);
