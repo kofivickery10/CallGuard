@@ -549,6 +549,52 @@ breachesRouter.post('/:id/status', requireActioner, async (req, res, next) => {
 // PATCH /api/breaches/:id/assign
 // ============================================================
 
+// POST /api/breaches/:id/confirm — a person agrees this finding is real.
+//
+// The strongest standing a breach can have, and what a regulated firm should be
+// able to point at when asked how they know. Deliberately separate from
+// resolving it: resolving records that it was dealt with, this records that
+// someone looked at the evidence and agreed.
+//
+// Once confirmed the caveats stop being shown as doubt — a human has overtaken
+// the machine's uncertainty, which is the same principle as a scoring
+// correction outranking the model (migration 077).
+//
+// { confirmed: false } withdraws it, for a reviewer who confirmed in error.
+breachesRouter.post('/:id/confirm', requireActioner, async (req, res, next) => {
+  try {
+    const confirmed = (req.body as { confirmed?: unknown })?.confirmed !== false;
+
+    const existing = await queryOne<{ id: string; confirmed_at: string | null }>(
+      'SELECT id, confirmed_at FROM breaches WHERE id = $1 AND organization_id = $2',
+      [req.params.id, req.user!.organizationId]
+    );
+    if (!existing) throw new AppError(404, 'Breach not found');
+
+    const rows = await query(
+      `UPDATE breaches
+          SET confirmed_by = $2, confirmed_at = $3, updated_at = now()
+        WHERE id = $1
+        RETURNING *`,
+      [req.params.id, confirmed ? req.user!.userId : null, confirmed ? new Date().toISOString() : null]
+    );
+
+    await recordAuditEvent({
+      organizationId: req.user!.organizationId,
+      userId: req.user!.userId,
+      actionType: 'breach.status_change',
+      entityType: 'breach',
+      entityId: req.params.id,
+      summary: confirmed ? 'Breach confirmed as real by a reviewer' : 'Breach confirmation withdrawn',
+      req,
+    });
+
+    res.json(rows[0]);
+  } catch (err) {
+    next(err);
+  }
+});
+
 breachesRouter.post('/:id/assign', requireActioner, async (req, res, next) => {
   try {
     const { assigned_to } = req.body;

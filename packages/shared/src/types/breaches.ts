@@ -58,7 +58,46 @@ export interface Breach {
   resolved_at: string | null;
   created_at: string;
   updated_at: string;
+  // Why this finding is not settled (migration 078). Empty = no known weakness.
+  //
+  // Separate axis from `status`: status is the workflow (new -> resolved), this
+  // is how much weight the finding can bear. A compliance register must never
+  // assert more than its evidence supports, and equally must not suppress an
+  // uncertain finding — missing a genuine failure is worse than raising a shaky
+  // one. So the breach stands and the caveats travel with it.
+  evidence_caveats: BreachEvidenceCaveat[];
+  // A person agreed this breach is real. Distinct from resolving it, which only
+  // records that it was dealt with.
+  confirmed_by: string | null;
+  confirmed_at: string | null;
 }
+
+// Why a breach may not be safe to act on as-is. Each is derived from something
+// the pipeline already knows at scoring time.
+export type BreachEvidenceCaveat =
+  // Independent scoring runs disagreed on this verdict (consensus scoring).
+  | 'low_agreement'
+  // The scorer reported low confidence. 0.7 is the boundary measured between
+  // checkpoints that flipped between runs (mean 0.66) and ones that never did (0.72).
+  | 'low_confidence'
+  // Who said what could not be established on the call the evidence came from,
+  // so any checkpoint turning on speaker identity is unsafe.
+  | 'unreliable_speakers'
+  // The sale's branch was inferred rather than read from the CRM, so this
+  // checkpoint may not have applied to the sale at all.
+  | 'guessed_branch'
+  // Scored by a model no longer in use, under the retired two-pass design.
+  | 'retired_model';
+
+// Reviewer-facing wording. Kept with the type so the API, the register and any
+// export describe a caveat the same way.
+export const BREACH_CAVEAT_LABELS: Record<BreachEvidenceCaveat, string> = {
+  low_agreement: 'Scoring runs disagreed on this checkpoint',
+  low_confidence: 'The scorer was unsure',
+  unreliable_speakers: 'Who said what could not be established on this call',
+  guessed_branch: 'The sale\'s branch was inferred, so this checkpoint may not apply',
+  retired_model: 'Scored by a model no longer in use',
+};
 
 export interface BreachWithDetail extends Breach {
   // For a journey breach this is a synthesised "Journey — <customer>" label

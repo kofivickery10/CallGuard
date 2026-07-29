@@ -204,6 +204,11 @@ export interface EvidenceLocation {
   call_date: string | null;
   has_audio: boolean;
   duration_seconds: number | null;
+  // Set when automated checks found this transcript's Agent/Customer labels
+  // contradicted by the conversation's content. Any judgement that turns on WHO
+  // said something is unsafe here, so the reviewer must be warned rather than
+  // shown the labels as fact.
+  speaker_integrity_flag: string | null;
   // Second of the recording the quote starts at. Null when it couldn't be
   // pinned to an utterance — playback then starts at the beginning.
   timestamp_seconds: number | null;

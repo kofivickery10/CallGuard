@@ -23,7 +23,19 @@ export function Journeys() {
   const scoreOnly = useScoreOnly();
   const [status, setStatus] = useState<'' | JourneyStatus>('');
   const [adviser, setAdviser] = useState('');
+  const [branch, setBranch] = useState('');
+  const [result, setResult] = useState<'' | 'pass' | 'fail'>('');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
   const [page, setPage] = useState(1);
+
+  // Any filter change invalidates the current page number — page 3 of an
+  // unfiltered list is rarely page 3 of a filtered one, and landing on an empty
+  // page reads as "no results" rather than "wrong page".
+  const onFilterChange = <T,>(set: (v: T) => void) => (v: T) => {
+    set(v);
+    setPage(1);
+  };
 
   // Distinct closing advisers, for the filter. Cached separately from the list
   // so paging or changing the status filter doesn't refetch it.
@@ -34,12 +46,28 @@ export function Journeys() {
   });
   const advisers = advisersData?.data ?? [];
 
+  // Branches actually present in the org's sales (not merely configured), so
+  // the filter never offers an option that returns nothing.
+  const { data: branchesData } = useQuery({
+    queryKey: ['journey-branches'],
+    queryFn: () => api.get<{ data: string[] }>('/journeys/branches'),
+    staleTime: 5 * 60 * 1000,
+  });
+  const branches = branchesData?.data ?? [];
+
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['journeys', status, adviser, page],
+    queryKey: ['journeys', status, adviser, branch, result, from, to, page],
     queryFn: () =>
-      api.get<{ data: JourneyListItem[]; total: number; page: number; limit: number }>(
+      api.get<{
+        data: JourneyListItem[]; total: number; page: number; limit: number;
+        counts: Record<string, number>;
+      }>(
         `/journeys?page=${page}&limit=50${status ? `&status=${status}` : ''}` +
-          (adviser ? `&agent=${encodeURIComponent(adviser)}` : '')
+          (adviser ? `&agent=${encodeURIComponent(adviser)}` : '') +
+          (branch ? `&branch=${encodeURIComponent(branch)}` : '') +
+          (result ? `&result=${result}` : '') +
+          (from ? `&from=${from}` : '') +
+          (to ? `&to=${to}` : '')
       ),
     refetchInterval: (query) => {
       // Poll while anything is still in flight so scores appear without a manual refresh.
@@ -49,7 +77,12 @@ export function Journeys() {
   });
 
   const journeys = data?.data ?? [];
-  const totalPages = data ? Math.ceil(data.total / data.limit) : 0;
+  const total = data?.total ?? 0;
+  const totalPages = data ? Math.ceil(total / data.limit) : 0;
+  const counts = data?.counts ?? {};
+  const firstRow = total === 0 ? 0 : (page - 1) * (data?.limit ?? 50) + 1;
+  const lastRow = Math.min(page * (data?.limit ?? 50), total);
+  const filtered = !!(status || adviser || branch || result || from || to);
 
   // Score-only tenants don't see the pass/fail verdict, so the Result column is
   // dropped entirely rather than left blank.
@@ -65,52 +98,140 @@ export function Journeys() {
             Multi-call sales scored as one unit — a statement or consent counts if it happened on any call in the sale.
           </p>
         </div>
-        <div className="flex gap-1.5">
-          {STATUS_FILTERS.map((f) => (
-            <button
-              key={f.value}
-              onClick={() => {
-                setStatus(f.value);
-                setPage(1);
-              }}
-              aria-pressed={status === f.value}
-              className={`px-3 py-1.5 rounded-btn text-table-cell font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
-                status === f.value
-                  ? 'bg-primary text-white'
-                  : 'border border-border text-text-secondary hover:bg-sidebar-hover'
-              }`}
-            >
-              {f.label}
-            </button>
-          ))}
-
-          {advisers.length > 0 && (
-            <>
-              <label htmlFor="adviser-filter" className="sr-only">
-                Filter by adviser
-              </label>
-              <select
-                id="adviser-filter"
-                value={adviser}
-                onChange={(e) => {
-                  setAdviser(e.target.value);
-                  setPage(1);
-                }}
-                className={`px-3 py-1.5 rounded-btn text-table-cell font-semibold border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
-                  adviser
-                    ? 'border-primary text-primary bg-card'
-                    : 'border-border text-text-secondary bg-card hover:bg-sidebar-hover'
+        <div className="flex gap-1.5 flex-wrap justify-end">
+          {STATUS_FILTERS.map((f) => {
+            // Count for this tab under every OTHER active filter, so it says
+            // what clicking it would actually return rather than a global total.
+            const n = f.value === '' ? counts.all : counts[f.value];
+            return (
+              <button
+                key={f.value}
+                onClick={() => onFilterChange(setStatus)(f.value)}
+                aria-pressed={status === f.value}
+                className={`px-3 py-1.5 rounded-btn text-table-cell font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
+                  status === f.value
+                    ? 'bg-primary text-white'
+                    : 'border border-border text-text-secondary hover:bg-sidebar-hover'
                 }`}
               >
-                <option value="">All advisers</option>
-                {advisers.map((a) => (
-                  <option key={a} value={a}>
-                    {a}
-                  </option>
-                ))}
-              </select>
-            </>
-          )}
+                {f.label}
+                {n !== undefined && (
+                  <span className={status === f.value ? 'ml-1.5 opacity-80' : 'ml-1.5 text-text-muted'}>
+                    {n}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Secondary filters. Separate row from the status tabs: status is the
+          primary axis a compliance manager works along, and mixing six controls
+          into one row buries it. */}
+      <div className="flex items-end gap-2 flex-wrap mb-4">
+        {advisers.length > 0 && (
+          <div>
+            <label htmlFor="adviser-filter" className="block text-xs text-text-muted mb-1">Adviser</label>
+            <select
+              id="adviser-filter"
+              value={adviser}
+              onChange={(e) => onFilterChange(setAdviser)(e.target.value)}
+              className={`px-3 py-1.5 rounded-btn text-table-cell font-semibold border bg-card transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
+                adviser ? 'border-primary text-primary' : 'border-border text-text-secondary hover:bg-sidebar-hover'
+              }`}
+            >
+              <option value="">All advisers</option>
+              {advisers.map((a) => <option key={a} value={a}>{a}</option>)}
+            </select>
+          </div>
+        )}
+
+        {branches.length > 1 && (
+          <div>
+            <label htmlFor="branch-filter" className="block text-xs text-text-muted mb-1">Branch</label>
+            <select
+              id="branch-filter"
+              value={branch}
+              onChange={(e) => onFilterChange(setBranch)(e.target.value)}
+              className={`px-3 py-1.5 rounded-btn text-table-cell font-semibold border bg-card transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
+                branch ? 'border-primary text-primary' : 'border-border text-text-secondary hover:bg-sidebar-hover'
+              }`}
+            >
+              <option value="">All branches</option>
+              {branches.map((b) => <option key={b} value={b}>{b}</option>)}
+            </select>
+          </div>
+        )}
+
+        {!scoreOnly && (
+          <div>
+            <label htmlFor="result-filter" className="block text-xs text-text-muted mb-1">Result</label>
+            <select
+              id="result-filter"
+              value={result}
+              onChange={(e) => onFilterChange(setResult)(e.target.value as '' | 'pass' | 'fail')}
+              className={`px-3 py-1.5 rounded-btn text-table-cell font-semibold border bg-card transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
+                result ? 'border-primary text-primary' : 'border-border text-text-secondary hover:bg-sidebar-hover'
+              }`}
+            >
+              <option value="">Pass or fail</option>
+              <option value="pass">Pass</option>
+              <option value="fail">Fail</option>
+            </select>
+          </div>
+        )}
+
+        <div>
+          <label htmlFor="from-filter" className="block text-xs text-text-muted mb-1">Scored from</label>
+          <input
+            id="from-filter"
+            type="date"
+            value={from}
+            max={to || undefined}
+            onChange={(e) => onFilterChange(setFrom)(e.target.value)}
+            className={`px-3 py-1.5 rounded-btn text-table-cell border bg-card text-text-secondary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
+              from ? 'border-primary' : 'border-border'
+            }`}
+          />
+        </div>
+        <div>
+          <label htmlFor="to-filter" className="block text-xs text-text-muted mb-1">to</label>
+          <input
+            id="to-filter"
+            type="date"
+            value={to}
+            min={from || undefined}
+            onChange={(e) => onFilterChange(setTo)(e.target.value)}
+            className={`px-3 py-1.5 rounded-btn text-table-cell border bg-card text-text-secondary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
+              to ? 'border-primary' : 'border-border'
+            }`}
+          />
+        </div>
+
+        {filtered && (
+          <button
+            type="button"
+            onClick={() => {
+              setStatus(''); setAdviser(''); setBranch(''); setResult(''); setFrom(''); setTo(''); setPage(1);
+            }}
+            className="px-3 py-1.5 rounded-btn text-table-cell font-semibold text-text-muted hover:text-text-primary underline transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+          >
+            Clear filters
+          </button>
+        )}
+
+        {/* Where you are in the result set. Always shown, not just when it
+            paginates — "12 sales" is worth knowing on its own, and its absence
+            below 50 rows made the list feel like it might be truncated. */}
+        <div className="ml-auto text-xs text-text-muted pb-1.5" aria-live="polite">
+          {isLoading
+            ? 'Loading…'
+            : total === 0
+              ? 'No sales'
+              : totalPages > 1
+                ? `${firstRow}–${lastRow} of ${total} sales`
+                : `${total} sale${total === 1 ? '' : 's'}`}
         </div>
       </div>
 
@@ -241,7 +362,11 @@ export function Journeys() {
             >
               Previous
             </button>
-            <span className="text-xs text-text-muted">{page} / {totalPages}</span>
+            <span className="text-xs text-text-muted">
+              Page {page} of {totalPages}
+              <span className="mx-2 text-border">|</span>
+              showing {firstRow}–{lastRow} of {total}
+            </span>
             <button
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               disabled={page === totalPages}

@@ -27,13 +27,42 @@ journeysRouter.get('/', requireOrgView, async (req, res, next) => {
     // 'skipped' included: NTU sales are a real, filterable state (migration
     // 071). Omitting it here made ?status=skipped silently return everything,
     // which reads as a broken filter rather than an unsupported one.
+    // Recorded by index rather than baked in, so the per-status counts below
+    // can rebuild the same WHERE without it — each tab should show how many
+    // sales you would get by clicking it, which means every OTHER filter
+    // applies but the status itself does not.
+    let statusPartIndex = -1;
     if (status && ['pending', 'scoring', 'scored', 'failed', 'skipped'].includes(status)) {
       params.push(status as JourneyStatus);
       parts.push(`j.status = $${params.length}`);
+      statusPartIndex = parts.length - 1;
     }
     if (typeof req.query.customer_id === 'string') {
       params.push(req.query.customer_id);
       parts.push(`j.customer_id = $${params.length}`);
+    }
+    // Branch, so a compliance manager can look at (say) every referred sale.
+    // Validated against what is actually in use rather than a fixed list —
+    // branches are per-tenant scorecard configuration, not a system enum.
+    if (typeof req.query.branch === 'string' && req.query.branch.trim()) {
+      params.push(req.query.branch.trim());
+      parts.push(`j.branch = $${params.length}`);
+    }
+    // Pass/fail. Only meaningful on a scored sale — pass is NULL until then, so
+    // this implicitly narrows to scored without needing both filters set.
+    const result = typeof req.query.result === 'string' ? req.query.result : '';
+    if (result === 'pass' || result === 'fail') {
+      parts.push(`j.pass IS ${result === 'pass' ? 'TRUE' : 'FALSE'}`);
+    }
+    // Date range on when the sale was scored, falling back to creation for one
+    // not yet scored, so a range never silently hides in-flight work.
+    if (typeof req.query.from === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(req.query.from)) {
+      params.push(req.query.from);
+      parts.push(`COALESCE(j.scored_at, j.created_at) >= $${params.length}::date`);
+    }
+    if (typeof req.query.to === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(req.query.to)) {
+      params.push(req.query.to);
+      parts.push(`COALESCE(j.scored_at, j.created_at) < ($${params.length}::date + INTERVAL '1 day')`);
     }
     // Filter by the sale's closing adviser. Matched on the RESOLVED name (the
     // linked user's name where the call is linked, else the raw dialler string)
@@ -58,11 +87,26 @@ journeysRouter.get('/', requireOrgView, async (req, res, next) => {
       ) = $${params.length}`);
     }
     const whereSQL = parts.join(' AND ');
+    const whereWithoutStatus = parts.filter((_, i) => i !== statusPartIndex).join(' AND ');
 
     const countRow = await queryOne<{ count: string }>(
       `SELECT COUNT(*)::text AS count FROM journeys j WHERE ${whereSQL}`,
       params
     );
+
+    // One grouped scan rather than a query per tab. The status parameter is
+    // still bound (params is shared) but unused by this statement, which
+    // Postgres allows.
+    const statusRows = await query<{ status: JourneyStatus; count: string }>(
+      `SELECT j.status, COUNT(*)::text AS count FROM journeys j
+        WHERE ${whereWithoutStatus} GROUP BY j.status`,
+      params
+    );
+    const counts = statusRows.reduce<Record<string, number>>(
+      (acc, r) => ({ ...acc, [r.status]: parseInt(r.count, 10) }),
+      {}
+    );
+    counts.all = Object.values(counts).reduce((a, b) => a + b, 0);
 
     const rows = await query<JourneyListItem>(
       `SELECT j.*,
@@ -114,7 +158,7 @@ journeysRouter.get('/', requireOrgView, async (req, res, next) => {
       ({ trigger_context: _t, ...r }) => r as JourneyListItem
     );
 
-    res.json({ data, total: parseInt(countRow?.count || '0'), page, limit });
+    res.json({ data, total: parseInt(countRow?.count || '0'), page, limit, counts });
   } catch (err) {
     next(err);
   }
@@ -155,6 +199,30 @@ journeysRouter.get('/advisers', requireOrgView, async (req, res, next) => {
       [req.user!.organizationId]
     );
     res.json({ data: rows.map((r) => r.agent_name) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/journeys/branches — the branches actually in use across the org's
+// sales, for the list filter.
+//
+// Read from the sales rather than from scorecard.branch_config: a branch that
+// is configured but has never been resolved would offer a filter that always
+// returns nothing, and a sale scored under an older scorecard version may sit
+// on a branch the current config no longer lists. What is in the data is what
+// the filter should offer.
+//
+// Registered BEFORE '/:id' — Express would otherwise match "branches" as an id.
+journeysRouter.get('/branches', requireOrgView, async (req, res, next) => {
+  try {
+    const rows = await query<{ branch: string }>(
+      `SELECT DISTINCT branch FROM journeys
+        WHERE organization_id = $1 AND branch IS NOT NULL
+        ORDER BY branch`,
+      [req.user!.organizationId]
+    );
+    res.json({ data: rows.map((r) => r.branch) });
   } catch (err) {
     next(err);
   }

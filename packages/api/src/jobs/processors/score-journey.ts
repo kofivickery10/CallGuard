@@ -435,6 +435,42 @@ export async function processScoreJourney(job: Job<ScoreJourneyJobData>) {
       }));
     const pass = callPasses(overallScore, failures.map((f) => f.severity), scoringSettings.passThreshold);
 
+    // Why a breach raised from this run might not be settled (migration 078).
+    //
+    // A compliance register must never assert more than its evidence supports,
+    // and it must not suppress a finding either: missing a genuine failure is
+    // worse than raising an uncertain one. So every breach carries the specific
+    // weaknesses behind it and a reviewer decides, rather than the platform
+    // quietly deciding for them.
+    //
+    // Computed per breach because two checkpoints on the same sale can rest on
+    // very different evidence — one quoted from a call whose speakers are
+    // unclear, another from a clean one.
+    const speakerUnreliableCalls = new Set(
+      withTranscript.filter((c) => c.speaker_integrity_flag !== null
+        || (c.speaker_attribution_confidence !== null && Number(c.speaker_attribution_confidence) < 0.5))
+        .map((c) => c.id)
+    );
+    const breachCaveats = (
+      itemScore: { confidence?: number | null },
+      sourceCallId: string | null
+    ): string[] => {
+      const caveats: string[] = [];
+      const agreement = agreementById.get(
+        (itemScore as { scorecard_item_id?: string }).scorecard_item_id ?? ''
+      );
+      if (agreement !== undefined && agreement < 1) caveats.push('low_agreement');
+      // 0.7 is the boundary measured between checkpoints that flipped between
+      // runs (mean confidence 0.66) and ones that never did (0.72).
+      if (typeof itemScore.confidence === 'number' && itemScore.confidence < 0.7) {
+        caveats.push('low_confidence');
+      }
+      if (sourceCallId && speakerUnreliableCalls.has(sourceCallId)) caveats.push('unreliable_speakers');
+      // The branch decides whether this checkpoint applied to the sale at all.
+      if (branch && branchSource !== 'crm') caveats.push('guessed_branch');
+      return caveats;
+    };
+
     // Assigned inside the scoring transaction (it depends on the run number),
     // read afterwards for the log line.
     let runTrigger: ScoreRunTrigger = 'initial';
@@ -471,10 +507,11 @@ export async function processScoreJourney(job: Job<ScoreJourneyJobData>) {
         if (result === 'fail') {
           const severity = deriveSeverity(Number(item.weight), item.severity);
           await tx.query(
-            `INSERT INTO breaches (organization_id, journey_id, journey_item_score_id, scorecard_item_id, severity, detected_at)
-             VALUES ($1, $2, $3, $4, $5, now())
+            `INSERT INTO breaches (organization_id, journey_id, journey_item_score_id, scorecard_item_id, severity, detected_at, evidence_caveats)
+             VALUES ($1, $2, $3, $4, $5, now(), $6)
              ON CONFLICT (journey_item_score_id) DO NOTHING`,
-            [journey.organization_id, journeyId, inserted[0]!.id, item.id, severity]
+            [journey.organization_id, journeyId, inserted[0]!.id, item.id, severity,
+             breachCaveats(itemScore, sourceCallId)]
           );
         }
       }

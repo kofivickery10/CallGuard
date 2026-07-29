@@ -218,7 +218,7 @@ export function countSpeakerMarkers(transcript: string): SpeakerMarkerCounts {
  */
 export function assessSpeakerIntegrity(
   transcript: string,
-  modelVerdict?: 'swapped' | 'confirmed' | 'unclear' | 'not_checked'
+  modelVerdict?: 'swapped' | 'confirmed' | 'partial' | 'unclear' | 'not_checked'
 ): SpeakerIntegrityAssessment {
   const hits = collectSpeakerMarkers(transcript);
   const counts = countSpeakerMarkers(transcript);
@@ -265,6 +265,21 @@ export function assessSpeakerIntegrity(
   // A model 'confirmed' that the content contradicts is the case that produced
   // the false critical breach — call it out distinctly so it is greppable and
   // so the confidence lift is refused rather than merely offset.
+  // A model that reported 'partial' has already told us part of the call is
+  // inverted, so the markers agreeing is corroboration, not a conflict. Record
+  // it as the partial inversion it is rather than as the model contradicting
+  // itself — the two need different follow-up (one is a bad verdict, the other
+  // is a correct verdict we cannot yet act on).
+  if (modelVerdict === 'partial') {
+    return {
+      flag: 'partial_inversion',
+      counts,
+      inversionRatio,
+      worstWindowRatio,
+      detail: `model reported partial inversion; ${detail}`,
+    };
+  }
+
   if (flag && modelVerdict === 'confirmed') {
     return {
       flag: 'model_verdict_conflict',

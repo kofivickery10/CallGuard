@@ -65,3 +65,19 @@ describe('isCleanupContentLoss', () => {
     expect(isCleanupContentLoss('   ', 'anything')).toBe(false);
   });
 });
+
+// The 'partial' verdict. Added after a real Trust Point call had the adviser's
+// own compliance script attributed to the customer while turns either side were
+// labelled correctly. With only swapped/confirmed/unclear on offer the model
+// answered 'confirmed', which is one of only two verdicts that LIFTS attribution
+// confidence — the most dangerous possible answer on a mislabelled transcript.
+describe('partial speaker verdict', () => {
+  it('does NOT lift attribution confidence, unlike confirmed or swapped', () => {
+    // The whole-transcript swap cannot fix a partial inversion, so knowing part
+    // of the call is wrong is no basis for trusting any of it.
+    expect(resolveSpeakerConfidence(0.3, 'partial')).toBe(0.3);
+    expect(resolveSpeakerConfidence(0.3, 'unclear')).toBe(0.3);
+    expect(resolveSpeakerConfidence(0.3, 'confirmed')).toBe(0.75);
+    expect(resolveSpeakerConfidence(0.3, 'swapped')).toBe(0.75);
+  });
+});
