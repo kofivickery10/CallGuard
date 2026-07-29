@@ -1,6 +1,6 @@
 import { Job } from 'bullmq';
 import { query, queryOne, withTransaction } from '../../db/client.js';
-import { scoreTranscript, normalizeScore } from '../../services/scoring.js';
+import { scoreTranscriptConsensus, normalizeScore, type ScoringOutput } from '../../services/scoring.js';
 import { getKBContext } from '../../services/kb.js';
 import { getLearningContext } from '../../services/learning-context.js';
 import { recordUsage } from '../../services/usage.js';
@@ -286,7 +286,12 @@ export async function processScoreJourney(job: Job<ScoreJourneyJobData>) {
     // improvements / next actions across all the calls), stored on the journey.
     // Deliberately journey-level, not per-call — a sale can span advisers, so
     // the useful unit is the sale as a whole.
-    const { output, usage, model } = await scoreTranscript(
+    // Consensus scoring (migration 076). samples=1 is a single pass and the
+    // historical behaviour; above 1 the runs vote, and checkpoints they
+    // disagree on are routed to manual review below rather than settled by
+    // whichever sample happened to be drawn.
+    const { items: consensusItems, coaching, usage, model, samples } = await scoreTranscriptConsensus(
+      scoringSettings.scoringSamples,
       combinedTranscript,
       aiItems.map((i) => ({
         id: i.id,
@@ -309,6 +314,52 @@ export async function processScoreJourney(job: Job<ScoreJourneyJobData>) {
       // checkpoint could have come from any of the calls.
       withTranscript.some((c) => c.speaker_integrity_flag !== null)
     );
+    const output: ScoringOutput = { items: consensusItems, coaching };
+    // Checkpoints the runs could not agree on. Excluded from the weighted score
+    // and sent to a human — the whole point of voting is that an ambiguous
+    // checkpoint gets decided by a person rather than by sampling luck.
+    const disputedIds = new Set(consensusItems.filter((i) => i.disputed).map((i) => i.scorecard_item_id));
+    const agreementById = new Map(consensusItems.map((i) => [i.scorecard_item_id, i.agreement]));
+
+    // A checkpoint a human has already ruled on is not re-decided.
+    //
+    // This is what makes a score stop moving. The model cannot be made
+    // deterministic — it samples, so a genuinely borderline checkpoint can land
+    // either way between runs. But a checkpoint settled by a person has a
+    // verdict that is simply replayed, and no amount of model variance can
+    // touch it. Overlaid BEFORE the weighted score is computed, so the breach
+    // register, the pass/fail gate and the CRM write-back all reflect the human
+    // verdict rather than the machine's.
+    //
+    // Keyed on (journey_id, scorecard_item_id) rather than the item-score row,
+    // which is dropped and recreated on every run (migration 077).
+    const rulings = await query<{ scorecard_item_id: string; corrected_score: string; corrected_pass: boolean }>(
+      `SELECT scorecard_item_id, corrected_score::text, corrected_pass
+         FROM score_corrections WHERE journey_id = $1`,
+      [journeyId]
+    );
+    const ruledIds = new Set(rulings.map((r) => r.scorecard_item_id));
+    if (rulings.length > 0) {
+      const byItem = new Map(rulings.map((r) => [r.scorecard_item_id, r]));
+      for (const it of consensusItems) {
+        const ruling = byItem.get(it.scorecard_item_id);
+        if (!ruling) continue;
+        it.score = ruling.corrected_pass ? 1 : 0;
+        it.confidence = 1;
+        it.reasoning = `Ruled by a reviewer: ${ruling.corrected_pass ? 'met' : 'not met'}. ${it.reasoning}`.slice(0, 2000);
+        // A human ruling settles a disputed checkpoint — it must not be sent
+        // back to the review queue it just came out of.
+        disputedIds.delete(it.scorecard_item_id);
+      }
+      console.log(`[ScoreJourney] ${journeyId}: ${rulings.length} human ruling(s) re-applied over the model's verdicts`);
+    }
+    if (samples > 1) {
+      console.log(
+        `[ScoreJourney] ${journeyId}: ${samples} scoring runs, ` +
+          `${consensusItems.length - disputedIds.size}/${consensusItems.length} unanimous, ` +
+          `${disputedIds.size} disputed -> manual review`
+      );
+    }
 
     await recordUsage({
       organizationId: journey.organization_id,
@@ -356,7 +407,14 @@ export async function processScoreJourney(job: Job<ScoreJourneyJobData>) {
       const markerMatch = itemScore.evidence?.match(CALL_MARKER);
       const callIndex = markerMatch ? Number(markerMatch[1]) - 1 : -1;
       const sourceCallId = callIndex >= 0 && callIndex < callIdsInOrder.length ? callIdsInOrder[callIndex]! : null;
-      if (provisionalIds.has(item.id)) {
+      // A checkpoint the independent runs disagreed on is genuinely ambiguous.
+      // Send it to the reviewer with the majority verdict attached, exactly as
+      // a low-confidence consent gate is handled, and keep it out of the
+      // weighted score — which is what makes the resulting number stable: it
+      // covers only checkpoints every run agreed on.
+      // ruledIds wins over both: a checkpoint a person has already settled is
+      // scored on their verdict, not sent back to the queue they ruled it out of.
+      if (!ruledIds.has(item.id) && (provisionalIds.has(item.id) || disputedIds.has(item.id))) {
         provisionalWrites.push({ item, itemScore, normalized, sourceCallId });
         continue;
       }
@@ -400,14 +458,15 @@ export async function processScoreJourney(job: Job<ScoreJourneyJobData>) {
         const result = isItemPass(normalized, scoringSettings.passThreshold) ? 'pass' : 'fail';
         const inserted = await tx.query<{ id: string }>(
           `INSERT INTO journey_item_scores
-             (journey_id, scorecard_item_id, result, score, normalized_score, confidence, evidence, reasoning, source_call_id)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+             (journey_id, scorecard_item_id, result, score, normalized_score, confidence, evidence, reasoning, source_call_id, agreement)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
            ON CONFLICT (journey_id, scorecard_item_id) DO UPDATE SET
              result = EXCLUDED.result, score = EXCLUDED.score, normalized_score = EXCLUDED.normalized_score,
              confidence = EXCLUDED.confidence, evidence = EXCLUDED.evidence, reasoning = EXCLUDED.reasoning,
-             source_call_id = EXCLUDED.source_call_id
+             source_call_id = EXCLUDED.source_call_id, agreement = EXCLUDED.agreement
            RETURNING id`,
-          [journeyId, item.id, result, itemScore.score, normalized, itemScore.confidence, itemScore.evidence, itemScore.reasoning, sourceCallId]
+          [journeyId, item.id, result, itemScore.score, normalized, itemScore.confidence, itemScore.evidence, itemScore.reasoning, sourceCallId,
+           agreementById.get(item.id) ?? null]
         );
         if (result === 'fail') {
           const severity = deriveSeverity(Number(item.weight), item.severity);
@@ -441,13 +500,31 @@ export async function processScoreJourney(job: Job<ScoreJourneyJobData>) {
       for (const { item, itemScore, normalized, sourceCallId } of provisionalWrites) {
         await tx.query(
           `INSERT INTO journey_item_scores
-             (journey_id, scorecard_item_id, result, score, normalized_score, confidence, evidence, reasoning, source_call_id)
-           VALUES ($1, $2, 'manual_review', $3, $4, $5, $6, $7, $8)
+             (journey_id, scorecard_item_id, result, score, normalized_score, confidence, evidence, reasoning, source_call_id, agreement)
+           VALUES ($1, $2, 'manual_review', $3, $4, $5, $6, $7, $8, $9)
            ON CONFLICT (journey_id, scorecard_item_id) DO UPDATE SET
              result = 'manual_review', score = EXCLUDED.score, normalized_score = EXCLUDED.normalized_score,
              confidence = EXCLUDED.confidence, evidence = EXCLUDED.evidence, reasoning = EXCLUDED.reasoning,
-             source_call_id = EXCLUDED.source_call_id`,
-          [journeyId, item.id, itemScore.score, normalized, itemScore.confidence, itemScore.evidence, itemScore.reasoning, sourceCallId]
+             source_call_id = EXCLUDED.source_call_id, agreement = EXCLUDED.agreement`,
+          [journeyId, item.id, itemScore.score, normalized, itemScore.confidence, itemScore.evidence, itemScore.reasoning, sourceCallId,
+           agreementById.get(item.id) ?? null]
+        );
+      }
+
+      // Re-point each ruling at the item-score row that now exists. The rows
+      // above replaced the ones the ruling was originally attached to, so
+      // without this the pointer stays NULL until someone rules again — the
+      // ruling still applies (it is keyed on journey + checkpoint), but the UI
+      // could not show which row it belongs to.
+      if (ruledIds.size > 0) {
+        await tx.query(
+          `UPDATE score_corrections sc
+              SET journey_item_score_id = jis.id
+             FROM journey_item_scores jis
+            WHERE sc.journey_id = $1
+              AND jis.journey_id = $1
+              AND jis.scorecard_item_id = sc.scorecard_item_id`,
+          [journeyId]
         );
       }
 

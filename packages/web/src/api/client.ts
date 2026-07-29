@@ -136,6 +136,22 @@ export const api = {
     }),
   delete: <T>(path: string) =>
     request<T>(path, { method: 'DELETE' }),
+  // Authenticated media fetch — the audio endpoint is bearer-token gated, so an
+  // <audio src="/api/..."> can't reach it (the browser sends no header). Fetch
+  // the whole file and hand back an object URL instead; the endpoint serves no
+  // range requests, so this is also what makes seeking work. Callers must
+  // URL.revokeObjectURL it when they're done.
+  objectUrl: async (path: string): Promise<string> => {
+    const token = getToken();
+    const res = await fetch(`${BASE_URL}${path}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({ message: res.statusText }));
+      throw new Error((body as { message?: string }).message || `Request failed: ${res.status}`);
+    }
+    return URL.createObjectURL(await res.blob());
+  },
   // Authenticated file download (CSV exports etc.) — fetches as a blob and
   // triggers a browser save, honouring the server's filename when present.
   download: async (path: string, fallbackName: string) => {

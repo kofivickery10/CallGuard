@@ -25,7 +25,10 @@ import {
   getScoringQueue,
   getIngestionQueue,
   getAlertsQueue,
+  getMaintenanceQueue,
 } from '../jobs/queue.js';
+import { readWorkerHeartbeat } from '../services/redis.js';
+import { summariseStuckWork } from '../services/stuck.js';
 
 export const superadminRouter = Router();
 
@@ -1294,17 +1297,40 @@ superadminRouter.get('/audit', async (req, res, next) => {
 });
 
 // ── System health ─────────────────────────────────────────────────────────────
-// Redis reachability, per-queue depth + last completed job, and stuck calls.
-// Used by the dashboard health strip — distinguishes "quiet" from "worker down".
+// Redis reachability, worker liveness, per-queue depth + last completed job,
+// and genuinely stuck work. Used by the dashboard health strip.
+//
+// Three things this deliberately gets right, having got them wrong before:
+//  * Worker liveness is reported, not inferred. All-zero queues plus "Redis up"
+//    used to look identical whether the worker was idle or dead.
+//  * Failures are split into retained (the whole failed set, which BullMQ keeps
+//    for hundreds of jobs and never expires) and recent (the last hour). Only
+//    recent failures mean something is wrong *now*; the retained total alone
+//    pinned the panel red forever.
+//  * "Stuck" comes from services/stuck.ts, the same definition the repair sweep
+//    acts on, so the number is always something that can actually be fixed.
+
+const HEALTH_QUEUES = () => [
+  { name: 'transcription', q: getTranscriptionQueue() },
+  { name: 'scoring',       q: getScoringQueue() },
+  { name: 'ingestion',     q: getIngestionQueue() },
+  { name: 'alerts',        q: getAlertsQueue() },
+  { name: 'maintenance',   q: getMaintenanceQueue() },
+];
+
+// Failures older than this are history, not a live incident.
+const RECENT_FAILURE_WINDOW_MS = 60 * 60 * 1000;
+// How many of the newest failed jobs we inspect for a timestamp. A queue with
+// more than this many failures inside the window reports the cap and sets
+// failed_recent_capped, rather than implying a smaller number.
+const FAILED_SCAN_LIMIT = 100;
+// The worker writes its heartbeat every 30s (jobs/worker.ts); allow 2.5×
+// before calling it stale, matching /api/health/ready.
+const HEARTBEAT_STALE_MS = 75_000;
 
 superadminRouter.get('/health', async (_req, res, next) => {
   try {
-    const queues = [
-      { name: 'transcription', q: getTranscriptionQueue() },
-      { name: 'scoring',       q: getScoringQueue() },
-      { name: 'ingestion',     q: getIngestionQueue() },
-      { name: 'alerts',        q: getAlertsQueue() },
-    ];
+    const queues = HEALTH_QUEUES();
 
     let redisOk = true;
     try {
@@ -1321,34 +1347,239 @@ superadminRouter.get('/health', async (_req, res, next) => {
         try {
           const counts = await q.getJobCounts('waiting', 'active', 'delayed', 'failed');
           const [lastCompleted] = await q.getJobs(['completed'], 0, 0);
+          const failedTotal = counts.failed ?? 0;
+
+          // The failed set is returned newest-first, so we can stop counting
+          // once a job falls outside the window.
+          let failedRecent = 0;
+          if (failedTotal > 0) {
+            const recent = await q.getJobs(['failed'], 0, FAILED_SCAN_LIMIT - 1);
+            const cutoff = Date.now() - RECENT_FAILURE_WINDOW_MS;
+            for (const job of recent) {
+              // A failed job with no finishedOn is mid-retry bookkeeping; count
+              // it as recent rather than silently dropping it.
+              if (!job.finishedOn || job.finishedOn >= cutoff) failedRecent++;
+              else break;
+            }
+          }
+
           return {
             name,
             waiting:  counts.waiting ?? 0,
             active:   counts.active ?? 0,
             delayed:  counts.delayed ?? 0,
-            failed:   counts.failed ?? 0,
+            failed:   failedTotal,
+            failed_recent: failedRecent,
+            failed_recent_capped: failedRecent >= FAILED_SCAN_LIMIT,
             last_completed_at: lastCompleted?.finishedOn
               ? new Date(lastCompleted.finishedOn).toISOString()
               : null,
           };
         } catch {
-          return { name, waiting: 0, active: 0, delayed: 0, failed: 0, last_completed_at: null, error: true };
+          return {
+            name, waiting: 0, active: 0, delayed: 0, failed: 0,
+            failed_recent: 0, failed_recent_capped: false,
+            last_completed_at: null, error: true,
+          };
         }
       })
     );
 
-    const stuck = await queryOne<{ stuck_calls: string }>(
-      `SELECT COUNT(*)::text AS stuck_calls
-       FROM calls
-       WHERE status IN ('uploaded','transcribing','transcribed','scoring')
-         AND updated_at < now() - interval '15 minutes'`
-    );
+    let worker: { ok: boolean; last_beat_at: string | null; age_seconds: number | null; detail?: string };
+    try {
+      const beat = await readWorkerHeartbeat();
+      if (!beat) {
+        worker = { ok: false, last_beat_at: null, age_seconds: null, detail: 'no heartbeat (worker down or never started)' };
+      } else {
+        const ageMs = Date.now() - new Date(beat).getTime();
+        worker = {
+          ok: ageMs < HEARTBEAT_STALE_MS,
+          last_beat_at: beat,
+          age_seconds: Math.round(ageMs / 1000),
+        };
+      }
+    } catch (err) {
+      worker = { ok: false, last_beat_at: null, age_seconds: null, detail: (err as Error).message };
+    }
+
+    const stuck = await summariseStuckWork();
 
     res.json({
       redis_ok: redisOk,
+      worker,
       queues: queueStats,
-      stuck_calls: Number(stuck?.stuck_calls || 0),
+      stuck,
+      // Retained for older clients; `stuck` above is the full picture.
+      stuck_calls: stuck.calls,
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── Queue administration ──────────────────────────────────────────────────────
+// Inspect, retry and clear the failed sets, and force a repair sweep. Without
+// these, a failed job could only be cleared by hand in Redis, so the health
+// panel stayed red with no way to act on it from the console.
+
+const QUEUE_BY_NAME = (name: string) => HEALTH_QUEUES().find((q) => q.name === name)?.q ?? null;
+
+// Job payloads are internal ids, but echo an allowlist rather than the raw
+// object so a payload that later grows a sensitive field can't leak through.
+const JOB_ID_KEYS = ['callId', 'journeyId', 'sourceId', 'organizationId', 'runId', 'ruleId', 'breachId'] as const;
+
+function safeJobRef(data: unknown): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (data && typeof data === 'object') {
+    for (const key of JOB_ID_KEYS) {
+      const value = (data as Record<string, unknown>)[key];
+      if (typeof value === 'string') out[key] = value;
+    }
+  }
+  return out;
+}
+
+superadminRouter.get('/queues/:name/failed', async (req, res, next) => {
+  try {
+    const queue = QUEUE_BY_NAME(req.params.name);
+    if (!queue) throw new AppError(404, `Unknown queue "${req.params.name}"`);
+
+    const limit = Math.min(Number(req.query.limit) || 25, 100);
+    const jobs = await queue.getJobs(['failed'], 0, limit - 1);
+
+    res.json({
+      queue: req.params.name,
+      jobs: jobs.map((job) => ({
+        id: String(job.id),
+        name: job.name,
+        failed_reason: job.failedReason?.slice(0, 500) ?? null,
+        failed_at: job.finishedOn ? new Date(job.finishedOn).toISOString() : null,
+        attempts_made: job.attemptsMade,
+        ref: safeJobRef(job.data),
+      })),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+superadminRouter.post('/queues/:name/failed/retry', async (req, res, next) => {
+  try {
+    const queue = QUEUE_BY_NAME(req.params.name);
+    if (!queue) throw new AppError(404, `Unknown queue "${req.params.name}"`);
+
+    const { job_ids: jobIds } = req.body as { job_ids?: unknown };
+    if (jobIds !== undefined && (!Array.isArray(jobIds) || jobIds.some((id) => typeof id !== 'string'))) {
+      throw new AppError(400, 'job_ids must be an array of strings');
+    }
+
+    // No job_ids means "everything currently failed", capped so one click can't
+    // stampede thousands of Deepgram/Claude calls.
+    const targets = jobIds?.length
+      ? (await Promise.all((jobIds as string[]).map((id) => queue.getJob(id)))).filter((j) => !!j)
+      : await queue.getJobs(['failed'], 0, FAILED_SCAN_LIMIT - 1);
+
+    let retried = 0;
+    const failures: string[] = [];
+    for (const job of targets) {
+      try {
+        await job!.retry();
+        retried++;
+      } catch (err) {
+        failures.push(`${job!.id}: ${(err as Error).message}`);
+      }
+    }
+
+    // "Retry all" is capped, so report what is still failed rather than letting
+    // the caller assume the queue was emptied.
+    const remainingFailed = (await queue.getJobCounts('failed')).failed ?? 0;
+
+    await recordAuditEvent({
+      organizationId: null,
+      userId: req.user!.userId,
+      actionType: 'platform.queue_retry',
+      entityType: 'queue',
+      entityId: req.params.name,
+      summary: `Retried ${retried} failed job(s) on the ${req.params.name} queue`,
+      metadata: { requested: jobIds?.length ?? 'all', retried, remaining_failed: remainingFailed, failures },
+      req,
+    });
+
+    res.json({
+      queue: req.params.name,
+      retried,
+      failures,
+      remaining_failed: remainingFailed,
+      batch_limit: FAILED_SCAN_LIMIT,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+superadminRouter.delete('/queues/:name/failed', async (req, res, next) => {
+  try {
+    const queue = QUEUE_BY_NAME(req.params.name);
+    if (!queue) throw new AppError(404, `Unknown queue "${req.params.name}"`);
+
+    const { job_ids: jobIds } = req.body as { job_ids?: unknown };
+    if (jobIds !== undefined && (!Array.isArray(jobIds) || jobIds.some((id) => typeof id !== 'string'))) {
+      throw new AppError(400, 'job_ids must be an array of strings');
+    }
+
+    let removed = 0;
+    if (jobIds?.length) {
+      for (const id of jobIds as string[]) {
+        const job = await queue.getJob(id);
+        if (job) {
+          await job.remove();
+          removed++;
+        }
+      }
+    } else {
+      // grace=0, i.e. regardless of age. clean() returns the ids it removed.
+      removed = (await queue.clean(0, 10_000, 'failed')).length;
+    }
+
+    await recordAuditEvent({
+      organizationId: null,
+      userId: req.user!.userId,
+      actionType: 'platform.queue_clear',
+      entityType: 'queue',
+      entityId: req.params.name,
+      summary: `Cleared ${removed} failed job(s) from the ${req.params.name} queue`,
+      metadata: { requested: jobIds?.length ?? 'all', removed },
+      req,
+    });
+
+    res.json({ queue: req.params.name, removed });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Force the stuck-repair sweep instead of waiting up to 10 minutes for the
+// scheduled one. Runs through the queue so it executes on the worker, using the
+// same code path as the scheduled sweep.
+superadminRouter.post('/maintenance/stuck-repair', async (req, res, next) => {
+  try {
+    const job = await getMaintenanceQueue().add(
+      'stuck-repair',
+      {},
+      { jobId: `stuck-repair-manual-${Date.now()}` }
+    );
+
+    await recordAuditEvent({
+      organizationId: null,
+      userId: req.user!.userId,
+      actionType: 'platform.stuck_repair',
+      entityType: 'queue',
+      entityId: 'maintenance',
+      summary: 'Triggered a manual stuck-work repair sweep',
+      req,
+    });
+
+    res.status(202).json({ enqueued: true, job_id: String(job.id) });
   } catch (err) {
     next(err);
   }

@@ -22,6 +22,8 @@ const SENSITIVE = new Set([
   'tenant.impersonate', 'tenant.create', 'tenant.status_change',
   'tenant.delete', 'tenant.seat_price', 'tenant.feature_override', 'plan.change',
   'api_key.create', 'api_key.revoke', 'user.delete', 'user.role_change',
+  // Discards a failure record outright, so the work is never re-run.
+  'platform.queue_clear',
 ]);
 
 export default function Audit() {

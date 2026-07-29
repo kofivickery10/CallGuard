@@ -318,6 +318,57 @@ journeysRouter.post('/:id/rescore', requireAdmin, async (req, res, next) => {
       throw new AppError(409, 'This sale is already being scored');
     }
 
+    // Refuse a re-score that cannot tell us anything new, unless explicitly
+    // forced.
+    //
+    // Scoring is not free (roughly $0.34 a run on a scorecard this size) and it
+    // is not perfectly repeatable, so re-running it on unchanged evidence bills
+    // the tenant to draw another sample from the same distribution. A Trust
+    // Point admin pressed it three times on one sale out of curiosity and
+    // watched the number move each time — that cost real money and cost more
+    // trust than it cost money.
+    //
+    // "Nothing new" means: same calls, same scorecard version, and the previous
+    // run completed. Anything else (a backfilled call, an edited scorecard, a
+    // failed run) legitimately warrants another go.
+    // Deliberately NOT overridable by the tenant. An "are you sure?" that can be
+    // clicked through is clicked through every time, and the whole problem here
+    // is a button being pressed repeatedly on unchanged evidence. Platform
+    // superadmins keep an override for support work.
+    const isSuperadmin = req.user!.role === 'superadmin';
+    if (!isSuperadmin && journey.status === 'scored') {
+      const unchanged = await queryOne<{ unchanged: boolean }>(
+        `SELECT
+           (SELECT count(*) FROM journey_calls jc WHERE jc.journey_id = j.id) = r.calls_scored
+           AND j.scorecard_version = s.version
+           -- Re-transcribing a call changes the evidence without changing the
+           -- call count or the scorecard, so compare against when each linked
+           -- call was last touched. Without this the guard would block the one
+           -- re-score that is always justified: the transcript was corrected.
+           AND NOT EXISTS (
+             SELECT 1 FROM journey_calls jc2
+               JOIN calls c ON c.id = jc2.call_id
+              WHERE jc2.journey_id = j.id AND c.updated_at > r.created_at
+           ) AS unchanged
+         FROM journeys j
+         JOIN scorecards s ON s.id = j.scorecard_id
+         JOIN journey_score_runs r ON r.journey_id = j.id
+        WHERE j.id = $1
+        ORDER BY r.run_number DESC
+        LIMIT 1`,
+        [journey.id]
+      );
+      if (unchanged?.unchanged) {
+        throw new AppError(
+          409,
+          'This sale is already scored on the evidence available. Nothing has changed since the last ' +
+            'run — no new calls, no corrected transcripts and no scorecard edits — so re-scoring would ' +
+            'only re-run the AI on identical input. Add a call, correct a transcript or amend the ' +
+            'scorecard if the result needs to change.'
+        );
+      }
+    }
+
     await query(
       "UPDATE journeys SET status = 'scoring', updated_at = now() WHERE id = $1",
       [journey.id]
@@ -454,7 +505,12 @@ journeysRouter.post('/:id/scores/items/:itemScoreId/correct', requireActioner, a
          (organization_id, journey_id, journey_item_score_id, scorecard_item_id, corrected_by,
           original_score, corrected_score, original_pass, corrected_pass, reason, transcript_excerpt)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-       ON CONFLICT (journey_item_score_id) DO UPDATE SET
+       -- Keyed on (journey, checkpoint), not the item-score row: that row is
+       -- dropped and recreated on every scoring run, so keying the ruling to it
+       -- is what let a re-score cascade-delete it (migration 077).
+       ON CONFLICT (journey_id, scorecard_item_id) WHERE journey_id IS NOT NULL
+       DO UPDATE SET
+         journey_item_score_id = EXCLUDED.journey_item_score_id,
          corrected_score = EXCLUDED.corrected_score,
          corrected_pass = EXCLUDED.corrected_pass,
          reason = EXCLUDED.reason,

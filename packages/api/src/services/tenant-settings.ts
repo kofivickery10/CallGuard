@@ -35,6 +35,11 @@ export interface ScoringSettings {
   minScoreableSeconds: number;
   minScoreableWords: number;
   passThreshold: number;
+  // How many independent scoring passes to run and vote across (migration 076).
+  // 1 = single pass. Above 1, checkpoints the runs disagree on go to manual
+  // review rather than being auto-scored, so the score covers unanimous
+  // verdicts only and stops moving between runs.
+  scoringSamples: number;
   retentionDays: number;
   transcriptionMode: TranscriptionMode;
   monoFirstSpeaker: MonoFirstSpeaker;
@@ -52,6 +57,7 @@ interface ScoringSettingsRow {
   mono_first_speaker: MonoFirstSpeaker;
   deepgram_region: DeepgramRegion;
   deepgram_mip_opt_out: boolean;
+  scoring_samples: number;
 }
 
 const FALLBACK: ScoringSettings = {
@@ -59,6 +65,7 @@ const FALLBACK: ScoringSettings = {
   minScoreableSeconds: MIN_SCOREABLE_DURATION_SECONDS,
   minScoreableWords: MIN_SCOREABLE_WORDS,
   passThreshold: PASS_THRESHOLD,
+  scoringSamples: 1,
   retentionDays: 1825,
   transcriptionMode: 'mono_diarize',
   monoFirstSpeaker: 'agent',
@@ -75,7 +82,7 @@ export async function getScoringSettings(organizationId: string): Promise<Scorin
   const row = await queryOne<ScoringSettingsRow>(
     `SELECT scoring_scope, min_scoreable_seconds, min_scoreable_words, pass_threshold,
             retention_days, transcription_mode, mono_first_speaker, deepgram_region,
-            deepgram_mip_opt_out
+            deepgram_mip_opt_out, scoring_samples
        FROM organizations WHERE id = $1`,
     [organizationId]
   );
@@ -85,6 +92,8 @@ export async function getScoringSettings(organizationId: string): Promise<Scorin
     minScoreableSeconds: row.min_scoreable_seconds,
     minScoreableWords: row.min_scoreable_words,
     passThreshold: Number(row.pass_threshold),
+    // Clamped: a bad row value must not multiply every tenant's scoring spend.
+    scoringSamples: Math.min(5, Math.max(1, Number(row.scoring_samples) || 1)),
     retentionDays: row.retention_days,
     transcriptionMode: row.transcription_mode,
     monoFirstSpeaker: row.mono_first_speaker,

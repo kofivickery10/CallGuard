@@ -67,7 +67,11 @@ export type AuditActionType =
   | 'tenant.feature_override'
   | 'tenant.impersonate'
   | 'tenant.pii_redaction_exemption'
-  | 'tenant.delete';
+  | 'tenant.delete'
+  // Platform-level queue operations, not scoped to any tenant.
+  | 'platform.queue_retry'
+  | 'platform.queue_clear'
+  | 'platform.stuck_repair';
 
 export type AuditEntityType =
   | 'call'
@@ -85,7 +89,8 @@ export type AuditEntityType =
   | 'capture_form'
   | 'capture_run'
   | 'journey'
-  | 'product';
+  | 'product'
+  | 'queue';
 
 interface AuditEvent {
   // NULL for platform-level events not scoped to a tenant (e.g. a superadmin

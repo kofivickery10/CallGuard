@@ -16,6 +16,19 @@ export function formatPhone(raw: string | null | undefined): string {
   return raw.startsWith('+') ? raw : `+${digits}`;
 }
 
+/**
+ * mm:ss for a playback position, where 0 is a real value ("0:00") rather than
+ * the absent duration formatDuration renders as "--".
+ */
+export function formatClock(seconds: number | null | undefined): string {
+  if (seconds == null || !Number.isFinite(seconds) || seconds < 0) return '0:00';
+  const s = Math.floor(seconds % 60);
+  const m = Math.floor((seconds / 60) % 60);
+  const h = Math.floor(seconds / 3600);
+  const mm = h > 0 ? String(m).padStart(2, '0') : String(m);
+  return `${h > 0 ? `${h}:` : ''}${mm}:${String(s).padStart(2, '0')}`;
+}
+
 /** mm:ss (or h:mm:ss over an hour). Accepts null/0 → "--". */
 export function formatDuration(seconds: number | null | undefined): string {
   if (seconds == null || seconds <= 0) return '--';
