@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  didCleanupAlterSpeakers,
   resolveSpeakerConfidence,
   isCleanupContentLoss,
   CLEANUP_MIN_RETAINED_RATIO,
@@ -109,5 +110,40 @@ describe('confidence lift requires independent corroboration', () => {
       .toBeLessThan(CONSENT_SPEAKER_CONFIDENCE_FLOOR);
     expect(resolveSpeakerConfidence(0.45, 'unclear', false))
       .toBeLessThan(CONSENT_SPEAKER_CONFIDENCE_FLOOR);
+  });
+});
+
+// Cleanup may change the words inside a turn. It may never change how many
+// turns there are or who they belong to. Observed failure: word-level
+// segmentation correctly split "...it's Scottish Widows." (adviser) from
+// "So I've been dealing with them for my mum..." (customer), and the cleanup
+// merged them back under the adviser — the transcript reads perfectly and
+// attributes the customer's words to the wrong person.
+describe('didCleanupAlterSpeakers', () => {
+  const raw = 'Agent: Right now it is Scottish Widows.\n\nCustomer: I have dealt with them for my mum.';
+
+  it('accepts a cleanup that only fixes wording', () => {
+    const cleaned = 'Agent: Right now, it\'s Scottish Widows.\n\nCustomer: I\'ve dealt with them for my mum.';
+    expect(didCleanupAlterSpeakers(raw, cleaned)).toBe(false);
+  });
+
+  it('rejects a cleanup that merged two turns into one', () => {
+    const merged = 'Agent: Right now, it\'s Scottish Widows. I\'ve dealt with them for my mum.';
+    expect(didCleanupAlterSpeakers(raw, merged)).toBe(true);
+  });
+
+  it('rejects a cleanup that split one turn into two', () => {
+    const split = 'Agent: Right now it is Scottish Widows.\n\nCustomer: I have dealt with them.\n\nCustomer: For my mum.';
+    expect(didCleanupAlterSpeakers(raw, split)).toBe(true);
+  });
+
+  it('rejects a cleanup that reassigned a turn to the other speaker', () => {
+    const flipped = 'Agent: Right now it is Scottish Widows.\n\nAgent: I have dealt with them for my mum.';
+    expect(didCleanupAlterSpeakers(raw, flipped)).toBe(true);
+  });
+
+  it('does not care about whitespace or punctuation between turns', () => {
+    const respaced = 'Agent: Right now it is Scottish Widows.\nCustomer: I have dealt with them for my mum.';
+    expect(didCleanupAlterSpeakers(raw, respaced)).toBe(false);
   });
 });
