@@ -312,10 +312,31 @@ export async function processScoreJourney(job: Job<ScoreJourneyJobData>) {
       org?.industry ?? null,
       true, // journeyMode
       productNames,
-      // Any call in the set with contradicted speaker labels makes the whole
-      // combined transcript unsafe to judge by label — evidence for a given
-      // checkpoint could have come from any of the calls.
-      withTranscript.some((c) => c.speaker_integrity_flag !== null)
+      // Tell the scorer to judge who spoke from CONTENT rather than the label
+      // whenever the labels are not trustworthy. Evidence for a checkpoint can
+      // come from any call in the set, so one unsafe call makes the combined
+      // transcript unsafe to judge by label.
+      //
+      // Two distinct cases, and only the first used to count:
+      //
+      //  - an integrity flag: the labels are actively contradicted by content.
+      //  - low attribution confidence: content identification ABSTAINED, so
+      //    which cluster is the adviser rests on a positional guess measured at
+      //    1 in 3. Nothing is contradicted, because nothing was established.
+      //
+      // Omitting the second meant a call at 0.45 was scored with the model
+      // trusting labels nobody had verified. That matters most on consent
+      // gates, whose whole rule is that the CUSTOMER must give the affirmative:
+      // if the adviser's words sit under "Customer", the model reads the
+      // adviser agreeing with himself as consent. Those gates do route to a
+      // human, but the AI's suggested verdict is what the reviewer is shown
+      // first, and since migration 077 their ruling is permanent.
+      withTranscript.some(
+        (c) =>
+          c.speaker_integrity_flag !== null ||
+          (c.speaker_attribution_confidence !== null &&
+            Number(c.speaker_attribution_confidence) < CONSENT_SPEAKER_CONFIDENCE_FLOOR)
+      )
     );
     const output: ScoringOutput = { items: consensusItems, coaching };
     // Checkpoints the runs could not agree on. Excluded from the weighted score
