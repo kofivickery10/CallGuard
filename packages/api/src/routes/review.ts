@@ -301,9 +301,16 @@ async function resolveJourneyItem(
          (organization_id, journey_id, journey_item_score_id, scorecard_item_id, corrected_by,
           original_score, corrected_score, original_pass, corrected_pass, reason, transcript_excerpt)
        VALUES ($1, $2, $3, $4, $5, $6, $7, NULL, $8, $9, $10)
-       ON CONFLICT (journey_item_score_id) DO UPDATE SET
+       -- Keyed on (journey, checkpoint), not the item-score row: that row is
+       -- dropped and recreated on every scoring run, so its unique index went
+       -- with migration 077. journey_item_score_id is only a pointer to the
+       -- current row now, so re-link it on conflict.
+       ON CONFLICT (journey_id, scorecard_item_id) WHERE journey_id IS NOT NULL
+       DO UPDATE SET
+         journey_item_score_id = EXCLUDED.journey_item_score_id,
          corrected_score = EXCLUDED.corrected_score,
          corrected_pass = EXCLUDED.corrected_pass,
+         reason = EXCLUDED.reason,
          corrected_by = EXCLUDED.corrected_by,
          created_at = now()`,
       [
