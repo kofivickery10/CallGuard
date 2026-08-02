@@ -91,8 +91,14 @@ export function resolveBranchWithSource(
   const fromCrm = resolveBranchFromCrmStage(crmStage, branchConfig);
   if (fromCrm) return { branch: fromCrm, source: 'crm', unmappedCrmStage: false };
 
-  // A stage was reported, a mapping exists, and nothing matched it.
-  const unmappedCrmStage = !!crmStage?.trim() && !!branchConfig.crm_values;
+  // A stage was reported and we could not turn it into a branch. Either the map
+  // exists and nothing in it matched, or the scorecard declares detect='crm_field'
+  // and carries no map at all — a config that says "resolve this from the CRM"
+  // while having nothing to resolve it with. The second case is what an edit that
+  // drops crm_values leaves behind, and it must not read as "CRM branching was
+  // never set up" (detect='keyword' with no map), which is not a misconfiguration.
+  const unmappedCrmStage =
+    !!crmStage?.trim() && (!!branchConfig.crm_values || branchConfig.detect === 'crm_field');
 
   const haystack = transcriptText.toLowerCase();
   for (const branch of branchConfig.branches.slice(1)) {
