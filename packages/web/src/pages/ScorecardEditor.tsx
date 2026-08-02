@@ -380,6 +380,22 @@ export function ScorecardEditor() {
     );
   };
 
+  // The CRM half of the branch config (stage → branch map, no-score stages, and
+  // the detect mode that makes them live). This screen deliberately doesn't edit
+  // them — they're configured per tenant against their CRM picklist — but it must
+  // carry them through a save, because the payload replaces branch_config whole.
+  // Rebuilding the config from just `branches` + `keywords` is what wiped Trust
+  // Point's stage map, after which every sale fell back to a guessed branch.
+  const crmDetect = existing?.branch_config?.detect;
+  const crmValues = existing?.branch_config?.crm_values;
+  const noScoreCrmValues = existing?.branch_config?.no_score_crm_values;
+
+  // Branch names the CRM map still points at that the user has removed or
+  // renamed. Saving would orphan those mappings, so the save is blocked rather
+  // than dropping them — a silently pruned map reads as "no CRM branching
+  // configured" and scores every later sale on the default branch.
+  const orphanedCrmBranches = Object.keys(crmValues || {}).filter((b) => !branches.includes(b));
+
   const buildBranchConfig = (): BranchConfig | null => {
     if (branches.length < 2) return null;
     const keywords: Record<string, string[]> = {};
@@ -387,7 +403,13 @@ export function ScorecardEditor() {
       const words = (branchKeywords[branch] || '').split(',').map((w) => w.trim()).filter(Boolean);
       if (words.length > 0) keywords[branch] = words;
     }
-    return { branches, detect: 'keyword', keywords };
+    return {
+      branches,
+      detect: crmValues ? crmDetect || 'crm_field' : 'keyword',
+      keywords,
+      ...(crmValues ? { crm_values: crmValues } : {}),
+      ...(noScoreCrmValues ? { no_score_crm_values: noScoreCrmValues } : {}),
+    };
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -403,6 +425,15 @@ export function ScorecardEditor() {
     );
     if (unknownBranch) {
       setError(`Criterion "${unknownBranch.label || 'untitled'}" references branch "${unknownBranch.branch}" which is not in the branch list`);
+      return;
+    }
+    if (orphanedCrmBranches.length > 0) {
+      setError(
+        `This scorecard maps CRM stage values onto branch ${orphanedCrmBranches
+          .map((b) => `"${b}"`)
+          .join(', ')}, which is no longer in the branch list. Restore the branch name, or ask an ` +
+          `administrator to update the CRM stage map first — saving now would leave sales scored on a guessed branch.`
+      );
       return;
     }
 

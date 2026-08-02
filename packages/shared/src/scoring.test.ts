@@ -170,6 +170,23 @@ describe('resolveBranchWithSource', () => {
     });
   });
 
+  it('flags a scorecard that claims crm_field detection but carries no map', () => {
+    // What an edit that drops crm_values leaves behind. The CRM reported a real
+    // stage, the scorecard says to resolve branches from it, and there is nothing
+    // to resolve it with — so every sale is scored on the default branch. Distinct
+    // from the keyword-only case above, which is a valid configuration.
+    const mapDropped: BranchConfig = {
+      branches: ['on_risk', 'referred'],
+      detect: 'crm_field',
+      keywords: { referred: ['referred for underwriting'] },
+    };
+    expect(resolveBranchWithSource('all good', mapDropped, 'On Risk')).toEqual({
+      branch: 'on_risk',
+      source: 'default',
+      unmappedCrmStage: true,
+    });
+  });
+
   it('reports source=default when nothing matched, so a guess is never silent', () => {
     // The regression this exists for: an adviser who says "we'll leave it to
     // the medical underwriter now" matches no configured keyword, and the

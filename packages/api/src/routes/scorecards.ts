@@ -4,6 +4,7 @@ import { query, queryOne, withTransaction } from '../db/client.js';
 import { AppError } from '../middleware/errors.js';
 import { recordAuditEvent } from '../services/audit.js';
 import { isUuid } from '../services/uuid.js';
+import { mergeBranchConfig } from '../services/branch-config.js';
 import type { Scorecard, ScorecardItem, BranchConfig } from '@callguard/shared';
 
 export const scorecardRouter = Router();
@@ -198,7 +199,16 @@ scorecardRouter.put('/:id', requireAdmin, async (req, res, next) => {
     if (!scorecard) throw new AppError(404, 'Scorecard not found');
 
     const { name, description, is_active, items, branch_config, scoring_mode } = req.body;
-    validateBranchConfig(branch_config);
+    // Carry over the CRM half of the branch config when the caller didn't send
+    // it. The editor only ever surfaced `branches` and `keywords`, so it rebuilt
+    // branch_config from those two and this PUT replaced the column wholesale —
+    // silently deleting crm_values and no_score_crm_values on every save. Trust
+    // Point lost their whole stage map that way, and because resolveBranchWithSource
+    // only flags an unmapped stage when a map exists, the loss was invisible:
+    // sales carrying a real "On Risk"/"Referred" stage quietly fell back to the
+    // default branch, and the NTU stages stopped being skipped altogether.
+    const mergedBranchConfig = mergeBranchConfig(scorecard.branch_config, branch_config);
+    validateBranchConfig(mergedBranchConfig);
     if (items && Array.isArray(items)) {
       await assertItemProductsBelongToOrg(req.user!.organizationId, items);
     }
@@ -224,7 +234,7 @@ scorecardRouter.put('/:id', requireAdmin, async (req, res, next) => {
         name,
         description,
         is_active,
-        branch_config !== undefined ? JSON.stringify(branch_config) : null,
+        mergedBranchConfig !== undefined ? JSON.stringify(mergedBranchConfig) : null,
         scoring_mode,
         bumpVersion,
         scorecard.id,
