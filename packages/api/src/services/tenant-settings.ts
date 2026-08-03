@@ -30,6 +30,13 @@ import type {
 // history into a single journey.
 export const MAX_JOURNEY_WINDOW_DAYS = 730;
 
+// Upper bound on organizations.review_confidence_floor, mirroring the column's
+// CHECK (migration 082). Deliberately short of 1.0: at 1.0 every checkpoint the
+// model is not certain about routes to a human, which in practice is all of
+// them, and a scoring product that scores nothing is not a safer scoring
+// product — it just moves the whole job back to the QA team unannounced.
+export const MAX_REVIEW_CONFIDENCE_FLOOR = 0.95;
+
 export interface ScoringSettings {
   scoringScope: ScoringScope;
   minScoreableSeconds: number;
@@ -40,6 +47,10 @@ export interface ScoringSettings {
   // review rather than being auto-scored, so the score covers unanimous
   // verdicts only and stops moving between runs.
   scoringSamples: number;
+  // Route a checkpoint to manual review when the model's own confidence is
+  // below this (migration 082). 0 = off. See MAX_REVIEW_CONFIDENCE_FLOOR for
+  // why it cannot be set to 1.
+  reviewConfidenceFloor: number;
   retentionDays: number;
   transcriptionMode: TranscriptionMode;
   monoFirstSpeaker: MonoFirstSpeaker;
@@ -58,6 +69,7 @@ interface ScoringSettingsRow {
   deepgram_region: DeepgramRegion;
   deepgram_mip_opt_out: boolean;
   scoring_samples: number;
+  review_confidence_floor: string;
 }
 
 const FALLBACK: ScoringSettings = {
@@ -66,6 +78,7 @@ const FALLBACK: ScoringSettings = {
   minScoreableWords: MIN_SCOREABLE_WORDS,
   passThreshold: PASS_THRESHOLD,
   scoringSamples: 1,
+  reviewConfidenceFloor: 0,
   retentionDays: 1825,
   transcriptionMode: 'mono_diarize',
   monoFirstSpeaker: 'agent',
@@ -82,7 +95,7 @@ export async function getScoringSettings(organizationId: string): Promise<Scorin
   const row = await queryOne<ScoringSettingsRow>(
     `SELECT scoring_scope, min_scoreable_seconds, min_scoreable_words, pass_threshold,
             retention_days, transcription_mode, mono_first_speaker, deepgram_region,
-            deepgram_mip_opt_out, scoring_samples
+            deepgram_mip_opt_out, scoring_samples, review_confidence_floor
        FROM organizations WHERE id = $1`,
     [organizationId]
   );
@@ -94,6 +107,12 @@ export async function getScoringSettings(organizationId: string): Promise<Scorin
     passThreshold: Number(row.pass_threshold),
     // Clamped: a bad row value must not multiply every tenant's scoring spend.
     scoringSamples: Math.min(5, Math.max(1, Number(row.scoring_samples) || 1)),
+    // Clamped for the mirror-image reason: a floor at or above 1 would send
+    // every checkpoint on every sale to the review queue and score nothing.
+    reviewConfidenceFloor: Math.min(
+      MAX_REVIEW_CONFIDENCE_FLOOR,
+      Math.max(0, Number(row.review_confidence_floor) || 0)
+    ),
     retentionDays: row.retention_days,
     transcriptionMode: row.transcription_mode,
     monoFirstSpeaker: row.mono_first_speaker,

@@ -36,6 +36,10 @@ interface OrgDetail {
   retention_days: number;
   transcription_mode: string;
   deepgram_region: string;
+  scoring_samples: number;
+  // Stored as a 0-1 fraction (migration 082); the form below shows it as a
+  // percentage, which is how the confidence itself is talked about.
+  review_confidence_floor: string | number | null;
   capture_enabled: boolean;
   reconciliation_enabled: boolean;
   pii_unredacted_categories: string[];
@@ -85,7 +89,14 @@ interface ScoringForm {
   retention_days: number;
   transcription_mode: string;
   deepgram_region: string;
+  scoring_samples: number;
+  // Percent (0-95) in the form; converted to the stored 0-1 fraction on save.
+  review_confidence_floor_pct: number;
 }
+
+// Ceiling on the review floor, mirroring the API and the column's CHECK. 100%
+// would send every checkpoint to a human and score nothing.
+const MAX_REVIEW_FLOOR_PCT = 95;
 
 const SCOPE_OPTIONS: { value: string; label: string; hint: string }[] = [
   { value: 'sales_only', label: 'Sales only', hint: 'Score journeys once a sale is confirmed. Every call is still transcribed.' },
@@ -195,6 +206,8 @@ export default function TenantDetail() {
           retention_days: d.org.retention_days ?? 1825,
           transcription_mode: d.org.transcription_mode ?? 'mono_diarize',
           deepgram_region: d.org.deepgram_region ?? 'eu',
+          scoring_samples: d.org.scoring_samples ?? 1,
+          review_confidence_floor_pct: Math.round(Number(d.org.review_confidence_floor ?? 0) * 100),
         });
       })
       .catch((e: Error) => setError(e.message));
@@ -282,7 +295,14 @@ export default function TenantDetail() {
     if (!id || !scoringForm) return;
     setSavingScoring(true); setScoringMsg('');
     try {
-      const updated = await api.put<Partial<OrgDetail>>(`/superadmin/tenants/${id}/scoring-settings`, scoringForm);
+      // The form holds the review floor as a percentage; the API and the column
+      // hold it as a 0-1 fraction.
+      const { review_confidence_floor_pct, ...rest } = scoringForm;
+      const updated = await api.put<Partial<OrgDetail>>(`/superadmin/tenants/${id}/scoring-settings`, {
+        ...rest,
+        review_confidence_floor:
+          Math.min(MAX_REVIEW_FLOOR_PCT, Math.max(0, review_confidence_floor_pct)) / 100,
+      });
       setData((prev) => prev ? { ...prev, org: { ...prev.org, ...updated } } : prev);
       setScoringMsg('Call & scoring settings saved');
     } catch (e) {
@@ -729,6 +749,40 @@ export default function TenantDetail() {
               min={30}
               onChange={(v) => setScoringForm({ ...scoringForm, retention_days: v })}
             />
+          </div>
+
+          {/* How much of the judgement is handed back to the tenant's QA team.
+              Both dials move work from the AI to the review queue, by different
+              measures of doubt — one the model's own, one measured across runs. */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <ScoringNumberField
+                label="Send to review under (% confidence)"
+                value={scoringForm.review_confidence_floor_pct}
+                min={0}
+                max={MAX_REVIEW_FLOOR_PCT}
+                onChange={(v) => setScoringForm({ ...scoringForm, review_confidence_floor_pct: v })}
+              />
+              <p className="text-xs text-text-muted mt-1.5">
+                0 = off. Above 0, any checkpoint the model reports below this confidence goes to the
+                review queue with its provisional verdict attached, instead of being marked pass or
+                fail. It stays out of the score and the breach register until someone rules on it.
+              </p>
+            </div>
+            <div>
+              <ScoringNumberField
+                label="Scoring passes (vote across)"
+                value={scoringForm.scoring_samples}
+                min={1}
+                max={5}
+                onChange={(v) => setScoringForm({ ...scoringForm, scoring_samples: v })}
+              />
+              <p className="text-xs text-text-muted mt-1.5">
+                1 = single pass. Above 1, each sale is scored that many times and checkpoints the runs
+                disagree on go to review — steadier scores, but the scoring spend multiplies by the
+                same number.
+              </p>
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">

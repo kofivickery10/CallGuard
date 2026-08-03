@@ -42,6 +42,12 @@ interface OnboardConfig {
     // Omit to keep the dialler/30-day default; set it for sectors whose cases
     // run longer than a month, e.g. mortgage advice.
     journey_window_days?: number;
+    // Independent scoring passes to vote across (migration 076) and the
+    // model-confidence floor below which a checkpoint goes to a human instead
+    // of being auto-scored (migration 082, 0 = off). Both raise the share of
+    // the card a person rules on; the first also multiplies scoring spend.
+    scoring_samples?: number;
+    review_confidence_floor?: number;
   };
   scorecard?: {
     name: string;
@@ -170,6 +176,8 @@ async function main() {
          deepgram_region = COALESCE($9, deepgram_region),
          adviser_channel = COALESCE($10, adviser_channel),
          journey_window_days = COALESCE($12, journey_window_days),
+         scoring_samples = COALESCE($13, scoring_samples),
+         review_confidence_floor = COALESCE($14, review_confidence_floor),
          updated_at = now()
        WHERE id = $1`,
       [
@@ -179,6 +187,9 @@ async function main() {
         cfg.scoring?.retention_days ?? null, cfg.scoring?.transcription_mode ?? null,
         cfg.scoring?.deepgram_region ?? null, cfg.scoring?.adviser_channel ?? null,
         cfg.scoring?.mono_first_speaker ?? null, cfg.scoring?.journey_window_days ?? null,
+        cfg.scoring?.scoring_samples ?? null,
+        // 0 is a real setting ("off"), so it must not be turned into null here.
+        cfg.scoring?.review_confidence_floor ?? null,
       ]
     );
     console.log(`Set scoring policy (scope=${cfg.scoring?.scoring_scope}, retention=${cfg.scoring?.retention_days}d, mode=${cfg.scoring?.transcription_mode}, journey window=${cfg.scoring?.journey_window_days ?? 'default'}).`);

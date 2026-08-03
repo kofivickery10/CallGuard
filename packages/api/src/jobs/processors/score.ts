@@ -9,7 +9,11 @@ import { deliverCallScored } from '../../services/webhook-delivery.js';
 import { pushCallScored } from '../../services/zoho.js';
 import { getScoringSettings } from '../../services/tenant-settings.js';
 import { maybeStartCallCapture } from '../../services/capture-runs.js';
-import { classifyItems, CONSENT_SPEAKER_CONFIDENCE_FLOOR } from '../../services/checkpoint-classification.js';
+import {
+  classifyItems,
+  CONSENT_SPEAKER_CONFIDENCE_FLOOR,
+  routesToReviewOnConfidence,
+} from '../../services/checkpoint-classification.js';
 import { hasFeature, isItemPass, deriveSeverity, callPasses, resolveBranch } from '@callguard/shared';
 import type { Call, Scorecard, ScorecardItem, Plan, WebhookCallScoredPayload } from '@callguard/shared';
 
@@ -227,11 +231,25 @@ export async function processScoring(job: Job<{ callId: string }>) {
     const provisionalIds = new Set(provisional.map((i) => i.id));
     const provisionalWrites: typeof itemWrites = [];
 
+    // How many went to review purely because the model was unsure (migration
+    // 082) — surfaced in the log line so the tenant's confidence floor is
+    // visible in its effect, not just in its configuration.
+    let lowConfidenceCount = 0;
+
     for (const itemScore of output.items) {
       const item = aiItems.find((i) => i.id === itemScore.scorecard_item_id)!;
       const normalized = normalizeScore(itemScore.score, item.score_type);
-      if (provisionalIds.has(item.id)) {
+      // Same destination as a consent gate under the speaker floor, and for the
+      // same reason: a verdict the model is not confident in is one a person
+      // should give. The AI's provisional verdict rides along on the
+      // manual_review row so the reviewer confirms rather than starts over.
+      const lowConfidence = routesToReviewOnConfidence(
+        itemScore.confidence,
+        scoringSettings.reviewConfidenceFloor
+      );
+      if (provisionalIds.has(item.id) || lowConfidence) {
         provisionalWrites.push({ item, itemScore, normalized });
+        if (lowConfidence) lowConfidenceCount++;
         continue;
       }
       itemWrites.push({ item, itemScore, normalized });
@@ -240,6 +258,12 @@ export async function processScoring(job: Job<{ callId: string }>) {
       totalWeight += weight;
     }
 
+    // Every applicable checkpoint went to a human, so there is no score to
+    // report. Writing the 0 that a zero denominator produces would be a
+    // fabricated fail on a call nobody has judged — see the same guard in
+    // score-journey.ts. Resolving the review items recomputes a real score
+    // (routes/review.ts).
+    const nothingAutoScored = totalWeight === 0;
     const overallScore = totalWeight > 0 ? totalWeightedScore / totalWeight : 0;
 
     // The failing items, with the detail reused by the pass gate, the auto-exemplar
@@ -256,7 +280,8 @@ export async function processScoring(job: Job<{ callId: string }>) {
       }));
 
     const pass = callPasses(overallScore, failures.map((f) => f.severity), scoringSettings.passThreshold);
-    const shouldAutoExemplar = overallScore >= 95 && failures.length === 0;
+    // An unscored call is not an exemplar, however empty its breach list is.
+    const shouldAutoExemplar = !nothingAutoScored && overallScore >= 95 && failures.length === 0;
     const priorCoachingCount = learning?.priorCoaching?.length ?? 0;
 
     // Write everything in one transaction. Re-scoring the same call against
@@ -283,8 +308,8 @@ export async function processScoring(job: Job<{ callId: string }>) {
           usage.output_tokens,
           output.coaching ? JSON.stringify(output.coaching) : null,
           priorCoachingCount,
-          overallScore,
-          pass,
+          nothingAutoScored ? null : overallScore,
+          nothingAutoScored ? null : pass,
         ]
       );
       const callScoreId = callScoreRows[0]!.id;
@@ -357,8 +382,12 @@ export async function processScoring(job: Job<{ callId: string }>) {
     });
 
     console.log(
-      `[Scoring] Call ${callId} scored: ${overallScore.toFixed(1)} (${pass ? 'PASS' : 'FAIL'})` +
+      `[Scoring] Call ${callId} ` +
+      (nothingAutoScored
+        ? `not scored: all ${provisionalWrites.length + manualReview.length} applicable checkpoint(s) await review`
+        : `scored: ${overallScore.toFixed(1)} (${pass ? 'PASS' : 'FAIL'})`) +
       `${branch ? ` [branch: ${branch}]` : ''}${manualReview.length ? ` [${manualReview.length} manual_review]` : ''}` +
+      `${lowConfidenceCount ? ` [${lowConfidenceCount} to review under confidence floor ${scoringSettings.reviewConfidenceFloor}]` : ''}` +
       `${shouldAutoExemplar ? ' [auto-exemplar]' : ''}`
     );
 
@@ -422,15 +451,25 @@ export async function processScoring(job: Job<{ callId: string }>) {
       breaches: failures,
     };
 
-    deliverCallScored(call.organization_id, scoredPayload).catch((err) => {
-      console.error(`[Scoring] call.scored webhook failed for ${callId}:`, (err as Error).message);
-    });
+    // Nothing to push while every checkpoint is still with a reviewer: the
+    // payload's score is non-nullable, so this would send 0%/fail for a call the
+    // platform declined to judge. The first resolution re-pushes a real score
+    // (services/score-writeback.ts).
+    if (nothingAutoScored) {
+      console.log(
+        `[Scoring] Holding call.scored webhook + Zoho write-back for ${callId} — all checkpoints await review`
+      );
+    } else {
+      deliverCallScored(call.organization_id, scoredPayload).catch((err) => {
+        console.error(`[Scoring] call.scored webhook failed for ${callId}:`, (err as Error).message);
+      });
 
-    // Native Zoho CRM write-back (no-op unless the org has an active connection).
-    // Best-effort and self-contained — never blocks or fails scoring.
-    pushCallScored(call.organization_id, scoredPayload).catch((err) => {
-      console.error(`[Scoring] Zoho write-back failed for ${callId}:`, (err as Error).message);
-    });
+      // Native Zoho CRM write-back (no-op unless the org has an active connection).
+      // Best-effort and self-contained — never blocks or fails scoring.
+      pushCallScored(call.organization_id, scoredPayload).catch((err) => {
+        console.error(`[Scoring] Zoho write-back failed for ${callId}:`, (err as Error).message);
+      });
+    }
 
     // Evaluate alert rules after scoring completes
     evaluateAlertsForCall(callId, 'scored').catch((alertErr) => {

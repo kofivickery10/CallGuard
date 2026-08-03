@@ -55,6 +55,14 @@ export async function pushJourneyScoreUpdate(organizationId: string, journeyId: 
     [journeyId, organizationId]
   );
   if (!journey) return;
+  // No score yet — every applicable checkpoint is still with a reviewer (see
+  // jobs/processors/score-journey.ts). The payload's score is non-nullable and
+  // a missing one would coerce to 0/fail, so holding is the only honest option:
+  // the next resolution recomputes a real score and pushes then.
+  if (journey.overall_score === null) {
+    console.log(`[ScoreWriteback] Holding journey ${journeyId} — no score yet, all checkpoints await review`);
+    return;
+  }
 
   const customer = await queryOne<{
     name: string | null;
@@ -127,6 +135,12 @@ export async function pushCallScoreUpdate(organizationId: string, callId: string
     [callId, organizationId]
   );
   if (!row) return;
+  // No score yet — every checkpoint on the call is still with a reviewer. Same
+  // reasoning as the journey path above: a null score would push as 0%/fail.
+  if (row.overall_score === null) {
+    console.log(`[ScoreWriteback] Holding call ${callId} — no score yet, all checkpoints await review`);
+    return;
+  }
 
   const customerExternalCrmId = row.customer_id
     ? (

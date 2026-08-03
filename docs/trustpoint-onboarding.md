@@ -70,6 +70,8 @@ and industry. Recommended Trust Point values:
 | `scoring_scope` | `sales_only` | Only fully score closed-sale journeys — cost control. **Requires a working Zoho sale-trigger (Phase 6); until then it safely falls back to per-call scoring** |
 | `pass_threshold` | Confirm with their QA (default 70) | Their matrix weights items ~equally |
 | `retention_days` | `1825` (5 years) | COBS 9.5 / MiFID II. Floored at 30 by validation |
+| `review_confidence_floor` | High — set with their QA lead | Any checkpoint the model reports below this confidence goes to the review queue with its provisional verdict instead of being marked pass/fail. Trust Point asked for this deliberately high on 2026-08-03: their calls are muddy and they would rather rule on marginal checkpoints themselves. Costs QA time, not scoring spend |
+| `scoring_samples` | `1`, raise if scores still move | Above 1, each sale is scored N times and checkpoints the runs disagree on go to review. Better calibrated than the confidence floor, at N× the scoring spend |
 | `transcription_mode` | `mono_diarize` | **Trust Point records mono**, so speaker split comes from diarisation (a heuristic, not a deterministic channel). See the consent-gate note below. |
 | `adviser_channel` | `null` | N/A on mono — only applies to split-stereo recordings; leave unset. |
 | `deepgram_region` | `eu` | UK data residency |
@@ -78,7 +80,7 @@ and industry. Recommended Trust Point values:
 > split is a diarisation guess rather than a pinned channel. Where
 > speaker-attribution confidence on a consent checkpoint is low, that item
 > routes to **manual review** (in the Review Queue) instead of being auto-scored
-> — the safe behaviour for a hard-consent point, but it means the 7 consent
+> — the safe behaviour for a hard-consent point, but it means the 6 consent
 > gates will land for human sign-off more often than they would on split-stereo.
 > Factor that into the QA team's review workload.
 
@@ -100,10 +102,11 @@ calls; admins see everything.
 ## Phase 4 — Scorecard
 
 1. **Import.** Scorecards → New → Import CSV →
-   `sample_scorecards/trustpoint/trustpoint-protection.csv` (the merged 49-item
-   branched card: 38 common + 5 on_risk + 3 referred + 3 manual). The importer
-   reads all columns: `label, description, score_type, weight, severity,
-   section, item_type, branch, expectation, ai_check, consent_gate`.
+   `sample_scorecards/trustpoint/trustpoint-protection.csv` (the merged branched
+   card — 42 items as of the 2026-08-03 revision: all AI-scored, 3 on_risk,
+   1 referred). The importer reads all columns: `label, description, score_type,
+   weight, severity, section, item_type, branch, expectation, ai_check,
+   consent_gate`.
 2. **Scoring mode** = `journey` (target) — a consent/statement counts if present
    anywhere in the sale, not per partial call. Use `per_call` only for the
    calibration/soft-launch fallback.
@@ -112,10 +115,17 @@ calls; admins see everything.
    - `referred` = `referred for underwriting, referred to the underwriters, not active yet, no final decision`
 4. **Consent gates** — 6 hard-consent items are pre-flagged (`consent_gate=true`).
    Confirm they match Trust Point's mandatory-yes points.
-5. **Manual items** — 3 back-office items ship as `item_type=manual` (fact find
-   on CRM, suitability review, data-entry accuracy). **Get Trust Point to confirm
-   the other 6** their matrix counts as manual (open item in the sample README)
-   and flip those to `manual` before go-live.
+5. **Manual items** — none on the card. The back-office items were retired at
+   Trust Point's request (`remove-manual-items.ts`); the confidence floor in
+   Phase 2 now hands the marginal checkpoints to a person without taking any of
+   them off the card. Candidates if they want one back are in the sample README.
+6. **Revisions after go-live.** A change agreed with the client goes into
+   `gen_scorecard.py` (which regenerates the CSV) and into a revision in
+   `packages/api/src/scripts/apply-scorecard-revision.ts`, which applies the same
+   edits to the live card — dry run by default, aborts if the live card has
+   drifted from what the revision was written against. Retiring a checkpoint
+   archives it, so past scores keep their referent; already-scored sales keep
+   their numbers until re-scored (`rescore-tenant-journeys.ts`).
 6. **Save.** Version starts at 1; every structural edit bumps it, and each
    score is pinned to the version it was judged against.
 

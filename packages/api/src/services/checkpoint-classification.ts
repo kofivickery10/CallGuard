@@ -7,6 +7,29 @@ import type { ScorecardItem } from '@callguard/shared';
 // so it goes to manual_review instead.
 export const CONSENT_SPEAKER_CONFIDENCE_FLOOR = 0.5;
 
+/**
+ * Whether a checkpoint the AI did score should nonetheless be handed to a human
+ * because the model was not confident enough about it (migration 082).
+ *
+ * Applied AFTER scoring, unlike the classification below: the confidence is
+ * part of the verdict, so the checkpoint is scored first and then routed to
+ * manual_review carrying that provisional verdict, its evidence and its
+ * reasoning. The reviewer confirms or overturns; nothing is thrown away.
+ *
+ * A missing confidence routes as well when the floor is on. The scoring schema
+ * requires the field, so its absence means something went wrong upstream rather
+ * than that the model was sure — and "we don't know how sure it was" is not a
+ * reason to write a pass or a fail into a compliance register.
+ */
+export function routesToReviewOnConfidence(
+  confidence: number | null | undefined,
+  floor: number
+): boolean {
+  if (!(floor > 0)) return false;
+  if (typeof confidence !== 'number' || Number.isNaN(confidence)) return true;
+  return confidence < floor;
+}
+
 export interface ClassifiedItems {
   // Sent to Claude and auto-scored normally.
   scoreable: ScorecardItem[];

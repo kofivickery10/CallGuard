@@ -64,6 +64,12 @@ export interface OrganizationInfo {
   mono_first_speaker?: MonoFirstSpeaker;
   deepgram_region?: DeepgramRegion;
   deepgram_mip_opt_out?: boolean;
+  // Independent scoring passes to vote across (migration 076), and the
+  // model-confidence floor below which a checkpoint is handed to a human
+  // instead of being auto-scored (migration 082, 0 = off). Both trade AI
+  // coverage for human review; both are staff-set, like the rest of this block.
+  scoring_samples?: number;
+  review_confidence_floor?: number;
   status?: 'active' | 'suspended' | 'cancelled';
   cancelled_at?: string | null;
 }

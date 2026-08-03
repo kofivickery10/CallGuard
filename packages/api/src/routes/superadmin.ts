@@ -19,7 +19,7 @@ import {
   currentBillingForOrg,
 } from '../services/billing.js';
 import { deleteOrganizationCascade } from '../services/tenant-deletion.js';
-import { MAX_JOURNEY_WINDOW_DAYS } from '../services/tenant-settings.js';
+import { MAX_JOURNEY_WINDOW_DAYS, MAX_REVIEW_CONFIDENCE_FLOOR } from '../services/tenant-settings.js';
 import { LONDON, inWindow, resolveWindow, windowParams } from '../services/report-window.js';
 import {
   getTranscriptionQueue,
@@ -174,6 +174,8 @@ superadminRouter.get('/tenants/:id', async (req, res, next) => {
       transcription_mode: string;
       deepgram_region: string;
       journey_window_days: number | null;
+      scoring_samples: number;
+      review_confidence_floor: string;
       capture_enabled: boolean;
       reconciliation_enabled: boolean;
       pii_unredacted_categories: string[];
@@ -183,7 +185,7 @@ superadminRouter.get('/tenants/:id', async (req, res, next) => {
               seat_price_override, feature_overrides,
               adviser_channel, scoring_scope, min_scoreable_seconds, min_scoreable_words,
               pass_threshold, retention_days, transcription_mode, deepgram_region,
-              journey_window_days,
+              journey_window_days, scoring_samples, review_confidence_floor,
               capture_enabled, reconciliation_enabled,
               pii_unredacted_categories, pii_redaction_exempt_note
        FROM organizations WHERE id = $1`,
@@ -346,6 +348,8 @@ superadminRouter.put('/tenants/:id/scoring-settings', async (req, res, next) => 
       transcription_mode?: string;
       deepgram_region?: string;
       journey_window_days?: number | null;
+      scoring_samples?: number;
+      review_confidence_floor?: number;
     };
 
     if (
@@ -367,6 +371,27 @@ superadminRouter.put('/tenants/:id/scoring-settings', async (req, res, next) => 
     }
     if (body.pass_threshold !== undefined && (body.pass_threshold < 0 || body.pass_threshold > 100)) {
       throw new AppError(400, 'pass_threshold must be between 0 and 100');
+    }
+    // Each extra sample multiplies the tenant's scoring spend, so the ceiling is
+    // the column's CHECK (migration 076) and not a matter of taste.
+    if (
+      body.scoring_samples !== undefined &&
+      (!Number.isInteger(body.scoring_samples) || body.scoring_samples < 1 || body.scoring_samples > 5)
+    ) {
+      throw new AppError(400, 'scoring_samples must be a whole number between 1 and 5');
+    }
+    // 0 = off. The ceiling stops short of 1 because a floor of 1 routes every
+    // checkpoint to a human and scores nothing (migration 082).
+    if (
+      body.review_confidence_floor !== undefined &&
+      (!Number.isFinite(body.review_confidence_floor) ||
+        body.review_confidence_floor < 0 ||
+        body.review_confidence_floor > MAX_REVIEW_CONFIDENCE_FLOOR)
+    ) {
+      throw new AppError(
+        400,
+        `review_confidence_floor must be between 0 and ${MAX_REVIEW_CONFIDENCE_FLOOR} (0 = off)`
+      );
     }
     // Floor retention at 30 days — a retention_days of 0 (or negative) makes the
     // nightly purge delete every call, recording, score and breach within 24h.
@@ -413,11 +438,14 @@ superadminRouter.put('/tenants/:id/scoring-settings', async (req, res, next) => 
          transcription_mode     = COALESCE($7, transcription_mode),
          deepgram_region        = COALESCE($8, deepgram_region),
          journey_window_days    = CASE WHEN $12::boolean THEN $11 ELSE journey_window_days END,
+         scoring_samples        = COALESCE($13, scoring_samples),
+         review_confidence_floor = COALESCE($14, review_confidence_floor),
          updated_at             = now()
        WHERE id = $9
        RETURNING id, adviser_channel, scoring_scope, min_scoreable_seconds,
                  min_scoreable_words, pass_threshold, retention_days,
-                 transcription_mode, deepgram_region, journey_window_days`,
+                 transcription_mode, deepgram_region, journey_window_days,
+                 scoring_samples, review_confidence_floor`,
       [
         // adviser_channel's "unset" state is itself a real value (null =
         // auto-detect), so it can't be COALESCE'd. $10 says whether the caller
@@ -436,6 +464,11 @@ superadminRouter.put('/tenants/:id/scoring-settings', async (req, res, next) => 
         // clearing it has to be distinguishable from not mentioning it.
         body.journey_window_days ?? null,
         body.journey_window_days !== undefined,
+        body.scoring_samples,
+        // 0 is a real value here ("off"), not an absence — so it has to reach
+        // COALESCE as 0 and only an omitted field as null. Hence the explicit
+        // undefined check rather than a falsy test.
+        body.review_confidence_floor === undefined ? null : body.review_confidence_floor,
       ]
     );
     if (!rows.length) throw new AppError(404, 'Tenant not found');

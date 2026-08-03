@@ -13,7 +13,10 @@ import { maybeStartJourneyCapture } from '../../services/capture-runs.js';
 import { buildCombinedTranscript, CALL_MARKER } from '../../services/journey-transcript.js';
 import { detectProductsFromTranscript } from '../../services/product-resolution.js';
 import { isItemPass, deriveSeverity, callPasses, resolveBranchWithSource, isNoScoreCrmStage } from '@callguard/shared';
-import { CONSENT_SPEAKER_CONFIDENCE_FLOOR } from '../../services/checkpoint-classification.js';
+import {
+  CONSENT_SPEAKER_CONFIDENCE_FLOOR,
+  routesToReviewOnConfidence,
+} from '../../services/checkpoint-classification.js';
 import type { Scorecard, ScorecardItem, WebhookJourneyScoredPayload, ProductSource } from '@callguard/shared';
 
 interface JourneyRow {
@@ -429,6 +432,10 @@ export async function processScoreJourney(job: Job<ScoreJourneyJobData>) {
       withTranscript.map((c) => [c.id, c.speaker_attribution_confidence === null ? 0 : Number(c.speaker_attribution_confidence)])
     );
     const provisionalWrites: typeof itemWrites = [];
+    // How many landed in the review queue purely because the model was unsure,
+    // for the log line — the tenant's confidence floor is a dial someone tuned,
+    // and its effect has to be visible without opening the database.
+    let lowConfidenceCount = 0;
 
     for (const itemScore of output.items) {
       const item = aiItems.find((i) => i.id === itemScore.scorecard_item_id)!;
@@ -451,6 +458,15 @@ export async function processScoreJourney(job: Job<ScoreJourneyJobData>) {
       const evidenceIsWellAttributed =
         sourceCallConfidence !== undefined && sourceCallConfidence >= CONSENT_SPEAKER_CONFIDENCE_FLOOR;
 
+      // A checkpoint the model itself was unsure about (migration 082). Same
+      // destination as the two cases below and for the same reason — a marginal
+      // judgement belongs to a person — but the trigger is the tenant's own
+      // confidence floor rather than anything about the recording or the runs.
+      const lowConfidence = routesToReviewOnConfidence(
+        itemScore.confidence,
+        scoringSettings.reviewConfidenceFloor
+      );
+
       // A checkpoint the independent runs disagreed on is genuinely ambiguous.
       // Send it to the reviewer with the majority verdict attached, and keep it
       // out of the weighted score — which is what makes the resulting number
@@ -460,8 +476,9 @@ export async function processScoreJourney(job: Job<ScoreJourneyJobData>) {
       // ruledIds wins over both: a checkpoint a person has already settled is
       // scored on their verdict, not sent back to the queue they ruled it out of.
       const stillProvisional = provisionalIds.has(item.id) && !evidenceIsWellAttributed;
-      if (!ruledIds.has(item.id) && (stillProvisional || disputedIds.has(item.id))) {
+      if (!ruledIds.has(item.id) && (stillProvisional || disputedIds.has(item.id) || lowConfidence)) {
         provisionalWrites.push({ item, itemScore, normalized, sourceCallId });
+        if (lowConfidence) lowConfidenceCount++;
         continue;
       }
       itemWrites.push({ item, itemScore, normalized, sourceCallId });
@@ -470,6 +487,15 @@ export async function processScoreJourney(job: Job<ScoreJourneyJobData>) {
       totalWeight += weight;
     }
 
+    // Nothing was auto-scored: every checkpoint that applied to this sale went
+    // to a human (all disputed, all under the speaker floor, all under the
+    // tenant's confidence floor, or a mix). There is no score to report, and
+    // reporting the 0 that a zero denominator arithmetically produces would be
+    // a fabricated fail on a sale nobody has judged yet — written into the
+    // register, the adviser's record and the client's own CRM. So the score
+    // stays empty until the review queue fills it in, which resolving each
+    // checkpoint does (routes/review.ts recomputes over pass/fail rows).
+    const nothingAutoScored = totalWeight === 0;
     const overallScore = totalWeight > 0 ? totalWeightedScore / totalWeight : 0;
     const failures = itemWrites
       .filter(({ normalized }) => !isItemPass(normalized, scoringSettings.passThreshold))
@@ -616,7 +642,8 @@ export async function processScoreJourney(job: Job<ScoreJourneyJobData>) {
            status = 'scored', branch = $2, branch_source = $3, overall_score = $4, pass = $5,
            model_id = $6, coaching = $7, scored_at = now(), updated_at = now()
          WHERE id = $1`,
-        [journeyId, branch, branchSource, overallScore, pass, model,
+        [journeyId, branch, branchSource,
+         nothingAutoScored ? null : overallScore, nothingAutoScored ? null : pass, model,
          output.coaching ? JSON.stringify(output.coaching) : null]
       );
 
@@ -658,8 +685,8 @@ export async function processScoreJourney(job: Job<ScoreJourneyJobData>) {
           journeyId,
           journey.organization_id,
           runNumber,
-          overallScore,
-          pass,
+          nothingAutoScored ? null : overallScore,
+          nothingAutoScored ? null : pass,
           branch,
           branchSource,
           model,
@@ -681,10 +708,18 @@ export async function processScoreJourney(job: Job<ScoreJourneyJobData>) {
     const delta =
       priorScore == null
         ? ''
-        : ` [was ${priorScore.toFixed(1)}, ${overallScore >= priorScore ? '+' : ''}${(overallScore - priorScore).toFixed(1)} via ${runTrigger}]`;
+        : nothingAutoScored
+          ? ` [was ${priorScore.toFixed(1)}, now unscored pending review via ${runTrigger}]`
+          : ` [was ${priorScore.toFixed(1)}, ${overallScore >= priorScore ? '+' : ''}${(overallScore - priorScore).toFixed(1)} via ${runTrigger}]`;
+    const reviewFloorNote = lowConfidenceCount
+      ? ` [${lowConfidenceCount} to review under confidence floor ${scoringSettings.reviewConfidenceFloor}]`
+      : '';
     console.log(
-      `[ScoreJourney] Journey ${journeyId} scored: ${overallScore.toFixed(1)} (${pass ? 'PASS' : 'FAIL'})` +
-      `${branch ? ` [branch: ${branch} via ${branchSource}]` : ''} across ${withTranscript.length} call(s)${delta}`
+      `[ScoreJourney] Journey ${journeyId} ` +
+      (nothingAutoScored
+        ? `not scored: all ${provisionalWrites.length + manualReview.length} applicable checkpoint(s) await review`
+        : `scored: ${overallScore.toFixed(1)} (${pass ? 'PASS' : 'FAIL'})`) +
+      `${branch ? ` [branch: ${branch} via ${branchSource}]` : ''} across ${withTranscript.length} call(s)${delta}${reviewFloorNote}`
     );
 
     const customer = await queryOne<{ name: string | null; phone_normalized: string | null; external_crm_id: string | null }>(
@@ -729,6 +764,15 @@ export async function processScoreJourney(job: Job<ScoreJourneyJobData>) {
     // sets it, so live sales still push as usual.
     if (suppressCrm) {
       console.log(`[ScoreJourney] Skipping webhook + Zoho write-back for ${journeyId} (suppressCrm)`);
+    } else if (nothingAutoScored) {
+      // There is no verdict to push yet. Both downstream paths coerce a missing
+      // score to 0/fail (services/score-writeback.ts), so pushing here would put
+      // a 0% QA record and a full set of breach tasks in the client's CRM for a
+      // sale the platform explicitly declined to judge. The reviewer's first
+      // resolution re-pushes with a real number.
+      console.log(
+        `[ScoreJourney] Holding webhook + Zoho write-back for ${journeyId} — no checkpoint auto-scored, all await review`
+      );
     } else {
       deliverCallScored(journey.organization_id, payload).catch((err) => {
         console.error(`[ScoreJourney] journey.scored webhook failed for ${journeyId}:`, (err as Error).message);

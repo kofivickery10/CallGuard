@@ -14,11 +14,12 @@
     "retention_days": 1825,
     "transcription_mode": "mono_diarize",
     "mono_first_speaker": "customer",
-    "deepgram_region": "eu"
+    "deepgram_region": "eu",
+    "review_confidence_floor": 0.8
   },
   "scorecard": {
     "name": "Trust Point — Protection QA",
-    "description": "Generated from the QA Framework & Scoring Matrix (June 2026). 47 checkpoints, branched on_risk/referred.",
+    "description": "Generated from the QA Framework & Scoring Matrix (June 2026), as revised with Trust Point on 2026-08-03. 42 checkpoints, branched on_risk/referred.",
     "csv": "../../../../../sample_scorecards/trustpoint/trustpoint-protection.csv",
     "scoring_mode": "journey",
     "branch_config": {

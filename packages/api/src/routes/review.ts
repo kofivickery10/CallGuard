@@ -35,7 +35,12 @@ reviewRouter.get('/', requireOrgView, async (req, res, next) => {
          JOIN calls c ON c.id = cs.call_id
          JOIN scorecard_items si ON si.id = cis.scorecard_item_id
          LEFT JOIN customers cust ON cust.id = c.customer_id
-        WHERE c.organization_id = $1 AND cis.result = 'manual_review'`,
+        WHERE c.organization_id = $1 AND cis.result = 'manual_review'
+          -- A checkpoint taken off the scorecard is not a job for the reviewer.
+          -- Archiving keeps the historical rows (see scripts/remove-manual-items.ts),
+          -- which otherwise sit in this queue forever asking for a verdict on a
+          -- criterion the tenant has retired.
+          AND si.archived_at IS NULL`,
       [orgId]
     );
 
@@ -71,7 +76,9 @@ reviewRouter.get('/', requireOrgView, async (req, res, next) => {
                      COALESCE(jac.call_date, jac.created_at) DESC
             LIMIT 1
          ) ja ON true
-        WHERE j.organization_id = $1 AND jis.result = 'manual_review'`,
+        WHERE j.organization_id = $1 AND jis.result = 'manual_review'
+          -- Retired checkpoints drop out of the queue (see the per-call query).
+          AND si.archived_at IS NULL`,
       [orgId]
     );
 
@@ -251,7 +258,12 @@ async function resolveCallItem(
       `SELECT cis.normalized_score::text, si.weight::text, si.severity
          FROM call_item_scores cis
          JOIN scorecard_items si ON si.id = cis.scorecard_item_id
-        WHERE cis.call_score_id = $1 AND cis.result IN ('pass', 'fail')`,
+        WHERE cis.call_score_id = $1 AND cis.result IN ('pass', 'fail')
+          -- Retired checkpoints are out of the denominator, matching scoring
+          -- (jobs/processors/score.ts reads non-archived items only). Without
+          -- this, resolving one review item on an old score silently folds
+          -- checkpoints the tenant has since removed back into the maths.
+          AND si.archived_at IS NULL`,
       [row.call_score_id]
     );
     const { overall, failing } = recompute(items, threshold);
@@ -342,7 +354,9 @@ async function resolveJourneyItem(
       `SELECT jis.normalized_score::text, si.weight::text, si.severity
          FROM journey_item_scores jis
          JOIN scorecard_items si ON si.id = jis.scorecard_item_id
-        WHERE jis.journey_id = $1 AND jis.result IN ('pass', 'fail')`,
+        WHERE jis.journey_id = $1 AND jis.result IN ('pass', 'fail')
+          -- Retired checkpoints stay out of the denominator (see the per-call path).
+          AND si.archived_at IS NULL`,
       [row.journey_id]
     );
     const { overall, failing } = recompute(items, threshold);
