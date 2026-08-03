@@ -12,6 +12,7 @@ import { ingestCall, fetchRemoteAudio, upsertCustomer, normalizePhone } from '..
 import { prepareMediaForIngest } from '../services/media.js';
 import { recordAuditEvent } from '../services/audit.js';
 import { getScoringSettings } from '../services/tenant-settings.js';
+import { resolveTranscriptAccess, withheldTranscript } from '../services/transcript-access.js';
 import type { Call, CallScore, CallItemScore, BreachSeverity } from '@callguard/shared';
 import { deriveSeverity, isItemPass, callPasses } from '@callguard/shared';
 
@@ -75,8 +76,12 @@ callRouter.get('/', async (req, res, next) => {
       [...params, limit, offset]
     );
 
+    // Same gate as the detail route. The list selects c.*, so without this every
+    // page of the calls list would hand out twenty full transcripts.
+    const access = await resolveTranscriptAccess(req.user!.organizationId, req.user!.role);
+
     res.json({
-      data: calls,
+      data: calls.map((c) => withheldTranscript(c as Record<string, unknown>, access)),
       total: parseInt(countResult?.count || '0'),
       page,
       limit,
@@ -335,7 +340,14 @@ callRouter.get('/:id', async (req, res, next) => {
       }
     }
 
-    res.json({ ...call, journey });
+    // Transcript content is withheld from roles below admin where the tenant
+    // keeps a redaction category in the clear (DPIA action 11). SELECT c.* means
+    // transcript_text and transcript_raw are on this row, so the filter has to be
+    // here rather than in the query — a new column carrying transcript content
+    // would otherwise arrive ungated.
+    const access = await resolveTranscriptAccess(req.user!.organizationId, req.user!.role);
+
+    res.json({ ...withheldTranscript(call as Record<string, unknown>, access), journey });
   } catch (err) {
     next(err);
   }

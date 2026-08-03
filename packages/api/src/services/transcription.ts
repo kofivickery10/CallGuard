@@ -1,6 +1,7 @@
 import { config } from '../config.js';
 import { readFile } from './storage.js';
 import { identifyAdviserCluster, type ClusterSpeech } from './speaker-integrity.js';
+import { redactBankDetails, redactBankDetailsInRaw } from './digit-redaction.js';
 import type { TranscriptionMode, MonoFirstSpeaker, DeepgramRegion } from '@callguard/shared';
 
 interface TranscriptionResult {
@@ -117,6 +118,54 @@ function computeSpeakerAttributionConfidence(
   return 0.3;
 }
 
+/**
+ * Every redaction category CallGuard asks Deepgram for. See the long comment at
+ * the `redact:` call site for why this is an explicit list rather than the broad
+ * `pii` group.
+ */
+export const REDACTION_CATEGORIES = [
+  'pci',
+  'phi',
+  'numbers',
+  'name', 'name_given', 'name_family',
+  'dob',
+  'email_address',
+  'location_address', 'location_city', 'location_state', 'location_zip', 'location_country',
+] as const;
+
+/**
+ * Categories no tenant may ever keep in the clear, whatever their config says.
+ *
+ * `pci` only. Card and bank details have no legitimate reason to exist
+ * unredacted in this system, DPIA or not, and keeping them out is what keeps the
+ * platform outside PCI DSS scope. Enforced here AND by a CHECK constraint in
+ * migration 079, so neither a bad config write nor a bug in this file alone can
+ * expose payment data.
+ *
+ * Note that `numbers` is deliberately NOT here. It used to be the category
+ * actually catching bank details spoken aloud, because the per-entity tokens miss
+ * them (see the `redact:` comment) — so permitting it was unsafe until something
+ * else did that job. services/digit-redaction.ts now does, anchored on the
+ * spoken phrase rather than on the shape of the number, which is what lets the
+ * short numeric answers reconciliation needs survive. It runs unconditionally on
+ * every transcript before storage, so `numbers` is permittable with that in
+ * place and not before.
+ */
+const NEVER_UNREDACTED: ReadonlySet<string> = new Set(['pci']);
+
+/**
+ * Resolve a tenant's permitted-in-the-clear list into the redact list actually
+ * sent to Deepgram. Anything not explicitly permitted stays redacted, so the
+ * failure mode of an unknown or malformed category is "redact it", not "expose
+ * it".
+ */
+export function resolveRedactCategories(unredactedCategories: string[] = []): string[] {
+  const permitted = new Set(
+    unredactedCategories.filter((c) => !NEVER_UNREDACTED.has(c))
+  );
+  return REDACTION_CATEGORIES.filter((c) => !permitted.has(c));
+}
+
 export async function transcribeCall(
   fileKey: string,
   extraKeyterms: string[] = [],
@@ -125,11 +174,14 @@ export async function transcribeCall(
   transcriptionMode: TranscriptionMode = 'mono_diarize',
   deepgramRegion: DeepgramRegion = 'eu',
   monoFirstSpeaker: MonoFirstSpeaker = 'agent',
-  // organizations.pii_redaction_exempt (migration 065) — an explicit,
-  // superadmin-set, DPIA-backed exception for a tenant whose Data Capture
-  // reconciliation needs the customer's actual health/identity answers, not
-  // just confirmation they were given. Defaults to false (redact everything).
-  piiRedactionExempt: boolean = false
+  // organizations.pii_unredacted_categories (migration 079) — the explicit,
+  // superadmin-set, DPIA-backed list of redaction categories this tenant may
+  // keep in the clear, for Data Capture reconciliation that needs the
+  // customer's actual answers rather than just confirmation they were given.
+  // Empty (the default) redacts everything. 'pci' is filtered out here even if
+  // somehow present, so payment data is protected by code as well as by the
+  // schema CHECK — see resolveRedactCategories.
+  unredactedCategories: string[] = []
 ): Promise<TranscriptionResult> {
   if (!config.deepgram.apiKey) {
     throw new Error('DEEPGRAM_API_KEY is not set in .env - needed for transcription');
@@ -218,24 +270,10 @@ export async function transcribeCall(
       // This keeps every real identifier redacted while letting organisation and
       // regulator names (FCA, the firm) through to the scorer.
       //
-      // `pci` and `numbers` are an unconditional floor and are never affected by
-      // piiRedactionExempt: card and bank details have no legitimate reason to
-      // exist unredacted in this system, DPIA or not. The rest of this list
-      // (health + identity) is dropped in full for an org with a signed-off
-      // redaction exemption (organizations.pii_redaction_exempt, migration
-      // 065) — see there for why this can only be an org-wide, not per-question,
-      // exception.
-      redact: piiRedactionExempt
-        ? ['pci', 'numbers']
-        : [
-            'pci',
-            'phi',
-            'numbers',
-            'name', 'name_given', 'name_family',
-            'dob',
-            'email_address',
-            'location_address', 'location_city', 'location_state', 'location_zip', 'location_country',
-          ],
+      // Which of these a tenant may keep in the clear is per-organisation
+      // (migration 079) — see resolveRedactCategories below. `pci` is never
+      // droppable by any configuration.
+      redact: resolveRedactCategories(unredactedCategories),
       numerals: true,
       keyterm: keyterms,
     }
@@ -383,15 +421,39 @@ export async function transcribeCall(
     for (const w of words) pushWord(w.speaker!, w.punctuated_word ?? w.word);
   }
 
-  const text = merged
+  const assembled = merged
     .map((m) => `${m.speaker}: ${m.text}`)
     .join('\n\n');
 
   const duration = result.metadata?.duration || 0;
 
+  // Bank details out, here and nowhere later.
+  //
+  // This is the last point at which one function owns both the text and the raw
+  // payload. Everything downstream — the Claude cleanup pass, storage, scoring,
+  // exports — consumes what this returns, so redacting here means there is no
+  // path around it. Doing it in the transcribe processor instead would leave the
+  // cleanup call, which runs BEFORE storage, reading unredacted digits and
+  // sending them to Anthropic.
+  //
+  // Cheap and inert when nothing matches, so it runs unconditionally rather than
+  // only for tenants with `numbers` permitted: a config change must not be able
+  // to turn this off by accident, and when `numbers` IS redacted at source there
+  // are no digit runs left for it to find.
+  const textRedaction = redactBankDetails(
+    assembled || result.results?.channels?.[0]?.alternatives?.[0]?.transcript || ''
+  );
+  const rawRedaction = redactBankDetailsInRaw(result);
+  if (textRedaction.redactions > 0 || rawRedaction.redactions > 0) {
+    console.log(
+      `[Transcription] Redacted bank details: ${textRedaction.redactions} in the transcript, ` +
+        `${rawRedaction.redactions} in the raw payload`
+    );
+  }
+
   return {
-    raw: result,
-    text: text || result.results?.channels?.[0]?.alternatives?.[0]?.transcript || '',
+    raw: rawRedaction.raw,
+    text: textRedaction.text,
     duration_seconds: duration,
     speaker_attribution_confidence: computeSpeakerAttributionConfidence(
       isMultichannel,

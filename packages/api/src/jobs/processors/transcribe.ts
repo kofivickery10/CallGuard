@@ -46,9 +46,9 @@ export async function processTranscription(job: Job<{ callId: string }>) {
       name: string | null;
       adviser_channel: number | null;
       keyterms: string[] | null;
-      pii_redaction_exempt: boolean;
+      pii_unredacted_categories: string[] | null;
     }>(
-      'SELECT name, adviser_channel, keyterms, pii_redaction_exempt FROM organizations WHERE id = $1',
+      'SELECT name, adviser_channel, keyterms, pii_unredacted_categories FROM organizations WHERE id = $1',
       [call.organization_id]
     );
     const tenantKeyterms = [
@@ -82,7 +82,7 @@ export async function processTranscription(job: Job<{ callId: string }>) {
       scoringSettings.transcriptionMode,
       scoringSettings.deepgramRegion,
       monoFirstSpeaker,
-      orgRow?.pii_redaction_exempt ?? false
+      orgRow?.pii_unredacted_categories ?? []
     );
 
     // Record Deepgram usage (billed per minute of audio).

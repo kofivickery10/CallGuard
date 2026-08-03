@@ -8,7 +8,7 @@ import type { OrganizationInfo } from '@callguard/shared';
 // modules switched per org by CallGuard staff, not derived from the plan.
 // One shared query (cached 5 min — flags flip via superadmin ops, not
 // mid-session) so nav, the Settings hub, and any page gate agree.
-export type OrgFeature = 'capture';
+export type OrgFeature = 'capture' | 'reconciliation';
 
 export function useOrgFeatures(): Record<OrgFeature, boolean> {
   const { user } = useAuth();
@@ -18,5 +18,8 @@ export function useOrgFeatures(): Record<OrgFeature, boolean> {
     enabled: !!user,
     staleTime: 5 * 60_000,
   });
-  return { capture: data?.capture_enabled === true };
+  return {
+    capture: data?.capture_enabled === true,
+    reconciliation: data?.reconciliation_enabled === true,
+  };
 }

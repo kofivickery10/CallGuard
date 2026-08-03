@@ -9,6 +9,7 @@ import { config } from '../config.js';
 import { PLANS, FEATURES } from '@callguard/shared';
 import { DEFAULT_USD_TO_GBP } from '@callguard/shared';
 import { recordAuditEvent } from '../services/audit.js';
+import { REDACTION_CATEGORIES } from '../services/transcription.js';
 import {
   billableSeatRows,
   aggregateByOrg,
@@ -173,12 +174,18 @@ superadminRouter.get('/tenants/:id', async (req, res, next) => {
       transcription_mode: string;
       deepgram_region: string;
       journey_window_days: number | null;
+      capture_enabled: boolean;
+      reconciliation_enabled: boolean;
+      pii_unredacted_categories: string[];
+      pii_redaction_exempt_note: string | null;
     }>(
       `SELECT id, name, plan, status, created_at, suspended_at, subscription_notes,
               seat_price_override, feature_overrides,
               adviser_channel, scoring_scope, min_scoreable_seconds, min_scoreable_words,
               pass_threshold, retention_days, transcription_mode, deepgram_region,
-              journey_window_days
+              journey_window_days,
+              capture_enabled, reconciliation_enabled,
+              pii_unredacted_categories, pii_redaction_exempt_note
        FROM organizations WHERE id = $1`,
       [req.params.id]
     );
@@ -1111,6 +1118,60 @@ superadminRouter.put('/tenants/:id/users/:userId/billing-exempt', async (req, re
   }
 });
 
+// ── Data Forms module toggles ─────────────────────────────────────────────────
+// Separate from feature_overrides above: those grant a plan-gated feature, these
+// switch on a module that is off for everyone by default regardless of plan.
+//
+// Staff-controlled, not tenant self-serve. Both modules need setup work done
+// alongside the flag — a question set for capture, a confirmed document profile
+// for reconciliation — so a tenant switching them on unaided would see an empty
+// or misleading surface.
+//
+// NB: before this existed, capture_enabled had no write path anywhere in the
+// codebase. It was read on GET /organization and set by nothing, so Part A could
+// only be enabled with direct SQL against production.
+
+const DATA_FORMS_MODULES = {
+  capture_enabled: 'Data Capture',
+  reconciliation_enabled: 'Application reconciliation',
+} as const;
+
+type DataFormsModule = keyof typeof DATA_FORMS_MODULES;
+
+superadminRouter.put('/tenants/:id/modules', async (req, res, next) => {
+  try {
+    const { module, enabled } = req.body as { module?: string; enabled?: boolean };
+    if (!module || !(module in DATA_FORMS_MODULES)) {
+      throw new AppError(400, `module must be one of: ${Object.keys(DATA_FORMS_MODULES).join(', ')}`);
+    }
+    if (typeof enabled !== 'boolean') throw new AppError(400, 'enabled must be true or false');
+    const key = module as DataFormsModule;
+
+    // Column name comes from the allow-list above, never from the request body.
+    const rows = await query<Record<string, boolean>>(
+      `UPDATE organizations SET ${key} = $1, updated_at = now()
+        WHERE id = $2
+       RETURNING capture_enabled, reconciliation_enabled`,
+      [enabled, req.params.id]
+    );
+    if (!rows.length) throw new AppError(404, 'Tenant not found');
+
+    await recordAuditEvent({
+      organizationId: req.params.id,
+      userId: req.user!.userId,
+      actionType: 'tenant.module_toggle',
+      entityType: 'organization',
+      entityId: req.params.id,
+      summary: `${DATA_FORMS_MODULES[key]} module ${enabled ? 'ENABLED' : 'disabled'}`,
+      req,
+    });
+
+    res.json(rows[0]);
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ── Per-tenant feature overrides ──────────────────────────────────────────────
 // Grant or deny a plan-gated feature for one tenant, beyond their plan tier.
 // Body: { feature: <flag>, value: true | false | null }. null removes the override.
@@ -1170,17 +1231,41 @@ superadminRouter.put('/tenants/:id/features', async (req, res, next) => {
 // there is a durable record of what authorised the exposure.
 superadminRouter.put('/tenants/:id/pii-redaction-exemption', async (req, res, next) => {
   try {
-    const { exempt, note } = req.body as { exempt?: boolean; note?: string };
-    if (typeof exempt !== 'boolean') throw new AppError(400, 'exempt must be true or false');
-    const trimmedNote = typeof note === 'string' ? note.trim().slice(0, 2000) : '';
-    if (exempt && !trimmedNote) {
-      throw new AppError(400, 'note is required when enabling the exemption (record the DPIA reference/approver)');
+    // Migration 079: an explicit list of redaction categories this tenant may
+    // keep in the clear, replacing the old all-or-nothing boolean. Identity
+    // fields (Article 6) and health (Article 9) are separate decisions with
+    // separate legal bars, so they are permitted separately.
+    const { categories, note } = req.body as { categories?: unknown; note?: string };
+    if (!Array.isArray(categories) || categories.some((c) => typeof c !== 'string')) {
+      throw new AppError(400, 'categories must be an array of strings (empty array redacts everything)');
+    }
+    const requested = [...new Set(categories as string[])];
+
+    // 'pci' is rejected outright rather than silently dropped: a caller asking
+    // for it has misunderstood something, and a silent success would leave them
+    // believing card data is in the clear when it never will be.
+    if (requested.includes('pci')) {
+      throw new AppError(400, 'pci redaction can never be disabled — card and bank data is out of scope for any exemption');
+    }
+    const permittable: string[] = REDACTION_CATEGORIES.filter((c) => c !== 'pci');
+    const unknown = requested.filter((c) => !permittable.includes(c));
+    if (unknown.length) {
+      throw new AppError(400, `unknown redaction categor${unknown.length > 1 ? 'ies' : 'y'}: ${unknown.join(', ')}. Valid: ${permittable.join(', ')}`);
     }
 
-    const rows = await query<{ id: string; pii_redaction_exempt: boolean; pii_redaction_exempt_note: string | null }>(
-      `UPDATE organizations SET pii_redaction_exempt = $1, pii_redaction_exempt_note = $2
-       WHERE id = $3 RETURNING id, pii_redaction_exempt, pii_redaction_exempt_note`,
-      [exempt, exempt ? trimmedNote : null, req.params.id]
+    const trimmedNote = typeof note === 'string' ? note.trim().slice(0, 2000) : '';
+    if (requested.length > 0 && !trimmedNote) {
+      throw new AppError(400, 'note is required when permitting any category (record the DPIA reference/approver)');
+    }
+
+    const rows = await query<{
+      id: string;
+      pii_unredacted_categories: string[];
+      pii_redaction_exempt_note: string | null;
+    }>(
+      `UPDATE organizations SET pii_unredacted_categories = $1, pii_redaction_exempt_note = $2
+       WHERE id = $3 RETURNING id, pii_unredacted_categories, pii_redaction_exempt_note`,
+      [requested, requested.length ? trimmedNote : null, req.params.id]
     );
     if (!rows.length) throw new AppError(404, 'Tenant not found');
 
@@ -1190,9 +1275,9 @@ superadminRouter.put('/tenants/:id/pii-redaction-exemption', async (req, res, ne
       actionType: 'tenant.pii_redaction_exemption',
       entityType: 'organization',
       entityId: req.params.id,
-      summary: exempt
-        ? `PII/PHI redaction exemption ENABLED — ${trimmedNote}`
-        : 'PII/PHI redaction exemption disabled',
+      summary: requested.length
+        ? `Redaction exemption set — unredacted: ${requested.join(', ')} — ${trimmedNote}`
+        : 'Redaction exemption cleared — all categories redacted',
       req,
     });
 

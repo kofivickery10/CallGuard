@@ -10,6 +10,7 @@ import { processAlertDelivery } from './processors/alert-deliver.js';
 import { processNotifyEmail } from './processors/notify-email.js';
 import { processScoreJourney } from './processors/score-journey.js';
 import { processCapture } from './processors/capture.js';
+import { processReconcile } from './processors/reconcile.js';
 import { processRetentionPurge } from './processors/retention-purge.js';
 import { processStuckRepair } from './processors/stuck-repair.js';
 import { processSyncProducts } from './processors/sync-products.js';
@@ -28,14 +29,18 @@ const transcriptionWorker = new Worker('transcription', processTranscription, {
   concurrency: 2,
 });
 
-// The scoring queue carries three job types: 'score' (per-call, unchanged),
-// 'score-journey' (multi-call, spec §9) and 'capture' (data-capture
-// extraction, run after scoring) — dispatch by name rather than splitting
-// into more queue/worker pairs, since all are Claude work with the same
-// concurrency/backoff needs.
+// The scoring queue carries four job types: 'score' (per-call, unchanged),
+// 'score-journey' (multi-call, spec §9), 'capture' (data-capture extraction, run
+// after scoring) and 'reconcile' (compare the submitted application against the
+// call) — dispatch by name rather than splitting into more queue/worker pairs.
+//
+// 'reconcile' rides here despite doing no Claude work of its own: it runs after
+// scoring on the same journey, and sharing the queue keeps that ordering and the
+// same concurrency ceiling without a fifth worker.
 async function dispatchScoring(job: Job) {
   if (job.name === 'score-journey') return processScoreJourney(job);
   if (job.name === 'capture') return processCapture(job);
+  if (job.name === 'reconcile') return processReconcile(job);
   return processScoring(job);
 }
 

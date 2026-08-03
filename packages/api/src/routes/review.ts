@@ -122,6 +122,17 @@ reviewRouter.get('/:kind/:itemScoreId/evidence', requireOrgView, async (req, res
     // source call — there is no single call to show evidence in.
     if (!row) throw new AppError(404, 'No source call for this checkpoint');
 
+    // Deliberately NOT gated by transcript access (services/transcript-access.ts).
+    //
+    // This returns a bounded excerpt — the quoted line plus two blocks either side
+    // — tied to one checkpoint a reviewer has been asked to settle. The DPIA's
+    // action 11 restriction is on reading the conversation, and it explicitly
+    // preserves the evidence quote in context, because a supervisor who cannot see
+    // the moment cannot do the review that the restriction exists to support.
+    //
+    // If CONTEXT_BLOCKS is ever widened materially, or this endpoint starts
+    // returning the whole transcript on a failed match, that reasoning stops
+    // holding and this needs the gate.
     const located = locateEvidence({
       quote: row.evidence,
       transcriptText: row.transcript_text,

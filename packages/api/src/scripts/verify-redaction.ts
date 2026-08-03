@@ -28,20 +28,20 @@ async function main() {
   if (!call) { console.error('Call not found'); process.exit(1); }
   if (!call.file_key) { console.error('Call has no file_key (not hydrated)'); process.exit(1); }
 
-  // organizations.keyterms/pii_redaction_exempt only exist once their
-  // migrations (058/065) are applied; this DB may predate either. Select each
+  // organizations.keyterms/pii_unredacted_categories only exist once their
+  // migrations (058/079) are applied; this DB may predate either. Select each
   // only when present.
   const hasKeyterms = !!(await queryOne(
     "SELECT 1 FROM information_schema.columns WHERE table_name='organizations' AND column_name='keyterms'"));
-  const hasRedactionExempt = !!(await queryOne(
-    "SELECT 1 FROM information_schema.columns WHERE table_name='organizations' AND column_name='pii_redaction_exempt'"));
+  const hasUnredactedCategories = !!(await queryOne(
+    "SELECT 1 FROM information_schema.columns WHERE table_name='organizations' AND column_name='pii_unredacted_categories'"));
   const orgRow = await queryOne<{
     name: string | null;
     adviser_channel: number | null;
     keyterms: string[] | null;
-    pii_redaction_exempt: boolean | null;
+    pii_unredacted_categories: string[] | null;
   }>(
-    `SELECT name, adviser_channel${hasKeyterms ? ', keyterms' : ''}${hasRedactionExempt ? ', pii_redaction_exempt' : ''}
+    `SELECT name, adviser_channel${hasKeyterms ? ', keyterms' : ''}${hasUnredactedCategories ? ', pii_unredacted_categories' : ''}
        FROM organizations WHERE id = $1`,
     [call.organization_id]);
   const agents = await query<{ name: string }>(
@@ -63,15 +63,22 @@ async function main() {
     ? false
     : ((call as { encrypted_at_rest?: boolean }).encrypted_at_rest ?? false);
 
-  const piiRedactionExempt = orgRow?.pii_redaction_exempt ?? false;
+  // Migration 079: per-category exemption. An explicit OVERRIDE_UNREDACTED lets
+  // you probe what a proposed category list would actually produce BEFORE
+  // committing it for a tenant — the point of this script.
+  const override = process.env.OVERRIDE_UNREDACTED;
+  const unredactedCategories = override !== undefined
+    ? override.split(',').map((c) => c.trim()).filter(Boolean)
+    : (orgRow?.pii_unredacted_categories ?? []);
+  const identityExempt = unredactedCategories.some((c) => c !== 'phi' && c !== 'numbers');
   console.log(
-    `Re-transcribing ${callId} with current redaction settings (no DB write, encrypted=${encrypted}, ` +
-      `pii_redaction_exempt=${piiRedactionExempt})...`
+    `Re-transcribing ${callId} with ${override !== undefined ? 'OVERRIDE' : 'the org\'s'} redaction settings ` +
+      `(no DB write, encrypted=${encrypted}, unredacted=[${unredactedCategories.join(', ') || 'none'}])...`
   );
-  if (piiRedactionExempt) {
+  if (unredactedCategories.length) {
     console.log(
-      'WARNING: this org has a signed-off PII/PHI redaction exemption — health/identity leak checks below are ' +
-        'EXPECTED to fire. This run only confirms pci/numbers are still redacted.'
+      `WARNING: categories [${unredactedCategories.join(', ')}] are NOT redacted in this run, so the ` +
+        'corresponding leak checks below are EXPECTED to fire. pci is always redacted.'
     );
   }
   const result = await transcribeCall(
@@ -82,7 +89,7 @@ async function main() {
     s.transcriptionMode,
     s.deepgramRegion,
     monoFirst as 'agent' | 'customer',
-    piiRedactionExempt
+    unredactedCategories
   );
 
   const oldTags = tagTypes(call.transcript_text ?? '');
@@ -133,12 +140,30 @@ async function main() {
   for (const p of postcodes.slice(0, 10)) console.log(`     ${p}`);
   console.log(`  possible dates of birth: ${dates.length}`);
   for (const d of dates.slice(0, 10)) console.log(`     ${d}`);
-  // digit runs (phone/sort-code/account numbers) are caught by pci/numbers,
-  // which stay redacted unconditionally — these must NEVER appear, exemption
-  // or not. Emails/postcodes/dates are identity fields the exemption
-  // deliberately lets through for an opted-in org, so they don't fail the run
-  // there — only report them as informational (already printed above).
-  const leaked = digitRuns.length > 0 || (!piiRedactionExempt && (emails.length > 0 || postcodes.length > 0 || dates.length > 0));
+  // Per-category verdict (migration 079). A finding only fails the run if the
+  // category that would have caught it is still supposed to be redacted.
+  //
+  // The 'numbers' case is the interesting one and the reason to run this script
+  // before permitting it: with 'numbers' permitted, short runs are EXPECTED and
+  // wanted (they are the reconcilable answers — cigarettes per day, blood
+  // pressure readings, weight), but bank-length runs must still be gone. If any
+  // 6+ digit run survives here, the in-house digit-run redaction that
+  // 'numbers' was covering for is not doing its job, and permitting 'numbers'
+  // for this tenant is unsafe.
+  const numbersPermitted = unredactedCategories.includes('numbers');
+  const bankLengthRuns = runMatches.filter((m) => m[0].replace(/\D/g, '').length >= 6);
+  const offendingRuns = numbersPermitted ? bankLengthRuns : runMatches;
+  if (numbersPermitted) {
+    console.log(
+      `  ('numbers' permitted: ${digitRuns.length} run(s) total, of which ${bankLengthRuns.length} are ` +
+        'bank-length (>=6 digits) and must be zero)'
+    );
+  }
+  const leaked =
+    offendingRuns.length > 0 ||
+    (!unredactedCategories.includes('email_address') && emails.length > 0) ||
+    (!unredactedCategories.includes('location_zip') && postcodes.length > 0) ||
+    (!unredactedCategories.includes('dob') && dates.length > 0);
 
   console.log('\n=== compliance content now visible? ===');
   const lc = result.text.toLowerCase();
@@ -147,10 +172,15 @@ async function main() {
   }
   console.log(`\n[ORGANIZATION] gone: ${!newTags.has('[ORGANIZATION]')}   [MONEY] gone: ${!newTags.has('[MONEY]')}   [DURATION] gone: ${!newTags.has('[DURATION]')}`);
   console.log(leaked
-    ? '\nRESULT: *** RAW IDENTIFIER FOUND — inspect the masked samples above; do not ship until resolved ***'
-    : piiRedactionExempt
-      ? '\nRESULT: pci/numbers still redacted (the only floor that applies to an exempt org). Health/identity'
-        + '\n  content is expected to be visible above — confirm that matches the signed-off DPIA scope, nothing more.'
+    ? '\nRESULT: *** RAW IDENTIFIER FOUND in a category that should be redacted —'
+      + '\n  inspect the masked samples above; do not ship until resolved ***'
+    : unredactedCategories.length
+      ? `\nRESULT: everything outside [${unredactedCategories.join(', ')}] is still redacted, and no`
+        + '\n  bank-length digit run survived. Content from the permitted categories IS visible above —'
+        + '\n  confirm that matches the signed-off DPIA scope, nothing more.'
+        + (identityExempt
+            ? '\n  CAVEAT: identity categories are permitted, so personal names are expected in the clear.'
+            : '')
       : '\nRESULT: no digit/email/postcode/date identifiers leaked by the automated check.'
         + '\n  CAVEAT: this cannot detect leaked NAMES (no reliable pattern) — eyeball the'
         + '\n  transcript printed above for un-tagged personal names before treating this as safe.');

@@ -28,6 +28,13 @@ export interface Call {
   status: CallStatus;
   error_message: string | null;
   transcript_text: string | null;
+  /**
+   * True when transcript_text was withheld rather than being absent: the tenant
+   * keeps a redaction category in the clear and this user is not an administrator
+   * (DPIA action 11, services/transcript-access.ts). Distinguishes "not permitted"
+   * from "not transcribed", which the UI must not conflate.
+   */
+  transcript_restricted?: boolean;
   agent_id: string | null;
   agent_name: string | null;
   customer_phone: string | null;

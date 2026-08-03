@@ -36,7 +36,45 @@ interface OrgDetail {
   retention_days: number;
   transcription_mode: string;
   deepgram_region: string;
+  capture_enabled: boolean;
+  reconciliation_enabled: boolean;
+  pii_unredacted_categories: string[];
+  pii_redaction_exempt_note: string | null;
 }
+
+// Modules that are off for every tenant regardless of plan, and need staff setup
+// alongside the flag. Distinct from the plan-gated feature overrides above.
+const DATA_FORMS_MODULES: { key: 'capture_enabled' | 'reconciliation_enabled'; label: string; hint: string }[] = [
+  {
+    key: 'capture_enabled',
+    label: 'Data Capture',
+    hint: 'Per-question record of what the customer answered on the call. Needs a question set built first, or the tenant sees an empty module.',
+  },
+  {
+    key: 'reconciliation_enabled',
+    label: 'Application reconciliation',
+    hint: 'Compares the application submitted to the insurer against the call. Needs a confirmed document profile for that insurer first.',
+  },
+];
+
+// Deepgram redaction categories a tenant may keep in the clear. 'pci' is absent
+// deliberately and permanently: card and bank data is never exemptible, enforced
+// by a CHECK constraint in the database and a filter in the transcription
+// service, so it cannot be offered here.
+const REDACTION_CATEGORIES: { key: string; label: string; article9: boolean }[] = [
+  { key: 'name', label: 'Name', article9: false },
+  { key: 'name_given', label: 'First name', article9: false },
+  { key: 'name_family', label: 'Surname', article9: false },
+  { key: 'dob', label: 'Date of birth', article9: false },
+  { key: 'email_address', label: 'Email address', article9: false },
+  { key: 'location_address', label: 'Address', article9: false },
+  { key: 'location_city', label: 'City', article9: false },
+  { key: 'location_state', label: 'County', article9: false },
+  { key: 'location_zip', label: 'Postcode', article9: false },
+  { key: 'location_country', label: 'Country', article9: false },
+  { key: 'phi', label: 'Health (conditions, drugs, procedures)', article9: true },
+  { key: 'numbers', label: 'Number sequences', article9: false },
+];
 
 interface ScoringForm {
   adviser_channel: number | null;
@@ -178,6 +216,36 @@ export default function TenantDetail() {
       setData((prev) => prev ? { ...prev, org: { ...prev.org, feature_overrides: r.feature_overrides } } : prev);
     } catch (e) {
       await notify(e instanceof Error ? e.message : 'Failed to set feature');
+    } finally {
+      setFeatSaving(null);
+    }
+  };
+
+  const setModule = async (module: 'capture_enabled' | 'reconciliation_enabled', enabled: boolean) => {
+    if (!id) return;
+    setFeatSaving(module);
+    try {
+      const r = await api.put<{ capture_enabled: boolean; reconciliation_enabled: boolean }>(
+        `/superadmin/tenants/${id}/modules`, { module, enabled }
+      );
+      setData((prev) => prev ? { ...prev, org: { ...prev.org, ...r } } : prev);
+    } catch (e) {
+      await notify(e instanceof Error ? e.message : 'Failed to set module');
+    } finally {
+      setFeatSaving(null);
+    }
+  };
+
+  const setRedaction = async (categories: string[], note: string) => {
+    if (!id) return;
+    setFeatSaving('redaction');
+    try {
+      const r = await api.put<{ pii_unredacted_categories: string[]; pii_redaction_exempt_note: string | null }>(
+        `/superadmin/tenants/${id}/pii-redaction-exemption`, { categories, note }
+      );
+      setData((prev) => prev ? { ...prev, org: { ...prev.org, ...r } } : prev);
+    } catch (e) {
+      await notify(e instanceof Error ? e.message : 'Failed to set redaction categories');
     } finally {
       setFeatSaving(null);
     }
@@ -488,6 +556,55 @@ export default function TenantDetail() {
         </div>
         {saveMsg && <p className="text-sm text-pass">{saveMsg}</p>}
       </div>
+
+      {/* Data Forms modules — off for everyone by default, staff-enabled */}
+      <div className="bg-card border border-border rounded-card p-4">
+        <h2 className="text-sm font-semibold text-text-primary">Data Forms modules</h2>
+        <p className="text-xs text-text-muted mt-0.5 mb-3">
+          Off for every tenant regardless of plan. Each needs setup done alongside the flag,
+          so switch on only once that is in place.
+        </p>
+        <div className="space-y-3">
+          {DATA_FORMS_MODULES.map((m) => {
+            const on = Boolean(org[m.key]);
+            return (
+              <div key={m.key} className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <label htmlFor={`module-${m.key}`} className="text-sm text-text-primary">
+                    {m.label}
+                  </label>
+                  <p className="text-xs text-text-muted mt-0.5 leading-relaxed">{m.hint}</p>
+                </div>
+                <button
+                  id={`module-${m.key}`}
+                  role="switch"
+                  aria-checked={on}
+                  aria-label={`${m.label} module`}
+                  disabled={featSaving === m.key}
+                  onClick={() => setModule(m.key, !on)}
+                  className={`relative w-11 h-6 rounded-full flex-shrink-0 transition-colors disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
+                    on ? 'bg-primary' : 'bg-border'
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 w-5 h-5 rounded-full bg-card transition-transform ${
+                      on ? 'translate-x-[22px]' : 'translate-x-0.5'
+                    }`}
+                  />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Transcript redaction — the highest-consequence switch on this page */}
+      <RedactionCategoriesCard
+        categories={org.pii_unredacted_categories ?? []}
+        note={org.pii_redaction_exempt_note}
+        saving={featSaving === 'redaction'}
+        onSave={setRedaction}
+      />
 
       {/* Feature overrides */}
       <div className="bg-card rounded-card border border-border p-4">
@@ -902,6 +1019,134 @@ function ScoringNumberField({
         }}
         className="w-full border border-border rounded-btn px-3 py-2 text-sm"
       />
+    </div>
+  );
+}
+
+/**
+ * Transcript redaction categories.
+ *
+ * The highest-consequence switch on this page: permitting a category means the
+ * tenant's stored transcripts keep that data in the clear, on every call, for
+ * their full retention period. Health (`phi`) is Article 9 special-category data
+ * and needs a signed DPIA before it is permitted — the others are ordinary
+ * personal data under Article 6 and a far lower bar.
+ *
+ * Deliberately staged rather than saving on each click: a checkbox that took
+ * effect immediately would make it far too easy to enable health retention with
+ * one misplaced click. Changes are held, the consequence is spelled out, and a
+ * justification is required before anything is written.
+ */
+function RedactionCategoriesCard({
+  categories,
+  note,
+  saving,
+  onSave,
+}: {
+  categories: string[];
+  note: string | null;
+  saving: boolean;
+  onSave: (categories: string[], note: string) => void;
+}) {
+  const [draft, setDraft] = useState<string[]>(categories);
+  const [justification, setJustification] = useState('');
+
+  useEffect(() => {
+    setDraft(categories);
+    setJustification('');
+  }, [categories]);
+
+  const toggle = (key: string) =>
+    setDraft((d) => (d.includes(key) ? d.filter((k) => k !== key) : [...d, key]));
+
+  const dirty =
+    draft.length !== categories.length || draft.some((c) => !categories.includes(c));
+  const addsHealth = draft.includes('phi') && !categories.includes('phi');
+  const addsNumbers = draft.includes('numbers') && !categories.includes('numbers');
+
+  return (
+    <div className="bg-card border border-border rounded-card p-4">
+      <h2 className="text-sm font-semibold text-text-primary">Transcript redaction</h2>
+      <p className="text-xs text-text-muted mt-0.5 mb-3 leading-relaxed">
+        Categories this tenant may keep in the clear in stored transcripts. Everything not
+        ticked stays redacted. Card and bank data can never be exempted and is not listed.
+      </p>
+
+      <div className="space-y-1.5">
+        {REDACTION_CATEGORIES.map((c) => (
+          <label key={c.key} className="flex items-center gap-2 text-sm text-text-primary">
+            <input
+              type="checkbox"
+              className="accent-primary"
+              checked={draft.includes(c.key)}
+              disabled={saving}
+              onChange={() => toggle(c.key)}
+            />
+            <span>{c.label}</span>
+            {c.article9 && (
+              <span className="text-[11px] font-semibold text-fail">Special category — DPIA required</span>
+            )}
+          </label>
+        ))}
+      </div>
+
+      {addsHealth && (
+        <div className="mt-3 bg-fail-bg text-fail rounded-btn px-3 py-2 text-xs leading-relaxed">
+          Permitting health data means every customer&rsquo;s conditions, medication and
+          procedures are stored in readable form on every call, for this tenant&rsquo;s full
+          retention period. Do not enable without a signed DPIA.
+        </div>
+      )}
+      {addsNumbers && (
+        <div className="mt-2 bg-review-bg text-review rounded-btn px-3 py-2 text-xs leading-relaxed">
+          Number sequences are what currently catch bank details spoken aloud, because the
+          per-entity detectors miss them. Do not enable until digit-run redaction is in place
+          and verified.
+        </div>
+      )}
+
+      {dirty && (
+        <div className="mt-3">
+          <label htmlFor="redaction-note" className="block text-xs font-medium text-text-muted mb-1">
+            Justification (recorded to the audit log)
+          </label>
+          <input
+            id="redaction-note"
+            value={justification}
+            onChange={(e) => setJustification(e.target.value)}
+            placeholder="DPIA reference and approver"
+            disabled={saving}
+            className="w-full border border-border rounded-btn px-3 py-2 text-sm disabled:opacity-60"
+          />
+          <div className="flex items-center gap-2 mt-2">
+            <button
+              onClick={() => onSave(draft, justification)}
+              disabled={saving || (draft.length > 0 && justification.trim() === '')}
+              className="px-[18px] py-[9px] rounded-btn text-sm font-semibold bg-primary text-white hover:bg-primary-hover disabled:opacity-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+            >
+              {saving ? 'Saving…' : 'Save redaction settings'}
+            </button>
+            <button
+              onClick={() => { setDraft(categories); setJustification(''); }}
+              disabled={saving}
+              className="px-[18px] py-[9px] rounded-btn border border-border text-sm font-semibold hover:bg-sidebar-hover transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {!dirty && note && (
+        <p className="text-xs text-text-muted mt-3">
+          Current justification: <span className="text-text-secondary">{note}</span>
+        </p>
+      )}
+      {!dirty && categories.length === 0 && (
+        <p className="text-xs text-text-muted mt-3">
+          Everything is redacted — the default, and correct for any tenant without a signed DPIA.
+        </p>
+      )}
     </div>
   );
 }

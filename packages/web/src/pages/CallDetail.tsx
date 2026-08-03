@@ -54,6 +54,12 @@ export function CallDetail() {
     (evidenceKind === 'call' || evidenceKind === 'journey') && evidenceItemId
       ? { kind: evidenceKind, itemScoreId: evidenceItemId }
       : null;
+  // ?t=<seconds> cues the player directly, for links that carry their own
+  // timestamp rather than pointing at a scored checkpoint — reconciliation
+  // evidence arrives this way. Parsed defensively: a junk value must not seek to
+  // NaN, which leaves the player stuck and unplayable.
+  const tParam = Number(searchParams.get('t'));
+  const seekSeconds = Number.isFinite(tParam) && tParam > 0 ? tParam : null;
   const { user } = useAuth();
   const scoreOnly = useScoreOnly();
   const queryClient = useQueryClient();
@@ -374,6 +380,54 @@ export function CallDetail() {
           </div>
         )}
 
+        {/* Withheld rather than absent. Said plainly, because "no transcript" and
+            "you are not permitted to read this transcript" send someone looking in
+            completely different places. Audio stays available: the restriction is
+            on the stored readable record, and listening was never gated. */}
+        {call.transcript_restricted && (
+          <div className="bg-card border border-border rounded-card overflow-hidden flex flex-col">
+            <div className="px-5 py-4 border-b border-border">
+              <h3 className="text-section-title text-text-primary">Transcript</h3>
+              {call.file_key && (
+                <AudioPlayer
+                  callId={call.id}
+                  startAt={evidenceForThisCall?.timestamp_seconds ?? seekSeconds}
+                  duration={call.duration_seconds}
+                  label={call.file_name}
+                  className="mt-3"
+                />
+              )}
+            </div>
+            <div className="px-5 py-6 flex items-start gap-3">
+              <svg
+                className="w-5 h-5 text-text-muted flex-shrink-0 mt-0.5"
+                viewBox="0 0 24 24"
+                fill="none"
+                strokeWidth="1.8"
+                aria-hidden="true"
+              >
+                <path
+                  d="M5 11V8a5 5 0 0 1 10 0M4.5 11h11a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1Z"
+                  stroke="currentColor"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+              <div>
+                <p className="text-table-cell text-text-primary font-medium">
+                  Transcript restricted to administrators
+                </p>
+                <p className="text-xs text-text-muted mt-1 leading-relaxed">
+                  Your organisation stores transcripts with personal and health details in
+                  readable form, and access to those is limited to administrators. Scores,
+                  breaches and the quoted evidence for each checkpoint are all still shown, and
+                  the recording is available above.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Transcript panel — flex column so the viewer fills the card height,
             which the grid stretches to match the scorecard column. */}
         {call.transcript_text && (
@@ -385,7 +439,7 @@ export function CallDetail() {
               {call.file_key && (
                 <AudioPlayer
                   callId={call.id}
-                  startAt={evidenceForThisCall?.timestamp_seconds ?? null}
+                  startAt={evidenceForThisCall?.timestamp_seconds ?? seekSeconds}
                   duration={call.duration_seconds}
                   label={call.file_name}
                   className="mt-3"

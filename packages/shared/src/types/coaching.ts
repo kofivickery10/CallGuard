@@ -43,6 +43,10 @@ export interface OrganizationInfo {
   // Data Capture module switch (migration 059). Set by CallGuard staff, like
   // the other scoring-policy columns; gates capture jobs, routes and UI.
   capture_enabled?: boolean;
+  // Application reconciliation module switch (migration 080). Independent of
+  // capture_enabled: a tenant can run their own question set without ever
+  // comparing it against an insurer's submitted application, and vice versa.
+  reconciliation_enabled?: boolean;
   // Stereo channel the adviser is recorded on: 0 = left, 1 = right, null = auto-detect.
   adviser_channel?: number | null;
   // Opt-in (default false) to let CallGuard use anonymised, customer-derived
