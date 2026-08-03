@@ -20,5 +20,14 @@ evaluation-report.json
 docs/trustpoint/*.docx
 docs/trustpoint/*.xlsx
 
+# Reconciliation test corpus: real application PDFs containing special-category
+# (health) personal data. NEVER commit. Local evaluation only, delete when done.
+docs/trustpoint/samples/
+
+
 # Local direnv / Claude tooling config (machine-specific)
 .envrc
+
+# Generated document renders — the markdown is the master, rebuild with docs/dpia/build.mjs
+docs/dpia/*.generated.html
+docs/dpia/.body.*

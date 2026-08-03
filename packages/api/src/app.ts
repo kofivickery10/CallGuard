@@ -39,6 +39,7 @@ import { superadminRouter } from './routes/superadmin.js';
 import { announcementsRouter } from './routes/announcements.js';
 import { customersRouter } from './routes/customers.js';
 import { captureRouter } from './routes/capture.js';
+import { reconciliationRouter } from './routes/reconciliation.js';
 import { usersRouter } from './routes/users.js';
 import { productsRouter } from './routes/products.js';
 
@@ -225,6 +226,7 @@ app.use('/api/superadmin', superadminRouter);
 app.use('/api/customers', customersRouter);
 app.use('/api/journeys', journeysRouter);
 app.use('/api/capture', captureRouter);
+app.use('/api/reconciliation', reconciliationRouter);
 app.use('/api/review-items', reviewRouter);
 app.use('/api/users', usersRouter);
 app.use('/api/products', productsRouter);

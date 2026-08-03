@@ -7,6 +7,7 @@ import { useDialog } from '../components/DialogProvider';
 import { ScoreGauge } from '../components/ScoreGauge';
 import { CoachingPanel } from '../components/CoachingPanel';
 import { CapturePanel } from '../components/CapturePanel';
+import { ReconciliationPanel } from '../components/ReconciliationPanel';
 import { ItemResultBadge } from '../components/ItemResultBadge';
 import { SeverityBadge } from '../components/BreachBadges';
 import { ScoreCorrectionModal } from '../components/ScoreCorrectionModal';
@@ -658,6 +659,9 @@ export function JourneyDetail() {
       {/* Data Capture record (module-gated: renders nothing when the sale has
           no capture run). Deliberately below and separate from the QA score. */}
       <CapturePanel journeyId={journey.id} isAdmin={isAdmin} />
+      {/* Below Data Capture: capture answers "did we get what the customer
+          said", reconciliation answers "does the application match it". */}
+      <ReconciliationPanel journeyId={journey.id} isAdmin={isAdmin} />
 
       {correctingItem && (
         <ScoreCorrectionModal

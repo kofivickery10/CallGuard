@@ -21,6 +21,8 @@ const ScorecardEditor = lazyWithRetry(() => import('./pages/ScorecardEditor').th
 const DataCaptureForms = lazyWithRetry(() => import('./pages/DataCaptureForms').then((m) => ({ default: m.DataCaptureForms })));
 const DataCaptureFormEditor = lazyWithRetry(() => import('./pages/DataCaptureFormEditor').then((m) => ({ default: m.DataCaptureFormEditor })));
 const DataCapture = lazyWithRetry(() => import('./pages/DataCapture').then((m) => ({ default: m.DataCapture })));
+const ApplicationChecks = lazyWithRetry(() => import('./pages/ApplicationChecks').then((m) => ({ default: m.ApplicationChecks })));
+const DocumentProfileReview = lazyWithRetry(() => import('./pages/DocumentProfileReview').then((m) => ({ default: m.DocumentProfileReview })));
 const Team = lazyWithRetry(() => import('./pages/Team').then((m) => ({ default: m.Team })));
 const KnowledgeBase = lazyWithRetry(() => import('./pages/KnowledgeBase').then((m) => ({ default: m.KnowledgeBase })));
 const Integrations = lazyWithRetry(() => import('./pages/Integrations').then((m) => ({ default: m.Integrations })));
@@ -100,6 +102,11 @@ export function App() {
                     <Route path="/capture-forms/new" element={<DataCaptureFormEditor />} />
                     <Route path="/capture-forms/:id/edit" element={<DataCaptureFormEditor />} />
                     <Route path="/data-capture" element={<DataCapture />} />
+                    <Route path="/application-checks" element={<ApplicationChecks />} />
+                    <Route
+                      path="/application-checks/profiles/:id"
+                      element={<DocumentProfileReview />}
+                    />
                     <Route path="/team" element={<Team />} />
                     <Route path="/knowledge-base" element={<KnowledgeBase />} />
                     <Route path="/integrations" element={<Integrations />} />

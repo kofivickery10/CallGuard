@@ -1,0 +1,240 @@
+import { config } from '../config.js';
+import { CLAUDE_MODELS } from '@callguard/shared';
+import { CACHE_TTL_HEADERS } from './scoring.js';
+
+// ============================================================
+// Extracting what the customer actually said, for questions the deterministic
+// pass has already LOCATED in the transcript.
+//
+// WHY THIS IS A SEPARATE, NARROW PASS
+//
+// Everything up to here is deterministic: which questions the application asked,
+// whether each was put to the customer, and whether absence is meaningful. That
+// matters because a reconciliation flag is an allegation about an adviser, and
+// "these words appear nowhere in the call" is reproducible in a way a model's
+// opinion is not.
+//
+// Pulling a customer's answer out of surrounding speech is the one part a model
+// is genuinely better at — "about seventeen and a half stone" against
+// "111.1kg or 17 stone 7 pounds" needs reading, not matching. So the model is
+// given exactly that job and nothing else.
+//
+// It sees only the EXCERPTS around already-located questions, never the whole
+// transcript. For a fifty-question application that is roughly 4k tokens rather
+// than 30k, and it keeps the model away from the parts of the call it has no
+// business reading.
+// ============================================================
+
+const DEFAULT_VALUE_MODEL = CLAUDE_MODELS.HAIKU;
+
+export interface ValueExtractionRequest {
+  /** Stable key so answers can be matched back. Use the question's sort order. */
+  key: string;
+  question: string;
+  /** What the insurer recorded, for context on what kind of answer to look for. */
+  applicationAnswer: string;
+  /** The passage of call around where the question was located. */
+  excerpt: string;
+}
+
+export interface ExtractedValue {
+  key: string;
+  /**
+   * What the customer said, normalised to the shape of the application answer.
+   * Null when the excerpt does not actually contain the customer answering — the
+   * deterministic pass located the TOPIC, which is not the same thing.
+   */
+  value: string | null;
+  /** True when the topic was discussed but the value itself was redacted out. */
+  redacted: boolean;
+  confidence: number;
+  reasoning: string;
+}
+
+const TOOL_SCHEMA = {
+  type: 'object' as const,
+  properties: {
+    answers: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          key: { type: 'string' },
+          value: { type: ['string', 'null'] },
+          redacted: { type: 'boolean' },
+          confidence: { type: 'number', minimum: 0, maximum: 1 },
+          reasoning: { type: 'string' },
+        },
+        required: ['key', 'value', 'redacted', 'confidence', 'reasoning'],
+      },
+    },
+  },
+  required: ['answers'],
+};
+
+const INSTRUCTIONS = `You are reading short excerpts from a recorded protection-insurance
+sale. For each excerpt you are told the question the insurer asked and the answer
+recorded on the submitted application. Your ONLY job is to report what the
+CUSTOMER said in that excerpt.
+
+Rules:
+
+1. Report the CUSTOMER's answer, never the adviser's. The adviser asking "so no
+   heart problems?" is not the customer answering.
+
+2. Return value: null when the excerpt does not contain the customer answering
+   that question. Locating the topic is not the same as an answer being given —
+   the adviser may have mentioned it in passing, read a list aloud, or moved on.
+   A null is a correct and useful result. Do not reach for an answer that is not
+   there.
+
+3. NEVER let the application answer influence what you report. It is given only
+   so you know what kind of value to look for (a yes/no, a number, a condition
+   name). If the customer said something different, report what they said. The
+   entire purpose of this exercise is to find those disagreements, so anchoring
+   on the application answer defeats it.
+
+4. Set redacted: true when the topic is clearly being answered but the value
+   itself has been removed, which appears as a tag in square brackets such as
+   [CONDITION_7], [DRUG_3] or [NUMBER]. In that case also return value: null. We
+   know they answered; we cannot see what they said.
+
+5. Normalise to the form the question invites: "yeah, never touched them" for a
+   smoking question is "No". Keep numbers as the customer gave them.
+
+6. Be honest in confidence. Below 0.6 means you are guessing, and a guess here
+   becomes an allegation against an adviser.`;
+
+/**
+ * Extract customer answers from located excerpts.
+ *
+ * Returns an empty array rather than throwing when there is nothing to do, so
+ * callers need no special case for a sale where every question was missed.
+ */
+export async function extractCallAnswers(
+  requests: ValueExtractionRequest[],
+  modelOverride: string | null = null
+): Promise<{
+  values: ExtractedValue[];
+  usage: { input_tokens: number; output_tokens: number };
+  model: string;
+}> {
+  if (requests.length === 0) {
+    return { values: [], usage: { input_tokens: 0, output_tokens: 0 }, model: '' };
+  }
+  if (!config.anthropic.apiKey) {
+    throw new Error('ANTHROPIC_API_KEY is not set in .env - needed for reconciliation');
+  }
+
+  const { default: Anthropic } = await import('@anthropic-ai/sdk');
+  const client = new Anthropic({ apiKey: config.anthropic.apiKey });
+  const model = modelOverride ?? DEFAULT_VALUE_MODEL;
+
+  const body = requests
+    .map(
+      (r) =>
+        `--- key: ${r.key}\nQuestion: ${r.question}\nRecorded on the application: ${r.applicationAnswer}\nExcerpt from the call:\n${r.excerpt}`
+    )
+    .join('\n\n');
+
+  // Budget per question, capped — the same truncation-avoidance shape as scoring
+  // and capture. A truncated tool call would silently drop the tail of the
+  // question set, which would read as "not answered" for every one of them.
+  const maxTokens = Math.min(16000, 1024 + requests.length * 180);
+
+  const response = await client.messages.stream(
+    {
+      model,
+      max_tokens: maxTokens,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: INSTRUCTIONS },
+            { type: 'text', text: body },
+          ],
+        },
+      ],
+      tools: [
+        {
+          name: 'submit_answers',
+          description: 'Report what the customer said for each excerpt',
+          input_schema: TOOL_SCHEMA,
+        },
+      ],
+      tool_choice: { type: 'tool', name: 'submit_answers' },
+    },
+    CACHE_TTL_HEADERS
+  ).finalMessage();
+
+  const toolUse = response.content.find((b) => b.type === 'tool_use');
+  if (!toolUse || toolUse.type !== 'tool_use') {
+    throw new Error('Claude did not return structured call answers');
+  }
+  const output = toolUse.input as { answers?: unknown };
+  if (!Array.isArray(output.answers)) {
+    throw new Error(
+      `Claude returned incomplete call answers (stop_reason=${response.stop_reason}, requests=${requests.length}) — likely truncated`
+    );
+  }
+
+  return {
+    values: sanitiseValues(output.answers, requests),
+    usage: {
+      input_tokens: response.usage.input_tokens,
+      output_tokens: response.usage.output_tokens,
+    },
+    model,
+  };
+}
+
+/** Redaction placeholders, which must never be reported as a customer's answer. */
+const REDACTION_TAG = /\[[A-Z][A-Z_]*(_\d+)?\]/;
+
+/**
+ * Coerce and defend the model's output.
+ *
+ * Two things are enforced in code rather than trusted to the prompt: an answer
+ * that is really a redaction placeholder is downgraded to redacted-with-no-value,
+ * and any key the model invented is discarded. A hallucinated key would attach an
+ * answer to the wrong question, which is worse than no answer at all.
+ */
+export function sanitiseValues(
+  raw: unknown[],
+  requests: ValueExtractionRequest[]
+): ExtractedValue[] {
+  const validKeys = new Set(requests.map((r) => r.key));
+  const seen = new Set<string>();
+  const out: ExtractedValue[] = [];
+
+  for (const entry of raw) {
+    if (!entry || typeof entry !== 'object') continue;
+    const e = entry as Record<string, unknown>;
+    const key = typeof e.key === 'string' ? e.key : null;
+    if (!key || !validKeys.has(key) || seen.has(key)) continue;
+    seen.add(key);
+
+    let value = typeof e.value === 'string' && e.value.trim() !== '' ? e.value.trim() : null;
+    let redacted = e.redacted === true;
+
+    // The value IS a placeholder — the topic was answered, the content is gone.
+    if (value && REDACTION_TAG.test(value)) {
+      value = null;
+      redacted = true;
+    }
+
+    const confidence =
+      typeof e.confidence === 'number' && e.confidence >= 0 && e.confidence <= 1
+        ? e.confidence
+        : 0.5;
+
+    out.push({
+      key,
+      value,
+      redacted,
+      confidence,
+      reasoning: typeof e.reasoning === 'string' ? e.reasoning : '',
+    });
+  }
+  return out;
+}

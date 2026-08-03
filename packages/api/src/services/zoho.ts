@@ -550,6 +550,143 @@ export async function fetchSaleClientName(
   }
 }
 
+// ── Attachments (Data Forms reconciliation) ───────────────────────────────────
+// The submitted insurer application arrives as a PDF attached to the sale record.
+// Reconciliation needs to list what is attached and pull down the one that is
+// actually the application — see services/application-pdf.ts for why that choice
+// must be made on content rather than filename.
+
+export interface ZohoAttachment {
+  id: string;
+  file_name: string;
+  size: number | null;
+  created_time: string | null;
+}
+
+export interface SaleAttachmentsResult {
+  configured: boolean;
+  attachments: ZohoAttachment[];
+}
+
+/**
+ * List the files attached to a sale record, newest first.
+ *
+ * Returns `configured: false` rather than throwing when the tenant has no active
+ * connection or no sale module set, matching fetchSaleProducts — a tenant part
+ * way through Zoho setup should not generate reconciliation failures.
+ */
+export async function listSaleAttachments(
+  organizationId: string,
+  recordId: string
+): Promise<SaleAttachmentsResult> {
+  const conn = await getConnectionRow(organizationId);
+  if (!conn || conn.status !== 'active' || !conn.sale_module) {
+    return { configured: false, attachments: [] };
+  }
+
+  const { accessToken, apiDomain } = await ensureAccessToken(conn);
+  const res = await zohoApi(
+    apiDomain,
+    accessToken,
+    `/crm/v8/${encodeURIComponent(conn.sale_module)}/${encodeURIComponent(recordId)}/Attachments`
+  );
+
+  // 204 = the record exists but has nothing attached yet. Expected: the pack is
+  // uploaded after the call, so a sale scored promptly will legitimately have no
+  // application to reconcile against for a while.
+  if (res.status === 204) return { configured: true, attachments: [] };
+
+  // A token issued before a scope widening reads 401 rather than 403. Surface it
+  // as a reconnect prompt instead of a generic failure, as the metadata reads do.
+  if (res.status === 401) {
+    throw new ZohoScopeError(
+      'Zoho rejected the attachment read (401). The stored token may predate the ' +
+        'scopes needed to read attachments — the tenant needs to reconnect.'
+    );
+  }
+  if (!res.ok) {
+    throw new Error(
+      `Zoho attachment list failed: ${res.status} ${(await res.text()).slice(0, 300)}`
+    );
+  }
+
+  const body = (await res.json()) as {
+    data?: Array<{
+      id?: string;
+      File_Name?: string;
+      Size?: string | number | null;
+      Created_Time?: string | null;
+    }>;
+  };
+
+  const attachments: ZohoAttachment[] = (body.data ?? [])
+    .filter((a): a is { id: string; File_Name: string } & typeof a => !!a.id && !!a.File_Name)
+    .map((a) => ({
+      id: a.id,
+      file_name: a.File_Name,
+      size: a.Size == null ? null : Number(a.Size) || null,
+      created_time: a.Created_Time ?? null,
+    }));
+
+  // Newest first: where an application has been amended and re-uploaded, the
+  // latest is the one that was actually submitted. Reconciling against a
+  // superseded copy would report mismatches that were already corrected.
+  attachments.sort((a, b) => (b.created_time ?? '').localeCompare(a.created_time ?? ''));
+
+  return { configured: true, attachments };
+}
+
+/**
+ * Download one attachment as a Buffer.
+ *
+ * Unlike every other Zoho call in this file the response body is binary, not
+ * JSON, so it is read with arrayBuffer(). `maxBytes` guards against pulling
+ * something unexpectedly large into memory — application packs run to tens of
+ * pages, not hundreds of megabytes.
+ */
+export async function downloadSaleAttachment(
+  organizationId: string,
+  recordId: string,
+  attachmentId: string,
+  maxBytes = 25 * 1024 * 1024
+): Promise<Buffer> {
+  const conn = await getConnectionRow(organizationId);
+  if (!conn || conn.status !== 'active' || !conn.sale_module) {
+    throw new Error('Zoho connection is not configured for attachment download');
+  }
+
+  const { accessToken, apiDomain } = await ensureAccessToken(conn);
+  const res = await zohoApi(
+    apiDomain,
+    accessToken,
+    `/crm/v8/${encodeURIComponent(conn.sale_module)}/${encodeURIComponent(recordId)}/` +
+      `Attachments/${encodeURIComponent(attachmentId)}`
+  );
+
+  if (res.status === 401) {
+    throw new ZohoScopeError(
+      'Zoho rejected the attachment download (401) — the tenant may need to reconnect.'
+    );
+  }
+  if (!res.ok) {
+    throw new Error(
+      `Zoho attachment download failed: ${res.status} ${(await res.text()).slice(0, 300)}`
+    );
+  }
+
+  const declared = Number(res.headers.get('Content-Length'));
+  if (Number.isFinite(declared) && declared > maxBytes) {
+    throw new Error(`Attachment ${attachmentId} is ${declared} bytes, over the ${maxBytes} limit`);
+  }
+
+  const buf = Buffer.from(await res.arrayBuffer());
+  // Content-Length is advisory; check what actually arrived too.
+  if (buf.byteLength > maxBytes) {
+    throw new Error(`Attachment ${attachmentId} is ${buf.byteLength} bytes, over the ${maxBytes} limit`);
+  }
+  return buf;
+}
+
 // Raised when a metadata read fails because the token predates the widened
 // scope (OAUTH_SCOPE) — the tenant must reconnect. Surfaced distinctly so the
 // UI can prompt for a reconnect rather than showing a generic error.
