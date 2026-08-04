@@ -201,7 +201,7 @@ reviewRouter.post('/resolve', requireActioner, async (req, res, next) => {
     const rawScore = result === 'pass' ? 1 : 0;
 
     if (kind === 'call') {
-      const callId = await resolveCallItem(orgId, item_score_id, result, normalized, rawScore, settings.passThreshold);
+      const callId = await resolveCallItem(orgId, req.user!.userId, item_score_id, result, normalized, rawScore, settings.passThreshold);
       // Re-push the corrected score downstream (webhook + Zoho), so the CRM
       // reflects the human verdict rather than the AI's provisional score.
       // Best-effort and after commit — never blocks the reviewer's response.
@@ -230,6 +230,7 @@ reviewRouter.post('/resolve', requireActioner, async (req, res, next) => {
 
 async function resolveCallItem(
   orgId: string,
+  userId: string,
   itemScoreId: string,
   result: 'pass' | 'fail',
   normalized: number,
@@ -274,11 +275,17 @@ async function resolveCallItem(
     ]);
 
     if (result === 'fail') {
+      // Stamped confirmed: a person looked at this checkpoint and ruled it a
+      // failure, which is the strongest standing migration 078 models. Without
+      // it the register cannot tell a human verdict from an unreviewed AI
+      // finding, and asks the QA team to confirm a decision they just made.
       await tx.query(
-        `INSERT INTO breaches (organization_id, call_id, call_item_score_id, scorecard_item_id, severity, detected_at)
-         VALUES ($1, $2, $3, $4, $5, now())
-         ON CONFLICT (call_item_score_id) DO NOTHING`,
-        [orgId, row.call_id, itemScoreId, row.scorecard_item_id, severity]
+        `INSERT INTO breaches (organization_id, call_id, call_item_score_id, scorecard_item_id, severity,
+                               detected_at, confirmed_by, confirmed_at)
+         VALUES ($1, $2, $3, $4, $5, now(), $6, now())
+         ON CONFLICT (call_item_score_id)
+           DO UPDATE SET confirmed_by = EXCLUDED.confirmed_by, confirmed_at = EXCLUDED.confirmed_at`,
+        [orgId, row.call_id, itemScoreId, row.scorecard_item_id, severity, userId]
       );
     } else {
       await tx.query('DELETE FROM breaches WHERE call_item_score_id = $1', [itemScoreId]);
@@ -367,11 +374,14 @@ async function resolveJourneyItem(
     ]);
 
     if (result === 'fail') {
+      // Stamped confirmed — see the per-call path above for why.
       await tx.query(
-        `INSERT INTO breaches (organization_id, journey_id, journey_item_score_id, scorecard_item_id, severity, detected_at)
-         VALUES ($1, $2, $3, $4, $5, now())
-         ON CONFLICT (journey_item_score_id) DO NOTHING`,
-        [orgId, row.journey_id, itemScoreId, row.scorecard_item_id, severity]
+        `INSERT INTO breaches (organization_id, journey_id, journey_item_score_id, scorecard_item_id, severity,
+                               detected_at, confirmed_by, confirmed_at)
+         VALUES ($1, $2, $3, $4, $5, now(), $6, now())
+         ON CONFLICT (journey_item_score_id)
+           DO UPDATE SET confirmed_by = EXCLUDED.confirmed_by, confirmed_at = EXCLUDED.confirmed_at`,
+        [orgId, row.journey_id, itemScoreId, row.scorecard_item_id, severity, userId]
       );
     } else {
       await tx.query('DELETE FROM breaches WHERE journey_item_score_id = $1', [itemScoreId]);
