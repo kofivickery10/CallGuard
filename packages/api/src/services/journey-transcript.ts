@@ -21,6 +21,40 @@ export interface TranscriptCallInput {
 export const CALL_MARKER = /^\[Call (\d+)\]\s*/;
 
 /**
+ * Which call an evidence quote came from, as a 0-based index into the calls
+ * passed to buildCombinedTranscript — or null when it cannot be established.
+ *
+ * The model is asked to prefix every quote with "[Call N]" and mostly does, but
+ * it drops the marker on roughly one quote in six. A null index is not a
+ * cosmetic loss: routes/review.ts can only load an evidence panel through
+ * journey_item_scores.source_call_id, so an unattributed checkpoint gives the
+ * reviewer no transcript excerpt, no audio jump, and — because the warning
+ * renders from the same payload — no notice that the call's speaker labels were
+ * unreliable. They are asked to rule on the model's prose alone.
+ *
+ * So where the answer is not genuinely ambiguous, resolve it instead of giving
+ * up: a journey with exactly one call has exactly one call the quote can have
+ * come from, marker or no marker.
+ *
+ * Everything genuinely ambiguous still returns null — a missing marker across
+ * several calls, or a number outside the range. Guessing the nearest call would
+ * mis-attribute evidence while looking correct, which is worse than none.
+ */
+export function resolveSourceCallIndex(
+  evidence: string | null | undefined,
+  callCount: number
+): number | null {
+  const match = evidence?.match(CALL_MARKER);
+  if (match) {
+    const index = Number(match[1]) - 1;
+    if (index >= 0 && index < callCount) return index;
+    // Out of range: the model invented a call number. Fall through rather than
+    // trust it — the single-call case below is still unambiguous.
+  }
+  return callCount === 1 ? 0 : null;
+}
+
+/**
  * One call-delimited transcript for a whole journey, so a single Claude call
  * sees every conversation at once (a consent given in call 1 and a sale closed
  * in call 3 are evaluated together). Callers must pass calls already filtered

@@ -10,7 +10,7 @@ import { deliverCallScored } from '../../services/webhook-delivery.js';
 import { sendOpsAlert } from '../../services/ops-alert.js';
 import { pushJourneyScored, fetchSaleProducts } from '../../services/zoho.js';
 import { maybeStartJourneyCapture } from '../../services/capture-runs.js';
-import { buildCombinedTranscript, CALL_MARKER } from '../../services/journey-transcript.js';
+import { buildCombinedTranscript, resolveSourceCallIndex } from '../../services/journey-transcript.js';
 import { detectProductsFromTranscript } from '../../services/product-resolution.js';
 import { isItemPass, deriveSeverity, callPasses, resolveBranchWithSource, isNoScoreCrmStage } from '@callguard/shared';
 import {
@@ -440,9 +440,8 @@ export async function processScoreJourney(job: Job<ScoreJourneyJobData>) {
     for (const itemScore of output.items) {
       const item = aiItems.find((i) => i.id === itemScore.scorecard_item_id)!;
       const normalized = normalizeScore(itemScore.score, item.score_type);
-      const markerMatch = itemScore.evidence?.match(CALL_MARKER);
-      const callIndex = markerMatch ? Number(markerMatch[1]) - 1 : -1;
-      const sourceCallId = callIndex >= 0 && callIndex < callIdsInOrder.length ? callIdsInOrder[callIndex]! : null;
+      const callIndex = resolveSourceCallIndex(itemScore.evidence, callIdsInOrder.length);
+      const sourceCallId = callIndex === null ? null : callIdsInOrder[callIndex]!;
       // Release a consent gate whose evidence actually came from a call we CAN
       // attribute. The pre-scoring pass had to assume the worst because it did
       // not know which call the quote would come from; now it does.
@@ -452,8 +451,12 @@ export async function processScoreJourney(job: Job<ScoreJourneyJobData>) {
       // 57-minute call attributed at 0.80. Measured on a real Trust Point sale,
       // which is what surfaced it.
       //
-      // A null sourceCallId means the scorer cited no particular call, so there
-      // is nothing to release against and the conservative routing stands.
+      // A null sourceCallId means the scorer cited no particular call AND the
+      // sale has more than one it could have meant, so there is nothing to
+      // release against and the conservative routing stands. On a single-call
+      // sale the citation adds nothing — there is one call either way — so
+      // those gates now release or hold on that call's real confidence rather
+      // than being held by a missing marker.
       const sourceCallConfidence = sourceCallId ? speakerConfidenceByCall.get(sourceCallId) : undefined;
       const evidenceIsWellAttributed =
         sourceCallConfidence !== undefined && sourceCallConfidence >= CONSENT_SPEAKER_CONFIDENCE_FLOOR;
