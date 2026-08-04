@@ -540,7 +540,22 @@ export async function processScoreJourney(job: Job<ScoreJourneyJobData>) {
       if (typeof itemScore.confidence === 'number' && itemScore.confidence < 0.7) {
         caveats.push('low_confidence');
       }
-      if (sourceCallId && speakerUnreliableCalls.has(sourceCallId)) caveats.push('unreliable_speakers');
+      if (sourceCallId) {
+        if (speakerUnreliableCalls.has(sourceCallId)) caveats.push('unreliable_speakers');
+      } else {
+        // No source call: the scorer cited none and the sale has more than one
+        // it could have meant (services/journey-transcript.ts resolves the
+        // single-call case, so a null here is genuine ambiguity).
+        //
+        // This used to fall through the check above and produce NO caveat at
+        // all, which read as "no known weakness" — the register asserting clean
+        // provenance precisely where provenance is unknown. Unknown must not
+        // score better than known-bad.
+        caveats.push('unattributed_evidence');
+        // And if ANY call on the sale has unreliable speakers, the quote may
+        // have come from it. We cannot rule that out, so we do not.
+        if (speakerUnreliableCalls.size > 0) caveats.push('unreliable_speakers');
+      }
       // The branch decides whether this checkpoint applied to the sale at all.
       if (branch && branchSource !== 'crm') caveats.push('guessed_branch');
       return caveats;
