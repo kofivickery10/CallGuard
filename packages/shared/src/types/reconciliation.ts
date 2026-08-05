@@ -8,19 +8,24 @@
 export type ReconciliationRunStatus =
   | 'pending'
   | 'running'
-  // No attachment on the record matched a known document profile. Usually just
-  // means the pack has not been uploaded yet, so it is a waiting state.
+  // Nothing to compare against yet. The pack is attached to the CRM record by
+  // hand after the call, so this is a waiting state, re-checked on a decaying
+  // cadence until the document arrives.
   | 'needs_document'
-  // A document was found but its question set no longer matches the stored
-  // profile — the insurer changed something and a human must confirm before any
-  // answer is judged against it.
+  // A human must confirm how to parse the document before any answer is judged
+  // against it: either the insurer changed their question set (the run carries a
+  // profile_id) or the format has never been seen before (it does not).
   | 'needs_profile'
   // Parsed fine, but the document carries no question set (a unit-based
   // product's summary of key facts). Reported explicitly so a clean result is
   // never mistaken for "the health answers matched" when there were none.
   | 'summary_only'
   | 'completed'
-  | 'failed';
+  | 'failed'
+  // We stopped waiting: no application document was ever attached within the
+  // window, or the sale has no CRM record for one to appear on. Distinct from
+  // 'needs_document', which invites the reader to keep waiting.
+  | 'abandoned';
 
 export type ReconciliationOutcome =
   | 'match'
@@ -56,6 +61,9 @@ export interface ReconciliationRun {
   attachment_name: string | null;
   document_fingerprint: string | null;
   error_message: string | null;
+  /** How many times the run has been processed. Drives the retry cadence. */
+  attempts: number;
+  last_attempt_at: string | null;
   created_at: string;
   completed_at: string | null;
 }

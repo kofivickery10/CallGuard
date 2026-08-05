@@ -8,6 +8,11 @@ const BILLING_JOB_ID = 'billing-snapshot-daily';
 const BILLING_EVERY_MS = 24 * 60 * 60 * 1000;
 const PRODUCT_SYNC_JOB_ID = 'sync-products-daily';
 const PRODUCT_SYNC_EVERY_MS = 24 * 60 * 60 * 1000;
+const RECONCILIATION_SWEEP_JOB_ID = 'reconciliation-sweep';
+// The tick rate, not the per-run retry rate: the sweep decides for itself which
+// waiting runs are due (services/reconciliation-sweep.ts). 30 minutes is the
+// finest cadence that policy asks for, so anything slower would blunt it.
+const RECONCILIATION_SWEEP_EVERY_MS = 30 * 60 * 1000;
 
 /**
  * Registers the maintenance repeatable jobs (daily retention purge + frequent
@@ -51,5 +56,17 @@ export async function refreshRetentionSchedule(): Promise<void> {
       { jobId: PRODUCT_SYNC_JOB_ID, repeat: { every: PRODUCT_SYNC_EVERY_MS } }
     );
     console.log('[Scheduler] Registered daily product-sync job');
+  }
+
+  if (!existing.some((rep) => rep.id === RECONCILIATION_SWEEP_JOB_ID)) {
+    await maintenanceQueue.add(
+      'reconciliation-sweep',
+      {},
+      {
+        jobId: RECONCILIATION_SWEEP_JOB_ID,
+        repeat: { every: RECONCILIATION_SWEEP_EVERY_MS },
+      }
+    );
+    console.log('[Scheduler] Registered reconciliation sweep');
   }
 }

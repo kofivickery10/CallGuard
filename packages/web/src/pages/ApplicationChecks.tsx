@@ -38,10 +38,11 @@ const RUN_STATUS: Record<ReconciliationRunStatus, { label: string; className: st
   completed: { label: 'Checked', className: 'bg-pass-bg text-pass' },
   running: { label: 'Running', className: 'bg-processing-bg text-processing' },
   pending: { label: 'Queued', className: 'bg-processing-bg text-processing' },
-  needs_document: { label: 'No document', className: 'bg-review-bg text-review' },
-  needs_profile: { label: 'Question set changed', className: 'bg-review-bg text-review' },
+  needs_document: { label: 'Waiting for document', className: 'bg-review-bg text-review' },
+  needs_profile: { label: 'Needs review', className: 'bg-review-bg text-review' },
   summary_only: { label: 'No questions', className: 'bg-table-header text-text-secondary' },
   failed: { label: 'Failed', className: 'bg-fail-bg text-fail' },
+  abandoned: { label: 'Never checked', className: 'bg-table-header text-text-secondary' },
 };
 
 /** Stroke icon (§icons) — a document with a warning. */
