@@ -1,0 +1,166 @@
+import { Job } from 'bullmq';
+import { query } from '../../db/client.js';
+import { scoringQueue } from '../queue.js';
+import { maybeStartReconciliation } from '../../services/reconciliation-runs.js';
+import {
+  isDueForRetry,
+  isPastAbandonWindow,
+  attemptJobId,
+  ABANDON_AFTER_MS,
+  STALE_RUNNING_MS,
+} from '../../services/reconciliation-sweep.js';
+
+// ============================================================
+// Reconciliation sweep ('reconciliation-sweep' on the maintenance queue).
+//
+// Reconciliation cannot be a one-shot at score time, because the document it
+// needs does not exist yet: the application pack is attached to the CRM record by
+// hand after the call, usually the same day and sometimes the next morning. A
+// single attempt would leave every sale parked at 'needs_document' for ever, which
+// reads as "checked, found nothing" to anyone looking at the screen.
+//
+// So this does two things on a cadence: starts runs for scored sales that have
+// none, and re-attempts runs still waiting for their document — then abandons the
+// ones that have waited too long, so the CRM API budget is not spent for ever on
+// a sale whose pack is never coming.
+//
+// The cadence itself lives in services/reconciliation-sweep.ts.
+// ============================================================
+
+export interface ReconciliationSweepResult {
+  started: number;
+  retried: number;
+  abandoned: number;
+}
+
+/** Cap per tick. A backlog drains over several ticks rather than in one burst of CRM calls. */
+const MAX_STARTS_PER_TICK = 200;
+const MAX_RETRIES_PER_TICK = 200;
+
+interface WaitingRun {
+  id: string;
+  status: string;
+  attempts: number;
+  created_at: string;
+  last_attempt_at: string | null;
+}
+
+export async function processReconciliationSweep(
+  _job?: Job
+): Promise<ReconciliationSweepResult> {
+  const result: ReconciliationSweepResult = { started: 0, retried: 0, abandoned: 0 };
+  const now = new Date();
+
+  // ── Stop waiting on runs past the window ────────────────────────────────────
+  // Done first so the same tick does not also retry them. The message is written
+  // for the person reading the sale, not for a log: it says what we did and what
+  // would change it.
+  // 'pending' and 'running' are included so a run whose job never landed, or whose
+  // worker died mid-attempt, cannot sit in a non-terminal state for ever: past the
+  // window nothing retries it, so without this it would be stranded silently.
+  const abandoned = await query<{ id: string }>(
+    `UPDATE capture_reconciliation_runs
+        SET status = 'abandoned',
+            completed_at = now(),
+            error_message = CASE WHEN status = 'needs_document' THEN $2 ELSE $3 END
+      WHERE status IN ('needs_document', 'pending', 'running')
+        AND created_at <= now() - ($1 || ' milliseconds')::interval
+      RETURNING id`,
+    [
+      String(ABANDON_AFTER_MS),
+      'No application document was attached to this sale in the CRM, so it was never checked. Attach the pack and re-run the check if this sale still needs one.',
+      'CallGuard stopped trying to check this sale. Re-run the check if it still needs one.',
+    ]
+  );
+  result.abandoned = abandoned.length;
+
+  // ── Sales scored but never started ──────────────────────────────────────────
+  // Normally scoring starts the run itself. This covers the enqueue that failed,
+  // the worker that died mid-tick, and sales scored before the feature was
+  // enabled for the tenant.
+  const unstarted = await query<{ id: string; organization_id: string }>(
+    `SELECT j.id, j.organization_id
+       FROM journeys j
+       JOIN organizations o ON o.id = j.organization_id
+      WHERE o.reconciliation_enabled = true
+        AND j.status = 'scored'
+        AND j.zoho_record_id IS NOT NULL
+        AND j.scored_at > now() - ($1 || ' milliseconds')::interval
+        AND NOT EXISTS (
+              SELECT 1 FROM capture_reconciliation_runs r WHERE r.journey_id = j.id
+            )
+      ORDER BY j.scored_at DESC
+      LIMIT ${MAX_STARTS_PER_TICK}`,
+    [String(ABANDON_AFTER_MS)]
+  );
+
+  for (const journey of unstarted) {
+    try {
+      await maybeStartReconciliation(journey.organization_id, journey.id);
+      result.started++;
+    } catch (err) {
+      console.error(
+        `[Reconciliation sweep] Could not start a run for journey ${journey.id}:`,
+        (err as Error).message
+      );
+    }
+  }
+
+  // ── Runs still waiting for their document, or stranded mid-flight ───────────
+  // 'pending' means the row was written but its job never landed. 'running' means
+  // an attempt started and never finished. Re-attempting either is safe:
+  // processReconcile skips runs that already reached a terminal state, and
+  // replaces a run's items wholesale rather than adding to them.
+  const waiting = await query<WaitingRun>(
+    `SELECT r.id, r.status, r.attempts, r.created_at, r.last_attempt_at
+       FROM capture_reconciliation_runs r
+       JOIN organizations o ON o.id = r.organization_id
+      WHERE o.reconciliation_enabled = true
+        AND r.status IN ('needs_document', 'pending', 'running')
+      ORDER BY r.last_attempt_at ASC NULLS FIRST
+      LIMIT 1000`
+  );
+
+  for (const run of waiting) {
+    if (result.retried >= MAX_RETRIES_PER_TICK) break;
+
+    const createdAt = new Date(run.created_at);
+    // Belt and braces: the UPDATE above should have caught these already, but a
+    // row created between the two statements must not be retried past its window.
+    if (isPastAbandonWindow(now, createdAt)) continue;
+
+    const lastAttemptAt = run.last_attempt_at ? new Date(run.last_attempt_at) : null;
+
+    // Don't trample an attempt that is legitimately still in flight.
+    if (
+      run.status === 'running' &&
+      lastAttemptAt !== null &&
+      now.getTime() - lastAttemptAt.getTime() < STALE_RUNNING_MS
+    ) {
+      continue;
+    }
+
+    if (!isDueForRetry(now, createdAt, lastAttemptAt)) continue;
+
+    try {
+      await scoringQueue.add(
+        'reconcile',
+        { runId: run.id },
+        { jobId: attemptJobId(run.id, run.attempts) }
+      );
+      result.retried++;
+    } catch (err) {
+      console.error(
+        `[Reconciliation sweep] Could not re-enqueue run ${run.id}:`,
+        (err as Error).message
+      );
+    }
+  }
+
+  if (result.started || result.retried || result.abandoned) {
+    console.log(
+      `[Reconciliation sweep] started ${result.started}, retried ${result.retried}, abandoned ${result.abandoned}`
+    );
+  }
+  return result;
+}
