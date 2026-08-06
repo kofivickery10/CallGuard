@@ -15,6 +15,12 @@ export type AuditActionType =
   | 'call.bulk_import'
   | 'call.rescore'
   | 'journey.rescore'
+  // A supervisor fed a reviewed sale back to its adviser, and the adviser's
+  // one-click acknowledgement. Distinct from breach.status_change: that records
+  // a supervisor's own workflow, these record that a conversation with a named
+  // person happened and was received.
+  | 'journey.feedback_sent'
+  | 'journey.feedback_confirmed'
   | 'call.reviewed'
   | 'call.review_cleared'
   | 'score.correct'

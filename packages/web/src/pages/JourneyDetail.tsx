@@ -8,6 +8,7 @@ import { ScoreGauge } from '../components/ScoreGauge';
 import { CoachingPanel } from '../components/CoachingPanel';
 import { CapturePanel } from '../components/CapturePanel';
 import { ReconciliationPanel } from '../components/ReconciliationPanel';
+import { FeedbackPanel } from '../components/FeedbackPanel';
 import { ItemResultBadge } from '../components/ItemResultBadge';
 import { SeverityBadge } from '../components/BreachBadges';
 import { ScoreCorrectionModal } from '../components/ScoreCorrectionModal';
@@ -662,6 +663,9 @@ export function JourneyDetail() {
       {/* Below Data Capture: capture answers "did we get what the customer
           said", reconciliation answers "does the application match it". */}
       <ReconciliationPanel journeyId={journey.id} isAdmin={isAdmin} />
+      {/* Last, because it is the last step of the review: go through the
+          findings, overturn what is wrong, then tell the adviser what stands. */}
+      <FeedbackPanel journeyId={journey.id} canAction={canAction} />
 
       {correctingItem && (
         <ScoreCorrectionModal
