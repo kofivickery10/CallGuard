@@ -588,7 +588,12 @@ export async function listSaleAttachments(
   const res = await zohoApi(
     apiDomain,
     accessToken,
-    `/crm/v8/${encodeURIComponent(conn.sale_module)}/${encodeURIComponent(recordId)}/Attachments`
+    // v8 requires `fields` on a related-list read. Without it the call is
+    // rejected outright with REQUIRED_PARAM_MISSING, which is how this was found
+    // — the first real attachment read against a tenant's CRM returned a 400
+    // rather than a list.
+    `/crm/v8/${encodeURIComponent(conn.sale_module)}/${encodeURIComponent(recordId)}` +
+      `/Attachments?fields=id,File_Name,Size,Created_Time`
   );
 
   // 204 = the record exists but has nothing attached yet. Expected: the pack is
