@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
 
@@ -54,17 +54,135 @@ function formatDate(iso: string): string {
   });
 }
 
-export function FeedbackPanel({ journeyId, canAction }: { journeyId: string; canAction: boolean }) {
+/**
+ * Shared by the panel and the header action, so the two never disagree about
+ * what state the sale is in. React Query dedupes on the key — one request.
+ */
+function useFeedbackState(journeyId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ['journey-feedback', journeyId],
+    queryFn: () => api.get<FeedbackState>(`/journeys/${journeyId}/feedback`),
+    enabled,
+  });
+}
+
+/**
+ * The compact control that sits with Re-score at the top of a sale.
+ *
+ * Deliberately not a second copy of the send form. The panel below owns that,
+ * along with the findings list and the open-review warning — a supervisor should
+ * see what they are about to send before they send it, and duplicating the flow
+ * into a header button would make it possible to skip that. This shows the state
+ * and takes you there.
+ */
+export function FeedbackHeaderAction({
+  journeyId,
+  canAction,
+  onOpen,
+}: {
+  journeyId: string;
+  canAction: boolean;
+  onOpen: () => void;
+}) {
+  const { data } = useFeedbackState(journeyId, canAction);
+  if (!canAction || !data) return null;
+
+  const fb = data.feedback;
+  const base =
+    'inline-flex items-center gap-1.5 px-[18px] py-[9px] rounded-btn text-table-cell font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40';
+
+  if (fb?.confirmed_at) {
+    return (
+      <button
+        type="button"
+        onClick={onOpen}
+        className={`${base} bg-pass-bg text-pass border border-pass/30 hover:border-pass`}
+        title={`${fb.adviser_name} confirmed on ${new Date(fb.confirmed_at).toLocaleDateString('en-GB')}`}
+      >
+        <TickIcon className="w-4 h-4" />
+        Fed back
+      </button>
+    );
+  }
+
+  if (fb) {
+    return (
+      <button
+        type="button"
+        onClick={onOpen}
+        className={`${base} bg-review-bg text-review border border-review/30 hover:border-review`}
+        title={`Sent to ${fb.adviser_name}, not yet confirmed`}
+      >
+        Awaiting confirmation
+      </button>
+    );
+  }
+
+  if (data.adviser.problem) {
+    return (
+      <button
+        type="button"
+        onClick={onOpen}
+        className={`${base} bg-card border border-border text-text-muted hover:border-primary`}
+        title={
+          data.adviser.problem === 'no_adviser'
+            ? 'No adviser is attributed to this sale'
+            : `${data.adviser.name} has no email address`
+        }
+      >
+        Feed back
+      </button>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className={`${base} bg-card border border-border text-text-primary hover:border-primary`}
+      title={`Feed this sale back to ${data.adviser.name}`}
+    >
+      Feed back
+    </button>
+  );
+}
+
+/** Stroke icon — a tick in a circle. No emoji (brand guidelines §icons). */
+function TickIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" strokeWidth="1.8" aria-hidden="true">
+      <path
+        d="M22 11.08V12a10 10 0 1 1-5.93-9.14M22 4 12 14.01l-3-3"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+export function FeedbackPanel({
+  journeyId,
+  canAction,
+  composeSignal = 0,
+}: {
+  journeyId: string;
+  canAction: boolean;
+  /** Increments when the header action is clicked; opens the compose box. */
+  composeSignal?: number;
+}) {
   const qc = useQueryClient();
   const [message, setMessage] = useState('');
   const [composing, setComposing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const { data, isLoading, isError } = useQuery({
-    queryKey: ['journey-feedback', journeyId],
-    queryFn: () => api.get<FeedbackState>(`/journeys/${journeyId}/feedback`),
-    enabled: canAction,
-  });
+  const { data, isLoading, isError } = useFeedbackState(journeyId, canAction);
+
+  // Opened from the header. Only meaningful before anything has been sent —
+  // afterwards the header just scrolls here to show the state.
+  useEffect(() => {
+    if (composeSignal > 0 && !data?.feedback && !data?.adviser.problem) setComposing(true);
+  }, [composeSignal, data?.feedback, data?.adviser.problem]);
 
   const send = useMutation({
     mutationFn: () =>
@@ -87,7 +205,12 @@ export function FeedbackPanel({ journeyId, canAction }: { journeyId: string; can
   if (!canAction) return null;
 
   const shell = (children: React.ReactNode) => (
-    <div className="bg-card border border-border rounded-card overflow-hidden mt-4">
+    // id + scroll-mt: the header action scrolls here rather than duplicating the
+    // send form, so the findings and any warning are always seen before sending.
+    <div
+      id="adviser-feedback"
+      className="bg-card border border-border rounded-card overflow-hidden mt-4 scroll-mt-6"
+    >
       <div className="px-5 py-4 border-b border-border">
         <h3 className="text-section-title text-text-primary">Adviser feedback</h3>
         <p className="text-xs text-text-subtle mt-0.5">
