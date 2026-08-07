@@ -5,6 +5,7 @@ import { maybeStartReconciliation } from '../../services/reconciliation-runs.js'
 import {
   isDueForRetry,
   isPastAbandonWindow,
+  isRetryableFailure,
   attemptJobId,
   ABANDON_AFTER_MS,
   STALE_RUNNING_MS,
@@ -41,9 +42,20 @@ interface WaitingRun {
   id: string;
   status: string;
   attempts: number;
+  failure_streak: number;
   created_at: string;
   last_attempt_at: string | null;
 }
+
+/**
+ * The states a run can be re-attempted from.
+ *
+ * 'failed' belongs here, unobviously. It is written only by the reconcile
+ * processor's catch block — every anticipated outcome has its own status — so it
+ * is an unexpected error on one attempt, and usually a transient one. Leaving it
+ * out is how a CRM API change stranded an entire tenant's sales permanently.
+ */
+const RETRYABLE_STATUSES = ['needs_document', 'pending', 'running', 'failed'];
 
 export async function processReconciliationSweep(
   _job?: Job
@@ -58,18 +70,27 @@ export async function processReconciliationSweep(
   // 'pending' and 'running' are included so a run whose job never landed, or whose
   // worker died mid-attempt, cannot sit in a non-terminal state for ever: past the
   // window nothing retries it, so without this it would be stranded silently.
+  // 'failed' is included for the same reason, but its message keeps the error
+  // that caused it: that is what tells whoever looks why nothing was checked.
   const abandoned = await query<{ id: string }>(
     `UPDATE capture_reconciliation_runs
         SET status = 'abandoned',
             completed_at = now(),
-            error_message = CASE WHEN status = 'needs_document' THEN $2 ELSE $3 END
-      WHERE status IN ('needs_document', 'pending', 'running')
+            error_message = CASE
+              WHEN status = 'needs_document' THEN $2
+              WHEN status = 'failed'
+                THEN $4 || COALESCE(error_message, 'no error was recorded')
+              ELSE $3
+            END
+      WHERE status = ANY($5::text[])
         AND created_at <= now() - ($1 || ' milliseconds')::interval
       RETURNING id`,
     [
       String(ABANDON_AFTER_MS),
       'No application document was attached to this sale in the CRM, so it was never checked. Attach the pack and re-run the check if this sale still needs one.',
       'CallGuard stopped trying to check this sale. Re-run the check if it still needs one.',
+      'CallGuard stopped trying to check this sale after repeated errors. Last error: ',
+      RETRYABLE_STATUSES,
     ]
   );
   result.abandoned = abandoned.length;
@@ -112,13 +133,14 @@ export async function processReconciliationSweep(
   // processReconcile skips runs that already reached a terminal state, and
   // replaces a run's items wholesale rather than adding to them.
   const waiting = await query<WaitingRun>(
-    `SELECT r.id, r.status, r.attempts, r.created_at, r.last_attempt_at
+    `SELECT r.id, r.status, r.attempts, r.failure_streak, r.created_at, r.last_attempt_at
        FROM capture_reconciliation_runs r
        JOIN organizations o ON o.id = r.organization_id
       WHERE o.reconciliation_enabled = true
-        AND r.status IN ('needs_document', 'pending', 'running')
+        AND r.status = ANY($1::text[])
       ORDER BY r.last_attempt_at ASC NULLS FIRST
-      LIMIT 1000`
+      LIMIT 1000`,
+    [RETRYABLE_STATUSES]
   );
 
   for (const run of waiting) {
@@ -128,6 +150,11 @@ export async function processReconciliationSweep(
     // Belt and braces: the UPDATE above should have caught these already, but a
     // row created between the two statements must not be retried past its window.
     if (isPastAbandonWindow(now, createdAt)) continue;
+
+    // A run that has errored on every one of its last several attempts is not
+    // going to come good by being asked again on the same cadence, and each
+    // attempt costs CRM calls. Stop, and leave the error on display.
+    if (run.status === 'failed' && !isRetryableFailure(run.failure_streak)) continue;
 
     const lastAttemptAt = run.last_attempt_at ? new Date(run.last_attempt_at) : null;
 
