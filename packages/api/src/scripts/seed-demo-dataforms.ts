@@ -373,15 +373,11 @@ async function main() {
 
   // ── Part A: the tenant's own question set ──────────────────────────────────
   const form = await queryOne<{ id: string; version: number }>(
-    `INSERT INTO capture_forms (organization_id, name, description, context_label, created_by)
-     VALUES ($1, $2, $3, $4, $5) RETURNING id, version`,
-    [
-      orgId,
-      FORM_NAME,
-      'The questions an insurer expects to have been asked before an application is submitted.',
-      'Protection application',
-      admin?.id ?? null,
-    ]
+    // No description column on capture_forms — context_label is what carries
+    // "what this form is for" (059). Only the FIELDS have descriptions.
+    `INSERT INTO capture_forms (organization_id, name, context_label, created_by)
+     VALUES ($1, $2, $3, $4) RETURNING id, version`,
+    [orgId, FORM_NAME, 'Protection application', admin?.id ?? null]
   );
   const fieldIds = new Map<string, string>();
   for (const [i, f] of FIELDS.entries()) {
