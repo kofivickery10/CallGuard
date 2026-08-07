@@ -59,8 +59,11 @@ export function CapturePanel({ journeyId, isAdmin }: { journeyId: string; isAdmi
       queryClient.invalidateQueries({ queryKey: ['capture-journey', journeyId] });
       void notify('Capture run queued — results will appear here shortly.');
     },
+    // The API's refusals explain themselves in full sentences (a re-run that
+    // cannot tell us anything new, a form with no fields), so show the message
+    // as written rather than prefixing it into something that reads like a bug.
     onError: (err) =>
-      void notify('Failed to run capture: ' + (err instanceof Error ? err.message : 'unknown error')),
+      void notify(err instanceof Error ? err.message : 'Failed to run capture'),
   });
 
   const handleRerun = async () => {

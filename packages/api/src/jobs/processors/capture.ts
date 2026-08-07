@@ -136,9 +136,13 @@ export async function processCapture(job: Job<{ runId: string }>) {
       }
       await tx.query(
         `UPDATE capture_runs
-            SET status = 'completed', model_id = $2, completed_at = now(), error_message = NULL
+            SET status = 'completed', model_id = $2, completed_at = now(),
+                error_message = NULL, calls_captured = $3
           WHERE id = $1`,
-        [runId, model]
+        // Recorded here rather than at enqueue: a call linked between the two
+        // would otherwise be missed, and the re-run guard reads this to tell
+        // "a call was added since" from "nothing has changed".
+        [runId, model, withTranscript.length]
       );
     });
 
