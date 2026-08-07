@@ -252,9 +252,15 @@ export async function processReconcile(job: Job<{ runId: string }>) {
   } catch (err) {
     const message = (err as Error).message;
     console.error(`[Reconciliation] Run ${runId} failed:`, message);
+    // Consecutive, not cumulative: the sweep re-attempts a failed run precisely
+    // because the cause is usually transient, and this is what eventually stops
+    // it doing so for a run that errors every single time.
     await query(
       `UPDATE capture_reconciliation_runs
-          SET status = 'failed', error_message = $1, completed_at = now()
+          SET status = 'failed',
+              failure_streak = failure_streak + 1,
+              error_message = $1,
+              completed_at = now()
         WHERE id = $2`,
       [message.slice(0, 500), runId]
     );
@@ -375,9 +381,14 @@ async function finish(
     fingerprint?: string;
   } = {}
 ): Promise<void> {
+  // Any outcome that is not the catch block clears the failure streak: reaching
+  // one means the run is working, whatever it concluded, so a later transient
+  // error gets its full allowance of retries rather than the remains of an old
+  // run of bad luck.
   await query(
     `UPDATE capture_reconciliation_runs
         SET status = $1,
+            failure_streak = 0,
             error_message = $2,
             profile_id = COALESCE($3, profile_id),
             attachment_id = COALESCE($4, attachment_id),

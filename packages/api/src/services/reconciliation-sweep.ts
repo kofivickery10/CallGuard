@@ -52,6 +52,36 @@ const TIERS: Array<{ untilAgeMs: number; everyMs: number }> = [
  */
 export const STALE_RUNNING_MS = 30 * MINUTE;
 
+/**
+ * How many attempts in a row may end in an unexpected error before we stop
+ * re-attempting a run.
+ *
+ * 'failed' is only ever written by the reconcile processor's catch block —
+ * every anticipated outcome has its own status — so it means "something went
+ * wrong this time", and the cause is usually transient. Such a run has to be
+ * revisited, or one bad attempt parks the sale for ever.
+ *
+ * Twelve, against the first tier's half-hourly cadence, is roughly six hours of
+ * retrying: comfortably longer than a CRM outage or a bad deploy, and short of
+ * spending the whole seven-day window on a run that errors every time. The
+ * counter is consecutive, not cumulative, and any other outcome resets it, so a
+ * run that waits days for its document still has its full allowance if it later
+ * hits a real error.
+ */
+export const MAX_FAILURE_STREAK = 12;
+
+/**
+ * Whether a run that errored should be attempted again.
+ *
+ * Past the cap we stop, but deliberately leave the run at 'failed' with the
+ * error that caused it rather than abandoning it: that error is the honest thing
+ * to show someone looking at the sale, and it is what tells us what to fix.
+ * The abandon window still closes over it in the end.
+ */
+export function isRetryableFailure(failureStreak: number): boolean {
+  return failureStreak < MAX_FAILURE_STREAK;
+}
+
 /** The retry interval for a run of this age, or null once it should be abandoned. */
 export function retryIntervalMs(ageMs: number): number | null {
   for (const tier of TIERS) {

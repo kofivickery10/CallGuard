@@ -2,9 +2,11 @@ import { describe, it, expect } from 'vitest';
 import {
   isDueForRetry,
   isPastAbandonWindow,
+  isRetryableFailure,
   retryIntervalMs,
   attemptJobId,
   ABANDON_AFTER_MS,
+  MAX_FAILURE_STREAK,
   STALE_RUNNING_MS,
 } from './reconciliation-sweep.js';
 
@@ -110,5 +112,31 @@ describe('attemptJobId', () => {
   it('keeps the run id findable in the job id', () => {
     const runId = '22222222-2222-4222-8222-222222222222';
     expect(attemptJobId(runId, 2)).toContain(runId);
+  });
+});
+
+describe('isRetryableFailure', () => {
+  it('re-attempts a run that has just errored, because the cause is usually transient', () => {
+    // The case this exists for: a CRM API change failed every sale in a tenant
+    // at once. Before this, none of them recovered after the fix shipped.
+    expect(isRetryableFailure(0)).toBe(true);
+    expect(isRetryableFailure(1)).toBe(true);
+  });
+
+  it('gives up on a run that has errored on every recent attempt', () => {
+    expect(isRetryableFailure(MAX_FAILURE_STREAK)).toBe(false);
+    expect(isRetryableFailure(MAX_FAILURE_STREAK + 5)).toBe(false);
+  });
+
+  it('allows enough retries to outlast an outage of several hours', () => {
+    // Consecutive failures at the first tier's cadence. An outage shorter than
+    // this must not be able to exhaust a run's allowance.
+    const firstTierInterval = retryIntervalMs(HOUR)!;
+    expect(MAX_FAILURE_STREAK * firstTierInterval).toBeGreaterThanOrEqual(4 * HOUR);
+  });
+
+  it('gives up well before the abandon window, so a broken run stops costing CRM calls', () => {
+    const firstTierInterval = retryIntervalMs(HOUR)!;
+    expect(MAX_FAILURE_STREAK * firstTierInterval).toBeLessThan(ABANDON_AFTER_MS);
   });
 });
