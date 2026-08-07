@@ -11,6 +11,10 @@ export type AuditActionType =
   | 'auth.2fa.backup_regenerated'
   | 'auth.2fa.reset'
   | 'call.delete'
+  // Erasure of everything held about one data subject: their sales, calls,
+  // transcripts and audio. Logged with ids and counts only — recording the
+  // person's name here would retain the personal data the erasure removed.
+  | 'customer.delete'
   | 'call.upload'
   | 'call.bulk_import'
   | 'call.rescore'
@@ -79,6 +83,7 @@ export type AuditActionType =
 
 export type AuditEntityType =
   | 'call'
+  | 'customer'
   | 'breach'
   | 'score'
   | 'scorecard'
