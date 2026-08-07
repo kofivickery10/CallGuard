@@ -12,6 +12,7 @@ import { CallDetail } from './pages/CallDetail';
 import { Upload } from './pages/Upload';
 import { PublicCallView } from './pages/PublicCallView';
 import { SetPassword } from './pages/SetPassword';
+import { FeedbackConfirm } from './pages/FeedbackConfirm';
 import { Welcome } from './pages/Welcome';
 import { Impersonate } from './pages/Impersonate';
 
@@ -82,6 +83,8 @@ export function App() {
       <Route path="/welcome" element={<Welcome />} />
       <Route path="/shared/:token" element={<PublicCallView />} />
       <Route path="/set-password/:token" element={<SetPassword />} />
+      {/* Outside PrivateRoute: the adviser confirming feedback may have no login. */}
+      <Route path="/feedback/:token" element={<FeedbackConfirm />} />
       <Route
         path="/*"
         element={

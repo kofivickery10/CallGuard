@@ -144,6 +144,20 @@ function DocumentCheckIcon({ className }: { className?: string }) {
   );
 }
 
+/** Stroke icon — a document with a warning. No emoji (brand guidelines §icons). */
+function DocumentAlertIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" strokeWidth="1.8" aria-hidden="true">
+      <path
+        d="M14 3v4a1 1 0 0 0 1 1h4M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8l-5-5ZM12 11v3.5M12 17.5h.01"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 function PanelShell({ children, subtitle }: { children: React.ReactNode; subtitle: string }) {
   return (
     <div className="bg-card border border-border rounded-card overflow-hidden mt-4">
@@ -215,14 +229,9 @@ export function ReconciliationPanel({
     );
   }
 
-  // Waiting, not broken: the pack is uploaded to the CRM after the call, so a
-  // promptly scored sale legitimately has nothing to reconcile against yet.
+  // Waiting, not broken: the pack is attached to the CRM by hand after the call,
+  // so a promptly scored sale legitimately has nothing to reconcile against yet.
   if (run.status === 'needs_document') {
-    // Two very different situations share this status: nothing uploaded yet
-    // (wait), and documents present that match no known format (act). The run's
-    // own message is the only thing that tells them apart, so show it rather
-    // than asserting the more comfortable of the two.
-    const unrecognised = run.error_message?.includes('match a known application format') === true;
     return (
       <PanelShell subtitle="What the insurer received, against what the customer said.">
         <div className="px-5 py-6">
@@ -230,48 +239,73 @@ export function ReconciliationPanel({
             <DocumentCheckIcon className="w-5 h-5 text-text-muted flex-shrink-0 mt-0.5" />
             <div>
               <p className="text-table-cell text-text-primary font-medium">
-                {unrecognised ? 'This document format is not recognised' : 'Waiting for the application'}
+                Waiting for the application
               </p>
               <p className="text-xs text-text-muted mt-1 leading-relaxed">
                 {run.error_message ??
                   'No application document has been attached to this sale in the CRM yet.'}{' '}
-                {unrecognised
-                  ? isAdmin
-                    ? 'Teach CallGuard this insurer’s format once and every future sale on it is read for free.'
-                    : 'An administrator needs to teach CallGuard this insurer’s format.'
-                  : 'This will run automatically once it is attached.'}
+                CallGuard keeps checking, and this runs on its own once the pack is attached.
               </p>
             </div>
           </div>
-          {unrecognised && isAdmin && <LearnProfileAction journeyId={journeyId} />}
         </div>
       </PanelShell>
     );
   }
 
-  // The insurer changed their question set. Nothing is judged until a human
-  // confirms the new structure — a stale profile would mis-read every answer.
+  // We stopped looking. Said plainly, because a waiting state shown for ever
+  // reads as "checked, nothing found" — the opposite of what happened.
+  if (run.status === 'abandoned') {
+    return (
+      <PanelShell subtitle="What the insurer received, against what the customer said.">
+        <div className="px-5 py-6">
+          <div className="flex items-start gap-3">
+            <DocumentAlertIcon className="w-5 h-5 text-text-muted flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-table-cell text-text-primary font-medium">
+                This sale was never checked
+              </p>
+              <p className="text-xs text-text-muted mt-1 leading-relaxed">
+                {run.error_message ??
+                  'No application document was attached to this sale in the CRM, so there was nothing to compare the call against.'}
+              </p>
+            </div>
+          </div>
+        </div>
+      </PanelShell>
+    );
+  }
+
+  // A person has to confirm how this document is read before any answer is judged
+  // against it. Two ways to get here, told apart structurally rather than by
+  // matching on the message text: a format we know whose question set changed
+  // (the run carries the profile it drifted from), or one we have never seen.
   if (run.status === 'needs_profile') {
+    const unrecognised = run.profile_id === null;
     return (
       <PanelShell subtitle="What the insurer received, against what the customer said.">
         <div className="px-5 py-6">
           <div className="bg-review-bg text-review px-3 py-2 rounded-btn text-table-cell">
             {run.error_message ??
-              'The insurer’s question set has changed since this document type was last reviewed.'}
+              (unrecognised
+                ? 'This document format has not been set up yet, so nothing has been compared.'
+                : 'The insurer’s question set has changed since this document type was last reviewed.')}
           </div>
           <p className="text-xs text-text-muted mt-2.5 leading-relaxed">
-            Nothing has been compared, because judging answers against an out-of-date question
-            set would produce misleading results.{' '}
+            {unrecognised
+              ? 'Nothing has been compared, because CallGuard does not yet know how to read this insurer’s application. '
+              : 'Nothing has been compared, because judging answers against an out-of-date question set would produce misleading results. '}
             {isAdmin ? (
               <>
-                Read the new version below, then confirm it on{' '}
+                Read {unrecognised ? 'the document' : 'the new version'} below, then confirm it on{' '}
                 <Link to="/application-checks" className="text-primary hover:underline">
                   Application Checks
                 </Link>
-                . This sale is reconciled automatically once you do.
+                . This sale is reconciled automatically once you do, and every future sale on
+                this format is read without asking again.
               </>
             ) : (
-              'An administrator needs to review the change before this sale can be reconciled.'
+              `An administrator needs to review ${unrecognised ? 'this format' : 'the change'} before this sale can be reconciled.`
             )}
           </p>
           {isAdmin && <LearnProfileAction journeyId={journeyId} />}

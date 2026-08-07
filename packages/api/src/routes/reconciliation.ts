@@ -6,6 +6,7 @@ import { recordAuditEvent } from '../services/audit.js';
 import { scoringQueue } from '../jobs/queue.js';
 import { isUuid } from '../services/uuid.js';
 import { isReconciliationEnabled, learnProfileFromSale } from '../services/reconciliation-runs.js';
+import { attemptJobId } from '../services/reconciliation-sweep.js';
 import { detectDrift } from '../services/application-pdf.js';
 import type {
   ReconciliationRun,
@@ -93,7 +94,11 @@ reconciliationRouter.post('/journeys/:journeyId/run', requireAdmin, async (req, 
     );
     if (!created) throw new AppError(500, 'Could not create the reconciliation run');
 
-    await scoringQueue.add('reconcile', { runId: created.id }, { jobId: `reconcile-${created.id}` });
+    await scoringQueue.add(
+      'reconcile',
+      { runId: created.id },
+      { jobId: attemptJobId(created.id, 0) }
+    );
 
     await recordAuditEvent({
       organizationId,
@@ -325,14 +330,23 @@ reconciliationRouter.put('/profiles/:id/confirm', requireAdmin, async (req, res,
       req,
     });
 
-    // Sales parked on the old question set can now be reconciled.
-    const waiting = await query<{ id: string }>(
-      `SELECT id FROM capture_reconciliation_runs
+    // Sales parked on the old question set — and any whose format we had never
+    // seen — can now be reconciled.
+    const waiting = await query<{ id: string; attempts: number }>(
+      `SELECT id, attempts FROM capture_reconciliation_runs
         WHERE organization_id = $1 AND status = 'needs_profile'`,
       [organizationId]
     );
     for (const run of waiting) {
-      await scoringQueue.add('reconcile', { runId: run.id }, { jobId: `reconcile-${run.id}` });
+      // Attempt-scoped id: the scoring queue retains completed jobs, so a plain
+      // `reconcile-<run id>` would be silently deduped against the attempt that
+      // parked this run in the first place, and confirming the profile would
+      // appear to do nothing.
+      await scoringQueue.add(
+        'reconcile',
+        { runId: run.id },
+        { jobId: attemptJobId(run.id, run.attempts) }
+      );
     }
 
     res.json({ id: profile.id, status: 'active', requeued: waiting.length });

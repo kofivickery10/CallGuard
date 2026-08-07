@@ -8,6 +8,7 @@ import { ScoreGauge } from '../components/ScoreGauge';
 import { CoachingPanel } from '../components/CoachingPanel';
 import { CapturePanel } from '../components/CapturePanel';
 import { ReconciliationPanel } from '../components/ReconciliationPanel';
+import { FeedbackPanel, FeedbackHeaderAction } from '../components/FeedbackPanel';
 import { ItemResultBadge } from '../components/ItemResultBadge';
 import { SeverityBadge } from '../components/BreachBadges';
 import { ScoreCorrectionModal } from '../components/ScoreCorrectionModal';
@@ -71,6 +72,21 @@ export function JourneyDetail() {
     onError: (err) =>
       void notify(err instanceof Error ? err.message : 'Failed to re-score'),
   });
+
+  // Bumped by the header action. The panel opens its compose box on a change,
+  // and we scroll it into view so the findings are read before anything is sent.
+  const [composeSignal, setComposeSignal] = useState(0);
+  const openFeedback = () => {
+    setComposeSignal((n) => n + 1);
+    // Deferred a frame: on first click the panel may still be rendering its
+    // loading state, and scrolling to it before it has height lands short.
+    requestAnimationFrame(() => {
+      document.getElementById('adviser-feedback')?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+      });
+    });
+  };
 
   const handleRescore = async () => {
     const ok = await confirm(
@@ -289,6 +305,16 @@ export function JourneyDetail() {
             >
               {rescoreMutation.isPending || journey.status === 'scoring' ? 'Re-scoring…' : 'Re-score'}
             </button>
+          )}
+          {/* Next to Re-score because they are the two things you do to a
+              reviewed sale. Shows the state; the send flow itself lives in the
+              panel below, so the findings are always seen before sending. */}
+          {journey.status === 'scored' && (
+            <FeedbackHeaderAction
+              journeyId={journey.id}
+              canAction={canAction}
+              onOpen={openFeedback}
+            />
           )}
           {journey.overall_score != null && (
             <>
@@ -662,6 +688,9 @@ export function JourneyDetail() {
       {/* Below Data Capture: capture answers "did we get what the customer
           said", reconciliation answers "does the application match it". */}
       <ReconciliationPanel journeyId={journey.id} isAdmin={isAdmin} />
+      {/* Last, because it is the last step of the review: go through the
+          findings, overturn what is wrong, then tell the adviser what stands. */}
+      <FeedbackPanel journeyId={journey.id} canAction={canAction} composeSignal={composeSignal} />
 
       {correctingItem && (
         <ScoreCorrectionModal

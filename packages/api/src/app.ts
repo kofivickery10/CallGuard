@@ -40,6 +40,7 @@ import { announcementsRouter } from './routes/announcements.js';
 import { customersRouter } from './routes/customers.js';
 import { captureRouter } from './routes/capture.js';
 import { reconciliationRouter } from './routes/reconciliation.js';
+import { feedbackRouter, publicFeedbackRouter } from './routes/journey-feedback.js';
 import { usersRouter } from './routes/users.js';
 import { productsRouter } from './routes/products.js';
 
@@ -200,6 +201,9 @@ app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/2fa/login/email-code', emailCodeLimiter);
 app.use('/api/auth/2fa/login/verify', twoFactorLimiter);
 app.use('/api/public/demo-requests', publicFormLimiter);
+// Unauthenticated: the adviser confirming feedback may have no login at all, so
+// the token is the credential. Rate limited accordingly.
+app.use('/api/feedback', publicFormLimiter);
 
 // 2FA routes mount under /api/auth/2fa — registered before the catch-all auth
 // router so its paths take precedence.
@@ -227,10 +231,14 @@ app.use('/api/customers', customersRouter);
 app.use('/api/journeys', journeysRouter);
 app.use('/api/capture', captureRouter);
 app.use('/api/reconciliation', reconciliationRouter);
+// Sale-level adviser feedback. Mounted after the journeys router, which has no
+// /feedback route of its own and falls through.
+app.use('/api', feedbackRouter);
 app.use('/api/review-items', reviewRouter);
 app.use('/api/users', usersRouter);
 app.use('/api/products', productsRouter);
 app.use('/api/announcements', announcementsRouter);
+app.use('/api/feedback', publicFeedbackRouter);
 app.use('/v1', streamRouter);
 
 // Spec-literal webhook aliases: the same handlers as

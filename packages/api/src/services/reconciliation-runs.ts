@@ -13,6 +13,7 @@ import {
 } from './application-pdf.js';
 import { learnDocumentProfile, type ValidationProblem } from './document-profile-learner.js';
 import { recordUsage } from './usage.js';
+import { attemptJobId } from './reconciliation-sweep.js';
 
 // ============================================================
 // Reconciliation run orchestration: which document, which profile, and starting
@@ -319,14 +320,23 @@ export async function learnProfileFromSale(
 export function statusForFailure(failure: ResolutionFailure): string {
   switch (failure) {
     case 'drifted':
-      return 'needs_profile';
     case 'no_profile_match':
+      // Both need the same human act: read the document as it is now and confirm
+      // how to parse it. 'drifted' is a format we know whose questions changed,
+      // 'no_profile_match' one we have never seen — the panel tells them apart on
+      // whether the run carries a profile_id.
+      //
+      // Keeping these apart from 'needs_document' matters more than it looks: the
+      // sweep retries waiting runs, and an unrecognised format would otherwise be
+      // re-downloaded and re-parsed on every tick to reach the same conclusion,
+      // when what it actually needs is a person, once.
+      return 'needs_profile';
     case 'no_attachments':
     case 'not_configured':
     default:
-      // All of these mean "we have no application to compare against yet",
-      // which is a waiting state rather than a failure: the pack is uploaded
-      // after the call, so a promptly-scored sale legitimately lands here.
+      // Genuinely waiting: the pack is attached by hand after the call, so a
+      // promptly-scored sale legitimately lands here and is retried on a cadence
+      // until it arrives or the window closes (services/reconciliation-sweep.ts).
       return 'needs_document';
   }
 }
@@ -356,28 +366,42 @@ export async function maybeStartReconciliation(
       return;
     }
 
-    const existing = await queryOne<{ id: string; status: string }>(
-      `SELECT id, status FROM capture_reconciliation_runs
+    const existing = await queryOne<{ id: string; status: string; attempts: number }>(
+      `SELECT id, status, attempts FROM capture_reconciliation_runs
         WHERE journey_id = $1 AND status <> 'failed'`,
       [journeyId]
     );
     if (existing) {
-      // A completed run is left alone; a waiting one is retried, since the
-      // document may have been uploaded since.
-      if (existing.status === 'completed' || existing.status === 'summary_only') return;
+      // Terminal states are left alone. 'abandoned' belongs here: the sweep gave
+      // up after the document never arrived, and quietly restarting it would put
+      // the sale back into a waiting state nobody asked to reopen. Re-running it
+      // is a deliberate act, via the admin re-run.
+      if (
+        existing.status === 'completed' ||
+        existing.status === 'summary_only' ||
+        existing.status === 'abandoned'
+      ) {
+        return;
+      }
+      // 'needs_profile' waits on a person, not on us: requeueing it would
+      // re-download and re-parse to reach the same answer. Confirming the profile
+      // is what releases it (routes/reconciliation.ts).
+      if (existing.status === 'needs_profile') return;
+
+      // A waiting run is retried, since the document may have been uploaded since.
       await scoringQueue.add(
         'reconcile',
         { runId: existing.id },
-        { jobId: `reconcile-${existing.id}` }
+        { jobId: attemptJobId(existing.id, existing.attempts) }
       );
       return;
     }
 
-    const created = await queryOne<{ id: string }>(
+    const created = await queryOne<{ id: string; attempts: number }>(
       `INSERT INTO capture_reconciliation_runs (organization_id, journey_id, status)
        VALUES ($1, $2, 'pending')
        ON CONFLICT (journey_id) WHERE status <> 'failed' DO NOTHING
-       RETURNING id`,
+       RETURNING id, attempts`,
       [organizationId, journeyId]
     );
     if (!created) return;
@@ -385,7 +409,7 @@ export async function maybeStartReconciliation(
     await scoringQueue.add(
       'reconcile',
       { runId: created.id },
-      { jobId: `reconcile-${created.id}` }
+      { jobId: attemptJobId(created.id, created.attempts) }
     );
   } catch (err) {
     console.error(

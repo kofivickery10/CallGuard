@@ -10,6 +10,7 @@ import { deliverCallScored } from '../../services/webhook-delivery.js';
 import { sendOpsAlert } from '../../services/ops-alert.js';
 import { pushJourneyScored, fetchSaleProducts } from '../../services/zoho.js';
 import { maybeStartJourneyCapture } from '../../services/capture-runs.js';
+import { maybeStartReconciliation } from '../../services/reconciliation-runs.js';
 import { buildCombinedTranscript, CALL_MARKER } from '../../services/journey-transcript.js';
 import { detectProductsFromTranscript } from '../../services/product-resolution.js';
 import { isItemPass, deriveSeverity, callPasses, resolveBranchWithSource, isNoScoreCrmStage } from '@callguard/shared';
@@ -785,6 +786,13 @@ export async function processScoreJourney(job: Job<ScoreJourneyJobData>) {
     // capture failure never affects the journey's score. No-op unless the
     // org has capture_enabled and a form resolves.
     await maybeStartJourneyCapture(journey.organization_id, journeyId);
+
+    // Application reconciliation, likewise after and independently of scoring.
+    // Expected to find nothing on this first attempt: the insurer's pack is
+    // attached to the CRM record by hand, usually later the same day. The run is
+    // opened here so the sale is on the list, and the maintenance sweep
+    // ('reconciliation-sweep') keeps looking until the document arrives.
+    await maybeStartReconciliation(journey.organization_id, journeyId);
   } catch (err) {
     const totalAttempts = job.opts.attempts ?? 1;
     const isFinalAttempt = job.attemptsMade + 1 >= totalAttempts;
