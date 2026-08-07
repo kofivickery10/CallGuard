@@ -3,6 +3,7 @@ import {
   buildCombinedTranscript,
   buildCombinedTranscriptWithOffsets,
   callNumberAtOffset,
+  resolveSourceCallIndex,
 } from './journey-transcript.js';
 
 const CALLS = [
@@ -43,6 +44,47 @@ describe('buildCombinedTranscriptWithOffsets', () => {
     const { text, segments } = buildCombinedTranscriptWithOffsets([]);
     expect(text).toBe('');
     expect(segments).toEqual([]);
+  });
+});
+
+describe('resolveSourceCallIndex', () => {
+  it('resolves a marked quote to the call it cites', () => {
+    expect(resolveSourceCallIndex('[Call 1] Do you smoke?', 3)).toBe(0);
+    expect(resolveSourceCallIndex('[Call 3] Lets go through it.', 3)).toBe(2);
+  });
+
+  it('attributes an unmarked quote on a single-call sale to that call', () => {
+    // The reviewer loses the whole evidence panel on a null, and a sale with one
+    // call has one call the quote can have come from.
+    expect(resolveSourceCallIndex('Do you smoke?', 1)).toBe(0);
+    expect(resolveSourceCallIndex(null, 1)).toBe(0);
+    expect(resolveSourceCallIndex(undefined, 1)).toBe(0);
+    expect(resolveSourceCallIndex('', 1)).toBe(0);
+  });
+
+  it('returns null for an unmarked quote when several calls could have said it', () => {
+    expect(resolveSourceCallIndex('Do you smoke?', 3)).toBeNull();
+    expect(resolveSourceCallIndex(null, 3)).toBeNull();
+  });
+
+  it('does not trust a call number outside the range', () => {
+    // Mis-attributing to a real call is worse than having no attribution.
+    expect(resolveSourceCallIndex('[Call 5] Do you smoke?', 3)).toBeNull();
+    expect(resolveSourceCallIndex('[Call 0] Do you smoke?', 3)).toBeNull();
+  });
+
+  it('still resolves a single-call sale when the model invents a call number', () => {
+    expect(resolveSourceCallIndex('[Call 4] Do you smoke?', 1)).toBe(0);
+  });
+
+  it('only reads the marker as a prefix, not mid-quote', () => {
+    // A quote that merely mentions another call must not be attributed to it.
+    expect(resolveSourceCallIndex('We agreed on [Call 2] that you would think.', 3)).toBeNull();
+  });
+
+  it('returns null when the journey has no calls', () => {
+    expect(resolveSourceCallIndex('[Call 1] Do you smoke?', 0)).toBeNull();
+    expect(resolveSourceCallIndex('Do you smoke?', 0)).toBeNull();
   });
 });
 

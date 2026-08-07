@@ -83,6 +83,11 @@ export type BreachEvidenceCaveat =
   // Who said what could not be established on the call the evidence came from,
   // so any checkpoint turning on speaker identity is unsafe.
   | 'unreliable_speakers'
+  // The scorer cited no particular call, and the sale has more than one it
+  // could have meant, so which recording this rests on is unknown. Distinct
+  // from unreliable_speakers: there the source call is known and its labels are
+  // doubted; here the source call itself was never established.
+  | 'unattributed_evidence'
   // The sale's branch was inferred rather than read from the CRM, so this
   // checkpoint may not have applied to the sale at all.
   | 'guessed_branch'
@@ -95,6 +100,7 @@ export const BREACH_CAVEAT_LABELS: Record<BreachEvidenceCaveat, string> = {
   low_agreement: 'Scoring runs disagreed on this checkpoint',
   low_confidence: 'The scorer was unsure',
   unreliable_speakers: 'Who said what could not be established on this call',
+  unattributed_evidence: 'The scorer did not say which call this came from',
   guessed_branch: 'The sale\'s branch was inferred, so this checkpoint may not apply',
   retired_model: 'Scored by a model no longer in use',
 };
