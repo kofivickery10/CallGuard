@@ -8,6 +8,7 @@ import { processHydrateCall } from './processors/hydrate-call.js';
 import { processAssembleJourney } from './processors/assemble-journey.js';
 import { processAlertDelivery } from './processors/alert-deliver.js';
 import { processNotifyEmail } from './processors/notify-email.js';
+import { processFeedbackEmail } from './processors/feedback-email.js';
 import { processScoreJourney } from './processors/score-journey.js';
 import { processCapture } from './processors/capture.js';
 import { processReconcile } from './processors/reconcile.js';
@@ -71,6 +72,7 @@ const ingestionWorker = new Worker('ingestion', dispatchIngestion, {
 // directed system notification raised via services/notify.ts) — dispatch by name.
 async function dispatchAlerts(job: Job) {
   if (job.name === 'notify-email') return processNotifyEmail(job);
+  if (job.name === 'feedback-email') return processFeedbackEmail(job);
   return processAlertDelivery(job);
 }
 
