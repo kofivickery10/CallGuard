@@ -185,6 +185,18 @@ export async function sendFeedback(input: {
     );
   }
 
+  // Checked before anything is written. sendEmail returns ok:false with no API
+  // key rather than throwing, so without this the record would say the adviser
+  // was told while the job retried and died — the same lie as recording a send
+  // to an adviser with no address, which this feature already refuses.
+  // requiredInProduction means production cannot boot without the key, so this
+  // is really a guard for dev and staging.
+  if (!config.resend.apiKey) {
+    throw new Error(
+      'Email delivery is not configured (RESEND_API_KEY), so feedback cannot be sent or confirmed.'
+    );
+  }
+
   const breaches = await breachesForFeedback(organizationId, journeyId);
 
   const raw = crypto.randomBytes(32).toString('base64url');
