@@ -69,14 +69,14 @@ function Spinner() {
 }
 
 /**
- * Application Checks: what the insurer received against what the customer said,
+ * Data Forms: what the insurer received against what the customer said,
  * across every sale — plus the insurer question sets that drive it.
  *
  * The confirmation queue sits at the top on purpose. While a question set is
  * unconfirmed, every sale using it is parked: not failing, not passing, just
  * waiting on a person. That is the one thing on this page that blocks work.
  */
-export function ApplicationChecks() {
+export function DataForms() {
   const {
     data: profilesData,
     isLoading: profilesLoading,
@@ -116,7 +116,7 @@ export function ApplicationChecks() {
   return (
     <div>
       <div className="mb-7">
-        <h2 className="text-page-title text-text-primary">Application Checks</h2>
+        <h2 className="text-page-title text-text-primary">Data Forms</h2>
         <p className="text-page-sub text-text-subtle mt-1">
           The application submitted to the insurer, compared against what the customer actually
           said on the call.
@@ -142,7 +142,7 @@ export function ApplicationChecks() {
           {awaiting.map((p) => (
             <Link
               key={p.id}
-              to={`/application-checks/profiles/${p.id}`}
+              to={`/data-forms/profiles/${p.id}`}
               className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 border-b border-border-light last:border-0 hover:bg-table-header transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
             >
               <div className="min-w-0">
@@ -294,7 +294,7 @@ export function ApplicationChecks() {
                   <tr key={p.id} className="border-t border-border-light">
                     <td className="px-5 py-3 text-table-cell text-text-primary">
                       <Link
-                        to={`/application-checks/profiles/${p.id}`}
+                        to={`/data-forms/profiles/${p.id}`}
                         className="hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded-btn"
                       >
                         {p.insurer}

@@ -420,7 +420,7 @@ async function main() {
     ]
   );
 
-  // One awaiting confirmation, so the review queue on Application Checks is not
+  // One awaiting confirmation, so the review queue on Data Forms is not
   // empty in the demo — this is the state a new insurer format lands in.
   const pendingQuestions = [...RL_QUESTIONS, 'Have you travelled outside the UK for more than 3 months in the last year?'];
   await query(
@@ -622,7 +622,7 @@ async function main() {
   console.log(`
 Done. Sign in as the demo admin and look at:
   Compliance → Data Capture         coverage across the question set
-  Compliance → Application Checks   1 profile awaiting confirmation, 1 sale needing attention
+  Compliance → Data Forms   1 profile awaiting confirmation, 1 sale needing attention
   Sales → Emma Reynolds             both panels on one sale: a mismatch, a
                                     question never asked, and a withdrawn disclosure
   Settings → Data Capture Forms     the editable question set
