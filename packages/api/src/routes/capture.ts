@@ -380,6 +380,53 @@ captureRouter.post('/journeys/:journeyId/run', requireAdmin, async (req, res, ne
     if (!form) throw new AppError(404, 'Capture form not found');
     if (form.fields.length === 0) throw new AppError(400, 'Capture form has no fields');
 
+    // Refuse a re-run that cannot tell us anything new.
+    //
+    // The same guard the scoring re-run has, and for the second of its two
+    // reasons. Capture is cheap (Haiku, pennies) so the money barely matters —
+    // but extraction is not perfectly repeatable, so re-running it on identical
+    // input draws another sample from the same distribution and silently
+    // replaces a record a supervisor may already have read and acted on.
+    //
+    // "Nothing new" means: same form version, same calls, same transcripts, and
+    // the previous run completed. Editing the form, linking a call or correcting
+    // a transcript all legitimately warrant another go — those are exactly the
+    // cases the button exists for.
+    //
+    // A run predating calls_captured (088) reports NULL, and NULL is treated as
+    // "unknown" rather than "unchanged": the re-run is allowed. Blocking on an
+    // assumption is worse than an occasional avoidable run at these prices.
+    const isSuperadmin = req.user!.role === 'superadmin';
+    if (!isSuperadmin) {
+      const unchanged = await queryOne<{ unchanged: boolean }>(
+        `SELECT cr.form_version = $2
+                AND cr.calls_captured IS NOT NULL
+                AND cr.calls_captured = (
+                      SELECT count(*) FROM journey_calls jc
+                       WHERE jc.journey_id = cr.journey_id
+                    )
+                AND NOT EXISTS (
+                      SELECT 1 FROM journey_calls jc2
+                        JOIN calls c ON c.id = jc2.call_id
+                       WHERE jc2.journey_id = cr.journey_id
+                         AND c.updated_at > cr.created_at
+                    ) AS unchanged
+           FROM capture_runs cr
+          WHERE cr.journey_id = $1 AND cr.status = 'completed'
+          ORDER BY cr.created_at DESC LIMIT 1`,
+        [journey.id, form.version]
+      );
+      if (unchanged?.unchanged) {
+        throw new AppError(
+          409,
+          'This sale has already been captured against the current question set. Nothing has ' +
+            'changed since — no new calls, no corrected transcripts and no edits to the form — so ' +
+            're-running would only re-read identical input. Edit the form, link a call or correct a ' +
+            'transcript if the captured record needs to change.'
+        );
+      }
+    }
+
     const runId = await withTransaction(async (tx) => {
       // A deliberate re-run replaces any previous run for this journey
       // (answers cascade away with their run).
