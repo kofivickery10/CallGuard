@@ -8,7 +8,7 @@ import { ScoreGauge } from '../components/ScoreGauge';
 import { CoachingPanel } from '../components/CoachingPanel';
 import { CapturePanel } from '../components/CapturePanel';
 import { ReconciliationPanel } from '../components/ReconciliationPanel';
-import { FeedbackPanel, FeedbackHeaderAction } from '../components/FeedbackPanel';
+import { FeedbackPanel, FeedbackHeaderAction, useFeedbackState } from '../components/FeedbackPanel';
 import { ItemResultBadge } from '../components/ItemResultBadge';
 import { SeverityBadge } from '../components/BreachBadges';
 import { ScoreCorrectionModal } from '../components/ScoreCorrectionModal';
@@ -72,6 +72,13 @@ export function JourneyDetail() {
     onError: (err) =>
       void notify(err instanceof Error ? err.message : 'Failed to re-score'),
   });
+
+  // Once the adviser has been told the findings, re-scoring would change them
+  // after the fact — so the button is not offered. The API refuses it too
+  // (POST /journeys/:id/rescore); this only stops it being presented as an
+  // option, since a disabled button nobody can explain invites a support ticket.
+  const { data: feedbackState } = useFeedbackState(id ?? '', canAction && !!id);
+  const fedBack = feedbackState?.feedback != null;
 
   // Bumped by the header action. The panel opens its compose box on a change,
   // and we scroll it into view so the findings are read before anything is sent.
@@ -292,7 +299,7 @@ export function JourneyDetail() {
               {journey.is_exemplar ? 'Exemplar' : 'Mark as exemplar'}
             </button>
           )}
-          {isAdmin && (
+          {isAdmin && !fedBack && (
             <button
               type="button"
               onClick={handleRescore}

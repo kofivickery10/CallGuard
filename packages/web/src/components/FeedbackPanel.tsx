@@ -58,7 +58,7 @@ function formatDate(iso: string): string {
  * Shared by the panel and the header action, so the two never disagree about
  * what state the sale is in. React Query dedupes on the key — one request.
  */
-function useFeedbackState(journeyId: string, enabled: boolean) {
+export function useFeedbackState(journeyId: string, enabled: boolean) {
   return useQuery({
     queryKey: ['journey-feedback', journeyId],
     queryFn: () => api.get<FeedbackState>(`/journeys/${journeyId}/feedback`),

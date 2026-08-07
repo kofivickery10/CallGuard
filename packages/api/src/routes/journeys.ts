@@ -434,6 +434,38 @@ journeysRouter.post('/:id/rescore', requireAdmin, async (req, res, next) => {
     // is a button being pressed repeatedly on unchanged evidence. Platform
     // superadmins keep an override for support work.
     const isSuperadmin = req.user!.role === 'superadmin';
+
+    // Refuse once the sale has been fed back to its adviser.
+    //
+    // A re-score replaces the sale's breaches. If the adviser has already been
+    // sent the findings — and possibly confirmed receipt — re-scoring rewrites
+    // what they were told about, after they were told. The feedback record keeps
+    // its own snapshot so it stays honest, but the register would then hold a
+    // confirmed conversation about findings the sale no longer has.
+    //
+    // Blocked from the moment it is SENT, not from confirmation: the email is
+    // already in the adviser's inbox listing the findings by name.
+    //
+    // Same shape as the unchanged-evidence guard below and for the same reason —
+    // not overridable by the tenant, because a confirm dialog on a button like
+    // this gets clicked through. Superadmins keep the override for support.
+    if (!isSuperadmin) {
+      const fedBack = await queryOne<{ adviser_name: string; confirmed_at: string | null }>(
+        `SELECT adviser_name, confirmed_at FROM journey_feedback
+          WHERE journey_id = $1 ORDER BY sent_at DESC LIMIT 1`,
+        [journey.id]
+      );
+      if (fedBack) {
+        throw new AppError(
+          409,
+          `This sale has been fed back to ${fedBack.adviser_name}` +
+            (fedBack.confirmed_at ? ', and they confirmed receipt' : '') +
+            '. Re-scoring would change the findings they were told about, after they were told. ' +
+            'Ask CallGuard support if this sale genuinely needs re-scoring.'
+        );
+      }
+    }
+
     if (!isSuperadmin && journey.status === 'scored') {
       const unchanged = await queryOne<{ unchanged: boolean }>(
         `SELECT
