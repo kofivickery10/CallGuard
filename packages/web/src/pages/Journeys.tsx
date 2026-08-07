@@ -86,7 +86,10 @@ export function Journeys() {
 
   // Score-only tenants don't see the pass/fail verdict, so the Result column is
   // dropped entirely rather than left blank.
-  const columns = ['Customer', 'Adviser', ...(scoreOnly ? [] : ['Result']), 'Score', 'Branch', 'Calls', 'Status', 'Scored', ''];
+  // Two dates, because they answer different questions and used to be conflated:
+  // "Sale date" is when it happened (stable, what the list sorts and filters on),
+  // "Last scored" is when we last judged it (moves on a re-score).
+  const columns = ['Customer', 'Adviser', ...(scoreOnly ? [] : ['Result']), 'Score', 'Branch', 'Calls', 'Status', 'Sale date', 'Last scored', ''];
   const colCount = columns.length;
 
   return (
@@ -338,8 +341,25 @@ export function Journeys() {
                   <td className="px-5 py-3.5 text-table-cell text-text-secondary">{j.branch || '—'}</td>
                   <td className="px-5 py-3.5 text-table-cell text-text-cell tabular-nums">{j.call_count}</td>
                   <td className="px-5 py-3.5"><JourneyStatusBadge status={j.status} /></td>
+                  {/* When it happened. The primary date: stable across a
+                      re-score, and what the list is ordered and filtered by. */}
+                  <td className="px-5 py-3.5 text-table-cell text-text-cell whitespace-nowrap">
+                    {j.sale_date ? new Date(j.sale_date).toLocaleDateString('en-GB') : '—'}
+                  </td>
+                  {/* When we last judged it. Muted, because it is provenance
+                      rather than the sale's own date. A re-score is called out:
+                      the score on screen replaced an earlier one, which matters
+                      if that earlier one was already fed back to the adviser. */}
                   <td className="px-5 py-3.5 text-table-cell text-text-muted whitespace-nowrap">
                     {j.scored_at ? new Date(j.scored_at).toLocaleDateString('en-GB') : '—'}
+                    {j.score_runs > 1 && (
+                      <span
+                        className="ml-1.5 px-1.5 py-[1px] rounded-full text-badge font-semibold bg-table-header text-text-secondary"
+                        title={`Scored ${j.score_runs} times — the current score replaced an earlier one`}
+                      >
+                        ×{j.score_runs}
+                      </span>
+                    )}
                   </td>
                   <td className="px-5 py-3.5 text-right">
                     <Link to={`/journeys/${j.id}`} className="text-primary text-table-cell font-semibold hover:underline">
