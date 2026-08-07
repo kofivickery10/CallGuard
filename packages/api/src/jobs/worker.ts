@@ -8,11 +8,13 @@ import { processHydrateCall } from './processors/hydrate-call.js';
 import { processAssembleJourney } from './processors/assemble-journey.js';
 import { processAlertDelivery } from './processors/alert-deliver.js';
 import { processNotifyEmail } from './processors/notify-email.js';
+import { processFeedbackEmail } from './processors/feedback-email.js';
 import { processScoreJourney } from './processors/score-journey.js';
 import { processCapture } from './processors/capture.js';
 import { processReconcile } from './processors/reconcile.js';
 import { processRetentionPurge } from './processors/retention-purge.js';
 import { processStuckRepair } from './processors/stuck-repair.js';
+import { processReconciliationSweep } from './processors/reconciliation-sweep.js';
 import { processSyncProducts } from './processors/sync-products.js';
 import { processBillingSnapshot } from './processors/billing-snapshot.js';
 import { refreshSFTPSchedules } from './scheduler.js';
@@ -70,6 +72,7 @@ const ingestionWorker = new Worker('ingestion', dispatchIngestion, {
 // directed system notification raised via services/notify.ts) — dispatch by name.
 async function dispatchAlerts(job: Job) {
   if (job.name === 'notify-email') return processNotifyEmail(job);
+  if (job.name === 'feedback-email') return processFeedbackEmail(job);
   return processAlertDelivery(job);
 }
 
@@ -80,11 +83,14 @@ const alertsWorker = new Worker('alerts', dispatchAlerts, {
 
 // The maintenance queue carries 'retention-purge' (daily lifecycle sweep),
 // 'stuck-repair' (frequent re-enqueue of calls/journeys whose job was never
-// queued) and 'billing-snapshot' (daily month-end billing freeze) — dispatch by name.
+// queued), 'billing-snapshot' (daily month-end billing freeze) and
+// 'reconciliation-sweep' (re-check sales whose application pack has not been
+// attached to the CRM yet) — dispatch by name.
 async function dispatchMaintenance(job: Job) {
   if (job.name === 'stuck-repair') return processStuckRepair(job);
   if (job.name === 'billing-snapshot') return processBillingSnapshot(job);
   if (job.name === 'sync-products') return processSyncProducts(job);
+  if (job.name === 'reconciliation-sweep') return processReconciliationSweep(job);
   return processRetentionPurge(job);
 }
 

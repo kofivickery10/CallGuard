@@ -12,6 +12,25 @@ import type { Journey, JourneyItemScore, JourneyWithDetail, JourneyListItem, Jou
 export const journeysRouter = Router();
 journeysRouter.use(authenticate);
 
+// When the sale actually happened: the last call in the set.
+//
+// Not created_at, which is when CallGuard assembled the journey — a backfill
+// assembling six weeks of history today would stamp all of it with today. Not
+// window_end either, which is set to assembly time and so equals created_at on
+// every sale. And emphatically not scored_at, which a re-score rewrites, making
+// a June sale claim to be from this morning.
+//
+// The last call is the only one of the four that survives both a backfill and a
+// re-score, which is what a date column on a compliance register has to do.
+//
+// Fixed SQL, no user input — safe to interpolate, and shared by the list, the
+// count and the range filter so all three agree on what a sale's date means.
+const SALE_DATE_SQL = `COALESCE(
+        (SELECT max(COALESCE(sc2.call_date, sc2.created_at))
+           FROM journey_calls sjc JOIN calls sc2 ON sc2.id = sjc.call_id
+          WHERE sjc.journey_id = j.id),
+        j.created_at)`;
+
 // GET /api/journeys — paginated list of journeys for the org, newest first,
 // optionally filtered by status or customer. This is the primary discovery
 // surface for journey-mode tenants (the default scoring_mode).
@@ -54,15 +73,17 @@ journeysRouter.get('/', requireOrgView, async (req, res, next) => {
     if (result === 'pass' || result === 'fail') {
       parts.push(`j.pass IS ${result === 'pass' ? 'TRUE' : 'FALSE'}`);
     }
-    // Date range on when the sale was scored, falling back to creation for one
-    // not yet scored, so a range never silently hides in-flight work.
+    // Date range on when the SALE happened, not when it was scored. Filtering on
+    // scored_at meant "sales in the first week of July" silently included an
+    // April sale re-scored in July and excluded a July sale scored late, which
+    // is the opposite of what the filter appears to promise.
     if (typeof req.query.from === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(req.query.from)) {
       params.push(req.query.from);
-      parts.push(`COALESCE(j.scored_at, j.created_at) >= $${params.length}::date`);
+      parts.push(`${SALE_DATE_SQL} >= $${params.length}::date`);
     }
     if (typeof req.query.to === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(req.query.to)) {
       params.push(req.query.to);
-      parts.push(`COALESCE(j.scored_at, j.created_at) < ($${params.length}::date + INTERVAL '1 day')`);
+      parts.push(`${SALE_DATE_SQL} < ($${params.length}::date + INTERVAL '1 day')`);
     }
     // Filter by the sale's closing adviser. Matched on the RESOLVED name (the
     // linked user's name where the call is linked, else the raw dialler string)
@@ -110,6 +131,12 @@ journeysRouter.get('/', requireOrgView, async (req, res, next) => {
 
     const rows = await query<JourneyListItem>(
       `SELECT j.*,
+              ${SALE_DATE_SQL} AS sale_date,
+              -- How many times this sale has been scored. >1 tells a reviewer
+              -- the score they are looking at replaced an earlier one, which
+              -- matters when the earlier one was already fed back to an adviser.
+              (SELECT COUNT(*)::int FROM journey_score_runs jsr
+                WHERE jsr.journey_id = j.id) AS score_runs,
               cust.name AS customer_name,
               cust.phone_normalized AS customer_phone,
               sc.name AS scorecard_name,
@@ -147,7 +174,10 @@ journeysRouter.get('/', requireOrgView, async (req, res, next) => {
             LIMIT 1
          ) ja ON TRUE
         WHERE ${whereSQL}
-        ORDER BY j.created_at DESC
+        -- By when the sale happened, so a re-score never moves a row and a
+        -- backfill lands in its own history rather than on top of today's.
+        -- created_at breaks the tie for two sales closed on the same call.
+        ORDER BY ${SALE_DATE_SQL} DESC, j.created_at DESC
         LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
       [...params, limit, offset]
     );

@@ -11,10 +11,24 @@ export type AuditActionType =
   | 'auth.2fa.backup_regenerated'
   | 'auth.2fa.reset'
   | 'call.delete'
+  // Erasure of everything held about one data subject: their sales, calls,
+  // transcripts and audio. Logged with ids and counts only — recording the
+  // person's name here would retain the personal data the erasure removed.
+  | 'customer.delete'
   | 'call.upload'
   | 'call.bulk_import'
   | 'call.rescore'
   | 'journey.rescore'
+  // A supervisor fed a reviewed sale back to its adviser, and the adviser's
+  // one-click acknowledgement. Distinct from breach.status_change: that records
+  // a supervisor's own workflow, these record that a conversation with a named
+  // person happened and was received.
+  | 'journey.feedback_sent'
+  | 'journey.feedback_confirmed'
+  // Sales deleted in bulk (scripts/delete-tenant-sales.ts). Distinct from a
+  // rescore: this destroys the breaches, the human rulings and the score history
+  // rather than replacing them, so it needs its own line in the register.
+  | 'journey.bulk_delete'
   | 'call.reviewed'
   | 'call.review_cleared'
   | 'score.correct'
@@ -79,6 +93,7 @@ export type AuditActionType =
 
 export type AuditEntityType =
   | 'call'
+  | 'customer'
   | 'breach'
   | 'score'
   | 'scorecard'

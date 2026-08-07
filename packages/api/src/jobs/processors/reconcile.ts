@@ -68,7 +68,14 @@ export async function processReconcile(job: Job<{ runId: string }>) {
     return;
   }
 
-  await query("UPDATE capture_reconciliation_runs SET status = 'running' WHERE id = $1", [runId]);
+  // Counted here rather than on completion, so an attempt that dies mid-flight
+  // still moves the retry cadence on and still changes the next attempt's job id.
+  await query(
+    `UPDATE capture_reconciliation_runs
+        SET status = 'running', attempts = attempts + 1, last_attempt_at = now()
+      WHERE id = $1`,
+    [runId]
+  );
 
   try {
     const journey = await queryOne<{ zoho_record_id: string | null }>(
@@ -76,7 +83,14 @@ export async function processReconcile(job: Job<{ runId: string }>) {
       [run.journey_id]
     );
     if (!journey?.zoho_record_id) {
-      await finish(runId, 'needs_document', 'The sale has no CRM record to fetch an application from.');
+      // Terminal, not waiting. Without a CRM record there is nowhere for a
+      // document to appear, so retrying on a cadence would burn the window to
+      // reach the same answer every time.
+      await finish(
+        runId,
+        'abandoned',
+        'This sale has no CRM record, so there is no application document to fetch.'
+      );
       return;
     }
 
