@@ -159,6 +159,17 @@ export interface JourneyListItem extends Journey {
   // (roughly a quarter of sales) that showing only the closer would misstate
   // who handled the business, so the UI flags it rather than hiding it.
   agent_count: number;
+  // When the sale actually happened: the date of its last call, falling back to
+  // when the journey was assembled for one with no calls.
+  //
+  // Distinct from scored_at, which a re-score rewrites, and from created_at,
+  // which a backfill stamps with the day it ran. This is the one that stays put,
+  // so it is what the list sorts and filters on.
+  sale_date: string | null;
+  // How many times this sale has been scored. Above 1, the score on screen
+  // replaced an earlier one — which matters when the earlier one was already
+  // fed back to an adviser.
+  score_runs: number;
 }
 
 // A checkpoint awaiting human review (item_type='manual' or a consent gate

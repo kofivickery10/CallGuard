@@ -29,8 +29,31 @@ import { pool, query, queryOne } from '../db/client.js';
 import { deleteFile } from '../services/storage.js';
 import { recordAuditEvent } from '../services/audit.js';
 
-const DATE_FIELDS = ['scored_at', 'created_at', 'window_end'] as const;
+// 'sale_date' is not a column: it is when the sale actually happened, taken from
+// its last call. It is the default because the alternatives are all wrong in a
+// way that silently deletes the wrong sales.
+//
+// scored_at is rewritten by a re-score, so "delete sales before July" would
+// spare an April sale re-scored last week and destroy a June sale scored early.
+// created_at is stamped by whenever the journey was assembled, so a backfill
+// makes six weeks of history look like today. window_end is set to assembly time
+// and equals created_at on every sale, despite its name.
+//
+// They agreed on the Trust Point run because each sale was assembled, scored and
+// closed the same day. That will not stay true.
+const DATE_FIELDS = ['sale_date', 'scored_at', 'created_at', 'window_end'] as const;
 type DateField = (typeof DATE_FIELDS)[number];
+
+const SALE_DATE_SQL = `COALESCE(
+        (SELECT max(COALESCE(sc2.call_date, sc2.created_at))
+           FROM journey_calls sjc JOIN calls sc2 ON sc2.id = sjc.call_id
+          WHERE sjc.journey_id = journeys.id),
+        journeys.created_at)`;
+
+/** The SQL expression for a cutoff field. Allowlisted above, never user SQL. */
+function dateExpr(field: DateField): string {
+  return field === 'sale_date' ? SALE_DATE_SQL : `journeys.${field}`;
+}
 
 function arg(flag: string): string | null {
   const i = process.argv.indexOf(flag);
@@ -40,7 +63,7 @@ function arg(flag: string): string | null {
 async function main() {
   const orgArg = arg('--org');
   const before = arg('--before');
-  const field = (arg('--field') ?? 'scored_at') as DateField;
+  const field = (arg('--field') ?? 'sale_date') as DateField;
   const withCalls = process.argv.includes('--with-calls');
   const confirmed = process.argv.includes('--confirm');
 
@@ -72,12 +95,13 @@ async function main() {
     return;
   }
 
-  // Interpolated, not parameterised: a column name cannot be a bind parameter.
-  // Safe because it is checked against the DATE_FIELDS allowlist above.
+  // Interpolated, not parameterised: neither a column name nor a subquery can be
+  // a bind parameter. Safe because it comes from the DATE_FIELDS allowlist.
+  const cutoffExpr = dateExpr(field);
   const targets = await query<{ id: string }>(
     `SELECT id FROM journeys
-      WHERE organization_id = $1 AND ${field} < $2::date
-      ORDER BY ${field}`,
+      WHERE organization_id = $1 AND ${cutoffExpr} < $2::date
+      ORDER BY ${cutoffExpr}`,
     [org.id, before]
   );
   const journeyIds = targets.map((t) => t.id);
