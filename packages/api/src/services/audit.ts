@@ -25,6 +25,10 @@ export type AuditActionType =
   // person happened and was received.
   | 'journey.feedback_sent'
   | 'journey.feedback_confirmed'
+  // Sales deleted in bulk (scripts/delete-tenant-sales.ts). Distinct from a
+  // rescore: this destroys the breaches, the human rulings and the score history
+  // rather than replacing them, so it needs its own line in the register.
+  | 'journey.bulk_delete'
   | 'call.reviewed'
   | 'call.review_cleared'
   | 'score.correct'
