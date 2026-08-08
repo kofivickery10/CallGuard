@@ -296,8 +296,9 @@ reconciliationRouter.put('/profiles/:id/confirm', requireAdmin, async (req, res,
       insurer: string;
       product: string | null;
       status: string;
+      questions_vary: boolean;
     }>(
-      'SELECT id, insurer, product, status FROM capture_document_profiles WHERE id = $1 AND organization_id = $2',
+      'SELECT id, insurer, product, status, questions_vary FROM capture_document_profiles WHERE id = $1 AND organization_id = $2',
       [req.params.id, organizationId]
     );
     if (!profile) throw new AppError(404, 'Profile not found');
@@ -317,9 +318,14 @@ reconciliationRouter.put('/profiles/:id/confirm', requireAdmin, async (req, res,
     //
     // This is the point where both are true at once: the collision is about to
     // become possible, and there is a person here who knows the answer.
-    const { insurer: suppliedInsurer, product: suppliedProduct } = (req.body ?? {}) as {
+    const {
+      insurer: suppliedInsurer,
+      product: suppliedProduct,
+      questions_vary: suppliedVary,
+    } = (req.body ?? {}) as {
       insurer?: string;
       product?: string;
+      questions_vary?: boolean;
     };
     const insurer = (suppliedInsurer ?? '').trim() || profile.insurer;
     const product = suppliedProduct === undefined ? profile.product : suppliedProduct.trim() || null;
@@ -331,14 +337,29 @@ reconciliationRouter.put('/profiles/:id/confirm', requireAdmin, async (req, res,
           'Confirm again with the insurer name to activate it.'
       );
     }
-    if (insurer !== profile.insurer || product !== profile.product) {
+    // Whether this insurer's form asks conditional follow-ups is a fact about
+    // the form that only a person can settle, and getting it wrong in either
+    // direction has a cost: leave it off for a variable form and every sale
+    // after the first parks itself; turn it on for a fixed form and a genuine
+    // change to the insurer's questions stops being noticed. So it is asked,
+    // never guessed.
+    const questionsVary =
+      typeof suppliedVary === 'boolean' ? suppliedVary : profile.questions_vary;
+
+    if (
+      insurer !== profile.insurer ||
+      product !== profile.product ||
+      questionsVary !== profile.questions_vary
+    ) {
       await query(
-        `UPDATE capture_document_profiles SET insurer = $2, product = $3, updated_at = now()
+        `UPDATE capture_document_profiles
+            SET insurer = $2, product = $3, questions_vary = $4, updated_at = now()
           WHERE id = $1`,
-        [profile.id, insurer, product]
+        [profile.id, insurer, product, questionsVary]
       );
       profile.insurer = insurer;
       profile.product = product;
+      profile.questions_vary = questionsVary;
     }
 
     await query(

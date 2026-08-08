@@ -6,6 +6,7 @@ import {
   rankAttachmentCandidates,
   matchProfile,
   parseApplication,
+  parseLooksHealthy,
   detectDrift,
   type ParseConfig,
   type ParseStrategy,
@@ -40,6 +41,8 @@ export interface DocumentProfileRow {
   questions: Array<{ question: string; absence_meaningful?: boolean }>;
   version: number;
   status: 'needs_confirmation' | 'active' | 'superseded';
+  /** Migration 090. True for a form that asks conditional follow-ups. */
+  questions_vary: boolean;
 }
 
 export async function isReconciliationEnabled(organizationId: string): Promise<boolean> {
@@ -91,7 +94,18 @@ export interface ResolutionResult {
    */
   profilesAvailable?: number;
   /** Populated when the failure is 'drifted'. */
-  drift?: { profile: DocumentProfileRow; added: string[]; removed: string[]; reordered: boolean };
+  drift?: {
+    profile: DocumentProfileRow;
+    added: string[];
+    removed: string[];
+    reordered: boolean;
+    /**
+     * Set instead of added/removed when the profile's questions are marked as
+     * varying: there is no question-set change to report, the parse itself
+     * stopped working. Carries the reason.
+     */
+    brokenReason?: string;
+  };
 }
 
 /**
@@ -145,6 +159,41 @@ export async function resolveApplicationDocument(
     if (!profile) continue;
 
     const parsed = parseApplication(text, profile.strategy, profile.parse_config);
+
+    // A form that asks conditional follow-ups has no fixed question set to drift
+    // FROM. The same broker-portal export produced between 23 and 95 questions
+    // across eight of one tenant's sales, purely because customers with more to
+    // disclose are asked more. Comparing that against a stored list parks every
+    // sale after the first for a review with nothing in it.
+    //
+    // Safe because reconciliation reads its questions from this sale's document
+    // rather than from the profile (see processors/reconcile.ts). What a stale
+    // profile actually risks here is the parse breaking, so that is what gets
+    // checked — see migration 090 for the full reasoning.
+    if (profile.questions_vary) {
+      const broken = parseLooksHealthy(parsed);
+      if (broken) {
+        return {
+          document: null,
+          failure: 'drifted',
+          candidates,
+          profilesAvailable: profiles.length,
+          drift: {
+            profile,
+            added: [],
+            removed: [],
+            reordered: false,
+            brokenReason: broken,
+          },
+        };
+      }
+      return {
+        document: { attachment, profile, parsed, text },
+        failure: null,
+        candidates,
+        profilesAvailable: profiles.length,
+      };
+    }
 
     // The fingerprint is the cache-validity check and the drift detector in one.
     // A mismatch means the insurer changed their question set, and nothing is

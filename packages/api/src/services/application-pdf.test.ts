@@ -7,6 +7,7 @@ import {
   matchProfile,
   isolateSection,
   rankAttachmentCandidates,
+  parseLooksHealthy,
 } from './application-pdf.js';
 import {
   ROYAL_LONDON_PACK,
@@ -520,5 +521,51 @@ describe('link attachments and the real Trust Point naming', () => {
       { file_name: 'David Carter Policy.pdf', size: 12000 },
     ]);
     expect(ranked[0]?.file_name).toBe('David Carter Policy.pdf');
+  });
+});
+
+describe('parseLooksHealthy — the drift test for a form with no fixed question set', () => {
+  const pairs = (n: number, answered = true) =>
+    ({
+      pairs: Array.from({ length: n }, (_, i) => ({
+        order: i,
+        question: `Question ${i}?`,
+        guidance: null,
+        choices: [],
+        answer: answered ? 'Yes' : null,
+      })),
+      empty: n === 0,
+      fingerprint: 'x',
+    }) as any;
+
+  it('passes a parse that produced questions with answers', () => {
+    expect(parseLooksHealthy(pairs(20))).toBeNull();
+  });
+
+  it('does not care that the question COUNT changed', () => {
+    // The whole point: the same portal export produced 23 and 95 questions on
+    // two of one tenant's sales. Neither is a fault.
+    expect(parseLooksHealthy(pairs(23))).toBeNull();
+    expect(parseLooksHealthy(pairs(95))).toBeNull();
+  });
+
+  it('catches a parse that produced nothing', () => {
+    expect(parseLooksHealthy(pairs(0))).toMatch(/no questions at all/);
+  });
+
+  it('catches a parse where nothing was answered', () => {
+    expect(parseLooksHealthy(pairs(12, false))).toMatch(/no answer against it/);
+  });
+
+  it('catches merged question boundaries', () => {
+    const merged = pairs(4);
+    for (const p of merged.pairs.slice(0, 3)) p.question = 'x'.repeat(400);
+    expect(parseLooksHealthy(merged)).toMatch(/boundaries have been lost/);
+  });
+
+  it('tolerates a single wordy question', () => {
+    const one = pairs(6);
+    one.pairs[0].question = 'x'.repeat(400);
+    expect(parseLooksHealthy(one)).toBeNull();
   });
 });

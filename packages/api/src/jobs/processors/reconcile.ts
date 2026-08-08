@@ -429,12 +429,31 @@ function comparePair(
   };
 }
 
-function describeDrift(drift: { added: string[]; removed: string[]; reordered: boolean }): string {
+function describeDrift(drift: {
+  added: string[];
+  removed: string[];
+  reordered: boolean;
+  brokenReason?: string;
+}): string {
+  // A form marked as asking conditional follow-ups has no question set to have
+  // changed, so there is nothing to describe in those terms. What stopped is the
+  // parse, and saying so points at the actual problem.
+  if (drift.brokenReason) {
+    return (
+      `This document no longer reads the way its saved format expects — ${drift.brokenReason}. ` +
+      'Nothing has been compared. Read the document again to propose an updated format.'
+    );
+  }
   const parts: string[] = [];
   if (drift.added.length) parts.push(`${drift.added.length} question(s) added`);
   if (drift.removed.length) parts.push(`${drift.removed.length} removed`);
   if (drift.reordered) parts.push('questions reordered');
-  return `The insurer's question set has changed (${parts.join(', ') || 'wording changed'}). Nothing has been compared until the new question set is confirmed.`;
+  return (
+    `The insurer's question set has changed (${parts.join(', ') || 'wording changed'}). ` +
+    'Nothing has been compared until the new question set is confirmed. If this form asks ' +
+    'different questions depending on the answers given, mark it as having a variable ' +
+    'question set when you confirm it, and sales will stop parking here.'
+  );
 }
 
 async function finish(

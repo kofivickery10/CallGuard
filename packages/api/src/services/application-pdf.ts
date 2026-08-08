@@ -649,6 +649,37 @@ export function matchProfile<T extends { detect_patterns: string[] }>(
 }
 
 /**
+ * Does this parse still look like a working read of the document?
+ *
+ * The drift test for a form with a FIXED question set is "are the questions
+ * still the ones we stored". For a form that asks conditional follow-ups that
+ * test is meaningless — the set is supposed to differ per customer — so this
+ * stands in its place: not "did the questions change" but "did the parse break".
+ *
+ * Deliberately the same three failures the learner refuses a proposal for, since
+ * a config that would not be accepted today should not keep being trusted:
+ * nothing parsed, nothing answered, or questions so long that block boundaries
+ * have plainly merged several together.
+ *
+ * Returns the reason it looks broken, or null when it looks fine.
+ */
+export function parseLooksHealthy(parsed: ParsedApplication): string | null {
+  if (parsed.empty || parsed.pairs.length === 0) {
+    return 'the document parsed to no questions at all';
+  }
+  if (parsed.pairs.every((p) => p.answer === null)) {
+    return 'every question parsed with no answer against it';
+  }
+  // One overlong question is a quirk of a wordy insurer; most of them being
+  // overlong means the boundaries are gone and the wording cannot be trusted.
+  const overlong = parsed.pairs.filter((p) => p.question.length > 300).length;
+  if (overlong > parsed.pairs.length / 2) {
+    return `${overlong} of ${parsed.pairs.length} questions ran over 300 characters, so the question boundaries have been lost`;
+  }
+  return null;
+}
+
+/**
  * Compare a freshly parsed question set against the profile it was parsed with.
  *
  * This is the cache-validity check and the drift detector in one. A mismatch
