@@ -1,6 +1,10 @@
 import { Job } from 'bullmq';
 import { query, queryOne } from '../../db/client.js';
-import { resolveApplicationDocument, statusForFailure } from '../../services/reconciliation-runs.js';
+import {
+  resolveApplicationDocument,
+  learnProfileFromSale,
+  statusForFailure,
+} from '../../services/reconciliation-runs.js';
 import {
   buildCombinedTranscriptWithOffsets,
   callNumberAtOffset,
@@ -32,6 +36,43 @@ import { recordUsage } from '../../services/usage.js';
 // "we could not tell" — and a later pass can escalate those specific items to a
 // model without any of this becoming model-dependent.
 // ============================================================
+
+/**
+ * Propose a format for a document nothing recognised, so a human has something
+ * to confirm instead of something to go and find.
+ *
+ * Never throws. This is a convenience running alongside the real job: if the
+ * model pass fails, or the tenant has already queued this format, the run's own
+ * outcome ('needs_profile', with its message) is unchanged and correct either
+ * way. Failing the reconciliation because an optional extra did not work would
+ * be strictly worse than not attempting it.
+ */
+async function autoProposeProfile(
+  organizationId: string,
+  journeyId: string,
+  zohoRecordId: string
+): Promise<void> {
+  try {
+    const outcome = await learnProfileFromSale(organizationId, journeyId, zohoRecordId);
+    if (outcome.profileId) {
+      console.log(
+        `[Reconciliation] auto-proposed a format from journey ${journeyId}: ` +
+          `${outcome.insurer} / ${outcome.product ?? '—'}, ${outcome.questionCount} question(s)` +
+          `${outcome.reusedExisting ? ' (already queued)' : ''} — awaiting confirmation`
+      );
+      return;
+    }
+    console.log(
+      `[Reconciliation] could not auto-propose a format from journey ${journeyId} ` +
+        `(${outcome.failure ?? 'unusable'}): ` +
+        outcome.problems.map((p) => p.message).join(' | ')
+    );
+  } catch (err) {
+    console.warn(
+      `[Reconciliation] auto-propose failed for journey ${journeyId}: ${(err as Error).message}`
+    );
+  }
+}
 
 interface RunRow {
   id: string;
@@ -99,6 +140,23 @@ export async function processReconcile(job: Job<{ runId: string }>) {
     if (!resolution.document) {
       const failure = resolution.failure ?? 'no_attachments';
       const status = statusForFailure(failure);
+
+      // Nothing recognised the document, so propose a format for it now rather
+      // than waiting for someone to find the button on this particular sale.
+      //
+      // This is the step that makes the module run itself. It does NOT confirm
+      // anything: the proposal lands as 'needs_confirmation' exactly as the
+      // manual button leaves it, and no sale is judged against it until a person
+      // says so. What it removes is the discovery problem — a tenant with 13
+      // waiting sales and no formats had no way to know which sale to open, and
+      // every one of them showed the same unhelpful message.
+      //
+      // Deduped on the proposal, not the sale: learnProfileFromSale returns the
+      // existing row when the same question set is already queued, so a dozen
+      // sales on one insurer's format produce one thing to confirm.
+      if (failure === 'no_profile_match') {
+        await autoProposeProfile(run.organization_id, run.journey_id, journey.zoho_record_id);
+      }
       // "None of them match a known format" is only honest once there is a
       // format to not match. On a tenant with none set up it reads as though
       // the documents are wrong, when nothing has been taught yet — a first-run

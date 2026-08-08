@@ -11,7 +11,11 @@ import {
   type ParseStrategy,
   type ParsedApplication,
 } from './application-pdf.js';
-import { learnDocumentProfile, type ValidationProblem } from './document-profile-learner.js';
+import {
+  learnDocumentProfile,
+  type LearnedProfile,
+  type ValidationProblem,
+} from './document-profile-learner.js';
 import { recordUsage } from './usage.js';
 import { attemptJobId } from './reconciliation-sweep.js';
 
@@ -188,6 +192,36 @@ export async function resolveApplicationDocument(
 // it lands as 'needs_confirmation' and PUT /profiles/:id/confirm promotes it.
 // ============================================================
 
+/**
+ * How many documents in a pack are worth a model pass before settling for the
+ * best seen so far. Packs run to nine attachments; the application has never
+ * been below the fourth once ranking has had its say.
+ */
+const MAX_LEARN_CANDIDATES = 5;
+
+/**
+ * How good a candidate document is, as the thing to reconcile a sale against.
+ *
+ * Selecting the FIRST document that verifies cleanly is wrong, and measurably
+ * so. Run over a real pack it dropped a 39-question health-and-lifestyle
+ * questionnaire in favour of a 7-field quote summary, purely because the
+ * questionnaire does not name its insurer and so failed verification. The pack
+ * that has both is exactly the pack where the choice matters.
+ *
+ * So disclosures dominate everything else. A document that asks the customer
+ * about their health beats a clean administrative summary even when it needs a
+ * human to finish it off, because the point of the module is checking what the
+ * customer disclosed. A sale whose best document merely needs its insurer named
+ * is in a far better place than one quietly reconciling a quote sheet.
+ */
+function candidateScore(learned: LearnedProfile): number {
+  return (
+    (learned.hasDisclosureQuestions ? 1_000_000 : 0) +
+    (learned.usable ? 1_000 : 0) +
+    Math.min(learned.questions.length, 999)
+  );
+}
+
 export type LearnFailure =
   | 'not_configured'
   | 'no_attachments'
@@ -261,33 +295,82 @@ export async function learnProfileFromSale(
       console.warn(`[Reconciliation] Could not read ${pick.file_name}: ${(err as Error).message}`);
       return { ...empty, failure: 'unreadable', candidates, attachment: pick };
     }
+  }
+
+  let learned: LearnedProfile | null = null;
+
+  if (chosen && text !== null) {
+    const run = await learnDocumentProfile(text);
+    learned = run.learned;
+    await recordUsage({
+      organizationId,
+      provider: 'anthropic',
+      operation: 'reconcile',
+      modelId: run.model,
+      inputTokens: run.usage.input_tokens,
+      outputTokens: run.usage.output_tokens,
+    });
   } else {
-    // No pick: take the highest-ranked one we can actually read. A scanned or
-    // corrupt file at the top of the ranking must not stop the whole operation.
-    for (const candidate of candidates) {
+    // No explicit pick: work DOWN the ranking until a document actually yields a
+    // usable profile, rather than stopping at the first one that merely opens.
+    //
+    // Reading only the top candidate looked equivalent, because ranking is meant
+    // to put the application first. On a real pack it is not: a sanctions search
+    // named "<Name>-ss.pdf" and a trustee form both read perfectly well, produce
+    // no question set, and outranked the actual application on 4 of 13 sales.
+    // The application was sitting at rank 1 or 2 the whole time, and the tenant
+    // was told their document could not be parsed.
+    //
+    // Ranking still decides the ORDER, so the common case costs exactly one
+    // model pass. Only a pack whose best guess turns out to be the wrong
+    // document pays for a second look, which is precisely when it is worth it.
+    let best = -1;
+    const attempts: string[] = [];
+    for (const candidate of candidates.slice(0, MAX_LEARN_CANDIDATES)) {
+      let candidateText: string;
       try {
         const buffer = await downloadSaleAttachment(organizationId, zohoRecordId, candidate.id);
-        text = await extractPdfText(buffer);
-        chosen = candidate;
-        break;
+        candidateText = await extractPdfText(buffer);
       } catch (err) {
         console.warn(
           `[Reconciliation] Could not read ${candidate.file_name}: ${(err as Error).message}`
         );
+        continue;
       }
-    }
-    if (!chosen || text === null) return { ...empty, failure: 'unreadable', candidates };
-  }
 
-  const { learned, usage, model } = await learnDocumentProfile(text);
-  await recordUsage({
-    organizationId,
-    provider: 'anthropic',
-    operation: 'reconcile',
-    modelId: model,
-    inputTokens: usage.input_tokens,
-    outputTokens: usage.output_tokens,
-  });
+      const run = await learnDocumentProfile(candidateText);
+      await recordUsage({
+        organizationId,
+        provider: 'anthropic',
+        operation: 'reconcile',
+        modelId: run.model,
+        inputTokens: run.usage.input_tokens,
+        outputTokens: run.usage.output_tokens,
+      });
+
+      const score = candidateScore(run.learned);
+      attempts.push(`${candidate.file_name}(${score})`);
+      if (score > best) {
+        best = score;
+        chosen = candidate;
+        text = candidateText;
+        learned = run.learned;
+      }
+
+      // The ideal outcome: a document that asks the customer things AND parses
+      // cleanly. Nothing further down a pack can beat it, so stop paying for
+      // model passes.
+      if (run.learned.usable && run.learned.hasDisclosureQuestions) break;
+    }
+
+    if (!chosen || text === null || !learned) {
+      return { ...empty, failure: 'unreadable', candidates };
+    }
+    console.log(
+      `[Reconciliation] chose ${chosen.file_name} from ${attempts.length} candidate(s): ` +
+        attempts.join(', ')
+    );
+  }
 
   const base = {
     ...empty,

@@ -8,6 +8,7 @@ import { isUuid } from '../services/uuid.js';
 import { isReconciliationEnabled, learnProfileFromSale } from '../services/reconciliation-runs.js';
 import { attemptJobId } from '../services/reconciliation-sweep.js';
 import { detectDrift } from '../services/application-pdf.js';
+import { isPlaceholder } from '../services/document-profile-learner.js';
 import type {
   ReconciliationRun,
   ReconciliationItem,
@@ -303,6 +304,41 @@ reconciliationRouter.put('/profiles/:id/confirm', requireAdmin, async (req, res,
     if (profile.status === 'active') return res.json({ id: profile.id, status: 'active' });
     if (profile.status === 'superseded') {
       throw new AppError(400, 'This profile has been superseded and cannot be reactivated');
+    }
+
+    // Naming the insurer is part of confirming, not part of learning.
+    //
+    // A broker portal export carries no insurer name anywhere in it — it is a
+    // quotation request covering several — so the learner genuinely cannot
+    // supply one, and refusing to learn without it would discard the documents
+    // that hold the actual health disclosures. But insurer+product is the unique
+    // key for an ACTIVE profile, so two unnamed formats going live would collide
+    // and the second would displace the first.
+    //
+    // This is the point where both are true at once: the collision is about to
+    // become possible, and there is a person here who knows the answer.
+    const { insurer: suppliedInsurer, product: suppliedProduct } = (req.body ?? {}) as {
+      insurer?: string;
+      product?: string;
+    };
+    const insurer = (suppliedInsurer ?? '').trim() || profile.insurer;
+    const product = suppliedProduct === undefined ? profile.product : suppliedProduct.trim() || null;
+
+    if (isPlaceholder(insurer)) {
+      throw new AppError(
+        400,
+        'This document does not name its insurer, so it cannot be filed as it stands. ' +
+          'Confirm again with the insurer name to activate it.'
+      );
+    }
+    if (insurer !== profile.insurer || product !== profile.product) {
+      await query(
+        `UPDATE capture_document_profiles SET insurer = $2, product = $3, updated_at = now()
+          WHERE id = $1`,
+        [profile.id, insurer, product]
+      );
+      profile.insurer = insurer;
+      profile.product = product;
     }
 
     await query(

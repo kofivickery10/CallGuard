@@ -4,6 +4,8 @@ import {
   verifyProposal,
   sampleForLearning,
   isUsableAnswerPattern,
+  isPlaceholder,
+  looksLikeDisclosureSet,
   type ProfileProposal,
 } from './document-profile-learner.js';
 import {
@@ -299,5 +301,151 @@ describe('sampleForLearning', () => {
     expect(sample.startsWith('A')).toBe(true);
     expect(sample.endsWith('Z')).toBe(true);
     expect(sample).toContain('truncated for analysis');
+  });
+});
+
+// Every case below came out of running the learner against the first tenant's
+// real Zoho pack: 13 sales, 55 documents, 8 usable proposals.
+describe('proposal guards found by running against a real pack', () => {
+  it('rejects a detect pattern carrying this sale\'s own data', () => {
+    // Proposed verbatim for the Dixon sale: a timestamp off the page. It passes
+    // the "is it in the document" test and would match this one PDF for ever.
+    const result = verifyProposal(METLIFE_SUMMARY, {
+      ...GOOD_METLIFE,
+      detect_patterns: ['MetLife EverydayProtect', 'Date of application: 30/07/2026'],
+    });
+    expect(result.usable).toBe(false);
+    expect(result.problems.some((p) => /specific to this sale/i.test(p.message))).toBe(true);
+  });
+
+  it('rejects a policy or reference number as a detect pattern', () => {
+    const result = verifyProposal(METLIFE_SUMMARY, {
+      ...GOOD_METLIFE,
+      detect_patterns: ['MetLife EverydayProtect', 'Policy number: EPH000001'],
+    });
+    expect(result.usable).toBe(false);
+  });
+
+  it('warns, but does not reject, when the insurer is not named in the document', () => {
+    // Blocking here was tried and made things worse: the broker portal export
+    // names no insurer, so rejecting on that basis discarded the documents
+    // carrying the real health disclosures in favour of quote summaries. The
+    // collision it guards against only happens at activation, so that is where
+    // the block lives now.
+    for (const insurer of ['<UNKNOWN>', 'unknown', 'Unknown insurer', '', '  ', 'N/A']) {
+      const result = verifyProposal(METLIFE_SUMMARY, { ...GOOD_METLIFE, insurer });
+      expect(isPlaceholder(insurer), `isPlaceholder(${JSON.stringify(insurer)})`).toBe(true);
+      expect(result.usable, `insurer=${JSON.stringify(insurer)}`).toBe(true);
+      expect(
+        result.problems.some((p) => p.severity === 'warning' && /not named anywhere/i.test(p.message)),
+        `warning for insurer=${JSON.stringify(insurer)}`
+      ).toBe(true);
+    }
+  });
+
+  it('accepts a real insurer name', () => {
+    expect(isPlaceholder('MetLife')).toBe(false);
+    expect(isPlaceholder('Royal London')).toBe(false);
+    expect(isPlaceholder('National Friendly')).toBe(false);
+  });
+
+  it('warns, but does not block, when a document asks nothing', () => {
+    // MetLife's summary is a supported format and reconciling the cover amount
+    // against the call is a real check. It just must not be mistaken for
+    // evidence about health answers, so this is a warning a human sees.
+    const result = verifyProposal(METLIFE_SUMMARY, GOOD_METLIFE);
+    expect(result.usable).toBe(true);
+    expect(result.problems.some((p) => p.severity === 'warning' && /No disclosure question/i.test(p.message))).toBe(true);
+  });
+
+  it('does not warn on a document that genuinely asks questions', () => {
+    const result = verifyProposal(ROYAL_LONDON_PACK, GOOD_RL);
+    expect(result.problems.some((p) => /No disclosure question/i.test(p.message))).toBe(false);
+  });
+});
+
+describe('looksLikeDisclosureSet', () => {
+  it('recognises the health and lifestyle questionnaire', () => {
+    expect(
+      looksLikeDisclosureSet([
+        'Date of birth',
+        'Please choose the best description of your smoking habits',
+        'How tall are you?',
+        'What is your job?',
+      ])
+    ).toBe(true);
+  });
+
+  it('recognises a label_value health form with no question marks', () => {
+    expect(looksLikeDisclosureSet(['Diabetes', 'Heart condition', 'Cancer diagnosis'])).toBe(true);
+  });
+
+  it('rejects the administrative summary', () => {
+    // Verbatim labels from MetLife EverydayProtect. "Occupation" and
+    // "Occupational eligibility" are why the vocabulary list excludes it — with
+    // occupation in, this exact set passed.
+    expect(
+      looksLikeDisclosureSet([
+        'Name',
+        'Address',
+        'Email',
+        'Day tel no',
+        'DOB',
+        'Marital status',
+        'Employment status',
+        'Occupation',
+        'UK Residency',
+        'No. of Units',
+        'Occupational eligibility',
+        'Child Cover',
+        'Active Lifestyle Cover',
+        'Monthly premium',
+        'Preferred Direct Debit date',
+      ])
+    ).toBe(false);
+  });
+
+  it('rejects an empty set', () => {
+    expect(looksLikeDisclosureSet([])).toBe(false);
+  });
+});
+
+describe('sale-specific detection keeps a document form code', () => {
+  it("does not reject MetLife's own form code, which is a good pattern", () => {
+    // "COMP 3094.04 NOV2023" identifies the document type and appears on every
+    // copy of it. The digit rule has to catch "EPH000001" without catching this.
+    const result = verifyProposal(METLIFE_SUMMARY, {
+      ...GOOD_METLIFE,
+      detect_patterns: ['MetLife EverydayProtect', 'COMP 3094.04 NOV2023'],
+    });
+    expect(result.problems.some((p) => /specific to this sale/i.test(p.message))).toBe(false);
+  });
+});
+
+describe('salvaging a proposal with one bad detect pattern', () => {
+  it('drops the sale-specific pattern and keeps the profile when two survive', () => {
+    const result = verifyProposal(METLIFE_SUMMARY, {
+      ...GOOD_METLIFE,
+      detect_patterns: [
+        'MetLife EverydayProtect',
+        'Summary of application details',
+        'Date of application: 30/07/2026',
+      ],
+    });
+    expect(result.usable).toBe(true);
+    expect(result.proposal.detect_patterns).toEqual([
+      'MetLife EverydayProtect',
+      'Summary of application details',
+    ]);
+    expect(result.problems.some((p) => p.severity === 'warning' && /Dropped 1 detect pattern/.test(p.message))).toBe(true);
+  });
+
+  it('still fails when dropping would leave too few to identify the document', () => {
+    const result = verifyProposal(METLIFE_SUMMARY, {
+      ...GOOD_METLIFE,
+      detect_patterns: ['MetLife EverydayProtect', 'Date of application: 30/07/2026'],
+    });
+    expect(result.usable).toBe(false);
+    expect(result.problems.some((p) => /too weak/.test(p.message))).toBe(true);
   });
 });

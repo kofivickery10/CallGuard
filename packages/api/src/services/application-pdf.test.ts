@@ -474,3 +474,51 @@ describe('section isolation', () => {
     expect(out.trim()).toBe('keep this');
   });
 });
+
+describe('link attachments and the real Trust Point naming', () => {
+  it('drops Zoho link attachments, which can never be downloaded', () => {
+    // A link reports no size. Asking Zoho for its body returns nothing and the
+    // extractor then fails with "The PDF file is empty" — 14 of the first
+    // tenant's attachments across 8 sales are these.
+    const ranked = rankAttachmentCandidates([
+      { file_name: 'Plan Details.pdf', size: null },
+      { file_name: 'h+l frazer.pdf', size: 14401 },
+      { file_name: 'RL Key Facts.pdf', size: 0 },
+    ]);
+    expect(ranked.map((r) => r.file_name)).toEqual(['h+l frazer.pdf']);
+  });
+
+  it('leaves ranking untouched when size is not supplied at all', () => {
+    const ranked = rankAttachmentCandidates([{ file_name: 'Application Details.pdf' }]);
+    expect(ranked).toHaveLength(1);
+  });
+
+  it('puts the health-and-lifestyle questionnaire first', () => {
+    // The document reconciliation actually wants: the underwriting questions.
+    const ranked = rankAttachmentCandidates([
+      { file_name: 'Belinda--Wye-ss.pdf', size: 1600 },
+      { file_name: 'quote belinda.pdf', size: 5000 },
+      { file_name: 'h+l belinda.pdf', size: 15000 },
+      { file_name: 'Belinda Wye Suitability Report.zdoc.pdf', size: 9000 },
+    ]);
+    expect(ranked[0]?.file_name).toBe('h+l belinda.pdf');
+    expect(ranked[ranked.length - 1]?.file_name).toMatch(/Suitability/);
+  });
+
+  it('demotes the sanctions search that outranked three real applications', () => {
+    const ranked = rankAttachmentCandidates([
+      { file_name: 'Chloe--Sonnex-ss.pdf', size: 1628 },
+      { file_name: 'h+l chloe.pdf', size: 16000 },
+    ]);
+    expect(ranked[0]?.file_name).toBe('h+l chloe.pdf');
+  });
+
+  it('demotes trustee forms and brochures', () => {
+    const ranked = rankAttachmentCandidates([
+      { file_name: 'David Carter Trustee Forms.pdf', size: 38069 },
+      { file_name: 'Everyday Protect Brochure.pdf', size: 9000 },
+      { file_name: 'David Carter Policy.pdf', size: 12000 },
+    ]);
+    expect(ranked[0]?.file_name).toBe('David Carter Policy.pdf');
+  });
+});

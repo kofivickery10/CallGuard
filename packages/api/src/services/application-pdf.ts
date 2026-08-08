@@ -699,6 +699,11 @@ export function detectDrift(
  */
 const FILENAME_HINTS: Array<{ pattern: RegExp; score: number }> = [
   { pattern: /application/i, score: 5 },
+  // "h+l frazer.pdf", "h+L brain rl.pdf" — health and lifestyle. This is the
+  // document reconciliation actually wants: the underwriting questionnaire with
+  // the disclosures on it. Scored at the top because a pack containing one is a
+  // pack where the summary sheets are the wrong answer.
+  { pattern: /\bh\s*[+&]\s*l\b|health\s*(and|&|\+)\s*lifestyle/i, score: 5 },
   // "app Mr Patrick Dixon.pdf" — the abbreviation an adviser types when
   // uploading by hand, and the observed naming on a real pack. Scored below the
   // full word so an explicit "Application ..." still wins a pack containing
@@ -716,11 +721,38 @@ const FILENAME_HINTS: Array<{ pattern: RegExp; score: number }> = [
   { pattern: /commission/i, score: -4 },
   { pattern: /key ?facts|\bkfd\b/i, score: -3 },
   { pattern: /terms|policy booklet/i, score: -3 },
+  // The sanctions / due-diligence search, filed as "<Name>-ss.pdf". It carries
+  // the customer's name and a results table, so it reads as a plausible record
+  // of the sale while containing no application answers at all. It outranked
+  // the real application on three sales in the first tenant's pack.
+  { pattern: /-\s*ss\.pdf$|\bsanctions?\b|due diligence/i, score: -5 },
+  { pattern: /trustee|\btrust form/i, score: -4 },
+  { pattern: /brochure|\bguide\b/i, score: -4 },
 ];
 
 export interface RankedAttachment {
   file_name: string;
   created_time?: string | null;
+  /** Bytes as Zoho reports them. Null/0 marks a link, not a file — see below. */
+  size?: number | null;
+}
+
+/**
+ * Is this a file we can actually download?
+ *
+ * Zoho returns two things from the same related list: uploaded files, which
+ * carry a byte size, and *link* attachments (a URL to Drive or similar), which
+ * report no size. Asking for the body of a link yields an empty response, and
+ * the PDF extractor then fails with "The PDF file is empty" — which reads as a
+ * corrupt document rather than a thing that was never a document.
+ *
+ * 14 of the first tenant's attachments across 8 sales are links, including two
+ * sales whose top-ranked candidate is one. Recognising them costs a field we
+ * already fetch, and turns a confusing failure into an accurate one: the pack
+ * needs uploading as a file.
+ */
+export function isDownloadableFile(a: RankedAttachment): boolean {
+  return typeof a.size === 'number' && a.size > 0;
 }
 
 /**
@@ -734,6 +766,11 @@ export function rankAttachmentCandidates<T extends RankedAttachment>(attachments
 
   return attachments
     .filter((a) => /\.pdf$/i.test(a.file_name))
+    // Links are dropped rather than ranked last: every attempt to read one
+    // fails, so leaving them in only spends a round trip to learn nothing. A
+    // caller that needs to explain an empty candidate list can compare against
+    // the unfiltered input — see resolveApplicationDocument.
+    .filter((a) => a.size === undefined || isDownloadableFile(a))
     .map((a, index) => ({ a, index, score: score(a.file_name) }))
     .sort((x, y) => {
       if (y.score !== x.score) return y.score - x.score;
