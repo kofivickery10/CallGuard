@@ -597,6 +597,39 @@ export function parseApplication(
 }
 
 /**
+ * Flatten text so a detect pattern can be found in it regardless of how the PDF
+ * happened to lay it out.
+ *
+ * A detect pattern is a sentence a human or a model read OFF the rendered page,
+ * where it reads as one line. The extractor returns it as the PDF stores it,
+ * broken wherever the column ran out:
+ *
+ *   "...upon which we will rely to produce your individual\nquotation."
+ *
+ * A raw substring test then fails on a sentence that is plainly, visibly there.
+ * That is not a hypothetical: it threw away an otherwise correct profile learned
+ * from a real application, and the same test decides at match time whether a
+ * stored profile applies — so the two MUST normalise identically or a profile
+ * could be accepted and then never match anything.
+ *
+ * Deliberately conservative: whitespace and the punctuation a PDF renders
+ * typographically. Not hyphenation, where undoing a line-break hyphen risks
+ * inventing a match that the page does not support.
+ */
+export function normaliseForDetection(text: string): string {
+  return text
+    .toLowerCase()
+    // Curly quotes and dashes: the page renders them typographically, but
+    // whoever typed the pattern almost certainly used the ASCII form.
+    .replace(/[‘’‛]/g, "'")
+    .replace(/[“”]/g, '"')
+    .replace(/[–—]/g, '-')
+    // \s covers the non-breaking and other Unicode spaces PDFs are full of.
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
  * Which stored profile describes this document? Content-based, never filename.
  * All of a profile's detect_patterns must appear for it to match, so a firm's
  * suitability report cannot satisfy an insurer application's profile by
@@ -606,11 +639,11 @@ export function matchProfile<T extends { detect_patterns: string[] }>(
   rawText: string,
   profiles: T[]
 ): T | null {
-  const haystack = rawText.toLowerCase();
+  const haystack = normaliseForDetection(rawText);
   for (const profile of profiles) {
     const patterns = profile.detect_patterns ?? [];
     if (patterns.length === 0) continue;
-    if (patterns.every((p) => haystack.includes(p.toLowerCase()))) return profile;
+    if (patterns.every((p) => haystack.includes(normaliseForDetection(p)))) return profile;
   }
   return null;
 }

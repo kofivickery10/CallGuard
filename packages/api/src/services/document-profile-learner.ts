@@ -4,6 +4,7 @@ import { CACHE_TTL_HEADERS } from './scoring.js';
 import {
   parseApplication,
   fingerprintQuestions,
+  normaliseForDetection,
   type ParseConfig,
   type ParseStrategy,
   type ParsedApplication,
@@ -357,8 +358,12 @@ export function verifyProposal(rawText: string, proposal: ProfileProposal): Lear
         'Fewer than two detect patterns. A single pattern is too weak to distinguish the application from the suitability report that sits beside it.',
     });
   }
+  // Tested exactly as matchProfile will test it at match time. Anything looser
+  // here would accept a profile that never matches a document; anything
+  // stricter would reject one that would have matched perfectly well.
+  const haystack = normaliseForDetection(rawText);
   for (const p of proposal.detect_patterns) {
-    if (!rawText.toLowerCase().includes(p.toLowerCase())) {
+    if (!haystack.includes(normaliseForDetection(p))) {
       problems.push({ severity: 'error', message: `Detect pattern not present in the document: "${p}"` });
     }
   }

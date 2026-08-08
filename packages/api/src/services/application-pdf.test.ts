@@ -320,6 +320,56 @@ describe('profile matching', () => {
   it('returns null rather than guessing when nothing matches', () => {
     expect(matchProfile('an unrelated document', profiles)).toBeNull();
   });
+
+  // Verbatim from `app Mr Patrick Dixon.pdf`, line break and all. The sentence
+  // reads as one line on the page; the extractor returns it broken where the
+  // column ran out. A raw substring test threw away a correct profile learned
+  // from this exact document.
+  const WRAPPED =
+    'The information you have provided\n' +
+    'This is the information that you have provided to us and upon which we will rely to produce your individual\n' +
+    'quotation. This information will form the basis of a contract between yourself and your insurer.\n' +
+    'Customer name: Patrick Dixon';
+
+  it('finds a pattern the PDF wrapped across a line break', () => {
+    const wrappedProfile = [
+      {
+        name: 'quote-portal',
+        detect_patterns: [
+          'This is the information that you have provided to us and upon which we will rely to produce your individual quotation',
+          'This information will form the basis of a contract between yourself and your insurer',
+        ],
+      },
+    ];
+    expect(matchProfile(WRAPPED, wrappedProfile)?.name).toBe('quote-portal');
+  });
+
+  it('is not confused by curly quotes or non-breaking spaces', () => {
+    const rendered = 'The insurer’s own record of\nwhat you told us';
+    const profile = [{ name: 'typographic', detect_patterns: ["The insurer's own record of what you told us"] }];
+    expect(matchProfile(rendered, profile)?.name).toBe('typographic');
+  });
+
+  it('still requires every pattern once whitespace stops mattering', () => {
+    const profile = [
+      {
+        name: 'strict',
+        detect_patterns: [
+          'This is the information that you have provided to us',
+          'a sentence that is nowhere in this document',
+        ],
+      },
+    ];
+    expect(matchProfile(WRAPPED, profile)).toBeNull();
+  });
+
+  it('does not join words that were never adjacent', () => {
+    // Collapsing whitespace must not let "individual" and "quotation" match a
+    // document where they sit in different sentences entirely.
+    const unrelated = 'your individual.\nSeparately: quotation of charges.';
+    const profile = [{ name: 'x', detect_patterns: ['your individual quotation'] }];
+    expect(matchProfile(unrelated, profile)).toBeNull();
+  });
 });
 
 describe('attachment ranking', () => {
