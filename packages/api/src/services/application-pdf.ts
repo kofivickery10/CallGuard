@@ -666,6 +666,12 @@ export function detectDrift(
  */
 const FILENAME_HINTS: Array<{ pattern: RegExp; score: number }> = [
   { pattern: /application/i, score: 5 },
+  // "app Mr Patrick Dixon.pdf" — the abbreviation an adviser types when
+  // uploading by hand, and the observed naming on a real pack. Scored below the
+  // full word so an explicit "Application ..." still wins a pack containing
+  // both. Word-bounded, so it does not double-score "Application" itself, and
+  // does not fire on "happy" or "appendix".
+  { pattern: /\bapp\b/i, score: 4 },
   { pattern: /client review/i, score: 4 },
   { pattern: /details/i, score: 2 },
   // Documents that sit alongside the application and are NOT it. The suitability

@@ -99,11 +99,19 @@ export async function processReconcile(job: Job<{ runId: string }>) {
     if (!resolution.document) {
       const failure = resolution.failure ?? 'no_attachments';
       const status = statusForFailure(failure);
+      // "None of them match a known format" is only honest once there is a
+      // format to not match. On a tenant with none set up it reads as though
+      // the documents are wrong, when nothing has been taught yet — a first-run
+      // state and a genuine mismatch need entirely different actions, so they
+      // must not share a sentence.
       const message =
         failure === 'drifted' && resolution.drift
           ? describeDrift(resolution.drift)
           : failure === 'no_profile_match'
-            ? `None of the ${resolution.candidates.length} attached document(s) match a known application format for this tenant.`
+            ? resolution.profilesAvailable === 0
+              ? `No application formats have been set up yet, so the ${resolution.candidates.length} attached ` +
+                'document(s) could not be read. Read one of them to propose a format, then confirm it on Data Forms.'
+              : `None of the ${resolution.candidates.length} attached document(s) match a known application format for this tenant.`
             : failure === 'not_configured'
               ? 'The CRM connection is not configured for attachment reads.'
               : 'No application document has been attached to the sale yet.';

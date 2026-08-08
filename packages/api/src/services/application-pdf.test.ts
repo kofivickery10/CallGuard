@@ -374,6 +374,44 @@ describe('attachment ranking', () => {
     const input = [{ file_name: 'a.pdf' }, { file_name: 'b.pdf' }, { file_name: 'c.pdf' }];
     expect(rankAttachmentCandidates(input).map((r) => r.file_name)).toEqual(['a.pdf', 'b.pdf', 'c.pdf']);
   });
+
+  // The Patric Dixon pack: the application and the firm's own document differ by
+  // the three letters an adviser typed. Both scored 0 before, so which one was
+  // downloaded first came down to the order Zoho happened to list them in.
+  it('recognises the "app" abbreviation an adviser types by hand', () => {
+    const ranked = rankAttachmentCandidates([
+      { file_name: 'Mr Patrick Dixon.pdf' },
+      { file_name: 'app Mr Patrick Dixon.pdf' },
+    ]);
+    expect(ranked[0]?.file_name).toBe('app Mr Patrick Dixon.pdf');
+  });
+
+  it('still puts an explicit "Application" ahead of a bare "app"', () => {
+    const ranked = rankAttachmentCandidates([
+      { file_name: 'app Mr Patrick Dixon.pdf' },
+      { file_name: 'Application Details.pdf' },
+    ]);
+    expect(ranked[0]?.file_name).toBe('Application Details.pdf');
+  });
+
+  it('does not fire on words that merely start with app', () => {
+    const ranked = rankAttachmentCandidates([
+      { file_name: 'appendix.pdf' },
+      { file_name: 'happy customers.pdf' },
+      { file_name: 'app Mr Patrick Dixon.pdf' },
+    ]);
+    expect(ranked[0]?.file_name).toBe('app Mr Patrick Dixon.pdf');
+    // The other two are untouched ties, so they keep their input order.
+    expect(ranked.slice(1).map((r) => r.file_name)).toEqual(['appendix.pdf', 'happy customers.pdf']);
+  });
+
+  it('does not let "app" outrank the suitability-report penalty', () => {
+    const ranked = rankAttachmentCandidates([
+      { file_name: 'app suitability report.pdf' },
+      { file_name: 'Client review for graham davies.pdf' },
+    ]);
+    expect(ranked[0]?.file_name).toBe('Client review for graham davies.pdf');
+  });
 });
 
 describe('section isolation', () => {

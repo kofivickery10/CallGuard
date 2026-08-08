@@ -79,6 +79,13 @@ export interface ResolutionResult {
   failure: ResolutionFailure | null;
   /** Candidates inspected, for a human deciding what to do about a failure. */
   candidates: ZohoAttachment[];
+  /**
+   * How many active profiles the document was tested against. 0 means the
+   * tenant has not set up a single format yet, which is a different problem
+   * from a document that failed to match the ones they have — undefined where
+   * the resolution ended before the profiles were loaded.
+   */
+  profilesAvailable?: number;
   /** Populated when the failure is 'drifted'. */
   drift?: { profile: DocumentProfileRow; added: string[]; removed: string[]; reordered: boolean };
 }
@@ -107,7 +114,14 @@ export async function resolveApplicationDocument(
 
   const profiles = await getActiveProfiles(organizationId);
   const candidates = rankAttachmentCandidates(attachments);
-  if (candidates.length === 0) return { document: null, failure: 'no_attachments', candidates: attachments };
+  if (candidates.length === 0) {
+    return {
+      document: null,
+      failure: 'no_attachments',
+      candidates: attachments,
+      profilesAvailable: profiles.length,
+    };
+  }
 
   for (const attachment of candidates) {
     let text: string;
@@ -137,13 +151,29 @@ export async function resolveApplicationDocument(
         (profile.questions ?? []).map((q) => q.question),
         parsed.pairs.map((p) => p.question)
       );
-      return { document: null, failure: 'drifted', candidates, drift: { profile, ...drift } };
+      return {
+        document: null,
+        failure: 'drifted',
+        candidates,
+        profilesAvailable: profiles.length,
+        drift: { profile, ...drift },
+      };
     }
 
-    return { document: { attachment, profile, parsed, text }, failure: null, candidates };
+    return {
+      document: { attachment, profile, parsed, text },
+      failure: null,
+      candidates,
+      profilesAvailable: profiles.length,
+    };
   }
 
-  return { document: null, failure: 'no_profile_match', candidates };
+  return {
+    document: null,
+    failure: 'no_profile_match',
+    candidates,
+    profilesAvailable: profiles.length,
+  };
 }
 
 // ============================================================
