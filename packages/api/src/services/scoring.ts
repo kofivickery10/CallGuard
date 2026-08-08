@@ -1,5 +1,5 @@
 import { config } from '../config.js';
-import { CLAUDE_MODELS, isItemPass } from '@callguard/shared';
+import { CLAUDE_MODELS, isItemPass, parseCoaching } from '@callguard/shared';
 import type { CallCoaching } from '@callguard/shared';
 
 // 1-hour prompt-cache TTL (2x write, 0.1x read). The pinned SDK's types
@@ -424,6 +424,24 @@ export async function scoreTranscript(
             `${shape} (stop_reason=${response.stop_reason}, requested ${items.length} items). ` +
             `Not a truncation: the model stopped of its own accord.`
       );
+    }
+    // The coaching brief is not covered by the items guard above, and the tool
+    // schema declaring it an object does not make it one: the model has been
+    // seen answering with the object serialised as a string, trailing junk and
+    // all. Unchecked, that lands in the JSONB column as a string scalar and the
+    // first UI to call `.map` on coaching.strengths takes the page down with it.
+    //
+    // Salvaged where possible, dropped where not. Never thrown: coaching is
+    // advisory, and losing a brief must not cost a firm its compliance score.
+    if (withCoaching && candidate.coaching !== undefined) {
+      const coaching = parseCoaching(candidate.coaching);
+      if (!coaching) {
+        console.warn(
+          `[Scoring] discarding an unreadable coaching brief (${typeof candidate.coaching}) — ` +
+            'scores are unaffected'
+        );
+      }
+      candidate.coaching = coaching ?? undefined;
     }
     output = candidate;
 

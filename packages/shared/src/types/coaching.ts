@@ -21,6 +21,86 @@ export interface CallCoaching {
   next_actions: string[];
 }
 
+function isStringArray(v: unknown): v is string[] {
+  return Array.isArray(v) && v.every((s) => typeof s === 'string');
+}
+
+// The first syntactically balanced {...} starting at the first brace, ignoring
+// braces inside strings. Recovers an object the model emitted with trailing
+// junk after it (a stray closing brace is the observed case) instead of losing
+// the whole brief to one bad character.
+function firstBalancedObject(text: string): string | null {
+  const start = text.indexOf('{');
+  if (start === -1) return null;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i]!;
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === '\\') escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') inString = true;
+    else if (ch === '{') depth++;
+    else if (ch === '}' && --depth === 0) return text.slice(start, i + 1);
+  }
+  return null;
+}
+
+/**
+ * Coerce whatever is sitting in a `coaching` column (or came back from the
+ * model) into a coaching brief, or null if it cannot be trusted to be one.
+ *
+ * Needed because the coaching brief is free-form model output that nothing else
+ * validates: the scoring tool schema declares it as an object, but a model can
+ * and does answer with the object serialised as a *string* — sometimes with
+ * stray characters after it. That reaches the database as a JSONB string
+ * scalar, and a UI that assumes an object then dies on `coaching.strengths.map`
+ * and takes the whole sale page with it.
+ *
+ * Coaching is advisory: an unreadable brief must degrade to "no brief", never
+ * to a failed score or a page that will not load.
+ */
+export function parseCoaching(raw: unknown): CallCoaching | null {
+  let value = raw;
+
+  if (typeof value === 'string') {
+    const text = value.trim();
+    if (!text) return null;
+    let parsed: unknown = null;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      const balanced = firstBalancedObject(text);
+      if (!balanced) return null;
+      try {
+        parsed = JSON.parse(balanced);
+      } catch {
+        return null;
+      }
+    }
+    // A doubly-encoded string is possible; one more pass, then give up.
+    value = typeof parsed === 'string' ? parseCoaching(parsed) : parsed;
+  }
+
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const c = value as Record<string, unknown>;
+  if (typeof c.summary !== 'string') return null;
+  if (!isStringArray(c.strengths)) return null;
+  if (!isStringArray(c.improvements)) return null;
+  if (!isStringArray(c.next_actions)) return null;
+
+  return {
+    summary: c.summary,
+    strengths: c.strengths,
+    improvements: c.improvements,
+    next_actions: c.next_actions,
+  };
+}
+
 export type ScoringScope = 'sales_only' | 'over_threshold' | 'everything';
 export type TranscriptionMode = 'mono_diarize' | 'stereo_multichannel';
 export type DeepgramRegion = 'eu' | 'us';

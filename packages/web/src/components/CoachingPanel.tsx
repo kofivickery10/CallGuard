@@ -1,9 +1,13 @@
 import { Link } from 'react-router-dom';
-import type { CallCoaching, Plan } from '@callguard/shared';
-import { hasFeature, PLAN_LABELS } from '@callguard/shared';
+import type { Plan } from '@callguard/shared';
+import { hasFeature, parseCoaching, PLAN_LABELS } from '@callguard/shared';
 
 interface CoachingPanelProps {
-  coaching: CallCoaching | null;
+  // Deliberately `unknown`, not CallCoaching: the brief is free-form model
+  // output stored in a JSONB column, so what arrives here is only *usually* the
+  // declared shape. It is validated below rather than trusted — an unreadable
+  // brief has to degrade to a message, not take the sale page down with it.
+  coaching: unknown;
   plan: Plan | null;
   callStatus: string;
   isAdmin: boolean;
@@ -13,7 +17,12 @@ interface CoachingPanelProps {
   subject?: 'call' | 'journey';
 }
 
-export function CoachingPanel({ coaching, plan, callStatus, isAdmin, priorCoachingCount, subject = 'call' }: CoachingPanelProps) {
+export function CoachingPanel({ coaching: rawCoaching, plan, callStatus, isAdmin, priorCoachingCount, subject = 'call' }: CoachingPanelProps) {
+  const coaching = parseCoaching(rawCoaching);
+  // Something was stored, but it is not a brief we can render. Said plainly:
+  // "no coaching was generated" would be untrue, and would send someone looking
+  // in the wrong place for a brief that exists but is malformed.
+  const unreadable = rawCoaching != null && coaching === null;
   // Coaching ships on every plan (see FEATURES.coaching in shared) — hasFeature
   // only returns false here while `plan` hasn't loaded yet, never because a
   // real plan lacks it. Show the upgrade prompt only for an actual gated
@@ -60,13 +69,15 @@ export function CoachingPanel({ coaching, plan, callStatus, isAdmin, priorCoachi
           <h3 className="text-section-title text-text-primary">Coaching</h3>
         </div>
         <div className="p-6 text-center text-table-cell text-text-muted">
-          {callStatus === 'scored'
-            ? subject === 'journey'
-              ? 'No coaching was generated for this sale. Coaching is produced when the sale is scored.'
-              : 'No coaching generated for this call. Re-score it to produce coaching.'
-            : subject === 'journey'
-              ? 'Coaching will appear here once the sale is scored.'
-              : 'Coaching will appear here once the call is scored.'}
+          {unreadable
+            ? `A coaching brief was produced for this ${subject === 'journey' ? 'sale' : 'call'} but could not be read, so it is not shown. The score and checkpoints below are unaffected. Re-scoring produces a fresh brief.`
+            : callStatus === 'scored'
+              ? subject === 'journey'
+                ? 'No coaching was generated for this sale. Coaching is produced when the sale is scored.'
+                : 'No coaching generated for this call. Re-score it to produce coaching.'
+              : subject === 'journey'
+                ? 'Coaching will appear here once the sale is scored.'
+                : 'Coaching will appear here once the call is scored.'}
         </div>
       </div>
     );
