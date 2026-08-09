@@ -4,6 +4,7 @@ import { scoringQueue } from '../queue.js';
 import { maybeStartReconciliation } from '../../services/reconciliation-runs.js';
 import {
   isDueForRetry,
+  isDueForParkedRetry,
   isPastAbandonWindow,
   isRetryableFailure,
   attemptJobId,
@@ -259,9 +260,16 @@ export async function processReconciliationSweep(
     if (result.retried >= MAX_RETRIES_PER_TICK) break;
 
     const createdAt = new Date(run.created_at);
+    // A sale parked for want of a readable format keeps its own, much longer
+    // schedule. The abandon window asks "might the document still arrive", which
+    // is not this run's problem — its document is already attached and merely
+    // unreadable — and applying it here stranded parked runs completely: never
+    // abandoned by design, never retried past seven days, so nothing revisited
+    // them again. See PARKED_GIVE_UP_MS.
+    const parked = run.status === 'needs_profile';
     // Belt and braces: the UPDATE above should have caught these already, but a
     // row created between the two statements must not be retried past its window.
-    if (isPastAbandonWindow(now, createdAt)) continue;
+    if (!parked && isPastAbandonWindow(now, createdAt)) continue;
 
     // A run that has errored on every one of its last several attempts is not
     // going to come good by being asked again on the same cadence, and each
@@ -279,7 +287,10 @@ export async function processReconciliationSweep(
       continue;
     }
 
-    if (!isDueForRetry(now, createdAt, lastAttemptAt)) continue;
+    const due = parked
+      ? isDueForParkedRetry(now, createdAt, lastAttemptAt)
+      : isDueForRetry(now, createdAt, lastAttemptAt);
+    if (!due) continue;
 
     try {
       await scoringQueue.add(

@@ -14,6 +14,9 @@ import {
   STALE_RUNNING_MS,
   isHeldTooLong,
   HELD_PROFILE_NOTICE_MS,
+  isDueForParkedRetry,
+  PARKED_RETRY_MS,
+  PARKED_GIVE_UP_MS,
 } from './reconciliation-sweep.js';
 
 const MINUTE = 60 * 1000;
@@ -170,6 +173,47 @@ describe('isHeldTooLong — a format waiting alone for corroboration', () => {
   it('fires exactly at the threshold', () => {
     expect(isHeldTooLong(now, new Date(now.getTime() - HELD_PROFILE_NOTICE_MS))).toBe(true);
     expect(isHeldTooLong(now, new Date(now.getTime() - HELD_PROFILE_NOTICE_MS + 1))).toBe(false);
+  });
+});
+
+describe('isDueForParkedRetry — a sale waiting on a format we cannot read', () => {
+  it('keeps revisiting a run long past the point a document would have arrived', () => {
+    // The bug this exists for. A parked run is never abandoned (confirming a
+    // format is what rescues it) but isDueForRetry stopped at the abandon
+    // window, so past seven days nothing revisited it — ever. A backlog of real
+    // sales sat there, and every later improvement to the reader arrived too
+    // late for exactly the sales that needed one.
+    const created = ago(ABANDON_AFTER_MS + 5 * DAY);
+    expect(isDueForRetry(NOW, created, ago(DAY))).toBe(false);
+    expect(isDueForParkedRetry(NOW, created, ago(DAY))).toBe(true);
+  });
+
+  it('is due immediately when nothing has looked at it yet', () => {
+    expect(isDueForParkedRetry(NOW, ago(HOUR), null)).toBe(true);
+  });
+
+  it('waits out its own interval between visits', () => {
+    const created = ago(3 * DAY);
+    expect(isDueForParkedRetry(NOW, created, ago(HOUR))).toBe(false);
+    expect(isDueForParkedRetry(NOW, created, ago(PARKED_RETRY_MS))).toBe(true);
+  });
+
+  it('is slower than the document-watching cadence, because nothing here changes by the minute', () => {
+    // Each visit now proposes a format and may read the document with a model.
+    // At the first tier's half-hourly cadence that would bill continuously for a
+    // pack that is simply unreadable.
+    expect(PARKED_RETRY_MS).toBeGreaterThan(retryIntervalMs(HOUR)!);
+  });
+
+  it('stops eventually, so an unreadable pack cannot bill for ever', () => {
+    expect(isDueForParkedRetry(NOW, ago(PARKED_GIVE_UP_MS), null)).toBe(false);
+    expect(isDueForParkedRetry(NOW, ago(PARKED_GIVE_UP_MS + DAY), ago(DAY))).toBe(false);
+  });
+
+  it('gives a format far longer to turn up than the document window allows', () => {
+    // A rare insurer's second sale — the one that corroborates the format and
+    // releases everything waiting on it — can be weeks away.
+    expect(PARKED_GIVE_UP_MS).toBeGreaterThan(ABANDON_AFTER_MS * 3);
   });
 });
 
