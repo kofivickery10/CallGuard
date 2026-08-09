@@ -31,6 +31,47 @@ const DAY = 24 * HOUR;
 export const ABANDON_AFTER_MS = 7 * DAY;
 
 /**
+ * How often to revisit a sale parked for want of a readable format, and how long
+ * to keep doing it.
+ *
+ * These exist because the ordinary window is the wrong instrument for
+ * 'needs_profile'. ABANDON_AFTER_MS answers "how long might a document still be
+ * coming", and past it isDueForRetry stops — correct for a sale with no pack,
+ * and quietly wrong for a parked one, whose pack is already there and merely
+ * unreadable. A parked run is also deliberately never abandoned (confirming a
+ * format is what rescues it), so past seven days it was neither retried nor
+ * closed: stranded in a state nothing would ever revisit. Trust Point's backlog
+ * sat exactly there, and every improvement to the reader would have arrived too
+ * late for the sales that needed it.
+ *
+ * Slow, because nothing about a parked sale changes minute to minute, and each
+ * visit now costs real model passes — proposing a format, then reading the
+ * document directly. Bounded, because a pack that is genuinely unreadable must
+ * not bill for ever: past the ceiling the run simply stays parked, still
+ * visible, still notified, and still released the moment a format goes live.
+ */
+export const PARKED_RETRY_MS = 12 * HOUR;
+export const PARKED_GIVE_UP_MS = 30 * DAY;
+
+/**
+ * Should a sale parked for want of a format be looked at again now?
+ *
+ * Separate from isDueForRetry rather than a tier inside it, because the two
+ * measure different things: that one asks whether a document might yet arrive,
+ * this one whether it is worth spending another read on a document already in
+ * hand.
+ */
+export function isDueForParkedRetry(
+  now: Date,
+  createdAt: Date,
+  lastAttemptAt: Date | null
+): boolean {
+  if (now.getTime() - createdAt.getTime() >= PARKED_GIVE_UP_MS) return false;
+  if (lastAttemptAt === null) return true;
+  return now.getTime() - lastAttemptAt.getTime() >= PARKED_RETRY_MS;
+}
+
+/**
  * How long a proposed format may wait alone before we mention it.
  *
  * A format confirms itself when a second sale produces it, and for a format the
