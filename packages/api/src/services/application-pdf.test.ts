@@ -7,6 +7,8 @@ import {
   matchProfile,
   isolateSection,
   rankAttachmentCandidates,
+  parseLooksHealthy,
+  formatSignature,
 } from './application-pdf.js';
 import {
   ROYAL_LONDON_PACK,
@@ -320,6 +322,56 @@ describe('profile matching', () => {
   it('returns null rather than guessing when nothing matches', () => {
     expect(matchProfile('an unrelated document', profiles)).toBeNull();
   });
+
+  // Verbatim from `app Mr Patrick Dixon.pdf`, line break and all. The sentence
+  // reads as one line on the page; the extractor returns it broken where the
+  // column ran out. A raw substring test threw away a correct profile learned
+  // from this exact document.
+  const WRAPPED =
+    'The information you have provided\n' +
+    'This is the information that you have provided to us and upon which we will rely to produce your individual\n' +
+    'quotation. This information will form the basis of a contract between yourself and your insurer.\n' +
+    'Customer name: Patrick Dixon';
+
+  it('finds a pattern the PDF wrapped across a line break', () => {
+    const wrappedProfile = [
+      {
+        name: 'quote-portal',
+        detect_patterns: [
+          'This is the information that you have provided to us and upon which we will rely to produce your individual quotation',
+          'This information will form the basis of a contract between yourself and your insurer',
+        ],
+      },
+    ];
+    expect(matchProfile(WRAPPED, wrappedProfile)?.name).toBe('quote-portal');
+  });
+
+  it('is not confused by curly quotes or non-breaking spaces', () => {
+    const rendered = 'The insurer’s own record of\nwhat you told us';
+    const profile = [{ name: 'typographic', detect_patterns: ["The insurer's own record of what you told us"] }];
+    expect(matchProfile(rendered, profile)?.name).toBe('typographic');
+  });
+
+  it('still requires every pattern once whitespace stops mattering', () => {
+    const profile = [
+      {
+        name: 'strict',
+        detect_patterns: [
+          'This is the information that you have provided to us',
+          'a sentence that is nowhere in this document',
+        ],
+      },
+    ];
+    expect(matchProfile(WRAPPED, profile)).toBeNull();
+  });
+
+  it('does not join words that were never adjacent', () => {
+    // Collapsing whitespace must not let "individual" and "quotation" match a
+    // document where they sit in different sentences entirely.
+    const unrelated = 'your individual.\nSeparately: quotation of charges.';
+    const profile = [{ name: 'x', detect_patterns: ['your individual quotation'] }];
+    expect(matchProfile(unrelated, profile)).toBeNull();
+  });
 });
 
 describe('attachment ranking', () => {
@@ -374,6 +426,44 @@ describe('attachment ranking', () => {
     const input = [{ file_name: 'a.pdf' }, { file_name: 'b.pdf' }, { file_name: 'c.pdf' }];
     expect(rankAttachmentCandidates(input).map((r) => r.file_name)).toEqual(['a.pdf', 'b.pdf', 'c.pdf']);
   });
+
+  // The Patric Dixon pack: the application and the firm's own document differ by
+  // the three letters an adviser typed. Both scored 0 before, so which one was
+  // downloaded first came down to the order Zoho happened to list them in.
+  it('recognises the "app" abbreviation an adviser types by hand', () => {
+    const ranked = rankAttachmentCandidates([
+      { file_name: 'Mr Patrick Dixon.pdf' },
+      { file_name: 'app Mr Patrick Dixon.pdf' },
+    ]);
+    expect(ranked[0]?.file_name).toBe('app Mr Patrick Dixon.pdf');
+  });
+
+  it('still puts an explicit "Application" ahead of a bare "app"', () => {
+    const ranked = rankAttachmentCandidates([
+      { file_name: 'app Mr Patrick Dixon.pdf' },
+      { file_name: 'Application Details.pdf' },
+    ]);
+    expect(ranked[0]?.file_name).toBe('Application Details.pdf');
+  });
+
+  it('does not fire on words that merely start with app', () => {
+    const ranked = rankAttachmentCandidates([
+      { file_name: 'appendix.pdf' },
+      { file_name: 'happy customers.pdf' },
+      { file_name: 'app Mr Patrick Dixon.pdf' },
+    ]);
+    expect(ranked[0]?.file_name).toBe('app Mr Patrick Dixon.pdf');
+    // The other two are untouched ties, so they keep their input order.
+    expect(ranked.slice(1).map((r) => r.file_name)).toEqual(['appendix.pdf', 'happy customers.pdf']);
+  });
+
+  it('does not let "app" outrank the suitability-report penalty', () => {
+    const ranked = rankAttachmentCandidates([
+      { file_name: 'app suitability report.pdf' },
+      { file_name: 'Client review for graham davies.pdf' },
+    ]);
+    expect(ranked[0]?.file_name).toBe('Client review for graham davies.pdf');
+  });
 });
 
 describe('section isolation', () => {
@@ -384,5 +474,133 @@ describe('section isolation', () => {
   it('is tolerant of a missing end marker', () => {
     const out = isolateSection('START keep this', { sectionStart: 'START', sectionEnd: 'NOPE' });
     expect(out.trim()).toBe('keep this');
+  });
+});
+
+describe('link attachments and the real Trust Point naming', () => {
+  it('drops Zoho link attachments, which can never be downloaded', () => {
+    // A link reports no size. Asking Zoho for its body returns nothing and the
+    // extractor then fails with "The PDF file is empty" — 14 of the first
+    // tenant's attachments across 8 sales are these.
+    const ranked = rankAttachmentCandidates([
+      { file_name: 'Plan Details.pdf', size: null },
+      { file_name: 'h+l frazer.pdf', size: 14401 },
+      { file_name: 'RL Key Facts.pdf', size: 0 },
+    ]);
+    expect(ranked.map((r) => r.file_name)).toEqual(['h+l frazer.pdf']);
+  });
+
+  it('leaves ranking untouched when size is not supplied at all', () => {
+    const ranked = rankAttachmentCandidates([{ file_name: 'Application Details.pdf' }]);
+    expect(ranked).toHaveLength(1);
+  });
+
+  it('puts the health-and-lifestyle questionnaire first', () => {
+    // The document reconciliation actually wants: the underwriting questions.
+    const ranked = rankAttachmentCandidates([
+      { file_name: 'Belinda--Wye-ss.pdf', size: 1600 },
+      { file_name: 'quote belinda.pdf', size: 5000 },
+      { file_name: 'h+l belinda.pdf', size: 15000 },
+      { file_name: 'Belinda Wye Suitability Report.zdoc.pdf', size: 9000 },
+    ]);
+    expect(ranked[0]?.file_name).toBe('h+l belinda.pdf');
+    expect(ranked[ranked.length - 1]?.file_name).toMatch(/Suitability/);
+  });
+
+  it('demotes the sanctions search that outranked three real applications', () => {
+    const ranked = rankAttachmentCandidates([
+      { file_name: 'Chloe--Sonnex-ss.pdf', size: 1628 },
+      { file_name: 'h+l chloe.pdf', size: 16000 },
+    ]);
+    expect(ranked[0]?.file_name).toBe('h+l chloe.pdf');
+  });
+
+  it('demotes trustee forms and brochures', () => {
+    const ranked = rankAttachmentCandidates([
+      { file_name: 'David Carter Trustee Forms.pdf', size: 38069 },
+      { file_name: 'Everyday Protect Brochure.pdf', size: 9000 },
+      { file_name: 'David Carter Policy.pdf', size: 12000 },
+    ]);
+    expect(ranked[0]?.file_name).toBe('David Carter Policy.pdf');
+  });
+});
+
+describe('parseLooksHealthy — the drift test for a form with no fixed question set', () => {
+  const pairs = (n: number, answered = true) =>
+    ({
+      pairs: Array.from({ length: n }, (_, i) => ({
+        order: i,
+        question: `Question ${i}?`,
+        guidance: null,
+        choices: [],
+        answer: answered ? 'Yes' : null,
+      })),
+      empty: n === 0,
+      fingerprint: 'x',
+    }) as any;
+
+  it('passes a parse that produced questions with answers', () => {
+    expect(parseLooksHealthy(pairs(20))).toBeNull();
+  });
+
+  it('does not care that the question COUNT changed', () => {
+    // The whole point: the same portal export produced 23 and 95 questions on
+    // two of one tenant's sales. Neither is a fault.
+    expect(parseLooksHealthy(pairs(23))).toBeNull();
+    expect(parseLooksHealthy(pairs(95))).toBeNull();
+  });
+
+  it('catches a parse that produced nothing', () => {
+    expect(parseLooksHealthy(pairs(0))).toMatch(/no questions at all/);
+  });
+
+  it('catches a parse where nothing was answered', () => {
+    expect(parseLooksHealthy(pairs(12, false))).toMatch(/no answer against it/);
+  });
+
+  it('catches merged question boundaries', () => {
+    const merged = pairs(4);
+    for (const p of merged.pairs.slice(0, 3)) p.question = 'x'.repeat(400);
+    expect(parseLooksHealthy(merged)).toMatch(/boundaries have been lost/);
+  });
+
+  it('tolerates a single wordy question', () => {
+    const one = pairs(6);
+    one.pairs[0].question = 'x'.repeat(400);
+    expect(parseLooksHealthy(one)).toBeNull();
+  });
+});
+
+describe('formatSignature — the identity of a form, not of a question set', () => {
+  it('is stable when the question set changes but the format does not', () => {
+    // The whole basis of corroboration: the same portal export produced 23 and
+    // 95 questions on two sales. Both must be recognised as the same format.
+    const a = formatSignature('question_marker', ['The information you have provided', 'Customer name:']);
+    const b = formatSignature('question_marker', ['The information you have provided', 'Customer name:']);
+    expect(a).toBe(b);
+  });
+
+  it('ignores the order the model happened to list the patterns in', () => {
+    expect(formatSignature('label_value', ['A pattern', 'B pattern'])).toBe(
+      formatSignature('label_value', ['B pattern', 'A pattern'])
+    );
+  });
+
+  it('normalises the same way matching does, so the two can never disagree', () => {
+    expect(formatSignature('question_marker', ['The information you have\nprovided', 'X'])).toBe(
+      formatSignature('question_marker', ['the information you have provided', 'x'])
+    );
+  });
+
+  it('separates different formats', () => {
+    expect(formatSignature('label_value', ['MetLife EverydayProtect', 'Summary'])).not.toBe(
+      formatSignature('label_value', ['Royal London', 'Summary'])
+    );
+  });
+
+  it('separates the same patterns read by a different strategy', () => {
+    expect(formatSignature('label_value', ['A', 'B'])).not.toBe(
+      formatSignature('question_marker', ['A', 'B'])
+    );
   });
 });

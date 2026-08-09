@@ -4,6 +4,7 @@ import { CACHE_TTL_HEADERS } from './scoring.js';
 import {
   parseApplication,
   fingerprintQuestions,
+  normaliseForDetection,
   type ParseConfig,
   type ParseStrategy,
   type ParsedApplication,
@@ -89,6 +90,13 @@ export interface LearnedProfile {
   problems: ValidationProblem[];
   /** False when any problem is an error — the profile must not be stored active. */
   usable: boolean;
+  /**
+   * Whether the document actually asks the customer anything, as opposed to
+   * restating what was sold. This is what makes one candidate in a pack worth
+   * more than another, so it is decided once here rather than re-derived by
+   * every caller that needs to choose between them.
+   */
+  hasDisclosureQuestions: boolean;
 }
 
 const PROFILE_TOOL_SCHEMA = {
@@ -346,6 +354,54 @@ export function isUsableAnswerPattern(source: string): boolean {
   }
 }
 
+// A date, a clock time, or a long unbroken digit run. Anything matching belongs
+// to one sale rather than to the document type.
+//
+// The digit rule is deliberately NOT word-bounded, so it catches a policy number
+// welded to a prefix ("EPH000001") — which is exactly how insurers write them.
+// Six is the threshold because a document's own form code is the pattern most
+// worth keeping and reads as short groups: MetLife's "COMP 3094.04 NOV2023" is a
+// perfectly good detect pattern and must survive this.
+const SALE_SPECIFIC = /\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b|\b\d{1,2}:\d{2}\b|\d{6,}/;
+
+// "Unknown insurer" is toProposal's own fallback when the model returns nothing,
+// so it has to be in here or the guard misses the commonest case of all.
+const PLACEHOLDER =
+  /^\s*(<?unknown>?(\s+(insurer|provider|product))?|n\/?a|none|unidentified|not an? .*|tbc|\?+)\s*$/i;
+
+export function isPlaceholder(value: string | null | undefined): boolean {
+  return !value || !value.trim() || PLACEHOLDER.test(value);
+}
+
+// Vocabulary that appears when a document asks the customer to disclose
+// something, and does NOT appear on a summary of what was sold.
+//
+// Deliberately excludes the words a summary sheet also uses. "Occupation" was
+// the trap: it reads like a health-and-lifestyle question, and MetLife's summary
+// carries both "Occupation:" and "Occupational eligibility:", so including it
+// let the exact document this guard exists to catch sail through. Same reasoning
+// drops travel, driving, sport and hours-per-week — all of them appear as
+// rating factors on documents that ask nothing.
+const DISCLOSURE_TERMS =
+  /\b(smok|tobacco|alcohol|drink|drug|height|tall|weigh|diagnos|symptom|treatment|medication|prescrib|doctor|gp\b|hospital|surger|illness|disease|disabilit|cancer|diabet|heart|stroke|asthma|depress|anxiet|mental health|famil(y|ial) history|hazardous|convict)/i;
+
+/**
+ * Does this read as a set of questions put to the customer, or as a summary of
+ * what was sold?
+ *
+ * The test is deliberately structural before it is lexical: a real question set
+ * asks things, so it contains interrogatives. A summary of key facts is a list
+ * of noun-phrase labels — "Name", "Address", "Monthly premium", "No. of Units".
+ * Either an interrogative or disclosure vocabulary is enough to pass.
+ */
+export function looksLikeDisclosureSet(questions: string[]): boolean {
+  if (questions.length === 0) return false;
+  const interrogative = questions.some(
+    (q) => q.includes('?') || /^\s*(do|does|did|have|has|are|is|was|were|will|would|can|could|how|what|which|when|where|why|please (tell|choose|confirm|select))\b/i.test(q)
+  );
+  return interrogative || questions.some((q) => DISCLOSURE_TERMS.test(q));
+}
+
 export function verifyProposal(rawText: string, proposal: ProfileProposal): LearnedProfile {
   const problems: ValidationProblem[] = [];
   const parsed = parseApplication(rawText, proposal.strategy, proposal.parse_config);
@@ -357,8 +413,12 @@ export function verifyProposal(rawText: string, proposal: ProfileProposal): Lear
         'Fewer than two detect patterns. A single pattern is too weak to distinguish the application from the suitability report that sits beside it.',
     });
   }
+  // Tested exactly as matchProfile will test it at match time. Anything looser
+  // here would accept a profile that never matches a document; anything
+  // stricter would reject one that would have matched perfectly well.
+  const haystack = normaliseForDetection(rawText);
   for (const p of proposal.detect_patterns) {
-    if (!rawText.toLowerCase().includes(p.toLowerCase())) {
+    if (!haystack.includes(normaliseForDetection(p))) {
       problems.push({ severity: 'error', message: `Detect pattern not present in the document: "${p}"` });
     }
   }
@@ -439,6 +499,87 @@ export function verifyProposal(rawText: string, proposal: ProfileProposal): Lear
     });
   }
 
+  if (parsed.pairs.length > 0 && !looksLikeDisclosureSet(parsed.pairs.map((p) => p.question))) {
+    // A warning, not an error, and the distinction is deliberate.
+    //
+    // Reconciling a summary of key facts IS worth doing: whether the cover
+    // amount, the units and the date of birth on the submitted document match
+    // what was said on the call are real checks, and label_value exists to make
+    // them. Blocking the profile would refuse a document this module was built
+    // to read.
+    //
+    // But a clean result on such a document means something much narrower than
+    // it appears. Nothing on it asks the customer to disclose anything, so a
+    // green panel cannot be evidence that the health answers matched — there
+    // were none. Whoever confirms the profile is the last person able to notice
+    // that, so they are told plainly here.
+    problems.push({
+      severity: 'warning',
+      message:
+        'No disclosure question found — every item reads as an administrative field (name, ' +
+        'address, cover amount, premium). Reconciling these is still worthwhile, but a clean ' +
+        'result on this format is NOT evidence that health or lifestyle answers matched, ' +
+        'because the document does not ask any.',
+    });
+  }
+
+  // A detect pattern carrying this sale's own data can only ever match this one
+  // document, so a profile keeping it would be confirmed and then match nothing
+  // ever again. Observed repeatedly on real proposals: a timestamp lifted
+  // straight off the page.
+  //
+  // Dropped rather than fatal. Whether the model reaches for a timestamp varies
+  // run to run on the SAME document — of eight portal exports it did it on three
+  // — so failing the proposal makes a good document's fate a coin toss. The
+  // remaining patterns are the ones that actually identify the document type,
+  // and two of them is the bar the whole check exists to enforce, so if two
+  // survive there is nothing wrong with the result.
+  const saleSpecific = proposal.detect_patterns.filter((p) => SALE_SPECIFIC.test(p));
+  if (saleSpecific.length > 0) {
+    const kept = proposal.detect_patterns.filter((p) => !SALE_SPECIFIC.test(p));
+    if (kept.length >= 2) {
+      proposal.detect_patterns = kept;
+      problems.push({
+        severity: 'warning',
+        message:
+          `Dropped ${saleSpecific.length} detect pattern(s) carrying data specific to this sale ` +
+          `(${saleSpecific.map((p) => `"${p.trim()}"`).join(', ')}). A pattern must appear on ` +
+          `every document of this type. ${kept.length} pattern(s) remain, which is enough to identify it.`,
+      });
+    } else {
+      problems.push({
+        severity: 'error',
+        message:
+          `Detect pattern contains data specific to this sale: ${saleSpecific
+            .map((p) => `"${p.trim()}"`)
+            .join(', ')}. Removing it would leave fewer than two patterns, which is too weak ` +
+          'to tell this document apart from the others in the pack.',
+      });
+    }
+  }
+
+  // A warning, and the reasoning is worth stating because the obvious choice is
+  // wrong. insurer+product IS the unique key, so two unidentified formats would
+  // collide — but only once they are ACTIVE, which is what the partial unique
+  // index says. A proposal awaiting confirmation collides with nothing.
+  //
+  // Blocking here was tried and it was actively harmful: the broker portal
+  // export does not name an insurer anywhere in it, because it is a quotation
+  // request that spans several. Rejecting on that basis threw away the document
+  // holding 39 real health disclosures and settled for a 7-field quote summary
+  // instead. The check belongs where the collision actually happens — at
+  // confirmation, which is also the only point where a person can supply the
+  // name the document never had.
+  if (isPlaceholder(proposal.insurer)) {
+    problems.push({
+      severity: 'warning',
+      message:
+        `The insurer is not named anywhere in this document (got "${proposal.insurer}"). ` +
+        'Profiles are filed by insurer and product, so you will be asked to name it when ' +
+        'you confirm this format.',
+    });
+  }
+
   const questions: ProfileQuestion[] = parsed.pairs.map((p) => ({
     order: p.order,
     question: p.question,
@@ -454,5 +595,6 @@ export function verifyProposal(rawText: string, proposal: ProfileProposal): Lear
     fingerprint: fingerprintQuestions(parsed.pairs.map((p) => p.question)),
     problems,
     usable: !problems.some((p) => p.severity === 'error'),
+    hasDisclosureQuestions: looksLikeDisclosureSet(parsed.pairs.map((p) => p.question)),
   };
 }

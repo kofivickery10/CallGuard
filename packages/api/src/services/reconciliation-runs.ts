@@ -6,12 +6,19 @@ import {
   rankAttachmentCandidates,
   matchProfile,
   parseApplication,
+  parseLooksHealthy,
+  formatSignature,
   detectDrift,
   type ParseConfig,
   type ParseStrategy,
   type ParsedApplication,
 } from './application-pdf.js';
-import { learnDocumentProfile, type ValidationProblem } from './document-profile-learner.js';
+import {
+  learnDocumentProfile,
+  isPlaceholder,
+  type LearnedProfile,
+  type ValidationProblem,
+} from './document-profile-learner.js';
 import { recordUsage } from './usage.js';
 import { attemptJobId } from './reconciliation-sweep.js';
 
@@ -36,6 +43,8 @@ export interface DocumentProfileRow {
   questions: Array<{ question: string; absence_meaningful?: boolean }>;
   version: number;
   status: 'needs_confirmation' | 'active' | 'superseded';
+  /** Migration 090. True for a form that asks conditional follow-ups. */
+  questions_vary: boolean;
 }
 
 export async function isReconciliationEnabled(organizationId: string): Promise<boolean> {
@@ -53,6 +62,76 @@ export async function getActiveProfiles(organizationId: string): Promise<Documen
       ORDER BY insurer, product`,
     [organizationId]
   );
+}
+
+/**
+ * Formats proposed but not yet live.
+ *
+ * Matched against BEFORE a new document is sent to the model, because "have we
+ * already proposed this format" is the same question as "does this document
+ * match that profile" — and matchProfile is the thing that answers it. Comparing
+ * the model's own descriptions of two documents does not work: asked to describe
+ * the same format twice it picks different literal strings each time, so three
+ * MetLife sales produced three separate proposals for one format. Testing the
+ * document against the stored patterns is stable, because it asks about the
+ * document rather than about the model.
+ */
+export async function getPendingProfiles(organizationId: string): Promise<DocumentProfileRow[]> {
+  return query<DocumentProfileRow>(
+    `SELECT * FROM capture_document_profiles
+      WHERE organization_id = $1 AND status = 'needs_confirmation'
+      ORDER BY created_at DESC`,
+    [organizationId]
+  );
+}
+
+/**
+ * A second sale reached a format already waiting to be confirmed.
+ *
+ * That agreement is the whole basis for going live unattended: a model misread
+ * cannot be reproduced from a different customer's document, so two independent
+ * sales matching the same stored patterns is evidence no single proposal can
+ * provide about itself.
+ *
+ * Parsing here as well is not redundant. A different question set from the same
+ * patterns is exactly what a form with conditional follow-ups looks like, and it
+ * is only visible once a second document exists to compare — which makes this
+ * the one place questions_vary can be established rather than guessed.
+ */
+async function corroborate(
+  profile: DocumentProfileRow,
+  journeyId: string,
+  text: string
+): Promise<{ journeys: string[]; activated: boolean }> {
+  const row = await queryOne<{ corroborating_journeys: string[] }>(
+    'SELECT corroborating_journeys FROM capture_document_profiles WHERE id = $1',
+    [profile.id]
+  );
+  const journeys = [...new Set([...(row?.corroborating_journeys ?? []), journeyId])];
+
+  const parsed = parseApplication(text, profile.strategy, profile.parse_config);
+  const varies = profile.questions_vary || parsed.fingerprint !== profile.question_fingerprint;
+
+  await query(
+    `UPDATE capture_document_profiles
+        SET corroborating_journeys = $2::uuid[], questions_vary = $3, updated_at = now()
+      WHERE id = $1`,
+    [profile.id, journeys, varies]
+  );
+
+  // The parse has to still work on the second document, or the agreement is
+  // only that both documents look alike — not that we can read either.
+  const broken = parseLooksHealthy(parsed);
+  if (broken) {
+    console.warn(
+      `[Reconciliation] ${profile.id} matched journey ${journeyId} but ${broken} — not activating`
+    );
+    return { journeys, activated: false };
+  }
+
+  if (journeys.length < CORROBORATION_THRESHOLD) return { journeys, activated: false };
+  const activated = await activateProfile(profile.organization_id, profile.id, { auto: true });
+  return { journeys, activated: activated !== null };
 }
 
 /**
@@ -79,8 +158,26 @@ export interface ResolutionResult {
   failure: ResolutionFailure | null;
   /** Candidates inspected, for a human deciding what to do about a failure. */
   candidates: ZohoAttachment[];
+  /**
+   * How many active profiles the document was tested against. 0 means the
+   * tenant has not set up a single format yet, which is a different problem
+   * from a document that failed to match the ones they have — undefined where
+   * the resolution ended before the profiles were loaded.
+   */
+  profilesAvailable?: number;
   /** Populated when the failure is 'drifted'. */
-  drift?: { profile: DocumentProfileRow; added: string[]; removed: string[]; reordered: boolean };
+  drift?: {
+    profile: DocumentProfileRow;
+    added: string[];
+    removed: string[];
+    reordered: boolean;
+    /**
+     * Set instead of added/removed when the profile's questions are marked as
+     * varying: there is no question-set change to report, the parse itself
+     * stopped working. Carries the reason.
+     */
+    brokenReason?: string;
+  };
 }
 
 /**
@@ -107,7 +204,14 @@ export async function resolveApplicationDocument(
 
   const profiles = await getActiveProfiles(organizationId);
   const candidates = rankAttachmentCandidates(attachments);
-  if (candidates.length === 0) return { document: null, failure: 'no_attachments', candidates: attachments };
+  if (candidates.length === 0) {
+    return {
+      document: null,
+      failure: 'no_attachments',
+      candidates: attachments,
+      profilesAvailable: profiles.length,
+    };
+  }
 
   for (const attachment of candidates) {
     let text: string;
@@ -128,6 +232,41 @@ export async function resolveApplicationDocument(
 
     const parsed = parseApplication(text, profile.strategy, profile.parse_config);
 
+    // A form that asks conditional follow-ups has no fixed question set to drift
+    // FROM. The same broker-portal export produced between 23 and 95 questions
+    // across eight of one tenant's sales, purely because customers with more to
+    // disclose are asked more. Comparing that against a stored list parks every
+    // sale after the first for a review with nothing in it.
+    //
+    // Safe because reconciliation reads its questions from this sale's document
+    // rather than from the profile (see processors/reconcile.ts). What a stale
+    // profile actually risks here is the parse breaking, so that is what gets
+    // checked — see migration 090 for the full reasoning.
+    if (profile.questions_vary) {
+      const broken = parseLooksHealthy(parsed);
+      if (broken) {
+        return {
+          document: null,
+          failure: 'drifted',
+          candidates,
+          profilesAvailable: profiles.length,
+          drift: {
+            profile,
+            added: [],
+            removed: [],
+            reordered: false,
+            brokenReason: broken,
+          },
+        };
+      }
+      return {
+        document: { attachment, profile, parsed, text },
+        failure: null,
+        candidates,
+        profilesAvailable: profiles.length,
+      };
+    }
+
     // The fingerprint is the cache-validity check and the drift detector in one.
     // A mismatch means the insurer changed their question set, and nothing is
     // judged against a stale profile — a removed question would read as missed on
@@ -137,13 +276,29 @@ export async function resolveApplicationDocument(
         (profile.questions ?? []).map((q) => q.question),
         parsed.pairs.map((p) => p.question)
       );
-      return { document: null, failure: 'drifted', candidates, drift: { profile, ...drift } };
+      return {
+        document: null,
+        failure: 'drifted',
+        candidates,
+        profilesAvailable: profiles.length,
+        drift: { profile, ...drift },
+      };
     }
 
-    return { document: { attachment, profile, parsed, text }, failure: null, candidates };
+    return {
+      document: { attachment, profile, parsed, text },
+      failure: null,
+      candidates,
+      profilesAvailable: profiles.length,
+    };
   }
 
-  return { document: null, failure: 'no_profile_match', candidates };
+  return {
+    document: null,
+    failure: 'no_profile_match',
+    candidates,
+    profilesAvailable: profiles.length,
+  };
 }
 
 // ============================================================
@@ -157,6 +312,36 @@ export async function resolveApplicationDocument(
 // Nothing learned here is ever used to judge a sale until a human confirms it —
 // it lands as 'needs_confirmation' and PUT /profiles/:id/confirm promotes it.
 // ============================================================
+
+/**
+ * How many documents in a pack are worth a model pass before settling for the
+ * best seen so far. Packs run to nine attachments; the application has never
+ * been below the fourth once ranking has had its say.
+ */
+const MAX_LEARN_CANDIDATES = 5;
+
+/**
+ * How good a candidate document is, as the thing to reconcile a sale against.
+ *
+ * Selecting the FIRST document that verifies cleanly is wrong, and measurably
+ * so. Run over a real pack it dropped a 39-question health-and-lifestyle
+ * questionnaire in favour of a 7-field quote summary, purely because the
+ * questionnaire does not name its insurer and so failed verification. The pack
+ * that has both is exactly the pack where the choice matters.
+ *
+ * So disclosures dominate everything else. A document that asks the customer
+ * about their health beats a clean administrative summary even when it needs a
+ * human to finish it off, because the point of the module is checking what the
+ * customer disclosed. A sale whose best document merely needs its insurer named
+ * is in a far better place than one quietly reconciling a quote sheet.
+ */
+function candidateScore(learned: LearnedProfile): number {
+  return (
+    (learned.hasDisclosureQuestions ? 1_000_000 : 0) +
+    (learned.usable ? 1_000 : 0) +
+    Math.min(learned.questions.length, 999)
+  );
+}
 
 export type LearnFailure =
   | 'not_configured'
@@ -231,33 +416,107 @@ export async function learnProfileFromSale(
       console.warn(`[Reconciliation] Could not read ${pick.file_name}: ${(err as Error).message}`);
       return { ...empty, failure: 'unreadable', candidates, attachment: pick };
     }
+  }
+
+  let learned: LearnedProfile | null = null;
+
+  if (chosen && text !== null) {
+    const run = await learnDocumentProfile(text);
+    learned = run.learned;
+    await recordUsage({
+      organizationId,
+      provider: 'anthropic',
+      operation: 'reconcile',
+      modelId: run.model,
+      inputTokens: run.usage.input_tokens,
+      outputTokens: run.usage.output_tokens,
+    });
   } else {
-    // No pick: take the highest-ranked one we can actually read. A scanned or
-    // corrupt file at the top of the ranking must not stop the whole operation.
-    for (const candidate of candidates) {
+    // No explicit pick: work DOWN the ranking until a document actually yields a
+    // usable profile, rather than stopping at the first one that merely opens.
+    //
+    // Reading only the top candidate looked equivalent, because ranking is meant
+    // to put the application first. On a real pack it is not: a sanctions search
+    // named "<Name>-ss.pdf" and a trustee form both read perfectly well, produce
+    // no question set, and outranked the actual application on 4 of 13 sales.
+    // The application was sitting at rank 1 or 2 the whole time, and the tenant
+    // was told their document could not be parsed.
+    //
+    // Ranking still decides the ORDER, so the common case costs exactly one
+    // model pass. Only a pack whose best guess turns out to be the wrong
+    // document pays for a second look, which is precisely when it is worth it.
+    let best = -1;
+    const attempts: string[] = [];
+    const pending = await getPendingProfiles(organizationId);
+    for (const candidate of candidates.slice(0, MAX_LEARN_CANDIDATES)) {
+      let candidateText: string;
       try {
         const buffer = await downloadSaleAttachment(organizationId, zohoRecordId, candidate.id);
-        text = await extractPdfText(buffer);
-        chosen = candidate;
-        break;
+        candidateText = await extractPdfText(buffer);
       } catch (err) {
         console.warn(
           `[Reconciliation] Could not read ${candidate.file_name}: ${(err as Error).message}`
         );
+        continue;
       }
-    }
-    if (!chosen || text === null) return { ...empty, failure: 'unreadable', candidates };
-  }
 
-  const { learned, usage, model } = await learnDocumentProfile(text);
-  await recordUsage({
-    organizationId,
-    provider: 'anthropic',
-    operation: 'reconcile',
-    modelId: model,
-    inputTokens: usage.input_tokens,
-    outputTokens: usage.output_tokens,
-  });
+      // Already-proposed formats are tested first, and on the document rather
+      // than on a fresh description of it. Cheaper — no model pass at all — and
+      // more reliable, since the same document described twice does not
+      // describe itself the same way.
+      const already = matchProfile(candidateText, pending);
+      if (already) {
+        const { journeys, activated } = await corroborate(already, journeyId, candidateText);
+        console.log(
+          `[Reconciliation] ${candidate.file_name} matches pending format ${already.id} ` +
+            `(${journeys.length} sale(s) agree)${activated ? ' — now live' : ''}`
+        );
+        return {
+          ...empty,
+          failure: null,
+          profileId: already.id,
+          attachment: candidate,
+          candidates,
+          insurer: already.insurer,
+          product: already.product,
+          questionCount: already.questions?.length ?? 0,
+          reusedExisting: true,
+        };
+      }
+
+      const run = await learnDocumentProfile(candidateText);
+      await recordUsage({
+        organizationId,
+        provider: 'anthropic',
+        operation: 'reconcile',
+        modelId: run.model,
+        inputTokens: run.usage.input_tokens,
+        outputTokens: run.usage.output_tokens,
+      });
+
+      const score = candidateScore(run.learned);
+      attempts.push(`${candidate.file_name}(${score})`);
+      if (score > best) {
+        best = score;
+        chosen = candidate;
+        text = candidateText;
+        learned = run.learned;
+      }
+
+      // The ideal outcome: a document that asks the customer things AND parses
+      // cleanly. Nothing further down a pack can beat it, so stop paying for
+      // model passes.
+      if (run.learned.usable && run.learned.hasDisclosureQuestions) break;
+    }
+
+    if (!chosen || text === null || !learned) {
+      return { ...empty, failure: 'unreadable', candidates };
+    }
+    console.log(
+      `[Reconciliation] chose ${chosen.file_name} from ${attempts.length} candidate(s): ` +
+        attempts.join(', ')
+    );
+  }
 
   const base = {
     ...empty,
@@ -275,15 +534,55 @@ export async function learnProfileFromSale(
   // already been shown to mis-read the document.
   if (!learned.usable) return { ...base, failure: 'unusable' };
 
-  // The same document learned twice — an admin clicking again, or two sales with
-  // the same unrecognised format — should not fill the queue with duplicates.
-  const duplicate = await queryOne<{ id: string }>(
-    `SELECT id FROM capture_document_profiles
-      WHERE organization_id = $1 AND question_fingerprint = $2 AND status = 'needs_confirmation'
-      ORDER BY created_at DESC LIMIT 1`,
-    [organizationId, learned.fingerprint]
+  const signature = formatSignature(learned.proposal.strategy, learned.proposal.detect_patterns);
+
+  // Have we met this FORM before, whatever question set this particular copy of
+  // it happens to carry? Keyed on the signature rather than the question
+  // fingerprint, because a form with conditional follow-ups produces a different
+  // fingerprint on every sale and would otherwise queue a fresh proposal each
+  // time — 8 sales of one tenant's portal export produced 8 distinct question
+  // sets between 23 and 95 questions.
+  const existing = await queryOne<{
+    id: string;
+    status: string;
+    question_fingerprint: string;
+    questions_vary: boolean;
+    corroborating_journeys: string[];
+  }>(
+    `SELECT id, status, question_fingerprint, questions_vary, corroborating_journeys
+       FROM capture_document_profiles
+      WHERE organization_id = $1 AND format_signature = $2
+        AND status IN ('needs_confirmation', 'active')
+      ORDER BY status = 'active' DESC, created_at DESC
+      LIMIT 1`,
+    [organizationId, signature]
   );
-  if (duplicate) return { ...base, failure: null, profileId: duplicate.id, reusedExisting: true };
+
+  if (existing) {
+    // A DIFFERENT sale reaching the same format is the corroboration that lets
+    // it go live without anyone approving it. The same sale re-read (an admin
+    // clicking twice) proves nothing and must not count towards the threshold.
+    const corroborated = [...new Set([...existing.corroborating_journeys, journeyId])];
+
+    // Same form, different question set, and it parsed cleanly. Nothing changed
+    // at the insurer — this form asks different questions depending on the
+    // answers, and that is the only way to find out, because one copy of a
+    // document cannot tell you what a different customer would have been asked.
+    const varies =
+      existing.questions_vary || existing.question_fingerprint !== learned.fingerprint;
+
+    await query(
+      `UPDATE capture_document_profiles
+          SET corroborating_journeys = $2::uuid[], questions_vary = $3, updated_at = now()
+        WHERE id = $1`,
+      [existing.id, corroborated, varies]
+    );
+
+    if (existing.status === 'needs_confirmation' && corroborated.length >= CORROBORATION_THRESHOLD) {
+      await activateProfile(organizationId, existing.id, { auto: true });
+    }
+    return { ...base, failure: null, profileId: existing.id, reusedExisting: true };
+  }
 
   // Version numbers run per insurer+product across all statuses, so a superseded
   // v2 is never confusable with a fresh v2 for the same document.
@@ -296,8 +595,10 @@ export async function learnProfileFromSale(
   const created = await queryOne<{ id: string }>(
     `INSERT INTO capture_document_profiles
        (organization_id, insurer, product, strategy, detect_patterns, parse_config,
-        question_fingerprint, questions, version, status, learned_from_journey_id)
-     VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8::jsonb, $9, 'needs_confirmation', $10)
+        question_fingerprint, questions, version, status, learned_from_journey_id,
+        format_signature, corroborating_journeys)
+     VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8::jsonb, $9, 'needs_confirmation', $10,
+             $11, ARRAY[$10]::uuid[])
      RETURNING id`,
     [
       organizationId,
@@ -310,10 +611,112 @@ export async function learnProfileFromSale(
       JSON.stringify(learned.questions),
       (previous?.max ?? 0) + 1,
       journeyId,
+      signature,
     ]
   );
 
   return { ...base, failure: null, profileId: created?.id ?? null };
+}
+
+/**
+ * How many DIFFERENT sales must produce the same format before it goes live on
+ * its own.
+ *
+ * Two, not one. One document agreeing with itself is not evidence — the learner
+ * is a model pass and its output genuinely varies run to run, so a single clean
+ * proposal can be a one-off misread that looks perfect. Two independent sales
+ * reaching the same strategy and the same detect patterns is something a misread
+ * cannot fake.
+ *
+ * Not higher, because the cost of waiting is real: a format seen on only one
+ * sale so far would sit unconfirmed while that sale goes unchecked, and most
+ * formats do arrive more than once.
+ */
+const CORROBORATION_THRESHOLD = 2;
+
+/**
+ * Make a profile live, and release every sale that was waiting for it.
+ *
+ * One function for both routes in, deliberately. A person confirming and
+ * corroboration confirming must supersede the same way, requeue the same sales
+ * and leave the same audit trail — the only difference being who is recorded as
+ * responsible, which is exactly the thing that must not drift between two
+ * copies of this logic.
+ *
+ * `auto` sets auto_confirmed_at and leaves confirmed_by NULL, so nothing can
+ * later present a machine's decision as a named person's approval.
+ */
+export async function activateProfile(
+  organizationId: string,
+  profileId: string,
+  opts: { auto: true } | { auto: false; userId: string }
+): Promise<{ insurer: string; product: string | null; requeued: number } | null> {
+  const profile = await queryOne<{
+    insurer: string;
+    product: string | null;
+    format_signature: string | null;
+  }>(
+    `SELECT insurer, product, format_signature FROM capture_document_profiles
+      WHERE id = $1 AND organization_id = $2 AND status = 'needs_confirmation'`,
+    [profileId, organizationId]
+  );
+  if (!profile) return null;
+
+  // An active profile is uniquely keyed on insurer+product, and a broker portal
+  // export names no insurer at all. Two such formats going live would therefore
+  // collide: the supersede below matches on insurer+product, so activating the
+  // second would silently retire the first and every sale on it would stop being
+  // read. Nothing would report that, because retiring a superseded profile is
+  // exactly what confirming a new version is supposed to do.
+  //
+  // So an unnamed format is given a name it cannot share — derived from the
+  // format signature, which is what actually makes it distinct. Honest about
+  // what it is, stable across runs, and a person can rename it later without
+  // anything breaking, because the signature is what matching uses.
+  if (isPlaceholder(profile.insurer)) {
+    const suffix = (profile.format_signature ?? profileId).slice(0, 8);
+    const insurer = 'Unidentified insurer';
+    const product = `Format ${suffix}`;
+    await query(
+      `UPDATE capture_document_profiles SET insurer = $2, product = $3, updated_at = now()
+        WHERE id = $1`,
+      [profileId, insurer, product]
+    );
+    profile.insurer = insurer;
+    profile.product = product;
+  }
+
+  await query(
+    `UPDATE capture_document_profiles
+        SET status = 'superseded', superseded_at = now(), updated_at = now()
+      WHERE organization_id = $1 AND insurer = $2
+        AND COALESCE(product, '') = COALESCE($3, '')
+        AND status = 'active'`,
+    [organizationId, profile.insurer, profile.product]
+  );
+  await query(
+    `UPDATE capture_document_profiles
+        SET status = 'active',
+            confirmed_by = $2,
+            confirmed_at = now(),
+            auto_confirmed_at = CASE WHEN $2::uuid IS NULL THEN now() ELSE NULL END,
+            updated_at = now()
+      WHERE id = $1`,
+    [profileId, opts.auto ? null : opts.userId]
+  );
+
+  // Sales parked on the old question set — and any whose format we had never
+  // seen — can now be reconciled.
+  const waiting = await query<{ id: string; attempts: number }>(
+    `SELECT id, attempts FROM capture_reconciliation_runs
+      WHERE organization_id = $1 AND status = 'needs_profile'`,
+    [organizationId]
+  );
+  for (const run of waiting) {
+    await scoringQueue.add('reconcile', { runId: run.id }, { jobId: attemptJobId(run.id, run.attempts) });
+  }
+
+  return { insurer: profile.insurer, product: profile.product, requeued: waiting.length };
 }
 
 /** Run status implied by a resolution failure. */

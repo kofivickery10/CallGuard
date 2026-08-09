@@ -8,6 +8,8 @@ import {
   ABANDON_AFTER_MS,
   MAX_FAILURE_STREAK,
   STALE_RUNNING_MS,
+  isHeldTooLong,
+  HELD_PROFILE_NOTICE_MS,
 } from './reconciliation-sweep.js';
 
 const MINUTE = 60 * 1000;
@@ -138,5 +140,31 @@ describe('isRetryableFailure', () => {
   it('gives up well before the abandon window, so a broken run stops costing CRM calls', () => {
     const firstTierInterval = retryIntervalMs(HOUR)!;
     expect(MAX_FAILURE_STREAK * firstTierInterval).toBeLessThan(ABANDON_AFTER_MS);
+  });
+});
+
+describe('isHeldTooLong — a format waiting alone for corroboration', () => {
+  const at = (isoDaysAgo: number) => new Date(Date.UTC(2026, 7, 9) - isoDaysAgo * 24 * 60 * 60 * 1000);
+  const now = new Date(Date.UTC(2026, 7, 9));
+
+  it('says nothing about a format proposed today', () => {
+    // Most formats corroborate within a day or two as the next sale on them
+    // comes through. Nagging immediately would make the notification worthless.
+    expect(isHeldTooLong(now, at(0))).toBe(false);
+    expect(isHeldTooLong(now, at(1))).toBe(false);
+  });
+
+  it('stays quiet over a weekend', () => {
+    expect(isHeldTooLong(now, at(2))).toBe(false);
+  });
+
+  it('speaks up once waiting stops being the likely explanation', () => {
+    expect(isHeldTooLong(now, at(3))).toBe(true);
+    expect(isHeldTooLong(now, at(10))).toBe(true);
+  });
+
+  it('fires exactly at the threshold', () => {
+    expect(isHeldTooLong(now, new Date(now.getTime() - HELD_PROFILE_NOTICE_MS))).toBe(true);
+    expect(isHeldTooLong(now, new Date(now.getTime() - HELD_PROFILE_NOTICE_MS + 1))).toBe(false);
   });
 });

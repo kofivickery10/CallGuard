@@ -597,6 +597,39 @@ export function parseApplication(
 }
 
 /**
+ * Flatten text so a detect pattern can be found in it regardless of how the PDF
+ * happened to lay it out.
+ *
+ * A detect pattern is a sentence a human or a model read OFF the rendered page,
+ * where it reads as one line. The extractor returns it as the PDF stores it,
+ * broken wherever the column ran out:
+ *
+ *   "...upon which we will rely to produce your individual\nquotation."
+ *
+ * A raw substring test then fails on a sentence that is plainly, visibly there.
+ * That is not a hypothetical: it threw away an otherwise correct profile learned
+ * from a real application, and the same test decides at match time whether a
+ * stored profile applies — so the two MUST normalise identically or a profile
+ * could be accepted and then never match anything.
+ *
+ * Deliberately conservative: whitespace and the punctuation a PDF renders
+ * typographically. Not hyphenation, where undoing a line-break hyphen risks
+ * inventing a match that the page does not support.
+ */
+export function normaliseForDetection(text: string): string {
+  return text
+    .toLowerCase()
+    // Curly quotes and dashes: the page renders them typographically, but
+    // whoever typed the pattern almost certainly used the ASCII form.
+    .replace(/[‘’‛]/g, "'")
+    .replace(/[“”]/g, '"')
+    .replace(/[–—]/g, '-')
+    // \s covers the non-breaking and other Unicode spaces PDFs are full of.
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
  * Which stored profile describes this document? Content-based, never filename.
  * All of a profile's detect_patterns must appear for it to match, so a firm's
  * suitability report cannot satisfy an insurer application's profile by
@@ -606,11 +639,60 @@ export function matchProfile<T extends { detect_patterns: string[] }>(
   rawText: string,
   profiles: T[]
 ): T | null {
-  const haystack = rawText.toLowerCase();
+  const haystack = normaliseForDetection(rawText);
   for (const profile of profiles) {
     const patterns = profile.detect_patterns ?? [];
     if (patterns.length === 0) continue;
-    if (patterns.every((p) => haystack.includes(p.toLowerCase()))) return profile;
+    if (patterns.every((p) => haystack.includes(normaliseForDetection(p)))) return profile;
+  }
+  return null;
+}
+
+/**
+ * The identity of a FORM, as distinct from the question set on any one copy of it.
+ *
+ * Two documents share a signature when they are the same insurer form: same
+ * parse strategy, same detect patterns. Their question sets may still differ,
+ * and on a form with conditional follow-ups they will — which is what makes this
+ * the right key for recognising a format we have met before, where the question
+ * fingerprint is not.
+ *
+ * Patterns are sorted before hashing because the order the model happens to list
+ * them in carries no meaning, and normalised the same way matching normalises
+ * them, so a signature can never disagree with what matchProfile would do.
+ */
+export function formatSignature(strategy: ParseStrategy, detectPatterns: string[]): string {
+  const normalised = detectPatterns.map(normaliseForDetection).filter(Boolean).sort();
+  return createHash('sha256').update(`${strategy}\n${normalised.join('\n')}`).digest('hex');
+}
+
+/**
+ * Does this parse still look like a working read of the document?
+ *
+ * The drift test for a form with a FIXED question set is "are the questions
+ * still the ones we stored". For a form that asks conditional follow-ups that
+ * test is meaningless — the set is supposed to differ per customer — so this
+ * stands in its place: not "did the questions change" but "did the parse break".
+ *
+ * Deliberately the same three failures the learner refuses a proposal for, since
+ * a config that would not be accepted today should not keep being trusted:
+ * nothing parsed, nothing answered, or questions so long that block boundaries
+ * have plainly merged several together.
+ *
+ * Returns the reason it looks broken, or null when it looks fine.
+ */
+export function parseLooksHealthy(parsed: ParsedApplication): string | null {
+  if (parsed.empty || parsed.pairs.length === 0) {
+    return 'the document parsed to no questions at all';
+  }
+  if (parsed.pairs.every((p) => p.answer === null)) {
+    return 'every question parsed with no answer against it';
+  }
+  // One overlong question is a quirk of a wordy insurer; most of them being
+  // overlong means the boundaries are gone and the wording cannot be trusted.
+  const overlong = parsed.pairs.filter((p) => p.question.length > 300).length;
+  if (overlong > parsed.pairs.length / 2) {
+    return `${overlong} of ${parsed.pairs.length} questions ran over 300 characters, so the question boundaries have been lost`;
   }
   return null;
 }
@@ -666,6 +748,17 @@ export function detectDrift(
  */
 const FILENAME_HINTS: Array<{ pattern: RegExp; score: number }> = [
   { pattern: /application/i, score: 5 },
+  // "h+l frazer.pdf", "h+L brain rl.pdf" — health and lifestyle. This is the
+  // document reconciliation actually wants: the underwriting questionnaire with
+  // the disclosures on it. Scored at the top because a pack containing one is a
+  // pack where the summary sheets are the wrong answer.
+  { pattern: /\bh\s*[+&]\s*l\b|health\s*(and|&|\+)\s*lifestyle/i, score: 5 },
+  // "app Mr Patrick Dixon.pdf" — the abbreviation an adviser types when
+  // uploading by hand, and the observed naming on a real pack. Scored below the
+  // full word so an explicit "Application ..." still wins a pack containing
+  // both. Word-bounded, so it does not double-score "Application" itself, and
+  // does not fire on "happy" or "appendix".
+  { pattern: /\bapp\b/i, score: 4 },
   { pattern: /client review/i, score: 4 },
   { pattern: /details/i, score: 2 },
   // Documents that sit alongside the application and are NOT it. The suitability
@@ -677,11 +770,38 @@ const FILENAME_HINTS: Array<{ pattern: RegExp; score: number }> = [
   { pattern: /commission/i, score: -4 },
   { pattern: /key ?facts|\bkfd\b/i, score: -3 },
   { pattern: /terms|policy booklet/i, score: -3 },
+  // The sanctions / due-diligence search, filed as "<Name>-ss.pdf". It carries
+  // the customer's name and a results table, so it reads as a plausible record
+  // of the sale while containing no application answers at all. It outranked
+  // the real application on three sales in the first tenant's pack.
+  { pattern: /-\s*ss\.pdf$|\bsanctions?\b|due diligence/i, score: -5 },
+  { pattern: /trustee|\btrust form/i, score: -4 },
+  { pattern: /brochure|\bguide\b/i, score: -4 },
 ];
 
 export interface RankedAttachment {
   file_name: string;
   created_time?: string | null;
+  /** Bytes as Zoho reports them. Null/0 marks a link, not a file — see below. */
+  size?: number | null;
+}
+
+/**
+ * Is this a file we can actually download?
+ *
+ * Zoho returns two things from the same related list: uploaded files, which
+ * carry a byte size, and *link* attachments (a URL to Drive or similar), which
+ * report no size. Asking for the body of a link yields an empty response, and
+ * the PDF extractor then fails with "The PDF file is empty" — which reads as a
+ * corrupt document rather than a thing that was never a document.
+ *
+ * 14 of the first tenant's attachments across 8 sales are links, including two
+ * sales whose top-ranked candidate is one. Recognising them costs a field we
+ * already fetch, and turns a confusing failure into an accurate one: the pack
+ * needs uploading as a file.
+ */
+export function isDownloadableFile(a: RankedAttachment): boolean {
+  return typeof a.size === 'number' && a.size > 0;
 }
 
 /**
@@ -695,6 +815,11 @@ export function rankAttachmentCandidates<T extends RankedAttachment>(attachments
 
   return attachments
     .filter((a) => /\.pdf$/i.test(a.file_name))
+    // Links are dropped rather than ranked last: every attempt to read one
+    // fails, so leaving them in only spends a round trip to learn nothing. A
+    // caller that needs to explain an empty candidate list can compare against
+    // the unfiltered input — see resolveApplicationDocument.
+    .filter((a) => a.size === undefined || isDownloadableFile(a))
     .map((a, index) => ({ a, index, score: score(a.file_name) }))
     .sort((x, y) => {
       if (y.score !== x.score) return y.score - x.score;

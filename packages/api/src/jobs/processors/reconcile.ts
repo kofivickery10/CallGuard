@@ -1,6 +1,10 @@
 import { Job } from 'bullmq';
 import { query, queryOne } from '../../db/client.js';
-import { resolveApplicationDocument, statusForFailure } from '../../services/reconciliation-runs.js';
+import {
+  resolveApplicationDocument,
+  learnProfileFromSale,
+  statusForFailure,
+} from '../../services/reconciliation-runs.js';
 import {
   buildCombinedTranscriptWithOffsets,
   callNumberAtOffset,
@@ -17,6 +21,8 @@ import {
 import type { ParsedPair } from '../../services/application-pdf.js';
 import { extractCallAnswers, type ExtractedValue } from '../../services/reconciliation-values.js';
 import { recordUsage } from '../../services/usage.js';
+import { notify, recipientsByRole } from '../../services/notify.js';
+import type { AlertSeverity, NotificationType } from '@callguard/shared';
 
 // ============================================================
 // Reconciliation job ('reconcile' on the scoring queue). One run = one sale's
@@ -32,6 +38,112 @@ import { recordUsage } from '../../services/usage.js';
 // "we could not tell" — and a later pass can escalate those specific items to a
 // model without any of this becoming model-dependent.
 // ============================================================
+
+/**
+ * Propose a format for a document nothing recognised, so a human has something
+ * to confirm instead of something to go and find.
+ *
+ * Never throws. This is a convenience running alongside the real job: if the
+ * model pass fails, or the tenant has already queued this format, the run's own
+ * outcome ('needs_profile', with its message) is unchanged and correct either
+ * way. Failing the reconciliation because an optional extra did not work would
+ * be strictly worse than not attempting it.
+ */
+async function autoProposeProfile(
+  organizationId: string,
+  journeyId: string,
+  zohoRecordId: string
+): Promise<void> {
+  try {
+    const outcome = await learnProfileFromSale(organizationId, journeyId, zohoRecordId);
+
+    if (!outcome.profileId) {
+      // Nothing could be made of the pack. This IS the human's problem — no
+      // amount of waiting fixes a document the system cannot read — so it is
+      // said out loud rather than left in a worker log nobody reads.
+      console.log(
+        `[Reconciliation] could not auto-propose a format from journey ${journeyId} ` +
+          `(${outcome.failure ?? 'unusable'}): ` +
+          outcome.problems.map((p) => p.message).join(' | ')
+      );
+      await notifyAdmins(organizationId, {
+        type: 'dataforms.needs_attention',
+        severity: 'warning',
+        title: 'A sale\u2019s application could not be read',
+        body:
+          `CallGuard could not work out how to read the ${outcome.candidates.length} document(s) ` +
+          `attached to this sale, so nothing has been compared. ` +
+          (outcome.problems.length
+            ? `Reason: ${outcome.problems.map((p) => p.message).join(' ')}`
+            : 'The attachments may not include the application form.'),
+        actionUrl: `/journeys/${journeyId}`,
+        // One per sale. A tenant with a systemic problem gets one notification
+        // per affected sale, not one per sweep tick for ever.
+        dedupeKey: `dataforms-unreadable-${journeyId}`,
+      });
+      return;
+    }
+
+    const live = await queryOne<{ status: string; insurer: string; product: string | null; auto_confirmed_at: string | null }>(
+      'SELECT status, insurer, product, auto_confirmed_at FROM capture_document_profiles WHERE id = $1',
+      [outcome.profileId]
+    );
+
+    console.log(
+      `[Reconciliation] auto-proposed a format from journey ${journeyId}: ` +
+        `${outcome.insurer} / ${outcome.product ?? '\u2014'}, ${outcome.questionCount} question(s)` +
+        `${outcome.reusedExisting ? ' (already seen)' : ''} \u2014 status ${live?.status ?? 'unknown'}`
+    );
+
+    // It confirmed itself on corroboration. Told, not asked: the point is that
+    // nobody had to act, but a format going live changes what every future sale
+    // is judged against, so it cannot happen silently either.
+    if (live?.status === 'active' && live.auto_confirmed_at) {
+      const warnings = outcome.problems.filter((p) => p.severity === 'warning');
+      await notifyAdmins(organizationId, {
+        type: 'dataforms.format_live',
+        severity: warnings.length ? 'warning' : 'info',
+        title: `Now reading ${live.insurer}${live.product ? ` \u2014 ${live.product}` : ''} applications`,
+        body:
+          `Two sales independently produced the same format, so CallGuard has started reading it ` +
+          `and every sale waiting on it has been checked. ` +
+          (warnings.length
+            ? `Worth knowing: ${warnings.map((w) => w.message).join(' ')}`
+            : 'Review it on Data Forms if you want to check the questions it found.'),
+        actionUrl: `/data-forms/profiles/${outcome.profileId}`,
+        dedupeKey: `dataforms-live-${outcome.profileId}`,
+      });
+    }
+  } catch (err) {
+    console.warn(
+      `[Reconciliation] auto-propose failed for journey ${journeyId}: ${(err as Error).message}`
+    );
+  }
+}
+
+/**
+ * Tell the people who can act. Never throws — a notification that cannot be
+ * delivered must not fail the reconciliation it was reporting on.
+ */
+async function notifyAdmins(
+  organizationId: string,
+  input: {
+    type: NotificationType;
+    severity: AlertSeverity;
+    title: string;
+    body: string;
+    actionUrl: string;
+    dedupeKey: string;
+  }
+): Promise<void> {
+  try {
+    const recipients = await recipientsByRole(organizationId, ['admin']);
+    if (recipients.length === 0) return;
+    await notify({ organizationId, recipients, ...input });
+  } catch (err) {
+    console.warn(`[Reconciliation] could not notify: ${(err as Error).message}`);
+  }
+}
 
 interface RunRow {
   id: string;
@@ -99,11 +211,36 @@ export async function processReconcile(job: Job<{ runId: string }>) {
     if (!resolution.document) {
       const failure = resolution.failure ?? 'no_attachments';
       const status = statusForFailure(failure);
+
+      // Nothing recognised the document, so propose a format for it now rather
+      // than waiting for someone to find the button on this particular sale.
+      //
+      // This is the step that makes the module run itself. It does NOT confirm
+      // anything: the proposal lands as 'needs_confirmation' exactly as the
+      // manual button leaves it, and no sale is judged against it until a person
+      // says so. What it removes is the discovery problem — a tenant with 13
+      // waiting sales and no formats had no way to know which sale to open, and
+      // every one of them showed the same unhelpful message.
+      //
+      // Deduped on the proposal, not the sale: learnProfileFromSale returns the
+      // existing row when the same question set is already queued, so a dozen
+      // sales on one insurer's format produce one thing to confirm.
+      if (failure === 'no_profile_match') {
+        await autoProposeProfile(run.organization_id, run.journey_id, journey.zoho_record_id);
+      }
+      // "None of them match a known format" is only honest once there is a
+      // format to not match. On a tenant with none set up it reads as though
+      // the documents are wrong, when nothing has been taught yet — a first-run
+      // state and a genuine mismatch need entirely different actions, so they
+      // must not share a sentence.
       const message =
         failure === 'drifted' && resolution.drift
           ? describeDrift(resolution.drift)
           : failure === 'no_profile_match'
-            ? `None of the ${resolution.candidates.length} attached document(s) match a known application format for this tenant.`
+            ? resolution.profilesAvailable === 0
+              ? `No application formats have been set up yet, so the ${resolution.candidates.length} attached ` +
+                'document(s) could not be read. Read one of them to propose a format, then confirm it on Data Forms.'
+              : `None of the ${resolution.candidates.length} attached document(s) match a known application format for this tenant.`
             : failure === 'not_configured'
               ? 'The CRM connection is not configured for attachment reads.'
               : 'No application document has been attached to the sale yet.';
@@ -363,12 +500,31 @@ function comparePair(
   };
 }
 
-function describeDrift(drift: { added: string[]; removed: string[]; reordered: boolean }): string {
+function describeDrift(drift: {
+  added: string[];
+  removed: string[];
+  reordered: boolean;
+  brokenReason?: string;
+}): string {
+  // A form marked as asking conditional follow-ups has no question set to have
+  // changed, so there is nothing to describe in those terms. What stopped is the
+  // parse, and saying so points at the actual problem.
+  if (drift.brokenReason) {
+    return (
+      `This document no longer reads the way its saved format expects — ${drift.brokenReason}. ` +
+      'Nothing has been compared. Read the document again to propose an updated format.'
+    );
+  }
   const parts: string[] = [];
   if (drift.added.length) parts.push(`${drift.added.length} question(s) added`);
   if (drift.removed.length) parts.push(`${drift.removed.length} removed`);
   if (drift.reordered) parts.push('questions reordered');
-  return `The insurer's question set has changed (${parts.join(', ') || 'wording changed'}). Nothing has been compared until the new question set is confirmed.`;
+  return (
+    `The insurer's question set has changed (${parts.join(', ') || 'wording changed'}). ` +
+    'Nothing has been compared until the new question set is confirmed. If this form asks ' +
+    'different questions depending on the answers given, mark it as having a variable ' +
+    'question set when you confirm it, and sales will stop parking here.'
+  );
 }
 
 async function finish(

@@ -132,6 +132,13 @@ export interface DocumentProfile {
   detect_patterns: string[];
   question_fingerprint: string;
   questions: DocumentProfileQuestion[];
+  /**
+   * True when this form asks conditional follow-ups, so its question set
+   * legitimately differs from sale to sale. Exact question-set drift detection
+   * is replaced by a structural check that the document still parses — see
+   * migration 090. Set by a human at confirmation, never inferred.
+   */
+  questions_vary: boolean;
   version: number;
   status: DocumentProfileStatus;
   learned_from_journey_id: string | null;

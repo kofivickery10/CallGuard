@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
@@ -66,8 +67,17 @@ export function DocumentProfileReview() {
     enabled: !!id,
   });
 
+  // Both are decisions only a person can make, and both are asked here because
+  // this is the last screen before the format starts judging sales.
+  const [insurer, setInsurer] = useState('');
+  const [questionsVary, setQuestionsVary] = useState(false);
+
   const confirm = useMutation({
-    mutationFn: () => api.put<{ id: string; requeued?: number }>(`/reconciliation/profiles/${id}/confirm`, {}),
+    mutationFn: () =>
+      api.put<{ id: string; requeued?: number }>(`/reconciliation/profiles/${id}/confirm`, {
+        ...(insurer.trim() ? { insurer: insurer.trim() } : {}),
+        questions_vary: questionsVary,
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['reconciliation-profiles'] });
       queryClient.invalidateQueries({ queryKey: ['reconciliation-runs'] });
@@ -100,6 +110,12 @@ export function DocumentProfileReview() {
 
   const { profile, incumbent, drift } = data;
   const awaiting = profile.status === 'needs_confirmation';
+  // A broker portal export names no insurer anywhere in it, because it is a
+  // quotation request spanning several. The learner cannot invent one and the
+  // profile cannot go live without one, so it is asked for here.
+  const needsInsurer = /^\s*(<?unknown>?( (insurer|provider|product))?|n\/?a|none|unidentified|tbc)\s*$/i.test(
+    profile.insurer ?? ''
+  );
   const questions = profile.questions ?? [];
   const unverifiable = questions.filter((q) => !q.absence_meaningful).length;
 
@@ -284,13 +300,66 @@ export function DocumentProfileReview() {
         )}
       </div>
 
+      {awaiting && isAdmin && (
+        <div className="mt-5 bg-card border border-border rounded-card p-5 space-y-4">
+          {needsInsurer && (
+            <div>
+              <label
+                htmlFor="profile-insurer"
+                className="block text-table-cell font-semibold text-text-primary"
+              >
+                Which insurer is this form from?
+              </label>
+              <p className="text-xs text-text-muted mt-1 leading-relaxed">
+                This document does not name one anywhere in it. Formats are filed by insurer, so
+                it needs a name before it can be used.
+              </p>
+              <input
+                id="profile-insurer"
+                type="text"
+                value={insurer}
+                onChange={(e) => setInsurer(e.target.value)}
+                placeholder="e.g. Royal London"
+                className="mt-2 w-full max-w-sm px-3 py-2 rounded-btn border border-border bg-card text-table-cell text-text-primary placeholder:text-text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+              />
+            </div>
+          )}
+
+          <div className="flex items-start gap-2.5">
+            <input
+              id="questions-vary"
+              type="checkbox"
+              checked={questionsVary}
+              onChange={(e) => setQuestionsVary(e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-border text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+            />
+            <div>
+              <label htmlFor="questions-vary" className="text-table-cell font-semibold text-text-primary">
+                This form asks different questions depending on the answers
+              </label>
+              <p className="text-xs text-text-muted mt-1 leading-relaxed max-w-2xl">
+                Tick this if the insurer asks follow-up questions only when they apply, so two
+                customers get different question sets. CallGuard then checks that each sale&rsquo;s
+                document still reads correctly, instead of expecting the exact list below every
+                time. Leave it unticked for a fixed form, so a genuine change to the
+                insurer&rsquo;s questions is still caught.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {awaiting && (
         <div className="mt-5 flex flex-wrap items-center gap-3">
           {isAdmin ? (
             <>
               <button
                 onClick={() => confirm.mutate()}
-                disabled={confirm.isPending || questions.length === 0}
+                disabled={
+                  confirm.isPending ||
+                  questions.length === 0 ||
+                  (needsInsurer && !insurer.trim())
+                }
                 className="px-4 py-2 rounded-btn text-table-cell font-semibold bg-primary text-white hover:opacity-90 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
               >
                 {confirm.isPending ? 'Confirming…' : 'Confirm this question set'}
