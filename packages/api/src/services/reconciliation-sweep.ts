@@ -31,6 +31,21 @@ const DAY = 24 * HOUR;
 export const ABANDON_AFTER_MS = 7 * DAY;
 
 /**
+ * How long a proposed format may wait alone before we mention it.
+ *
+ * A format confirms itself when a second sale produces it, and for a format the
+ * firm writes regularly that happens within a day or two. Three days is past the
+ * point where waiting is the likely explanation, without nagging about a format
+ * that was always going to corroborate itself over a weekend.
+ */
+export const HELD_PROFILE_NOTICE_MS = 3 * DAY;
+
+/** Has this proposed format waited long enough alone to be worth mentioning? */
+export function isHeldTooLong(now: Date, createdAt: Date): boolean {
+  return now.getTime() - createdAt.getTime() >= HELD_PROFILE_NOTICE_MS;
+}
+
+/**
  * How often to re-check, by how long the run has been waiting.
  *
  * The first tier carries the real load: a same-day upload is caught within half

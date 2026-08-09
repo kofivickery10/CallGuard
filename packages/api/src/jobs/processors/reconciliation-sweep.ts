@@ -9,7 +9,9 @@ import {
   attemptJobId,
   ABANDON_AFTER_MS,
   STALE_RUNNING_MS,
+  isHeldTooLong,
 } from '../../services/reconciliation-sweep.js';
+import { notify, recipientsByRole } from '../../services/notify.js';
 
 // ============================================================
 // Reconciliation sweep ('reconciliation-sweep' on the maintenance queue).
@@ -32,6 +34,78 @@ export interface ReconciliationSweepResult {
   started: number;
   retried: number;
   abandoned: number;
+  heldNotified: number;
+}
+
+/**
+ * Mention a proposed format that has been waiting alone.
+ *
+ * A format goes live when a SECOND sale independently produces it, so one seen
+ * only once waits — correctly, since a document agreeing with itself is not
+ * evidence. For a format the firm writes regularly the wait is a day or two and
+ * resolves itself. For a rare insurer the second sale may never come, and until
+ * now nothing was ever going to say so: the sales on it simply stayed unchecked,
+ * and a module that is quiet when it is working looked exactly the same as one
+ * that is quiet because it is stuck.
+ *
+ * Once per profile, recorded on the row. The notification's own dedupe key only
+ * suppresses repeats while the earlier one is unread, so relying on it would
+ * raise this again on every tick from the moment somebody read it.
+ */
+async function noticeHeldProfiles(now: Date): Promise<number> {
+  const held = await query<{
+    id: string;
+    organization_id: string;
+    insurer: string;
+    product: string | null;
+    created_at: string;
+    corroborating_journeys: string[];
+  }>(
+    `SELECT id, organization_id, insurer, product, created_at, corroborating_journeys
+       FROM capture_document_profiles
+      WHERE status = 'needs_confirmation' AND held_notified_at IS NULL
+      ORDER BY created_at ASC
+      LIMIT 100`
+  );
+
+  let notified = 0;
+  for (const profile of held) {
+    if (!isHeldTooLong(now, new Date(profile.created_at))) continue;
+
+    // Stamped before sending. A notification that fails must not leave the row
+    // eligible to try again on every tick from now on — the reminder is worth
+    // losing, the loop is not.
+    await query(
+      'UPDATE capture_document_profiles SET held_notified_at = now() WHERE id = $1',
+      [profile.id]
+    );
+
+    try {
+      const recipients = await recipientsByRole(profile.organization_id, ['admin']);
+      if (recipients.length === 0) continue;
+      const seen = profile.corroborating_journeys?.length ?? 1;
+      await notify({
+        organizationId: profile.organization_id,
+        recipients,
+        type: 'dataforms.needs_attention',
+        severity: 'warning',
+        title: `A document format has been waiting for a second sale`,
+        body:
+          `CallGuard read ${profile.insurer}${profile.product ? ` — ${profile.product}` : ''} from ` +
+          `${seen === 1 ? 'one sale' : `${seen} sales`} and has been waiting for another to confirm it against. ` +
+          'Sales on this format are not being checked until it goes live. Confirm it yourself if you ' +
+          'are happy with the questions it found.',
+        actionUrl: `/data-forms/profiles/${profile.id}`,
+        dedupeKey: `dataforms-held-${profile.id}`,
+      });
+      notified++;
+    } catch (err) {
+      console.warn(
+        `[Reconciliation sweep] could not notify about held profile ${profile.id}: ${(err as Error).message}`
+      );
+    }
+  }
+  return notified;
 }
 
 /** Cap per tick. A backlog drains over several ticks rather than in one burst of CRM calls. */
@@ -60,7 +134,7 @@ const RETRYABLE_STATUSES = ['needs_document', 'pending', 'running', 'failed'];
 export async function processReconciliationSweep(
   _job?: Job
 ): Promise<ReconciliationSweepResult> {
-  const result: ReconciliationSweepResult = { started: 0, retried: 0, abandoned: 0 };
+  const result: ReconciliationSweepResult = { started: 0, retried: 0, abandoned: 0, heldNotified: 0 };
   const now = new Date();
 
   // ── Stop waiting on runs past the window ────────────────────────────────────
@@ -184,9 +258,12 @@ export async function processReconciliationSweep(
     }
   }
 
-  if (result.started || result.retried || result.abandoned) {
+  result.heldNotified = await noticeHeldProfiles(now);
+
+  if (result.started || result.retried || result.abandoned || result.heldNotified) {
     console.log(
-      `[Reconciliation sweep] started ${result.started}, retried ${result.retried}, abandoned ${result.abandoned}`
+      `[Reconciliation sweep] started ${result.started}, retried ${result.retried}, ` +
+        `abandoned ${result.abandoned}, held-format notices ${result.heldNotified}`
     );
   }
   return result;
