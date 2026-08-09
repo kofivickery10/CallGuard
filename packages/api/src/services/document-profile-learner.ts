@@ -5,6 +5,7 @@ import {
   parseApplication,
   fingerprintQuestions,
   normaliseForDetection,
+  parseCoverage,
   type ParseConfig,
   type ParseStrategy,
   type ParsedApplication,
@@ -402,9 +403,79 @@ export function looksLikeDisclosureSet(questions: string[]): boolean {
   return interrogative || questions.some((q) => DISCLOSURE_TERMS.test(q));
 }
 
+/**
+ * Alternatives to the configuration the model proposed.
+ *
+ * The model describes a document it has seen once, and it describes it too
+ * precisely. The clearest case: it wrote an answer pattern requiring a trailing
+ * "(adviser name)" where the built-in default already treats that as optional.
+ * Every answer in the withdrawn-disclosures section of a real application lacks
+ * the name, so the stricter pattern folded those answers into the question text
+ * and lost one question entirely.
+ *
+ * Rather than curate rules for that class of mistake, the proposal is treated as
+ * one candidate among several and measured. Dropping an over-specified field
+ * falls back to a default already tested against every format we hold, so a
+ * model being too specific can no longer cost questions.
+ */
+function candidateConfigs(proposal: ProfileProposal): ParseConfig[] {
+  const base = proposal.parse_config;
+  const out: ParseConfig[] = [base];
+  if (base.answerLinePattern) {
+    const { answerLinePattern: _drop, ...rest } = base;
+    out.push(rest);
+  }
+  if (base.optionsPrefix) {
+    const { optionsPrefix: _drop, ...rest } = base;
+    out.push(rest);
+    if (base.answerLinePattern) {
+      const { answerLinePattern: _a, optionsPrefix: _o, ...bare } = base;
+      out.push(bare);
+    }
+  }
+  return out;
+}
+
 export function verifyProposal(rawText: string, proposal: ProfileProposal): LearnedProfile {
   const problems: ValidationProblem[] = [];
-  const parsed = parseApplication(rawText, proposal.strategy, proposal.parse_config);
+
+  // Whichever candidate configuration recovers the most of the document wins.
+  // The model's own proposal is first, so a tie keeps it — this only overrides
+  // it where doing so demonstrably finds more.
+  let parsed = parseApplication(rawText, proposal.strategy, proposal.parse_config);
+  const proposedCount = parsed.pairs.length;
+  for (const candidate of candidateConfigs(proposal).slice(1)) {
+    const alt = parseApplication(rawText, proposal.strategy, candidate);
+    if (alt.pairs.length > parsed.pairs.length) {
+      parsed = alt;
+      proposal.parse_config = candidate;
+    }
+  }
+  if (parsed.pairs.length > proposedCount) {
+    problems.push({
+      severity: 'warning',
+      message:
+        'The proposed parse rules were narrower than the document needed, so a more tolerant ' +
+        `default was used instead — it reads ${parsed.pairs.length} records rather than ${proposedCount}.`,
+    });
+  }
+
+  // Did we get everything the document says is there? The parse cannot answer
+  // that about itself, so the document's own markers are counted independently.
+  // This is what turns silent loss into a visible failure, and it works for any
+  // insurer whose format has a countable marker — including one nobody has
+  // configured anything for.
+  const coverage = parseCoverage(rawText, proposal.strategy, proposal.parse_config, parsed.pairs.length);
+  if (coverage.ratio !== null && coverage.ratio < 0.95) {
+    const missing = (coverage.expected ?? 0) - parsed.pairs.length;
+    problems.push({
+      severity: missing > 2 ? 'error' : 'warning',
+      message:
+        `The document contains ${coverage.expected} records but only ${parsed.pairs.length} were read — ` +
+        `${missing} would be missed on every sale of this format. A question that is not extracted is ` +
+        'never checked against the call, so this cannot be accepted as it stands.',
+    });
+  }
 
   if (proposal.detect_patterns.length < 2) {
     problems.push({

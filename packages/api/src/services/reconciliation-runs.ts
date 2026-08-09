@@ -706,10 +706,15 @@ export async function activateProfile(
   );
 
   // Sales parked on the old question set — and any whose format we had never
-  // seen — can now be reconciled.
+  // seen — can now be reconciled. Completed MODEL-read runs are re-queued too:
+  // the model fallback is explicitly provisional, and a live profile is the
+  // deterministic re-read it has been waiting for. processReconcile lets those
+  // runs through its already-finished guard on exactly this condition.
   const waiting = await query<{ id: string; attempts: number }>(
     `SELECT id, attempts FROM capture_reconciliation_runs
-      WHERE organization_id = $1 AND status = 'needs_profile'`,
+      WHERE organization_id = $1
+        AND (status = 'needs_profile'
+             OR (status = 'completed' AND extraction_method = 'model'))`,
     [organizationId]
   );
   for (const run of waiting) {

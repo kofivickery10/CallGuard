@@ -382,7 +382,8 @@ function mergeWrappedAnswers(
   lines: string[],
   startRe: RegExp,
   attributionRe: RegExp,
-  maxContinuationLines = 3
+  maxContinuationLines = 3,
+  marker?: string
 ): string[] {
   const out: string[] = [];
   for (let i = 0; i < lines.length; i++) {
@@ -401,12 +402,82 @@ function mergeWrappedAnswers(
       const next = lines[i + 1]!.trim();
       // Never absorb another record's opening.
       if (next === '' || next === 'A' || startRe.test(next)) break;
+      // Nor a question. An answer with no "(adviser name)" after it — which is
+      // how a portal records the withdrawn-disclosure section — looks exactly
+      // like a wrapped one, so without this the question that follows is
+      // swallowed into the answer and lost. That is what turned "How many of
+      // your relatives have suffered from another type of cancer? / 1" into a
+      // single unanswerable line on a real application.
+      if (marker && isQuestionLine(next, marker)) break;
       merged = `${merged} ${next}`;
       i++;
       consumed++;
       if (attributionRe.test(merged)) break;
     }
     out.push(merged);
+  }
+  return out;
+}
+
+/**
+ * Rejoin a question whose marker was stranded on its own line.
+ *
+ * The portal prints the marker in a narrow left-hand column, so a question that
+ * fits on one rendered line extracts as "<question>\tQ". One that wraps does
+ * not: the text comes out first and the marker lands alone underneath it.
+ *
+ *     Has the cancer ever spread outside of its site of origin? e.g. to nearby
+ *     organs or to other parts of your body
+ *     Q
+ *
+ * A parser looking only for "<something> Q" never sees those, and they are
+ * dropped in silence. On one real application that cost six questions out of
+ * forty-six, including whether a disclosed cancer had spread — a question that,
+ * not being extracted, could never be checked against the call.
+ *
+ * Merged backwards over the wrapped text, stopping at anything that belongs to
+ * another record, so a marker cannot swallow the document above it.
+ */
+/** Is this line a question record, whichever end the extractor left the marker? */
+function isQuestionLine(line: string, marker: string): boolean {
+  const t = line.trim();
+  return t === marker || t.startsWith(`${marker} `) || new RegExp(`[\\t ]${escapeRegex(marker)}$`).test(t);
+}
+
+function mergeBareMarkers(
+  lines: string[],
+  marker: string,
+  answerStartRe: RegExp,
+  maxWrapLines = 3
+): string[] {
+  const out: string[] = [];
+  for (const raw of lines) {
+    if (raw.trim() !== marker) {
+      out.push(raw);
+      continue;
+    }
+    // Pull the wrapped question text back off the output and rejoin it with the
+    // marker. Removed rather than blanked: the answers for this question sit
+    // immediately ABOVE its text, and the parser finds them by walking backwards
+    // from the question line, so a blank left in between stops that walk dead
+    // and the question arrives with no answer against it.
+    const parts: string[] = [];
+    while (parts.length < maxWrapLines && out.length > 0) {
+      const prev = out[out.length - 1]!.trim();
+      if (prev === '' || prev === 'A' || prev === marker) break;
+      if (answerStartRe.test(prev)) break;
+      // Options and guidance belong to the record, not to the question wording.
+      if (prev.startsWith('Options - ')) break;
+      parts.unshift(prev);
+      out.pop();
+      // A complete sentence needs nothing before it.
+      if (parts[0]!.endsWith('?')) break;
+    }
+    if (parts.length === 0) {
+      out.push(raw);
+      continue;
+    }
+    out.push(`${parts.join(' ')}\t${marker}`);
   }
   return out;
 }
@@ -420,10 +491,16 @@ export function parseQuestionMarker(text: string, config: ParseConfig): ParsedPa
   const optionsPrefix = config.optionsPrefix ?? 'Options - ';
   const answerStartRe = /^\d{2}\/\d{2}\/\d{4} \d{2}:\d{2} - /;
   const attributionRe = /\([^()]+\)\s*$/;
-  const lines = mergeWrappedAnswers(
-    text.split('\n').map((l) => l.replace(/\s+$/, '')),
-    answerStartRe,
-    attributionRe
+  const lines = mergeBareMarkers(
+    mergeWrappedAnswers(
+      text.split('\n').map((l) => l.replace(/\s+$/, '')),
+      answerStartRe,
+      attributionRe,
+      3,
+      marker
+    ),
+    marker,
+    answerStartRe
   );
 
   // A question line ends with the stranded column header. Tolerate the tab
@@ -664,6 +741,60 @@ export function matchProfile<T extends { detect_patterns: string[] }>(
 export function formatSignature(strategy: ParseStrategy, detectPatterns: string[]): string {
   const normalised = detectPatterns.map(normaliseForDetection).filter(Boolean).sort();
   return createHash('sha256').update(`${strategy}\n${normalised.join('\n')}`).digest('hex');
+}
+
+/**
+ * How many records the document structurally contains, from its own markers.
+ *
+ * The parse itself can only tell you what it found; it has no idea what it
+ * missed. That is the dangerous direction, because a question that is never
+ * extracted is never compared, so under-extraction reports as a clean result
+ * rather than as a failure. On one real application six questions of forty-six
+ * went missing that way and nothing anywhere said so.
+ *
+ * Counting marker occurrences gives an expectation arrived at WITHOUT the
+ * parser — the document's own account of how many records it holds — which is
+ * the only kind of check that can catch the parser being wrong. Returns null
+ * where a strategy has no such marker, in which case no claim is made.
+ */
+export function expectedRecordCount(
+  text: string,
+  strategy: ParseStrategy,
+  config: ParseConfig
+): number | null {
+  if (strategy === 'question_marker') {
+    const marker = config.questionMarker;
+    if (!marker) return null;
+    // Both shapes: stranded at the end of a question line, or alone beneath one.
+    const re = new RegExp('(^|[\\t ])' + escapeRegex(marker) + '\\s*$', 'gm');
+    return (text.match(re) ?? []).length || null;
+  }
+  if (strategy === 'question_answer') {
+    const d = config.answerDelimiter;
+    if (!d) return null;
+    return (text.split(d).length - 1) || null;
+  }
+  // label_value asks for a known list of labels, so "missing" is not meaningful:
+  // a label absent from the sheet is absent, not lost.
+  return null;
+}
+
+/**
+ * What fraction of the document's records the parse recovered.
+ *
+ * A number rather than a verdict, so callers can decide what to do with it: the
+ * learner uses it to choose between candidate configurations, verification uses
+ * it to refuse one that is quietly losing questions.
+ */
+export function parseCoverage(
+  text: string,
+  strategy: ParseStrategy,
+  config: ParseConfig,
+  found: number
+): { expected: number | null; ratio: number | null } {
+  const expected = expectedRecordCount(isolateSection(text, config), strategy, config);
+  if (!expected) return { expected: null, ratio: null };
+  return { expected, ratio: found / expected };
 }
 
 /**
