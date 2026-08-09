@@ -129,7 +129,45 @@ interface WaitingRun {
  * is an unexpected error on one attempt, and usually a transient one. Leaving it
  * out is how a CRM API change stranded an entire tenant's sales permanently.
  */
-const RETRYABLE_STATUSES = ['needs_document', 'pending', 'running', 'failed'];
+export const RETRYABLE_STATUSES = [
+  'needs_document',
+  'pending',
+  'running',
+  'failed',
+  // 'needs_profile' was deliberately excluded, and the reasoning was sound at
+  // the time: re-downloading and re-parsing a document nothing recognised could
+  // only ever reach the same conclusion, so a retry was pure spend against the
+  // CRM's API budget. What it needed was a person, once.
+  //
+  // Auto-proposing changed what a retry accomplishes, and the exclusion was not
+  // revisited with it. The consequence was total: 13 sales already parked here
+  // were never re-enqueued, so the processor that now proposes a format never
+  // ran for a single one of them. The feature worked only for sales that had
+  // yet to be scored, which on this tenant was none.
+  //
+  // The cost that justified the exclusion does not return, because
+  // learnProfileFromSale tests a document against already-proposed formats
+  // BEFORE reaching for the model. The first sale on a format pays for a model
+  // pass; every other sale on that same format matches the pending proposal and
+  // pays nothing. So a backlog costs roughly one pass per distinct format, not
+  // one per sale.
+  'needs_profile',
+];
+
+/**
+ * Statuses the abandon window closes over.
+ *
+ * 'needs_profile' is deliberately NOT among them, and this is the one place the
+ * two lists must differ. Abandoning means "we stopped trying, and the document
+ * is never coming" — true of a pack nobody uploaded, false of a sale that is
+ * only waiting for a format to go live. Worse, confirming a format requeues runs
+ * WHERE status = 'needs_profile', so abandoning one would quietly put it beyond
+ * the reach of the very act that was going to fix it.
+ *
+ * Nothing waits silently as a result: a proposal alone for three days raises a
+ * notice, and a pack no format could be made of raises one immediately.
+ */
+export const ABANDONABLE_STATUSES = ['needs_document', 'pending', 'running', 'failed'];
 
 export async function processReconciliationSweep(
   _job?: Job
@@ -164,7 +202,7 @@ export async function processReconciliationSweep(
       'No application document was attached to this sale in the CRM, so it was never checked. Attach the pack and re-run the check if this sale still needs one.',
       'CallGuard stopped trying to check this sale. Re-run the check if it still needs one.',
       'CallGuard stopped trying to check this sale after repeated errors. Last error: ',
-      RETRYABLE_STATUSES,
+      ABANDONABLE_STATUSES,
     ]
   );
   result.abandoned = abandoned.length;
