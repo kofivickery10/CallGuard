@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import {
+  RETRYABLE_STATUSES,
+  ABANDONABLE_STATUSES,
+} from '../jobs/processors/reconciliation-sweep.js';
+import {
   isDueForRetry,
   isPastAbandonWindow,
   isRetryableFailure,
@@ -166,5 +170,26 @@ describe('isHeldTooLong — a format waiting alone for corroboration', () => {
   it('fires exactly at the threshold', () => {
     expect(isHeldTooLong(now, new Date(now.getTime() - HELD_PROFILE_NOTICE_MS))).toBe(true);
     expect(isHeldTooLong(now, new Date(now.getTime() - HELD_PROFILE_NOTICE_MS + 1))).toBe(false);
+  });
+});
+
+describe('what the sweep retries versus what it abandons', () => {
+  it('retries a sale parked for want of a format', () => {
+    // The gap that made auto-proposing a no-op on a real tenant: 13 sales were
+    // already sitting at needs_profile, the sweep never re-enqueued them, so the
+    // processor that proposes a format never ran for any of them.
+    expect(RETRYABLE_STATUSES).toContain('needs_profile');
+  });
+
+  it('never abandons one, because confirming a format is what rescues it', () => {
+    // activateProfile requeues runs WHERE status = 'needs_profile'. Abandoning
+    // one would put it beyond the reach of the act that was going to fix it.
+    expect(ABANDONABLE_STATUSES).not.toContain('needs_profile');
+  });
+
+  it('still abandons a sale whose document is never coming', () => {
+    for (const s of ['needs_document', 'pending', 'running', 'failed']) {
+      expect(ABANDONABLE_STATUSES).toContain(s);
+    }
   });
 });
