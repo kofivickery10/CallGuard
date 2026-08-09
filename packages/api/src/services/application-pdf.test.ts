@@ -9,6 +9,7 @@ import {
   rankAttachmentCandidates,
   parseLooksHealthy,
   formatSignature,
+  expectedRecordCount,
 } from './application-pdf.js';
 import {
   ROYAL_LONDON_PACK,
@@ -602,5 +603,88 @@ describe('formatSignature — the identity of a form, not of a question set', ()
     expect(formatSignature('label_value', ['A', 'B'])).not.toBe(
       formatSignature('question_marker', ['A', 'B'])
     );
+  });
+});
+
+describe('the UnderwriteMe portal export, from a real application', () => {
+  // Reduced from `app Mr Patrick Dixon.pdf`. Three shapes appear in one
+  // document and the parser has to survive all of them:
+  //   - the ordinary record: question text, tab, marker
+  //   - a wrapped question, whose marker is stranded on its own line
+  //   - the withdrawn-disclosures section, whose answers carry no attribution
+  const PORTAL = [
+    '07/08/2026 09:51 - 29/05/1963 (Lewis Moore)',
+    'Date of birth\tQ',
+    'A',
+    '',
+    '07/08/2026 10:02 - No (Lewis Moore)',
+    'Has the cancer ever spread outside of its site of origin? e.g. to nearby lymph nodes,',
+    'surrounding structures or organs or to other parts of your body',
+    'Q',
+    'A',
+    '',
+    'Questions answered but no longer included in your application:',
+    '07/08/2026 09:55 - 1',
+    'How many of your relatives have suffered from another type of cancer?\tQ',
+    'A',
+    '',
+  ].join('\n');
+  const CONFIG = { questionMarker: 'Q', optionsPrefix: 'Options - ' };
+  const parsed = parseApplication(PORTAL, 'question_marker', CONFIG);
+  const find = (needle: string) =>
+    parsed.pairs.find((p) => p.question.toLowerCase().includes(needle.toLowerCase()));
+
+  it('reads a question whose marker was stranded on its own line', () => {
+    // Six of forty-six questions were lost this way, including this one — a
+    // cancer-spread question on a sale that disclosed cancer. A question that is
+    // never extracted is never checked against the call.
+    const spread = find('cancer ever spread');
+    expect(spread).toBeDefined();
+    expect(spread?.question).toBe(
+      'Has the cancer ever spread outside of its site of origin? e.g. to nearby lymph nodes, surrounding structures or organs or to other parts of your body'
+    );
+    expect(spread?.answer).toBe('No');
+  });
+
+  it('reads an answer that carries no "(recorded by)" attribution', () => {
+    // The withdrawn-disclosures section records no adviser name, which made the
+    // answer indistinguishable from a wrapped line: it swallowed the question
+    // after it, producing "07/08/2026 09:55 - 1 How many of your relatives…"
+    // with no answer at all.
+    const relatives = find('how many of your relatives');
+    expect(relatives?.question).toBe(
+      'How many of your relatives have suffered from another type of cancer?'
+    );
+    expect(relatives?.answer).toBe('1');
+  });
+
+  it('still reads the ordinary one-line record', () => {
+    expect(find('date of birth')?.answer).toBe('29/05/1963');
+  });
+
+  it('finds every record the document says it has', () => {
+    expect(parsed.pairs).toHaveLength(3);
+    expect(expectedRecordCount(PORTAL, 'question_marker', CONFIG)).toBe(3);
+  });
+});
+
+describe('expectedRecordCount — an expectation the parser cannot fake', () => {
+  it('counts markers at either end of the line', () => {
+    const text = ['Question one\tQ', 'A', 'Question two that wrapped', 'Q', 'A'].join('\n');
+    expect(expectedRecordCount(text, 'question_marker', { questionMarker: 'Q' })).toBe(2);
+  });
+
+  it('counts delimiters for the question_answer strategy', () => {
+    const text = 'Q1?\nYour answer(s):\nYes\nQ2?\nYour answer(s):\nNo\n';
+    expect(
+      expectedRecordCount(text, 'question_answer', { answerDelimiter: 'Your answer(s):' })
+    ).toBe(2);
+  });
+
+  it('claims nothing where there is no marker to count', () => {
+    // label_value asks for known labels, so a label absent from the sheet is
+    // absent rather than lost. Asserting a count there would invent failures.
+    expect(expectedRecordCount('anything', 'label_value', { labels: ['Name'] })).toBeNull();
+    expect(expectedRecordCount('anything', 'question_marker', {})).toBeNull();
   });
 });
