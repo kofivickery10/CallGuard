@@ -5,7 +5,11 @@ import { AppError } from '../middleware/errors.js';
 import { recordAuditEvent } from '../services/audit.js';
 import { scoringQueue } from '../jobs/queue.js';
 import { isUuid } from '../services/uuid.js';
-import { isReconciliationEnabled, learnProfileFromSale } from '../services/reconciliation-runs.js';
+import {
+  isReconciliationEnabled,
+  learnProfileFromSale,
+  activateProfile,
+} from '../services/reconciliation-runs.js';
 import { attemptJobId } from '../services/reconciliation-sweep.js';
 import { detectDrift } from '../services/application-pdf.js';
 import { isPlaceholder } from '../services/document-profile-learner.js';
@@ -362,20 +366,11 @@ reconciliationRouter.put('/profiles/:id/confirm', requireAdmin, async (req, res,
       profile.questions_vary = questionsVary;
     }
 
-    await query(
-      `UPDATE capture_document_profiles
-          SET status = 'superseded', superseded_at = now(), updated_at = now()
-        WHERE organization_id = $1 AND insurer = $2
-          AND COALESCE(product, '') = COALESCE($3, '')
-          AND status = 'active'`,
-      [organizationId, profile.insurer, profile.product]
-    );
-    await query(
-      `UPDATE capture_document_profiles
-          SET status = 'active', confirmed_by = $1, confirmed_at = now(), updated_at = now()
-        WHERE id = $2`,
-      [req.user!.userId, profile.id]
-    );
+    const activated = await activateProfile(organizationId, profile.id, {
+      auto: false,
+      userId: req.user!.userId,
+    });
+    if (!activated) throw new AppError(409, 'This profile is no longer awaiting confirmation');
 
     await recordAuditEvent({
       organizationId,
@@ -387,26 +382,7 @@ reconciliationRouter.put('/profiles/:id/confirm', requireAdmin, async (req, res,
       req,
     });
 
-    // Sales parked on the old question set — and any whose format we had never
-    // seen — can now be reconciled.
-    const waiting = await query<{ id: string; attempts: number }>(
-      `SELECT id, attempts FROM capture_reconciliation_runs
-        WHERE organization_id = $1 AND status = 'needs_profile'`,
-      [organizationId]
-    );
-    for (const run of waiting) {
-      // Attempt-scoped id: the scoring queue retains completed jobs, so a plain
-      // `reconcile-<run id>` would be silently deduped against the attempt that
-      // parked this run in the first place, and confirming the profile would
-      // appear to do nothing.
-      await scoringQueue.add(
-        'reconcile',
-        { runId: run.id },
-        { jobId: attemptJobId(run.id, run.attempts) }
-      );
-    }
-
-    res.json({ id: profile.id, status: 'active', requeued: waiting.length });
+    res.json({ id: profile.id, status: 'active', requeued: activated.requeued });
   } catch (err) {
     next(err);
   }

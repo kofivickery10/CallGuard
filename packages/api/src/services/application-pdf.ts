@@ -649,6 +649,24 @@ export function matchProfile<T extends { detect_patterns: string[] }>(
 }
 
 /**
+ * The identity of a FORM, as distinct from the question set on any one copy of it.
+ *
+ * Two documents share a signature when they are the same insurer form: same
+ * parse strategy, same detect patterns. Their question sets may still differ,
+ * and on a form with conditional follow-ups they will — which is what makes this
+ * the right key for recognising a format we have met before, where the question
+ * fingerprint is not.
+ *
+ * Patterns are sorted before hashing because the order the model happens to list
+ * them in carries no meaning, and normalised the same way matching normalises
+ * them, so a signature can never disagree with what matchProfile would do.
+ */
+export function formatSignature(strategy: ParseStrategy, detectPatterns: string[]): string {
+  const normalised = detectPatterns.map(normaliseForDetection).filter(Boolean).sort();
+  return createHash('sha256').update(`${strategy}\n${normalised.join('\n')}`).digest('hex');
+}
+
+/**
  * Does this parse still look like a working read of the document?
  *
  * The drift test for a form with a FIXED question set is "are the questions

@@ -67,7 +67,13 @@ export interface UpsertAlertRuleInput {
 export type NotificationType =
   | 'alert'
   | 'breach.assigned'
-  | 'breach.escalated';
+  | 'breach.escalated'
+  // Data Forms runs unattended, so these are how a human hears about it at all.
+  // Deliberately only two: something needs a decision, or something that was
+  // being checked has stopped being checked. A format quietly confirming itself
+  // and working is not news.
+  | 'dataforms.needs_attention'
+  | 'dataforms.format_live';
 
 export interface Notification {
   id: string;

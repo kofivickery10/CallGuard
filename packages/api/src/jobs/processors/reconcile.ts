@@ -21,6 +21,8 @@ import {
 import type { ParsedPair } from '../../services/application-pdf.js';
 import { extractCallAnswers, type ExtractedValue } from '../../services/reconciliation-values.js';
 import { recordUsage } from '../../services/usage.js';
+import { notify, recipientsByRole } from '../../services/notify.js';
+import type { AlertSeverity, NotificationType } from '@callguard/shared';
 
 // ============================================================
 // Reconciliation job ('reconcile' on the scoring queue). One run = one sale's
@@ -54,23 +56,92 @@ async function autoProposeProfile(
 ): Promise<void> {
   try {
     const outcome = await learnProfileFromSale(organizationId, journeyId, zohoRecordId);
-    if (outcome.profileId) {
+
+    if (!outcome.profileId) {
+      // Nothing could be made of the pack. This IS the human's problem — no
+      // amount of waiting fixes a document the system cannot read — so it is
+      // said out loud rather than left in a worker log nobody reads.
       console.log(
-        `[Reconciliation] auto-proposed a format from journey ${journeyId}: ` +
-          `${outcome.insurer} / ${outcome.product ?? '—'}, ${outcome.questionCount} question(s)` +
-          `${outcome.reusedExisting ? ' (already queued)' : ''} — awaiting confirmation`
+        `[Reconciliation] could not auto-propose a format from journey ${journeyId} ` +
+          `(${outcome.failure ?? 'unusable'}): ` +
+          outcome.problems.map((p) => p.message).join(' | ')
       );
+      await notifyAdmins(organizationId, {
+        type: 'dataforms.needs_attention',
+        severity: 'warning',
+        title: 'A sale\u2019s application could not be read',
+        body:
+          `CallGuard could not work out how to read the ${outcome.candidates.length} document(s) ` +
+          `attached to this sale, so nothing has been compared. ` +
+          (outcome.problems.length
+            ? `Reason: ${outcome.problems.map((p) => p.message).join(' ')}`
+            : 'The attachments may not include the application form.'),
+        actionUrl: `/journeys/${journeyId}`,
+        // One per sale. A tenant with a systemic problem gets one notification
+        // per affected sale, not one per sweep tick for ever.
+        dedupeKey: `dataforms-unreadable-${journeyId}`,
+      });
       return;
     }
-    console.log(
-      `[Reconciliation] could not auto-propose a format from journey ${journeyId} ` +
-        `(${outcome.failure ?? 'unusable'}): ` +
-        outcome.problems.map((p) => p.message).join(' | ')
+
+    const live = await queryOne<{ status: string; insurer: string; product: string | null; auto_confirmed_at: string | null }>(
+      'SELECT status, insurer, product, auto_confirmed_at FROM capture_document_profiles WHERE id = $1',
+      [outcome.profileId]
     );
+
+    console.log(
+      `[Reconciliation] auto-proposed a format from journey ${journeyId}: ` +
+        `${outcome.insurer} / ${outcome.product ?? '\u2014'}, ${outcome.questionCount} question(s)` +
+        `${outcome.reusedExisting ? ' (already seen)' : ''} \u2014 status ${live?.status ?? 'unknown'}`
+    );
+
+    // It confirmed itself on corroboration. Told, not asked: the point is that
+    // nobody had to act, but a format going live changes what every future sale
+    // is judged against, so it cannot happen silently either.
+    if (live?.status === 'active' && live.auto_confirmed_at) {
+      const warnings = outcome.problems.filter((p) => p.severity === 'warning');
+      await notifyAdmins(organizationId, {
+        type: 'dataforms.format_live',
+        severity: warnings.length ? 'warning' : 'info',
+        title: `Now reading ${live.insurer}${live.product ? ` \u2014 ${live.product}` : ''} applications`,
+        body:
+          `Two sales independently produced the same format, so CallGuard has started reading it ` +
+          `and every sale waiting on it has been checked. ` +
+          (warnings.length
+            ? `Worth knowing: ${warnings.map((w) => w.message).join(' ')}`
+            : 'Review it on Data Forms if you want to check the questions it found.'),
+        actionUrl: `/data-forms/profiles/${outcome.profileId}`,
+        dedupeKey: `dataforms-live-${outcome.profileId}`,
+      });
+    }
   } catch (err) {
     console.warn(
       `[Reconciliation] auto-propose failed for journey ${journeyId}: ${(err as Error).message}`
     );
+  }
+}
+
+/**
+ * Tell the people who can act. Never throws — a notification that cannot be
+ * delivered must not fail the reconciliation it was reporting on.
+ */
+async function notifyAdmins(
+  organizationId: string,
+  input: {
+    type: NotificationType;
+    severity: AlertSeverity;
+    title: string;
+    body: string;
+    actionUrl: string;
+    dedupeKey: string;
+  }
+): Promise<void> {
+  try {
+    const recipients = await recipientsByRole(organizationId, ['admin']);
+    if (recipients.length === 0) return;
+    await notify({ organizationId, recipients, ...input });
+  } catch (err) {
+    console.warn(`[Reconciliation] could not notify: ${(err as Error).message}`);
   }
 }
 

@@ -8,6 +8,7 @@ import {
   isolateSection,
   rankAttachmentCandidates,
   parseLooksHealthy,
+  formatSignature,
 } from './application-pdf.js';
 import {
   ROYAL_LONDON_PACK,
@@ -567,5 +568,39 @@ describe('parseLooksHealthy — the drift test for a form with no fixed question
     const one = pairs(6);
     one.pairs[0].question = 'x'.repeat(400);
     expect(parseLooksHealthy(one)).toBeNull();
+  });
+});
+
+describe('formatSignature — the identity of a form, not of a question set', () => {
+  it('is stable when the question set changes but the format does not', () => {
+    // The whole basis of corroboration: the same portal export produced 23 and
+    // 95 questions on two sales. Both must be recognised as the same format.
+    const a = formatSignature('question_marker', ['The information you have provided', 'Customer name:']);
+    const b = formatSignature('question_marker', ['The information you have provided', 'Customer name:']);
+    expect(a).toBe(b);
+  });
+
+  it('ignores the order the model happened to list the patterns in', () => {
+    expect(formatSignature('label_value', ['A pattern', 'B pattern'])).toBe(
+      formatSignature('label_value', ['B pattern', 'A pattern'])
+    );
+  });
+
+  it('normalises the same way matching does, so the two can never disagree', () => {
+    expect(formatSignature('question_marker', ['The information you have\nprovided', 'X'])).toBe(
+      formatSignature('question_marker', ['the information you have provided', 'x'])
+    );
+  });
+
+  it('separates different formats', () => {
+    expect(formatSignature('label_value', ['MetLife EverydayProtect', 'Summary'])).not.toBe(
+      formatSignature('label_value', ['Royal London', 'Summary'])
+    );
+  });
+
+  it('separates the same patterns read by a different strategy', () => {
+    expect(formatSignature('label_value', ['A', 'B'])).not.toBe(
+      formatSignature('question_marker', ['A', 'B'])
+    );
   });
 });
