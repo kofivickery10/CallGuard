@@ -11,6 +11,7 @@ import {
   publicFormLimiter,
   twoFactorLimiter,
   emailCodeLimiter,
+  feedbackConfirmLimiter,
 } from './middleware/rate-limits.js';
 import { authRouter } from './routes/auth.js';
 import { twoFactorRouter } from './routes/two-factor.js';
@@ -202,8 +203,10 @@ app.use('/api/auth/2fa/login/email-code', emailCodeLimiter);
 app.use('/api/auth/2fa/login/verify', twoFactorLimiter);
 app.use('/api/public/demo-requests', publicFormLimiter);
 // Unauthenticated: the adviser confirming feedback may have no login at all, so
-// the token is the credential. Rate limited accordingly.
-app.use('/api/feedback', publicFormLimiter);
+// the token is the credential. A whole office can share one NAT egress IP and
+// mail-security gateways prefetch links, so this uses its own, looser bucket
+// rather than the public-form limiter.
+app.use('/api/feedback', feedbackConfirmLimiter);
 
 // 2FA routes mount under /api/auth/2fa — registered before the catch-all auth
 // router so its paths take precedence.
@@ -231,14 +234,18 @@ app.use('/api/customers', customersRouter);
 app.use('/api/journeys', journeysRouter);
 app.use('/api/capture', captureRouter);
 app.use('/api/reconciliation', reconciliationRouter);
-// Sale-level adviser feedback. Mounted after the journeys router, which has no
-// /feedback route of its own and falls through.
+// publicFeedbackRouter MUST be mounted before the bare-`/api` feedbackRouter
+// below: both would otherwise match a `/api/feedback/<token>` request, and
+// whichever is mounted first wins. feedbackRouter is mounted at the bare
+// `/api` prefix (it has no /feedback route of its own; its paths live under
+// /journeys/:journeyId/feedback) so that unmatched requests fall through —
+// which is also why its auth must stay per-route rather than router-level.
+app.use('/api/feedback', publicFeedbackRouter);
 app.use('/api', feedbackRouter);
 app.use('/api/review-items', reviewRouter);
 app.use('/api/users', usersRouter);
 app.use('/api/products', productsRouter);
 app.use('/api/announcements', announcementsRouter);
-app.use('/api/feedback', publicFeedbackRouter);
 app.use('/v1', streamRouter);
 
 // Spec-literal webhook aliases: the same handlers as

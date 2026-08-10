@@ -59,6 +59,18 @@ export const publicFormLimiter = rateLimit({
   message: { message: 'Too many submissions. Please try again shortly.' },
 });
 
+// Adviser feedback confirmations: one GET per emailed link, but a whole office
+// shares one NAT egress IP and mail-security gateways prefetch links, so the
+// public-form bucket (5/min) is far too tight here.
+export const feedbackConfirmLimiter = rateLimit({
+  windowMs: 60_000,
+  limit: 60,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  keyGenerator: clientIpKey,
+  message: { message: 'Too many requests. Please wait a minute and try again.' },
+});
+
 // Per-API-key limiter for ingestion and streaming endpoints.
 // Applied AFTER authenticateApiKey so req.user is populated.
 // Falls back to IP if for some reason the user isn't set (should not happen).

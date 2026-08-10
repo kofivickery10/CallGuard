@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { query, queryOne } from '../db/client.js';
+import { query, queryOne, withTransaction } from '../db/client.js';
 import { config } from '../config.js';
 import { alertsQueue } from '../jobs/queue.js';
 
@@ -202,50 +202,62 @@ export async function sendFeedback(input: {
   const raw = crypto.randomBytes(32).toString('base64url');
   const expiresAt = new Date(Date.now() + TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000);
 
-  // A previous unconfirmed feedback is superseded rather than blocking: the
-  // partial unique index allows one open per sale, and re-sending is a normal
-  // thing to do when the first was never acknowledged.
-  await query(
-    `DELETE FROM journey_feedback
-      WHERE journey_id = $1 AND confirmed_at IS NULL`,
-    [journeyId]
-  );
-
-  const feedback = await queryOne<{ id: string }>(
-    `INSERT INTO journey_feedback
-       (organization_id, journey_id, adviser_user_id, adviser_name, adviser_email,
-        sent_by, message, token_hash, token_expires_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-     RETURNING id`,
-    [
-      organizationId,
-      journeyId,
-      adviser.userId,
-      adviser.name,
-      adviser.email,
-      sentBy,
-      message,
-      hashFeedbackToken(raw),
-      expiresAt.toISOString(),
-    ]
-  );
-  const feedbackId = feedback!.id;
-
-  for (const b of breaches) {
-    await query(
-      `INSERT INTO journey_feedback_items
-         (feedback_id, scorecard_item_id, item_label, severity, breach_id)
-       VALUES ($1,$2,$3,$4,$5)
-       ON CONFLICT (feedback_id, scorecard_item_id) DO NOTHING`,
-      [feedbackId, b.scorecard_item_id, b.item_label, b.severity, b.breach_id]
+  // The delete-and-replace and every insert it depends on run as one
+  // transaction: if the INSERT (or a breach_events insert) fails partway
+  // through, the adviser's previous working link must still be there rather
+  // than deleted with nothing to replace it.
+  const feedbackId = await withTransaction(async (tx) => {
+    // A previous unconfirmed feedback is superseded rather than blocking: the
+    // partial unique index allows one open per sale, and re-sending is a normal
+    // thing to do when the first was never acknowledged. Scoped by organisation
+    // like every other write here — journey_id alone is not tenant-safe.
+    await tx.query(
+      `DELETE FROM journey_feedback
+        WHERE journey_id = $1 AND organization_id = $2 AND confirmed_at IS NULL`,
+      [journeyId, organizationId]
     );
-    await query(
-      `INSERT INTO breach_events (breach_id, user_id, event_type, to_value)
-       VALUES ($1, $2, 'feedback_sent', $3)`,
-      [b.breach_id, sentBy, adviser.name]
-    );
-  }
 
+    const feedback = await tx.queryOne<{ id: string }>(
+      `INSERT INTO journey_feedback
+         (organization_id, journey_id, adviser_user_id, adviser_name, adviser_email,
+          sent_by, message, token_hash, token_expires_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+       RETURNING id`,
+      [
+        organizationId,
+        journeyId,
+        adviser.userId,
+        adviser.name,
+        adviser.email,
+        sentBy,
+        message,
+        hashFeedbackToken(raw),
+        expiresAt.toISOString(),
+      ]
+    );
+    const id = feedback!.id;
+
+    for (const b of breaches) {
+      await tx.query(
+        `INSERT INTO journey_feedback_items
+           (feedback_id, scorecard_item_id, item_label, severity, breach_id)
+         VALUES ($1,$2,$3,$4,$5)
+         ON CONFLICT (feedback_id, scorecard_item_id) DO NOTHING`,
+        [id, b.scorecard_item_id, b.item_label, b.severity, b.breach_id]
+      );
+      await tx.query(
+        `INSERT INTO breach_events (breach_id, user_id, event_type, to_value)
+         VALUES ($1, $2, 'feedback_sent', $3)`,
+        [b.breach_id, sentBy, adviser.name]
+      );
+    }
+
+    return id;
+  });
+
+  // Enqueued only after the transaction has committed, and never inside it: a
+  // rollback must never be followed by an email pointing at a row that no
+  // longer exists.
   await alertsQueue.add('feedback-email', {
     to: adviser.email,
     adviserName: adviser.name,
@@ -263,10 +275,60 @@ export interface ConfirmResult {
   itemCount?: number;
 }
 
+export interface LookupResult {
+  status: 'pending' | 'already_confirmed' | 'expired' | 'not_found';
+  adviserName?: string;
+  itemCount?: number;
+}
+
 /**
- * The adviser's one click. Unauthenticated by necessity — the recipient may have
- * no login at all — so the token is the credential: single-use, time-bound, and
- * stored only as a hash.
+ * What a link opened by a page load learns, and nothing more: it reads the
+ * same row `confirmFeedback` reads, and follows the same not_found /
+ * already_confirmed / expired checks in the same order, but writes NOTHING —
+ * no UPDATE, no breach_events row. `'pending'` is the case where
+ * `confirmFeedback` would go on to confirm; here it just means "there is
+ * something to confirm", so the page can name the adviser and put a real
+ * confirm button in front of them instead of doing it for them.
+ */
+export async function lookupFeedback(rawToken: string): Promise<LookupResult> {
+  const row = await queryOne<{
+    id: string;
+    adviser_name: string;
+    confirmed_at: string | null;
+    token_expires_at: string;
+  }>(
+    `SELECT id, adviser_name, confirmed_at, token_expires_at
+       FROM journey_feedback WHERE token_hash = $1`,
+    [hashFeedbackToken(rawToken)]
+  );
+
+  if (!row) return { status: 'not_found' };
+  if (row.confirmed_at) {
+    const n = await queryOne<{ n: string }>(
+      'SELECT count(*) AS n FROM journey_feedback_items WHERE feedback_id = $1',
+      [row.id]
+    );
+    return {
+      status: 'already_confirmed',
+      adviserName: row.adviser_name,
+      itemCount: Number(n?.n ?? 0),
+    };
+  }
+  if (new Date(row.token_expires_at).getTime() < Date.now()) {
+    return { status: 'expired', adviserName: row.adviser_name };
+  }
+
+  const n = await queryOne<{ n: string }>(
+    'SELECT count(*) AS n FROM journey_feedback_items WHERE feedback_id = $1',
+    [row.id]
+  );
+  return { status: 'pending', adviserName: row.adviser_name, itemCount: Number(n?.n ?? 0) };
+}
+
+/**
+ * The adviser's confirmation, behind a deliberate POST. Unauthenticated by
+ * necessity — the recipient may have no login at all — so the token is the
+ * credential: single-use, time-bound, and stored only as a hash.
  */
 export async function confirmFeedback(
   rawToken: string,
@@ -288,8 +350,12 @@ export async function confirmFeedback(
   );
 
   if (!row) return { status: 'not_found' };
-  // Idempotent: an adviser who clicks the link twice, or whose mail client
-  // prefetches it, must see success rather than an error.
+  // Idempotent, not a prefetch guard: confirmation only happens on a POST now
+  // (the GET is lookupFeedback, above, which writes nothing), so a mail
+  // scanner prefetching the emailed link can no longer confirm anything. This
+  // branch instead covers an adviser who double-clicks the confirm button, or
+  // whose POST is retried after a dropped response — they must see success
+  // rather than an error either way.
   if (row.confirmed_at) {
     const n = await queryOne<{ n: string }>(
       'SELECT count(*) AS n FROM journey_feedback_items WHERE feedback_id = $1',

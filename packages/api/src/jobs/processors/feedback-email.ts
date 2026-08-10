@@ -78,11 +78,11 @@ export async function processFeedbackEmail(job: Job<FeedbackEmailJob>) {
         ${body}
         ${note}
         <p style="color: #3a4e3a; font-size: 14px; line-height: 1.6;">
-          Please confirm you have seen this. One click is all it takes — you do not need to sign in.
+          Please open the link below and confirm you have seen this. You do not need to sign in.
         </p>
         <div style="margin-top: 20px;">
           <a href="${confirmUrl}" style="background: #4a9e6e; color: white; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-weight: 600; display: inline-block; font-size: 15px;">
-            Confirm I have seen this
+            Open and confirm
           </a>
         </div>
         <p style="color: #8a9e8a; font-size: 12px; margin-top: 24px;">
@@ -101,7 +101,7 @@ export async function processFeedbackEmail(job: Job<FeedbackEmailJob>) {
     ...items.map((i) => `  - ${i.label} (${i.severity})`),
     ...(message ? ['', message] : []),
     '',
-    'Please confirm you have seen this. You do not need to sign in:',
+    'Please open the link below and confirm you have seen this. You do not need to sign in:',
     confirmUrl,
     '',
     'This link is personal to you and expires in 30 days.',
