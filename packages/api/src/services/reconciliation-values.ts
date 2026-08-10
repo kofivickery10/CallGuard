@@ -33,8 +33,15 @@ export interface ValueExtractionRequest {
   question: string;
   /** What the insurer recorded, for context on what kind of answer to look for. */
   applicationAnswer: string;
-  /** The passage of call around where the question was located. */
-  excerpt: string;
+  /**
+   * The passages of call where this question's topic appears, in order.
+   *
+   * Plural deliberately. A topic is commonly named more than once — the adviser
+   * previews what they are about to cover, then asks — and only one of those
+   * places holds the answer. Sending the first alone reported perfectly good
+   * answers as never given.
+   */
+  excerpts: string[];
 }
 
 export interface ExtractedValue {
@@ -82,27 +89,38 @@ Rules:
 1. Report the CUSTOMER's answer, never the adviser's. The adviser asking "so no
    heart problems?" is not the customer answering.
 
-2. Return value: null when the excerpt does not contain the customer answering
+2. You may be given SEVERAL passages for one question, because the topic comes
+   up more than once in the call. They are places in the same conversation, not
+   alternatives: read all of them and report the answer from whichever one
+   actually contains the customer answering. The adviser commonly previews the
+   topics they are about to cover before asking about any of them, so an early
+   passage with no answer in it means nothing on its own — check the later ones
+   before concluding the question went unanswered.
+
+3. Return value: null when NONE of the passages contains the customer answering
    that question. Locating the topic is not the same as an answer being given —
    the adviser may have mentioned it in passing, read a list aloud, or moved on.
    A null is a correct and useful result. Do not reach for an answer that is not
    there.
 
-3. NEVER let the application answer influence what you report. It is given only
+   Note the customer may answer several questions at once ("no to all of those"
+   after a list is read out). That IS an answer to each question in the list.
+
+4. NEVER let the application answer influence what you report. It is given only
    so you know what kind of value to look for (a yes/no, a number, a condition
    name). If the customer said something different, report what they said. The
    entire purpose of this exercise is to find those disagreements, so anchoring
    on the application answer defeats it.
 
-4. Set redacted: true when the topic is clearly being answered but the value
+5. Set redacted: true when the topic is clearly being answered but the value
    itself has been removed, which appears as a tag in square brackets such as
    [CONDITION_7], [DRUG_3] or [NUMBER]. In that case also return value: null. We
    know they answered; we cannot see what they said.
 
-5. Normalise to the form the question invites: "yeah, never touched them" for a
+6. Normalise to the form the question invites: "yeah, never touched them" for a
    smoking question is "No". Keep numbers as the customer gave them.
 
-6. Be honest in confidence. Below 0.6 means you are guessing, and a guess here
+7. Be honest in confidence. Below 0.6 means you are guessing, and a guess here
    becomes an allegation against an adviser.`;
 
 /**
@@ -131,10 +149,18 @@ export async function extractCallAnswers(
   const model = modelOverride ?? DEFAULT_VALUE_MODEL;
 
   const body = requests
-    .map(
-      (r) =>
-        `--- key: ${r.key}\nQuestion: ${r.question}\nRecorded on the application: ${r.applicationAnswer}\nExcerpt from the call:\n${r.excerpt}`
-    )
+    .map((r) => {
+      const passages = r.excerpts
+        .map((e, i) =>
+          r.excerpts.length > 1 ? `Passage ${i + 1} of ${r.excerpts.length}:\n${e}` : e
+        )
+        .join('\n\n');
+      return (
+        `--- key: ${r.key}\nQuestion: ${r.question}\n` +
+        `Recorded on the application: ${r.applicationAnswer}\n` +
+        `Passages from the call where this topic comes up:\n${passages}`
+      );
+    })
     .join('\n\n');
 
   // Budget per question, capped — the same truncation-avoidance shape as scoring

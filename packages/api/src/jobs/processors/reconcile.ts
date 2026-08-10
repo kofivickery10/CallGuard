@@ -17,7 +17,7 @@ import {
   absenceIsMeaningful,
   transcriptRedactsHealth,
   findEvidence,
-  quoteAround,
+  evidenceExcerpts,
   classifyItem,
   classifyAmendment,
 } from '../../services/reconciliation.js';
@@ -526,7 +526,10 @@ async function compareAndStore(
       pair,
       terms,
       hits,
-      excerpt: offset == null ? null : quoteAround(transcript, offset, 420),
+      // Every place the topic comes up, not just the earliest. The adviser
+      // habitually names what they are about to ask before asking it, so the
+      // first mention is the one window an answer cannot be in.
+      excerpts: evidenceExcerpts(transcript, hits),
       sourceCallId: callNumber == null ? null : (calls[callNumber - 1]?.id ?? null),
       absenceMeaningful:
         profileFlags.get(normaliseKey(pair.question)) ?? absenceIsMeaningful(terms),
@@ -538,7 +541,7 @@ async function compareAndStore(
   // never the whole transcript. A question nobody asked needs no model to tell
   // us so, and sending it would invite an answer to be invented for it.
   const extractionTargets = located.filter(
-    (l) => l.excerpt !== null && l.pair.answer !== null && l.pair.answer.trim() !== ''
+    (l) => l.excerpts.length > 0 && l.pair.answer !== null && l.pair.answer.trim() !== ''
   );
   const extracted = new Map<string, ExtractedValue>();
   if (extractionTargets.length > 0) {
@@ -548,7 +551,7 @@ async function compareAndStore(
           key: String(l.pair.order),
           question: l.pair.question,
           applicationAnswer: l.pair.answer!,
-          excerpt: l.excerpt!,
+          excerpts: l.excerpts,
         }))
       );
       for (const v of result.values) extracted.set(v.key, v);
@@ -631,7 +634,8 @@ interface LocatedQuestion {
   pair: ParsedPair;
   terms: string[];
   hits: Array<{ term: string; index: number }>;
-  excerpt: string | null;
+  /** Every passage of call worth reading for this question, in call order. */
+  excerpts: string[];
   sourceCallId: string | null;
   absenceMeaningful: boolean;
 }
@@ -692,7 +696,9 @@ function comparePair(
     outcome,
     callAnswer,
     callAnswerRedacted,
-    evidence: located.excerpt,
+    // The first passage is the display quote; the rest were read but showing
+    // all of them would bury the reviewer in repeated context.
+    evidence: located.excerpts[0] ?? null,
     reasoning,
     sourceCallId: located.sourceCallId,
     confidence: extracted?.confidence ?? null,
