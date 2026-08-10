@@ -147,7 +147,23 @@ Rules:
    customer described only their PREVIOUS job, or gave a figure that could fall
    either side of the threshold, that is not an answer to the question asked.
 
-7. customer_did_not_answer is a separate judgement from value, and a heavier
+7. ANSWER THE QUESTION ASKED, INCLUDING ITS CONDITIONS. Insurers write long
+   questions with a threshold or a qualifier inside them, and the plain fact the
+   customer mentions is often NOT an answer to it.
+
+   "Do you have any existing life cover, or are you applying for other cover,
+   which would mean your total cover would exceed £1,500,000?" is not asking
+   whether they have life insurance. A customer saying "I've got a policy with
+   Royal London" has told you nothing about the total — so the answer is null,
+   not Yes.
+
+   The same goes for any question qualified by an amount, a period ("in the last
+   12 months"), a place, or a degree of severity. If what the customer said does
+   not settle the qualifier, return null and say so in reasoning. Answering the
+   simpler question hiding inside a longer one is how a correct application
+   answer gets contradicted by a customer who never disagreed with it.
+
+8. customer_did_not_answer is a separate judgement from value, and a heavier
    one: it says the adviser recorded an answer the customer never gave, which
    goes in front of a compliance reviewer. Set it true only when you can read
    the exchange through and see them deflect, change the subject, or the adviser
@@ -155,7 +171,7 @@ Rules:
    goes somewhere you cannot follow, set it FALSE — "I could not tell" is a
    perfectly good answer and is treated as such.
 
-8. Be honest in confidence. Below 0.6 means you are guessing, and a guess here
+9. Be honest in confidence. Below 0.6 means you are guessing, and a guess here
    becomes an allegation against an adviser.`;
 
 /**

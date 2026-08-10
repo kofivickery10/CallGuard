@@ -295,6 +295,20 @@ describe('compareAnswers', () => {
     expect(compareAnswers('2019', '7 years ago')).toBe('unclear');
   });
 
+  it('will not judge an age against an elapsed time', () => {
+    // From a real sale: "How old were you when you were diagnosed with asthma?"
+    // recorded as 51, the customer saying "about 13 years ago". The same fact
+    // told from the other end — a conversion the adviser makes without noticing
+    // — and settling it needs a date of birth we do not have and which may
+    // itself be redacted. Reported as a mismatch it reads as the adviser having
+    // invented an age.
+    const callDate = new Date('2026-08-10T00:00:00Z');
+    expect(compareAnswers('51', 'About 13 years ago', callDate)).toBe('unclear');
+    expect(compareAnswers('13 years ago', '51', callDate)).toBe('unclear');
+    // And with no date available either, for the same reason.
+    expect(compareAnswers('51', 'About 13 years ago')).toBe('unclear');
+  });
+
   it('never calls a year against a plain count a mismatch', () => {
     // Two different kinds of quantity. A year against a number of episodes, or
     // an age, is a unit confusion of ours — not a mis-keying of theirs.
