@@ -107,9 +107,48 @@ async function main(): Promise<void> {
     [org.id, statuses]
   );
 
+  // Is anything these sales depend on still being transcribed?
+  //
+  // Re-checking reads the transcripts as they stand right now. Do it while a
+  // re-transcription is draining — precisely when someone reaches for this
+  // script, having just changed the redaction settings — and half the sales are
+  // compared against the old text and have to be done again. Easy to get wrong,
+  // invisible when you do, so it is checked here rather than left to whoever
+  // remembers to watch the log.
+  //
+  // Scoped to the calls belonging to the sales being re-checked, and to the two
+  // statuses that genuinely mean "on its way to a transcript".
+  //
+  // Both narrowings are load-bearing. Asking instead for calls that are not
+  // settled, across the whole tenant, reported 2,545 in flight on a tenant with
+  // 54 to re-transcribe: 'captured' is a metadata-only row from a dialler
+  // webhook, holding a recording pointer with no audio, and it stays that way
+  // unless a sale trigger claims it. That is a resting state, not a queue, and
+  // counting it would have blocked this script for ever on any tenant with a
+  // dialler connected.
+  const inFlight = await query<{ status: string; n: number }>(
+    `SELECT c.status, count(*)::int AS n
+       FROM calls c
+       JOIN journey_calls jc ON jc.call_id = c.id
+      WHERE jc.journey_id = ANY($1::uuid[])
+        AND c.status IN ('uploaded', 'transcribing')
+      GROUP BY 1 ORDER BY 2 DESC`,
+    [runs.map((r) => r.journey_id)]
+  );
+  const inFlightCount = inFlight.reduce((n, r) => n + r.n, 0);
+
   console.log(`\n${org.name}`);
   console.log(`Statuses: ${statuses.join(', ')}`);
   console.log(`Runs to re-check: ${runs.length}`);
+  if (inFlightCount > 0) {
+    console.log(
+      `\n  !! ${inFlightCount} call(s) on these sales are still on their way to a transcript ` +
+        `(${inFlight.map((r) => `${r.n} ${r.status}`).join(', ')}).\n` +
+        '     Re-checking now compares those sales against the transcripts as they are\n' +
+        '     at this moment, so any that finish afterwards would need doing again.\n' +
+        '     Wait for the transcription queue to drain, then re-run this.'
+    );
+  }
   const itemsAtStake = runs.reduce((n, r) => n + r.items, 0);
   console.log(`Existing items that will be deleted and rebuilt: ${itemsAtStake}\n`);
 
@@ -124,6 +163,20 @@ async function main(): Promise<void> {
 
   if (!commit) {
     console.log(`\nDry run — nothing changed. Add --commit to re-check these ${runs.length} sale(s).`);
+    return;
+  }
+
+  // Refused rather than warned. The cost of going ahead is doing the whole thing
+  // again — deleting and rebuilding every item a second time — and by then the
+  // person who ran it has moved on and is reading numbers built against text
+  // that has since changed underneath them.
+  if (inFlightCount > 0 && !args.includes('--force')) {
+    console.error(
+      `\nRefusing: ${inFlightCount} call(s) on these sales are still in transcription. Wait for the queue to\n` +
+        'drain so every sale is checked against its final transcript. Pass --force to\n' +
+        'override if you know these calls are stuck rather than working.'
+    );
+    process.exitCode = 1;
     return;
   }
 
