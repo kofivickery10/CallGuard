@@ -10,6 +10,7 @@ import {
   openReviewCount,
   latestFeedback,
   sendFeedback,
+  lookupFeedback,
   confirmFeedback,
   hashFeedbackToken,
 } from '../services/journey-feedback.js';
@@ -22,17 +23,30 @@ import {
 //  * feedbackRouter is authenticated and org-scoped, for the supervisor.
 //  * publicFeedbackRouter is UNAUTHENTICATED, because the adviser confirming
 //    may have no login at all (061). The token is the credential.
+//
+// Within publicFeedbackRouter, GET and POST are also deliberately different:
+// GET /:token is a read-only status check (what the page load does), and
+// POST /:token/confirm is the actual acknowledgment (what the button click
+// does). They are split so that a mail-security gateway prefetching the
+// emailed link — which only ever GETs it — cannot fabricate a confirmation.
+//
+// feedbackRouter is mounted at the bare `/api` prefix in app.ts (its routes
+// live under /journeys/:journeyId/feedback, not /feedback), so `authenticate`
+// and `requireActioner` MUST be applied per-route rather than with
+// `router.use(...)`. Express 4 runs router-level `use()` middleware for every
+// request that reaches the router, even ones that match no route inside it —
+// so a router-level auth guard here would 401 any other `/api/*` request that
+// happens to be routed to this file before it can fall through.
 // ============================================================
 
 export const feedbackRouter = Router();
-feedbackRouter.use(authenticate, requireActioner);
 
 /**
  * What feeding this sale back would involve, and what has happened already.
  * Drives the button's enabled state and the warning text, so the supervisor sees
  * the blockers before they click rather than as an error afterwards.
  */
-feedbackRouter.get('/journeys/:journeyId/feedback', async (req, res, next) => {
+feedbackRouter.get('/journeys/:journeyId/feedback', authenticate, requireActioner, async (req, res, next) => {
   try {
     const { journeyId } = req.params;
     if (!isUuid(journeyId)) throw new AppError(400, 'Invalid sale id');
@@ -64,7 +78,7 @@ feedbackRouter.get('/journeys/:journeyId/feedback', async (req, res, next) => {
 });
 
 /** Send it. */
-feedbackRouter.post('/journeys/:journeyId/feedback', async (req, res, next) => {
+feedbackRouter.post('/journeys/:journeyId/feedback', authenticate, requireActioner, async (req, res, next) => {
   try {
     const { journeyId } = req.params;
     if (!isUuid(journeyId)) throw new AppError(400, 'Invalid sale id');
@@ -125,13 +139,38 @@ feedbackRouter.post('/journeys/:journeyId/feedback', async (req, res, next) => {
 export const publicFeedbackRouter = Router();
 
 /**
- * One click, no login. Mounted outside `authenticate` on purpose.
+ * A read-only status check, opened by loading the page from the emailed link.
+ * Mounted outside `authenticate` on purpose. Deliberately does NOT confirm
+ * anything — mail-security gateways routinely prefetch links in emails, and a
+ * GET that recorded an acknowledgment as a side effect could produce a
+ * compliance record of an adviser having "seen" feedback they never opened.
+ * Confirmation is the separate POST below, behind a button click on the page.
  *
  * Always answers with a 200 and a status rather than an error code: this is
  * opened by a person in a mail client, not by a program, and "410 Gone" is not
  * something to show an adviser. The page renders the outcome.
  */
 publicFeedbackRouter.get('/:token', async (req, res, next) => {
+  try {
+    const token = req.params.token;
+    if (!token || token.length < 20 || token.length > 200) {
+      res.json({ status: 'not_found' });
+      return;
+    }
+
+    const result = await lookupFeedback(token);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * The adviser's deliberate click. This is the only path that can confirm a
+ * feedback record — split out from the GET above so that a prefetched or
+ * scanned link can never do it on the adviser's behalf.
+ */
+publicFeedbackRouter.post('/:token/confirm', async (req, res, next) => {
   try {
     const token = req.params.token;
     if (!token || token.length < 20 || token.length > 200) {
