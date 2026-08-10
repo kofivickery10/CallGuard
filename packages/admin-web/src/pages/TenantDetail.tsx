@@ -1148,16 +1148,22 @@ function RedactionCategoriesCard({
         <div className="mt-3 bg-fail-bg text-fail rounded-btn px-3 py-2 text-xs leading-relaxed">
           Permitting health data means every customer&rsquo;s conditions, medication and
           procedures are stored in readable form on every call, for this tenant&rsquo;s full
-          retention period. Do not enable without a signed DPIA.
+          retention period, and are sent to the AI provider during transcript cleanup,
+          scoring and Data Forms checks. Do not enable without a signed DPIA covering both.
         </div>
       )}
       {addsNumbers && (
         <div className="mt-2 bg-review-bg text-review rounded-btn px-3 py-2 text-xs leading-relaxed">
-          Number sequences are what currently catch bank details spoken aloud, because the
-          per-entity detectors miss them. Do not enable until digit-run redaction is in place
-          and verified.
+          Spoken bank details are stripped separately before storage, so this no longer
+          exposes them. It permits the spoken figures Data Forms compares — units of
+          alcohol, cigarettes a day, height and weight — which are otherwise placeholders.
         </div>
       )}
+      <div className="mt-2 bg-secondary-bg text-text-secondary rounded-btn px-3 py-2 text-xs leading-relaxed">
+        Applies to calls transcribed from now on. Redaction happens as a call is
+        transcribed, so calls already stored keep whatever was redacted at the time and
+        are unaffected by this change.
+      </div>
 
       {dirty && (
         <div className="mt-3">
