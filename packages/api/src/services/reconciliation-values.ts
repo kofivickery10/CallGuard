@@ -54,6 +54,16 @@ export interface ExtractedValue {
   value: string | null;
   /** True when the topic was discussed but the value itself was redacted out. */
   redacted: boolean;
+  /**
+   * True only when the exchange can be read through and the customer plainly
+   * did not answer — they deflected, changed the subject, or the adviser moved
+   * on. NOT the same as "no answer could be read", which is the ordinary null
+   * and means only that we could not tell.
+   *
+   * This is what promotes an item to a finding against an adviser, so it is
+   * asked for as its own judgement rather than inferred from value === null.
+   */
+  customerDidNotAnswer: boolean;
   confidence: number;
   reasoning: string;
 }
@@ -69,10 +79,15 @@ const TOOL_SCHEMA = {
           key: { type: 'string' },
           value: { type: ['string', 'null'] },
           redacted: { type: 'boolean' },
+          customer_did_not_answer: {
+            type: 'boolean',
+            description:
+              'True ONLY if you can read the exchange through and the customer plainly did not answer — they deflected, changed the subject, or the adviser moved on without an answer. False if you simply could not tell, including when a passage is cut off mid-sentence.',
+          },
           confidence: { type: 'number', minimum: 0, maximum: 1 },
           reasoning: { type: 'string' },
         },
-        required: ['key', 'value', 'redacted', 'confidence', 'reasoning'],
+        required: ['key', 'value', 'redacted', 'customer_did_not_answer', 'confidence', 'reasoning'],
       },
     },
   },
@@ -120,7 +135,27 @@ Rules:
 6. Normalise to the form the question invites: "yeah, never touched them" for a
    smoking question is "No". Keep numbers as the customer gave them.
 
-7. Be honest in confidence. Below 0.6 means you are guessing, and a guess here
+   People answer in their own terms, and an answer given in different words is
+   still an answer. "I'm full time" answers "are you working 16 hours or more a
+   week?" — nobody says "yes, sixteen hours or more". "I gave up years ago"
+   answers a smoking question. Report the plain meaning of what they said, say
+   in reasoning which words you took it from, and set confidence to reflect how
+   direct it was: an explicit answer is high, a clear implication is moderate,
+   and something you had to reason around is low enough to be discarded.
+
+   The limit is that the implication must be theirs and not yours. If the
+   customer described only their PREVIOUS job, or gave a figure that could fall
+   either side of the threshold, that is not an answer to the question asked.
+
+7. customer_did_not_answer is a separate judgement from value, and a heavier
+   one: it says the adviser recorded an answer the customer never gave, which
+   goes in front of a compliance reviewer. Set it true only when you can read
+   the exchange through and see them deflect, change the subject, or the adviser
+   move on. If a passage is cut off mid-sentence, or the conversation simply
+   goes somewhere you cannot follow, set it FALSE — "I could not tell" is a
+   perfectly good answer and is treated as such.
+
+8. Be honest in confidence. Below 0.6 means you are guessing, and a guess here
    becomes an allegation against an adviser.`;
 
 /**
@@ -242,12 +277,19 @@ export function sanitiseValues(
 
     let value = typeof e.value === 'string' && e.value.trim() !== '' ? e.value.trim() : null;
     let redacted = e.redacted === true;
+    // Defaults to false, so a model that omits the field can never promote an
+    // item to a finding by accident. The claim has to be made explicitly.
+    let didNotAnswer = e.customer_did_not_answer === true;
 
     // The value IS a placeholder — the topic was answered, the content is gone.
     if (value && REDACTION_TAG.test(value)) {
       value = null;
       redacted = true;
     }
+    // Answered and did-not-answer are contradictory. An answer read from the
+    // call is the stronger evidence, so the flag yields to it rather than the
+    // pair being stored in a state nothing downstream can interpret.
+    if (value !== null || redacted) didNotAnswer = false;
 
     const confidence =
       typeof e.confidence === 'number' && e.confidence >= 0 && e.confidence <= 1
@@ -258,6 +300,7 @@ export function sanitiseValues(
       key,
       value,
       redacted,
+      customerDidNotAnswer: didNotAnswer,
       confidence,
       reasoning: typeof e.reasoning === 'string' ? e.reasoning : '',
     });

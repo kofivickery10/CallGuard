@@ -617,6 +617,17 @@ function normaliseKey(question: string): string {
   return question.toLowerCase().replace(/\s+/g, ' ').replace(/[^a-z0-9 ]/g, '').trim();
 }
 
+/**
+ * The distinct words a question was located on, for the reviewer.
+ *
+ * Deduplicated because findEvidence now reports every occurrence of a term, and
+ * a topic mentioned four times would otherwise read as "found on: cancer,
+ * cancer, cancer, cancer" — which says nothing and looks broken.
+ */
+function termList(hits: Array<{ term: string }>): string {
+  return [...new Set(hits.map((h) => h.term))].slice(0, 4).join(', ');
+}
+
 interface ComparedItem {
   outcome: string;
   callAnswer: string | null;
@@ -677,6 +688,11 @@ function comparePair(
     evidenceFound: found,
     absenceMeaningful,
     redactedTranscript: redacted,
+    // Only the model can assert this, and only when it saw the exchange run
+    // past the question. Absent an extraction it stays undefined, so a failed
+    // value pass reports 'undetermined' rather than accusing every adviser on
+    // the sale of taking answers nobody gave.
+    customerDidNotAnswer: extracted?.customerDidNotAnswer,
   });
 
   const amendmentType = classifyAmendment(pair.answer, pair.revisions ?? []);
@@ -689,8 +705,8 @@ function comparePair(
         : 'The words identifying this question are removed from stored transcripts, so their absence proves nothing.'
     : extracted
       ? extracted.reasoning ||
-        `Found in the call on: ${hits.slice(0, 4).map((h) => h.term).join(', ')}.`
-      : `Found in the call on: ${hits.slice(0, 4).map((h) => h.term).join(', ')}. The customer's answer could not be read from the passage.`;
+        `Found in the call on: ${termList(hits)}.`
+      : `Found in the call on: ${termList(hits)}. The customer's answer could not be read from the passage.`;
 
   return {
     outcome,

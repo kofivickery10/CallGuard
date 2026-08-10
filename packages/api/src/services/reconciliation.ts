@@ -482,6 +482,16 @@ export interface ClassifyInput {
   absenceMeaningful: boolean;
   /** Whether this transcript shows health redaction at all. */
   redactedTranscript: boolean;
+  /**
+   * Whether the customer demonstrably did NOT answer — the exchange is there to
+   * read, and they changed the subject, deflected, or the adviser moved on.
+   *
+   * Distinct from "no answer could be read", and the distinction is the whole
+   * difference between a finding and a shrug. Undefined means nobody established
+   * either way, which must not be reported as the customer having failed to
+   * answer.
+   */
+  customerDidNotAnswer?: boolean;
 }
 
 /**
@@ -513,7 +523,17 @@ export function classifyItem(input: ClassifyInput): ReconciliationOutcome {
     // Covered on the call, but the value never reached storage. We know they
     // answered; we cannot see what they said, so we cannot compare.
     if (input.callAnswerRedacted) return 'undetermined';
-    return 'asked_no_answer';
+    // "We could not read an answer" and "the customer did not answer" are not
+    // the same claim, and collapsing them was expensive: 252 of one tenant's 448
+    // items alleged an adviser had taken an answer nobody gave, when what had
+    // actually happened was that we read the wrong 400 characters of the call.
+    //
+    // Only the stronger claim is a finding, and only the model can make it,
+    // because it requires having seen the exchange run past the question. Absent
+    // that, this is 'undetermined' — the honest "we could not tell" — which is
+    // deliberately not actionable and so cannot bury the real flags.
+    if (input.customerDidNotAnswer === true) return 'asked_no_answer';
+    return 'undetermined';
   }
 
   const comparison = compareAnswers(input.applicationAnswer, input.callAnswer);

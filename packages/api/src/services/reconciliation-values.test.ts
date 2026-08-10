@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { sanitiseValues, type ValueExtractionRequest } from './reconciliation-values.js';
 
 const requests: ValueExtractionRequest[] = [
-  { key: '1', question: 'Do you smoke?', applicationAnswer: 'No', excerpt: '…' },
-  { key: '2', question: 'How many units of alcohol?', applicationAnswer: '1', excerpt: '…' },
+  { key: '1', question: 'Do you smoke?', applicationAnswer: 'No', excerpts: ['…'] },
+  { key: '2', question: 'How many units of alcohol?', applicationAnswer: '1', excerpts: ['…'] },
 ];
 
 const entry = (over: Record<string, unknown> = {}) => ({
@@ -68,5 +68,37 @@ describe('sanitiseValues', () => {
 
   it('returns nothing for an empty payload', () => {
     expect(sanitiseValues([], requests)).toEqual([]);
+  });
+});
+
+describe('sanitiseValues — the did-not-answer claim', () => {
+  it('defaults to false when the model omits it, so nothing is accused by accident', () => {
+    const [v] = sanitiseValues([entry({ value: null })], requests);
+    expect(v!.customerDidNotAnswer).toBe(false);
+  });
+
+  it('carries the claim through when the model makes it explicitly', () => {
+    const [v] = sanitiseValues(
+      [entry({ value: null, customer_did_not_answer: true })],
+      requests
+    );
+    expect(v!.customerDidNotAnswer).toBe(true);
+  });
+
+  it('drops the claim when an answer was also read, since the two contradict', () => {
+    const [v] = sanitiseValues(
+      [entry({ value: 'No', customer_did_not_answer: true })],
+      requests
+    );
+    expect(v!.customerDidNotAnswer).toBe(false);
+  });
+
+  it('drops the claim when the answer was redacted out — they did answer', () => {
+    const [v] = sanitiseValues(
+      [entry({ value: '[CONDITION_7]', customer_did_not_answer: true })],
+      requests
+    );
+    expect(v!.redacted).toBe(true);
+    expect(v!.customerDidNotAnswer).toBe(false);
   });
 });

@@ -328,8 +328,42 @@ describe('classifyItem', () => {
     ).toBe('not_asked');
   });
 
-  it('reports asked_no_answer when the question was put but never answered', () => {
-    expect(classifyItem({ ...base, callAnswer: null })).toBe('asked_no_answer');
+  it('reports asked_no_answer only when the customer demonstrably did not answer', () => {
+    expect(
+      classifyItem({ ...base, callAnswer: null, customerDidNotAnswer: true })
+    ).toBe('asked_no_answer');
+  });
+
+  it('says undetermined when no answer could be read, rather than accusing anyone', () => {
+    // The real case this comes from. "Are you working 16 hours or more a week?"
+    // was answered — the customer said they were full time — but the passage we
+    // read cut off mid-sentence, so nothing could be extracted. Reported as
+    // asked_no_answer, that is an allegation the adviser recorded an answer
+    // nobody gave. It was one of 252 such items on a single tenant.
+    expect(classifyItem({ ...base, callAnswer: null })).toBe('undetermined');
+    expect(
+      classifyItem({ ...base, callAnswer: null, customerDidNotAnswer: false })
+    ).toBe('undetermined');
+  });
+
+  it('does not accuse anyone when the value pass failed outright', () => {
+    // No extraction at all leaves the flag undefined for every question on the
+    // sale. Defaulting that to "they never answered" would turn one API failure
+    // into a full sale's worth of findings.
+    expect(
+      classifyItem({ ...base, callAnswer: null, customerDidNotAnswer: undefined })
+    ).toBe('undetermined');
+  });
+
+  it('still prefers redaction as the explanation where that is what happened', () => {
+    expect(
+      classifyItem({
+        ...base,
+        callAnswer: null,
+        callAnswerRedacted: true,
+        customerDidNotAnswer: true,
+      })
+    ).toBe('undetermined');
   });
 
   it('distinguishes a redacted value from an absent answer', () => {
