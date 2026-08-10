@@ -4,6 +4,7 @@ import { ingestionQueue } from '../queue.js';
 import { assembleJourney } from '../../services/journey.js';
 import { fetchSaleProducts, fetchSaleClientName } from '../../services/zoho.js';
 import { mapCrmValuesToProducts, type ResolvedProduct } from '../../services/product-resolution.js';
+import { recordAuditEvent } from '../../services/audit.js';
 import { isNoScoreCrmStage } from '@callguard/shared';
 import type { BranchConfig } from '@callguard/shared';
 
@@ -18,10 +19,23 @@ export interface AssembleJourneyJobData {
   // product resolution configured. Undefined = don't poll for products.
   productDeadlineAt?: number;
   productPollAttempt?: number;
+  // Epoch-ms deadline for waiting on the customer's first call to show up
+  // (set unconditionally by the route — every sale trigger can race a call
+  // that hasn't been captured yet). See processAssembleJourney below.
+  customerDeadlineAt?: number;
+  customerPollAttempt?: number;
   // Scalar snapshot of the sale-trigger payload (routes/integrations.ts) —
   // persisted on the journey so capture-form resolution rules (crm_field)
   // can be evaluated when capture starts at scoring time.
   triggerContext?: Record<string, string>;
+}
+
+function nextPollDelayMs(attempt: number, deadlineAt: number | undefined, scheduleMinutes: number[]): number | null {
+  if (!deadlineAt) return null;
+  const now = Date.now();
+  if (now >= deadlineAt) return null;
+  const minutes = scheduleMinutes[Math.min(attempt, scheduleMinutes.length - 1)]!;
+  return Math.min(minutes * 60_000, deadlineAt - now);
 }
 
 // Backoff schedule (minutes) for re-checking the CRM for the products sold. The
@@ -29,15 +43,13 @@ export interface AssembleJourneyJobData {
 // to ~an hour, so we re-check on a widening interval rather than one long fixed
 // delay — a sale whose policies are already present scores promptly, and only a
 // laggy one waits. Capped by productDeadlineAt.
-const POLL_BACKOFF_MINUTES = [2, 10, 30, 60];
+const PRODUCT_POLL_BACKOFF_MINUTES = [2, 10, 30, 60];
 
-function nextPollDelayMs(attempt: number, deadlineAt: number | undefined): number | null {
-  if (!deadlineAt) return null;
-  const now = Date.now();
-  if (now >= deadlineAt) return null;
-  const minutes = POLL_BACKOFF_MINUTES[Math.min(attempt, POLL_BACKOFF_MINUTES.length - 1)]!;
-  return Math.min(minutes * 60_000, deadlineAt - now);
-}
+// Backoff schedule (minutes) for re-checking whether the sold customer's calls
+// have arrived. Wider and longer-running than the product schedule: a rep can
+// key a sale into the CRM well before the call that closed it is even made,
+// so this needs to span hours, not minutes. Capped by customerDeadlineAt.
+const CUSTOMER_POLL_BACKOFF_MINUTES = [5, 15, 30, 60, 120];
 
 /**
  * Delayed journey assembly, enqueued by the Zoho sale-trigger route after a
@@ -46,6 +58,13 @@ function nextPollDelayMs(attempt: number, deadlineAt: number | undefined): numbe
  * customer's calls were captured isn't lost — by the time this runs, the grace
  * delay has given CloudTalk's capture webhooks time to land. assembleJourney is
  * idempotent, so a re-fired trigger simply reuses the in-flight journey.
+ *
+ * If the customer still doesn't exist once the grace delay elapses — the sale
+ * was logged before the call was even made, not just before its webhook
+ * arrived — this job keeps re-checking on a backoff until customerDeadlineAt
+ * (see CUSTOMER_POLL_BACKOFF_MINUTES) rather than giving up on the first look.
+ * Only once that deadline passes with still no customer do we record the sale
+ * as abandoned; every attempt before that is a silent, cheap retry.
  *
  * Product-aware scoring: before assembling, resolve which products the sale
  * covered from the CRM. The "Policies Sold" related record can be created after
@@ -56,14 +75,46 @@ function nextPollDelayMs(attempt: number, deadlineAt: number | undefined): numbe
  * infers the products from the transcript (the AI fallback).
  */
 export async function processAssembleJourney(job: Job<AssembleJourneyJobData>) {
-  const { organizationId, phone, recordId, clientName, productDeadlineAt, productPollAttempt = 0, triggerContext } = job.data;
+  const {
+    organizationId, phone, recordId, clientName,
+    productDeadlineAt, productPollAttempt = 0,
+    customerDeadlineAt, customerPollAttempt = 0,
+    triggerContext,
+  } = job.data;
 
   const customer = await queryOne<{ id: string }>(
     'SELECT id FROM customers WHERE organization_id = $1 AND phone_normalized = $2',
     [organizationId, phone]
   );
   if (!customer) {
-    console.log(`[AssembleJourney] No captured calls for ${phone} (org ${organizationId}) — nothing to score`);
+    const delayMs = nextPollDelayMs(customerPollAttempt, customerDeadlineAt, CUSTOMER_POLL_BACKOFF_MINUTES);
+    if (delayMs !== null) {
+      await ingestionQueue.add(
+        'assemble-journey',
+        { ...job.data, customerPollAttempt: customerPollAttempt + 1 },
+        { delay: delayMs, attempts: 3, backoff: { type: 'exponential', delay: 30_000 } }
+      );
+      console.log(
+        `[AssembleJourney] ${phone}: no captured calls yet for this sale — re-checking in ` +
+          `${Math.round(delayMs / 60_000)}m (attempt ${customerPollAttempt + 1})`
+      );
+      return;
+    }
+    // Deadline reached (or this trigger predates customerDeadlineAt being set)
+    // with still no calls on file. Record it so the sale isn't just silently
+    // lost to a worker log line — an admin can find it and replay it by hand
+    // (scripts/reprocess-zoho-sales.ts) once the call does land.
+    console.warn(
+      `[AssembleJourney] ${phone}: sale trigger fired but no call was ever captured for it — giving up (org ${organizationId})`
+    );
+    void recordAuditEvent({
+      organizationId,
+      userId: null,
+      actionType: 'zoho.sale_trigger_abandoned',
+      entityType: 'customer',
+      summary: `Sale trigger for ${phone} never matched a captured call and was abandoned`,
+      metadata: { phone, recordId, pollAttempts: customerPollAttempt },
+    });
     return;
   }
 
@@ -147,7 +198,7 @@ export async function processAssembleJourney(job: Job<AssembleJourneyJobData>) {
     }
 
     if (!landed) {
-      const delayMs = nextPollDelayMs(productPollAttempt, productDeadlineAt);
+      const delayMs = nextPollDelayMs(productPollAttempt, productDeadlineAt, PRODUCT_POLL_BACKOFF_MINUTES);
       if (delayMs !== null) {
         await ingestionQueue.add(
           'assemble-journey',

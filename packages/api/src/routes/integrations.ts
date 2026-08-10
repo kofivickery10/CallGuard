@@ -63,6 +63,14 @@ const SALE_TRIGGER_GRACE_SECONDS = 90;
 // hour" gap between the sale record and its policies, with buffer.
 const MAX_PRODUCT_WAIT_MS = 75 * 60 * 1000;
 
+// How long assemble-journey will keep re-checking for the customer's calls to
+// land before giving up on the sale entirely. A rep can key a sale into the
+// CRM before the call that closed it has been captured — the grace delay
+// above only covers a capture webhook trailing the sale by seconds, not a
+// call that hasn't happened yet, or a slow CloudTalk delivery. Generous on
+// purpose: a sale genuinely lost here never surfaces again on its own.
+const MAX_CUSTOMER_WAIT_MS = 6 * 60 * 60 * 1000;
+
 // Zoho field/module API names are alphanumeric/underscore only. Catching a
 // malformed one here — rather than letting it reach Zoho — turns a silent
 // per-record write failure (see services/zoho.ts) into an actionable save-time error.
@@ -170,6 +178,13 @@ export async function handleZohoSaleTrigger(
     // isn't lost to an early "no calls on file" — the delay gives capture time
     // to arrive. assembleJourney is idempotent, so a Zoho retry that enqueues a
     // second job just reuses the in-flight journey.
+    //
+    // The grace delay alone only covers a webhook trailing the sale by
+    // seconds. If the customer still doesn't exist once it fires — the sale
+    // was logged before the call happened at all — the job re-checks itself
+    // on a backoff up to customerDeadlineAt instead of giving up (see
+    // jobs/processors/assemble-journey.ts).
+    const customerDeadlineAt = Date.now() + MAX_CUSTOMER_WAIT_MS;
     const recordId = typeof body.id === 'string' ? body.id : null;
     // Zoho workflows label the customer's name differently depending on how the
     // webhook was built (our documented `client_name`, or a raw module field
@@ -208,7 +223,7 @@ export async function handleZohoSaleTrigger(
 
     await ingestionQueue.add(
       'assemble-journey',
-      { organizationId: orgId, phone, recordId, clientName, productDeadlineAt, triggerContext },
+      { organizationId: orgId, phone, recordId, clientName, productDeadlineAt, customerDeadlineAt, triggerContext },
       {
         delay: SALE_TRIGGER_GRACE_SECONDS * 1000,
         attempts: 3,
