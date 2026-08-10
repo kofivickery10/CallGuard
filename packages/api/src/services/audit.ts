@@ -50,6 +50,10 @@ export type AuditActionType =
   | 'zoho.connect'
   | 'zoho.update'
   | 'zoho.disconnect'
+  // A sale trigger's customer never showed up in CallGuard within the wait
+  // window (assemble-journey gave up re-checking) — the sale was logged in
+  // Zoho but no matching call was ever captured, so no journey was created.
+  | 'zoho.sale_trigger_abandoned'
   | 'user.invite'
   | 'user.role_change'
   | 'user.delete'

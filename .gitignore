@@ -31,3 +31,16 @@ docs/trustpoint/samples/
 # Generated document renders — the markdown is the master, rebuild with docs/dpia/build.mjs
 docs/dpia/*.generated.html
 docs/dpia/.body.*
+
+# design-sync (claude.ai/design import): staged converter scripts, build output
+# and machine-local state. The durable inputs under .design-sync/ are committed.
+.ds-sync/
+ds-bundle/
+.design-sync/.cache/
+.design-sync/learnings/
+.design-sync/node_modules
+packages/web/.ds-css/
+
+# design-sync generated types entry (see .design-sync/prepare.sh)
+/index.d.ts
+packages/web/.ds-types/

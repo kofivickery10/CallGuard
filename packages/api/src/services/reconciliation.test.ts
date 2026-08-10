@@ -6,6 +6,8 @@ import {
   transcriptRedactsHealth,
   findEvidence,
   quoteAround,
+  quoteExchange,
+  evidenceExcerpts,
   compareAnswers,
   classifyItem,
   isActionable,
@@ -144,6 +146,98 @@ describe('findEvidence and quoteAround', () => {
   });
 });
 
+// The call that produced 252 of one tenant's 448 items as "asked but never
+// answered". The adviser names the topics before asking about any of them, so
+// the earliest mention of every one of them is a place the answer cannot be.
+const PREVIEW_THEN_ASK = [
+  'Agent: Right, so in a moment I need to run through the health questions — ' +
+    'that covers cancer, heart conditions, diabetes and your smoking, all of it.',
+  'Customer: No problem at all, go ahead whenever you are ready.',
+  'Agent: Lovely. First one then. Have you ever been diagnosed with cancer, or ' +
+    'had any treatment for a tumour of any kind?',
+  'Customer: No, never, nothing like that.',
+  'Agent: And do you smoke, or have you used any tobacco in the last twelve months?',
+  'Customer: No, I gave up years ago now.',
+].join('\n\n');
+
+describe('findEvidence — every occurrence, not just the first', () => {
+  it('finds a topic again where it is actually asked about', () => {
+    const hits = findEvidence(['cancer'], PREVIEW_THEN_ASK);
+    expect(hits.length).toBeGreaterThan(1);
+    // The first lands in the adviser's preview; the second is where the question
+    // is genuinely put, and only that one has an answer after it.
+    expect(quoteExchange(PREVIEW_THEN_ASK, hits[0]!.index)).toContain('in a moment');
+    expect(quoteExchange(PREVIEW_THEN_ASK, hits[1]!.index)).toContain('Have you ever been diagnosed');
+  });
+
+  it('returns hits in call order, so the preamble comes before the question', () => {
+    const hits = findEvidence(['cancer', 'smok'], PREVIEW_THEN_ASK);
+    const indexes = hits.map((h) => h.index);
+    expect([...indexes].sort((a, b) => a - b)).toEqual(indexes);
+  });
+
+  it('caps how often one word may report itself, so a common stem cannot crowd out the rest', () => {
+    const repeated = Array.from({ length: 20 }, () => 'Agent: cancer').join('\n\n');
+    expect(findEvidence(['cancer'], repeated).length).toBeLessThanOrEqual(4);
+  });
+
+  it('still finds nothing when the topic is genuinely absent', () => {
+    expect(findEvidence(deriveSearchTerms('Do you ride a motorbike?'), PREVIEW_THEN_ASK)).toEqual([]);
+  });
+});
+
+describe('quoteExchange — a quote shaped like the question it answers', () => {
+  it('reaches the customer reply, which a centred window can miss', () => {
+    const at = PREVIEW_THEN_ASK.indexOf('diagnosed with cancer');
+    const quote = quoteExchange(PREVIEW_THEN_ASK, at);
+    expect(quote).toContain('No, never, nothing like that');
+  });
+
+  it('starts at the speaker turn, so the question is not cut off mid-sentence', () => {
+    const at = PREVIEW_THEN_ASK.indexOf('diagnosed with cancer');
+    expect(quoteExchange(PREVIEW_THEN_ASK, at)).toContain('Have you ever been diagnosed');
+  });
+
+  it('does not reach back into the previous turn, which is not evidence about this question', () => {
+    const at = PREVIEW_THEN_ASK.indexOf('do you smoke');
+    expect(quoteExchange(PREVIEW_THEN_ASK, at)).not.toContain('No problem at all');
+  });
+
+  it('stays bounded on a transcript with no turn breaks at all', () => {
+    const unbroken = 'Agent: ' + 'word '.repeat(4000) + 'cancer yes';
+    const quote = quoteExchange(unbroken, unbroken.indexOf('cancer'));
+    expect(quote.length).toBeLessThanOrEqual(700);
+  });
+});
+
+describe('evidenceExcerpts — what the model is actually given', () => {
+  it('sends the place the question was asked, not only the preamble', () => {
+    const hits = findEvidence(deriveSearchTerms('Have you ever been diagnosed with cancer?'), PREVIEW_THEN_ASK);
+    const excerpts = evidenceExcerpts(PREVIEW_THEN_ASK, hits);
+    expect(excerpts.join(' ')).toContain('No, never, nothing like that');
+  });
+
+  it('collapses hits that land in the same passage instead of repeating it', () => {
+    // Several of a question's terms in one sentence is the normal case; quoting
+    // each separately would send the same text three times and pay for it.
+    const t = 'Agent: Any heart attack, angina or stroke at all?\n\nCustomer: No, none of those.';
+    const hits = findEvidence(['heart', 'angina', 'stroke'], t);
+    expect(hits.length).toBe(3);
+    expect(evidenceExcerpts(t, hits)).toHaveLength(1);
+  });
+
+  it('never sends more than a handful, whatever the call does', () => {
+    const many = Array.from({ length: 30 }, (_, i) =>
+      `Agent: cancer question ${i}?\n\nCustomer: no.\n\n` + 'filler '.repeat(200)
+    ).join('\n\n');
+    expect(evidenceExcerpts(many, findEvidence(['cancer'], many)).length).toBeLessThanOrEqual(3);
+  });
+
+  it('returns nothing when the topic never appears', () => {
+    expect(evidenceExcerpts(PREVIEW_THEN_ASK, [])).toEqual([]);
+  });
+});
+
 describe('compareAnswers', () => {
   it('matches yes/no across the ways they are spoken', () => {
     expect(compareAnswers('No', 'no')).toBe('match');
@@ -234,8 +328,42 @@ describe('classifyItem', () => {
     ).toBe('not_asked');
   });
 
-  it('reports asked_no_answer when the question was put but never answered', () => {
-    expect(classifyItem({ ...base, callAnswer: null })).toBe('asked_no_answer');
+  it('reports asked_no_answer only when the customer demonstrably did not answer', () => {
+    expect(
+      classifyItem({ ...base, callAnswer: null, customerDidNotAnswer: true })
+    ).toBe('asked_no_answer');
+  });
+
+  it('says undetermined when no answer could be read, rather than accusing anyone', () => {
+    // The real case this comes from. "Are you working 16 hours or more a week?"
+    // was answered — the customer said they were full time — but the passage we
+    // read cut off mid-sentence, so nothing could be extracted. Reported as
+    // asked_no_answer, that is an allegation the adviser recorded an answer
+    // nobody gave. It was one of 252 such items on a single tenant.
+    expect(classifyItem({ ...base, callAnswer: null })).toBe('undetermined');
+    expect(
+      classifyItem({ ...base, callAnswer: null, customerDidNotAnswer: false })
+    ).toBe('undetermined');
+  });
+
+  it('does not accuse anyone when the value pass failed outright', () => {
+    // No extraction at all leaves the flag undefined for every question on the
+    // sale. Defaulting that to "they never answered" would turn one API failure
+    // into a full sale's worth of findings.
+    expect(
+      classifyItem({ ...base, callAnswer: null, customerDidNotAnswer: undefined })
+    ).toBe('undetermined');
+  });
+
+  it('still prefers redaction as the explanation where that is what happened', () => {
+    expect(
+      classifyItem({
+        ...base,
+        callAnswer: null,
+        callAnswerRedacted: true,
+        customerDidNotAnswer: true,
+      })
+    ).toBe('undetermined');
   });
 
   it('distinguishes a redacted value from an absent answer', () => {

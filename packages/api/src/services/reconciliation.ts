@@ -202,16 +202,38 @@ export interface EvidenceHit {
 }
 
 /**
+ * How many times one term may be recorded. A stem like "cancer" can occur
+ * dozens of times in a long call; the cap keeps a single word from crowding out
+ * every other term's evidence, while still admitting the later occurrences that
+ * matter.
+ */
+const MAX_HITS_PER_TERM = 4;
+
+/**
  * Locate a question's terms in a transcript. Returns every hit so a caller can
  * quote the surrounding text and, once word timings are available, resolve a
  * timestamp.
+ *
+ * EVERY occurrence, not just the first. Taking only the first was a silent and
+ * expensive mistake: an adviser routinely names the topics they are about to
+ * cover ("I'll ask about heart conditions, cancer and diabetes") minutes before
+ * asking about any of them, so the earliest mention is precisely the one place
+ * the answer is guaranteed not to be. Judged on that window alone, a question
+ * answered perfectly well reads as raised-and-never-answered — which is how 252
+ * of one tenant's 448 items came to be flagged for review.
  */
 export function findEvidence(terms: string[], transcript: string): EvidenceHit[] {
   const haystack = transcript.toLowerCase();
   const hits: EvidenceHit[] = [];
   for (const term of terms) {
-    const index = haystack.indexOf(term);
-    if (index >= 0) hits.push({ term, index });
+    if (term === '') continue;
+    let from = 0;
+    for (let n = 0; n < MAX_HITS_PER_TERM; n++) {
+      const index = haystack.indexOf(term, from);
+      if (index < 0) break;
+      hits.push({ term, index });
+      from = index + term.length;
+    }
   }
   return hits.sort((a, b) => a.index - b.index);
 }
@@ -223,6 +245,72 @@ export function quoteAround(transcript: string, index: number, width = 160): str
     .slice(start, start + width)
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+/**
+ * A quote that runs from the speaker turn containing a hit through the replies
+ * that follow it.
+ *
+ * quoteAround centres its window on the hit, which is the wrong shape for the
+ * question being asked of it. We are not illustrating where a word occurs; we
+ * are asking whether the customer ANSWERED, and an answer always comes after the
+ * question. A centred window spends half its budget on what preceded the topic
+ * and can leave the reply outside the other half — reliably so, because insurer
+ * questions are long and are often read out as a list.
+ *
+ * Stored transcripts are speaker-labelled ("Agent: …\n\nCustomer: …"), so the
+ * turn boundaries are real and this can start at the beginning of the turn the
+ * hit falls in — giving the question in full — and run forward far enough to
+ * include the reply to it.
+ */
+export function quoteExchange(transcript: string, index: number, width = 700): string {
+  // Back up to the start of this speaker turn so the question is not cut off
+  // mid-sentence, but no further: the previous turn is not evidence about this
+  // question.
+  const before = transcript.lastIndexOf('\n\n', index);
+  const turnStart = before === -1 ? 0 : before + 2;
+  // Bounded, so an unlabelled or single-block transcript cannot make one
+  // question's excerpt swallow the whole call.
+  const start = Math.max(turnStart, index - 200);
+  return transcript
+    .slice(start, start + width)
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * The passages of call worth reading to decide whether one question was
+ * answered.
+ *
+ * Hits cluster: several of a question's terms land in the same sentence, and
+ * quoting each separately would send the same text repeatedly. Overlapping hits
+ * therefore collapse into one passage, and only genuinely distinct places in the
+ * call — the adviser's preamble, then where the question was actually put —
+ * become separate excerpts.
+ *
+ * Capped at a handful, because this text is what a model reads for every
+ * question of every sale, and an unbounded version of this is how a cheap
+ * deterministic pass turns into an expensive one.
+ */
+export function evidenceExcerpts(
+  transcript: string,
+  hits: EvidenceHit[],
+  maxExcerpts = 3,
+  width = 700
+): string[] {
+  const excerpts: string[] = [];
+  let lastIndex = -Infinity;
+  for (const hit of hits) {
+    if (excerpts.length >= maxExcerpts) break;
+    // Within the span already quoted: the same passage, not a new one.
+    if (hit.index - lastIndex < width * 0.75) continue;
+    const quote = quoteExchange(transcript, hit.index, width);
+    if (quote !== '') {
+      excerpts.push(quote);
+      lastIndex = hit.index;
+    }
+  }
+  return excerpts;
 }
 
 const AFFIRMATIVE = new Set(['yes', 'y', 'yeah', 'yep', 'yup', 'correct', 'true']);
@@ -394,6 +482,16 @@ export interface ClassifyInput {
   absenceMeaningful: boolean;
   /** Whether this transcript shows health redaction at all. */
   redactedTranscript: boolean;
+  /**
+   * Whether the customer demonstrably did NOT answer — the exchange is there to
+   * read, and they changed the subject, deflected, or the adviser moved on.
+   *
+   * Distinct from "no answer could be read", and the distinction is the whole
+   * difference between a finding and a shrug. Undefined means nobody established
+   * either way, which must not be reported as the customer having failed to
+   * answer.
+   */
+  customerDidNotAnswer?: boolean;
 }
 
 /**
@@ -425,7 +523,17 @@ export function classifyItem(input: ClassifyInput): ReconciliationOutcome {
     // Covered on the call, but the value never reached storage. We know they
     // answered; we cannot see what they said, so we cannot compare.
     if (input.callAnswerRedacted) return 'undetermined';
-    return 'asked_no_answer';
+    // "We could not read an answer" and "the customer did not answer" are not
+    // the same claim, and collapsing them was expensive: 252 of one tenant's 448
+    // items alleged an adviser had taken an answer nobody gave, when what had
+    // actually happened was that we read the wrong 400 characters of the call.
+    //
+    // Only the stronger claim is a finding, and only the model can make it,
+    // because it requires having seen the exchange run past the question. Absent
+    // that, this is 'undetermined' — the honest "we could not tell" — which is
+    // deliberately not actionable and so cannot bury the real flags.
+    if (input.customerDidNotAnswer === true) return 'asked_no_answer';
+    return 'undetermined';
   }
 
   const comparison = compareAnswers(input.applicationAnswer, input.callAnswer);
