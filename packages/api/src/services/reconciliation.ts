@@ -379,15 +379,28 @@ function compareYearToElapsed(
     [app, call],
     [call, app],
   ];
-  for (const [yearSide, elapsedSide] of pairs) {
-    const yearNums = numbersIn(yearSide);
+  for (const [otherSide, elapsedSide] of pairs) {
     const elapsed = RELATIVE_YEARS.exec(normaliseAnswer(elapsedSide));
-    if (yearNums.length !== 1 || !isYear(yearNums[0]!) || !elapsed) continue;
-    // Without a date to count back from there is nothing to compare, and
-    // guessing would put the original mistake back. 'unclear' hands it on.
-    if (referenceYear === null) return 'unclear';
-    const resolved = referenceYear - Number(elapsed[1]);
-    return Math.abs(resolved - yearNums[0]!) <= 1 ? 'match' : 'mismatch';
+    if (!elapsed) continue;
+    const nums = numbersIn(otherSide);
+    if (nums.length !== 1) continue;
+
+    if (isYear(nums[0]!)) {
+      // Without a date to count back from there is nothing to compare, and
+      // guessing would put the original mistake back. 'unclear' hands it on.
+      if (referenceYear === null) return 'unclear';
+      const resolved = referenceYear - Number(elapsed[1]);
+      return Math.abs(resolved - nums[0]!) <= 1 ? 'match' : 'mismatch';
+    }
+
+    // An AGE against an elapsed time. "How old were you when you were diagnosed
+    // with asthma?" recorded as 51, the customer saying "about 13 years ago" —
+    // the same fact told from the other end, and one a person converts without
+    // noticing they have. Resolving it needs a date of birth, which is not
+    // available here and may itself be redacted, so the honest answer is that
+    // we cannot tell. Declaring it a mismatch reads as the adviser having
+    // invented an age, which on a real sale is exactly what it did.
+    return 'unclear';
   }
   return null;
 }
