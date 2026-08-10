@@ -316,6 +316,33 @@ describe('compareAnswers', () => {
     expect(compareAnswers('3', '2015')).toBe('unclear');
   });
 
+  it('does the stone-to-kilogram arithmetic instead of comparing bare numbers', () => {
+    // From a real sale, at 0.95 confidence: form 107.95 kg, customer "17
+    // stone". 17 × 6.35029 = 107.955 — the adviser converted correctly and the
+    // bare-number rule declared them a contradiction anyway.
+    expect(compareAnswers('107.95 kg', '17 stone')).toBe('match');
+    expect(compareAnswers('17 stone', '107.95 kg')).toBe('match');
+    expect(compareAnswers('111.1kg', '17 stone 7 pounds')).toBe('match');
+    expect(compareAnswers('82 kg', '13 stone')).toBe('match');
+  });
+
+  it('still catches a weight that genuinely disagrees', () => {
+    // 20 stone is 127 kg. A form saying 108 against a customer saying 20 stone
+    // is the mis-keying this comparison exists for.
+    expect(compareAnswers('107.95 kg', '20 stone')).toBe('mismatch');
+  });
+
+  it('will not read pints against units of alcohol as a numeric disagreement', () => {
+    // Also real, also 0.95: form "4" (units), customer "2 pints a week". Two
+    // pints IS roughly four units — the adviser converting is doing their job,
+    // and the strength assumption underneath the conversion is not ours to
+    // second-guess. Not a match either: we cannot verify it, so unclear.
+    expect(compareAnswers('4', '2 pints a week')).toBe('unclear');
+    expect(compareAnswers('14', 'couple of glasses of wine a night')).toBe('unclear');
+    // Same measure on both sides compares as ordinary numbers.
+    expect(compareAnswers('2 pints', '2 pints a week')).toBe('match');
+  });
+
   it('escalates rather than guesses on compound or unit-converted answers', () => {
     // The application carries both forms; the customer said neither exactly.
     expect(compareAnswers('111.1kg or 17 stone 7 pounds', 'about seventeen and a half stone')).toBe('unclear');
