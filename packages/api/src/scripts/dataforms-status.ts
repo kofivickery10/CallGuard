@@ -231,21 +231,40 @@ async function reportOrg(org: {
     )
   );
 
-  // The three that matter most: a recorded answer that disagrees with the call.
-  console.log('\n— Mismatches (the real findings) —');
-  table(
-    await query(
-      `SELECT left(i.question, 55) AS question,
-              left(COALESCE(i.application_answer, ''), 25) AS on_the_form,
-              left(COALESCE(i.call_answer, ''), 25) AS on_the_call,
-              i.confidence
-         FROM capture_reconciliation_items i
-         JOIN capture_reconciliation_runs r ON r.id = i.run_id
-        WHERE r.organization_id = $1 AND i.outcome = 'mismatch'
-        ORDER BY i.confidence DESC NULLS LAST LIMIT 20`,
-      O
-    )
+  // The ones that matter most: a recorded answer that disagrees with the call.
+  //
+  // Printed with the reasoning and the passage rather than as a table, because a
+  // mismatch is an allegation about a named adviser and the two questions a
+  // human needs — what was actually said, and why we called it a disagreement —
+  // cannot be read from a truncated column. The first three found on real data
+  // included one where "7 years ago" and "2019" were the same year.
+  const mismatches = await query<{
+    question: string;
+    application_answer: string | null;
+    call_answer: string | null;
+    confidence: number | null;
+    reasoning: string | null;
+    evidence: string | null;
+    document: string | null;
+  }>(
+    `SELECT i.question, i.application_answer, i.call_answer, i.confidence,
+            i.reasoning, i.evidence, r.attachment_name AS document
+       FROM capture_reconciliation_items i
+       JOIN capture_reconciliation_runs r ON r.id = i.run_id
+      WHERE r.organization_id = $1 AND i.outcome = 'mismatch'
+      ORDER BY i.confidence DESC NULLS LAST LIMIT 20`,
+    O
   );
+  console.log(`\n— Mismatches (${mismatches.length}) — check each before acting on it —`);
+  if (mismatches.length === 0) console.log('   (none)');
+  for (const m of mismatches) {
+    console.log(`\n  ${m.document ?? '—'}`);
+    console.log(`  Q: ${m.question}`);
+    console.log(`  form: ${m.application_answer ?? '—'}   call: ${m.call_answer ?? '—'}   ` +
+      `confidence: ${m.confidence ?? '—'}`);
+    if (m.reasoning) console.log(`  why: ${m.reasoning}`);
+    if (m.evidence) console.log(`  said: ${m.evidence.slice(0, 500)}`);
+  }
 
   // ── 8. Spend ───────────────────────────────────────────────────────────────
   console.log('\n— Model spend on reconciliation (last 7 days) —');

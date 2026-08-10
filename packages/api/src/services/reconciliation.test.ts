@@ -272,6 +272,36 @@ describe('compareAnswers', () => {
     expect(compareAnswers('Raised blood pressure', 'yeah, raised blood pressure a few years back')).toBe('match');
   });
 
+  it('reads a date given as elapsed time against the year on the form', () => {
+    // From a real sale: "When did your treatment cease?" recorded as 2019, the
+    // customer saying "7 years ago" on a call in 2026. The same fact in two
+    // units — reported as a mismatch, which is an allegation against the
+    // adviser who wrote down exactly what they were told.
+    const callDate = new Date('2026-08-10T00:00:00Z');
+    expect(compareAnswers('2019', '7 years ago', callDate)).toBe('match');
+    expect(compareAnswers('2019', 'about 7 yrs ago', callDate)).toBe('match');
+    // Speech rounds. Treatment ending late in 2019 is six and a half years
+    // ago, and nobody says that.
+    expect(compareAnswers('2019', '6 years ago', callDate)).toBe('match');
+  });
+
+  it('still catches a date that genuinely disagrees', () => {
+    const callDate = new Date('2026-08-10T00:00:00Z');
+    expect(compareAnswers('2019', '2 years ago', callDate)).toBe('mismatch');
+    expect(compareAnswers('2010', '3 years back', callDate)).toBe('mismatch');
+  });
+
+  it('refuses to judge elapsed time with no date to count back from', () => {
+    expect(compareAnswers('2019', '7 years ago')).toBe('unclear');
+  });
+
+  it('never calls a year against a plain count a mismatch', () => {
+    // Two different kinds of quantity. A year against a number of episodes, or
+    // an age, is a unit confusion of ours — not a mis-keying of theirs.
+    expect(compareAnswers('2019', '7')).toBe('unclear');
+    expect(compareAnswers('3', '2015')).toBe('unclear');
+  });
+
   it('escalates rather than guesses on compound or unit-converted answers', () => {
     // The application carries both forms; the customer said neither exactly.
     expect(compareAnswers('111.1kg or 17 stone 7 pounds', 'about seventeen and a half stone')).toBe('unclear');
