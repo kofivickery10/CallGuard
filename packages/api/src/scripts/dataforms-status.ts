@@ -183,6 +183,70 @@ async function reportOrg(org: {
     )
   );
 
+  // ── 7b. Which format actually read each sale? ──────────────────────────────
+  // A completed run says nothing about whether the RIGHT format read it.
+  // matchProfile demands every detect pattern be present, so a cross-match
+  // should be impossible — but a label_value profile with loose patterns is the
+  // case where it would not be, and the result would be one insurer's document
+  // parsed with another insurer's field list, silently.
+  console.log('\n— Which format read each completed sale —');
+  table(
+    await query(
+      `SELECT COALESCE(p.insurer, '(none)') AS format_insurer,
+              COALESCE(p.product, '—') AS format_product,
+              r.extraction_method AS read_by,
+              count(*)::int AS sales,
+              string_agg(DISTINCT COALESCE(r.attachment_name, '—'), ', ') AS documents
+         FROM capture_reconciliation_runs r
+         LEFT JOIN capture_document_profiles p ON p.id = r.profile_id
+        WHERE r.organization_id = $1 AND r.status IN ('completed', 'summary_only')
+        GROUP BY 1, 2, 3
+        ORDER BY 4 DESC`,
+      O
+    )
+  );
+
+  // ── 7c. Is 'asked_no_answer' a finding, or an artefact? ────────────────────
+  // The comparison locates a question by its terms, takes the FIRST occurrence
+  // in the transcript, and reads ~420 characters around it. If the adviser
+  // mentions a topic early (running through what they are about to cover) and
+  // the customer answers later, that window holds the mention and not the
+  // answer — and the item is recorded as "asked, never answered", which reads on
+  // screen as a serious finding.
+  //
+  // The tell is concentration. Genuine unanswered questions are scattered; an
+  // artefact of the search window repeats on the same questions across every
+  // sale. Anything appearing on nearly every run is the second thing.
+  console.log('\n— Questions most often flagged "asked but not answered" —');
+  table(
+    await query(
+      `SELECT left(i.question, 70) AS question,
+              count(*)::int AS times_flagged,
+              count(DISTINCT i.run_id)::int AS across_sales
+         FROM capture_reconciliation_items i
+         JOIN capture_reconciliation_runs r ON r.id = i.run_id
+        WHERE r.organization_id = $1 AND i.outcome = 'asked_no_answer'
+        GROUP BY 1 ORDER BY 2 DESC LIMIT 12`,
+      O
+    )
+  );
+
+  // The three that matter most: a recorded answer that disagrees with the call.
+  console.log('\n— Mismatches (the real findings) —');
+  table(
+    await query(
+      `SELECT left(i.question, 55) AS question,
+              left(COALESCE(i.application_answer, ''), 25) AS on_the_form,
+              left(COALESCE(i.call_answer, ''), 25) AS on_the_call,
+              i.confidence
+         FROM capture_reconciliation_items i
+         JOIN capture_reconciliation_runs r ON r.id = i.run_id
+        WHERE r.organization_id = $1 AND i.outcome = 'mismatch'
+        ORDER BY i.confidence DESC NULLS LAST LIMIT 20`,
+      O
+    )
+  );
+
   // ── 8. Spend ───────────────────────────────────────────────────────────────
   console.log('\n— Model spend on reconciliation (last 7 days) —');
   table(
