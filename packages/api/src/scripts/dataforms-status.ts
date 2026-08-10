@@ -21,9 +21,17 @@
 // Usage:
 //   tsx src/scripts/dataforms-status.ts                 # every enabled tenant
 //   tsx src/scripts/dataforms-status.ts "Trust Point"   # one, by name or id
-import { pool, query } from '../db/client.js';
+import { pool, query, queryOne } from '../db/client.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Piping this into `head` closes stdout early, and an unguarded write to a
+// closed pipe crashes with an unhandled EPIPE — a wall of stack trace in place
+// of the report someone was reading. Reading the first twenty lines of a long
+// report is the obvious thing to do with it, so it must not look like a fault.
+process.stdout.on('error', (err: NodeJS.ErrnoException) => {
+  if (err.code === 'EPIPE') process.exit(0);
+});
 
 function table(rows: Array<Record<string, unknown>>): void {
   if (rows.length === 0) {
@@ -61,6 +69,65 @@ async function reportOrg(org: {
   console.log(
     `  numeric answers comparable: ${permitted.includes('numbers') ? 'yes' : "NO — '20 a day', '14 units' redact to placeholders"}`
   );
+
+  // ── 1a. Does the setting actually reach the stored transcripts? ────────────
+  //
+  // Permitting a category changes what Deepgram is asked to redact on the NEXT
+  // transcription. It does nothing to text already stored. So a tenant can hold
+  // a perfectly correct setting and a full set of transcripts that predate it,
+  // and every health answer stays uncheckable with nothing on screen to explain
+  // why — the settings page says health is permitted, and it is, just not for
+  // any call anybody has.
+  //
+  // Both halves are printed together because only the comparison is meaningful:
+  // when the setting was last changed, against when the transcripts were last
+  // written and whether they still carry health placeholders.
+  const settingChanges = await query<{ when: string; summary: string | null }>(
+    `SELECT created_at::text AS when, summary
+       FROM audit_log
+      WHERE organization_id = $1 AND action_type = 'tenant.pii_redaction_exemption'
+      ORDER BY created_at DESC LIMIT 3`,
+    O
+  );
+  const transcripts = await queryOne<{
+    total: number;
+    health_redacted: number;
+    newest: string | null;
+    oldest: string | null;
+  }>(
+    `SELECT count(*)::int AS total,
+            count(*) FILTER (
+              WHERE transcript_text LIKE '%[CONDITION\\_%'
+                 OR transcript_text LIKE '%[DRUG\\_%'
+                 OR transcript_text LIKE '%[MEDICAL\\_PROCESS\\_%'
+            )::int AS health_redacted,
+            max(updated_at)::text AS newest,
+            min(updated_at)::text AS oldest
+       FROM calls c
+      WHERE c.organization_id = $1 AND c.transcript_text IS NOT NULL`,
+    O
+  );
+
+  console.log('\n— Do the stored transcripts carry the setting? —');
+  if (settingChanges.length === 0) {
+    console.log('   Redaction categories have never been changed for this tenant.');
+  } else {
+    for (const c of settingChanges) console.log(`   setting changed ${c.when}`);
+  }
+  if (transcripts) {
+    console.log(
+      `   transcripts: ${transcripts.total}, of which ${transcripts.health_redacted} still ` +
+        'contain health placeholders'
+    );
+    console.log(`   last written ${transcripts.newest ?? '—'}`);
+    if (permitted.includes('phi') && transcripts.health_redacted > 0) {
+      console.log(
+        '   !! Health is permitted but those transcripts predate the change, or were written\n' +
+          '      before it saved. They must be re-transcribed for it to have any effect:\n' +
+          '        tsx src/scripts/bulk-reprocess-tenant.ts "<tenant>" --retranscribe --commit'
+      );
+    }
+  }
 
   // ── 1b. Is the transcript underneath all of this still settling? ───────────
   // Every number below is computed from the transcripts as they stand. During a
