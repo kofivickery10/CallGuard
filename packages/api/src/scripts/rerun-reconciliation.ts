@@ -107,9 +107,35 @@ async function main(): Promise<void> {
     [org.id, statuses]
   );
 
+  // Is anything still being transcribed?
+  //
+  // Re-checking a sale reads the transcripts as they stand right now. Do it
+  // while a re-transcription is draining — which is precisely when someone
+  // reaches for this script, having just changed the redaction settings — and
+  // half the sales are compared against the old text and have to be done again.
+  // The ordering is easy to get wrong and invisible when you do, so it is
+  // checked here rather than left to whoever remembers to watch the log.
+  //
+  // The settled set matches services/journey.ts: anything else is in flight.
+  const inFlight = await queryOne<{ n: number; oldest: string | null }>(
+    `SELECT count(*)::int AS n, min(c.updated_at)::text AS oldest
+       FROM calls c
+      WHERE c.organization_id = $1
+        AND c.status NOT IN ('transcribed', 'scored', 'failed', 'skipped')`,
+    [org.id]
+  );
+
   console.log(`\n${org.name}`);
   console.log(`Statuses: ${statuses.join(', ')}`);
   console.log(`Runs to re-check: ${runs.length}`);
+  if (inFlight && inFlight.n > 0) {
+    console.log(
+      `\n  !! ${inFlight.n} call(s) are still being transcribed or hydrated.\n` +
+        '     Re-checking now compares those sales against the transcripts as they are\n' +
+        '     at this moment, so any that finish afterwards would need doing again.\n' +
+        '     Wait for the transcription queue to drain, then re-run this.'
+    );
+  }
   const itemsAtStake = runs.reduce((n, r) => n + r.items, 0);
   console.log(`Existing items that will be deleted and rebuilt: ${itemsAtStake}\n`);
 
@@ -124,6 +150,20 @@ async function main(): Promise<void> {
 
   if (!commit) {
     console.log(`\nDry run — nothing changed. Add --commit to re-check these ${runs.length} sale(s).`);
+    return;
+  }
+
+  // Refused rather than warned. The cost of going ahead is doing the whole thing
+  // again — deleting and rebuilding every item a second time — and by then the
+  // person who ran it has moved on and is reading numbers built against text
+  // that has since changed underneath them.
+  if (inFlight && inFlight.n > 0 && !args.includes('--force')) {
+    console.error(
+      `\nRefusing: ${inFlight.n} call(s) are still in transcription. Wait for the queue to\n` +
+        'drain so every sale is checked against its final transcript. Pass --force to\n' +
+        'override if you know these calls are stuck rather than working.'
+    );
+    process.exitCode = 1;
     return;
   }
 

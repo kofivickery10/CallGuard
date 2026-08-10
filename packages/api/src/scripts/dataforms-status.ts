@@ -62,6 +62,28 @@ async function reportOrg(org: {
     `  numeric answers comparable: ${permitted.includes('numbers') ? 'yes' : "NO — '20 a day', '14 units' redact to placeholders"}`
   );
 
+  // ── 1b. Is the transcript underneath all of this still settling? ───────────
+  // Every number below is computed from the transcripts as they stand. During a
+  // re-transcription — which is the only way a redaction change reaches calls
+  // already stored — they are changing, so a reading taken now is a reading of a
+  // moving target. Worth knowing before drawing any conclusion from it.
+  const transcribing = await query<{ status: string; n: number }>(
+    `SELECT status, count(*)::int AS n
+       FROM calls
+      WHERE organization_id = $1
+        AND status NOT IN ('transcribed', 'scored', 'failed', 'skipped')
+      GROUP BY 1 ORDER BY 2 DESC`,
+    O
+  );
+  if (transcribing.length > 0) {
+    const total = transcribing.reduce((n, r) => n + r.n, 0);
+    console.log(
+      `\n!! ${total} call(s) still in flight (${transcribing
+        .map((r) => `${r.n} ${r.status}`)
+        .join(', ')}) — transcripts are still changing, so the outcomes below are provisional.`
+    );
+  }
+
   // ── 2. Where are the runs? ─────────────────────────────────────────────────
   console.log('\n— Runs by status —');
   table(
