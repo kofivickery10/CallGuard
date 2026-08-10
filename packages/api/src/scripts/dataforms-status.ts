@@ -67,11 +67,17 @@ async function reportOrg(org: {
   // re-transcription — which is the only way a redaction change reaches calls
   // already stored — they are changing, so a reading taken now is a reading of a
   // moving target. Worth knowing before drawing any conclusion from it.
+  // Only the statuses that mean "on its way to a transcript". NOT everything
+  // outside the settled set: 'captured' is a metadata-only row from a dialler
+  // webhook — a recording pointer with no audio, which stays that way unless a
+  // sale trigger claims it. A tenant with a dialler holds thousands of those
+  // permanently, and counting them reported 2,545 calls in flight where 54 were
+  // actually being re-transcribed.
   const transcribing = await query<{ status: string; n: number }>(
     `SELECT status, count(*)::int AS n
        FROM calls
       WHERE organization_id = $1
-        AND status NOT IN ('transcribed', 'scored', 'failed', 'skipped')
+        AND status IN ('uploaded', 'transcribing')
       GROUP BY 1 ORDER BY 2 DESC`,
     O
   );
