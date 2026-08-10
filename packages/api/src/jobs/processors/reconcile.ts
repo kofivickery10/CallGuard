@@ -531,6 +531,18 @@ async function compareAndStore(
       // first mention is the one window an answer cannot be in.
       excerpts: evidenceExcerpts(transcript, hits),
       sourceCallId: callNumber == null ? null : (calls[callNumber - 1]?.id ?? null),
+      // The date of the call this question was located in, so an answer given
+      // as elapsed time ("7 years ago") can be read against the year the
+      // application records.
+      callDate:
+        callNumber == null
+          ? null
+          : (() => {
+              const c = calls[callNumber - 1];
+              const raw = c?.call_date ?? c?.created_at ?? null;
+              const d = raw ? new Date(raw) : null;
+              return d && !Number.isNaN(d.getTime()) ? d : null;
+            })(),
       absenceMeaningful:
         profileFlags.get(normaliseKey(pair.question)) ?? absenceIsMeaningful(terms),
     };
@@ -647,6 +659,8 @@ interface LocatedQuestion {
   hits: Array<{ term: string; index: number }>;
   /** Every passage of call worth reading for this question, in call order. */
   excerpts: string[];
+  /** When that call happened, for reading relative dates against. */
+  callDate: Date | null;
   sourceCallId: string | null;
   absenceMeaningful: boolean;
 }
@@ -693,6 +707,7 @@ function comparePair(
     // value pass reports 'undetermined' rather than accusing every adviser on
     // the sale of taking answers nobody gave.
     customerDidNotAnswer: extracted?.customerDidNotAnswer,
+    referenceDate: located.callDate,
   });
 
   const amendmentType = classifyAmendment(pair.answer, pair.revisions ?? []);
