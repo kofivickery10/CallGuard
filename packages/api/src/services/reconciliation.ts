@@ -344,6 +344,54 @@ function numbersIn(value: string): number[] {
   return (normaliseAnswer(value).match(/\d+(?:\.\d+)?/g) ?? []).map(Number);
 }
 
+/**
+ * "7 years ago", "about 8 yrs back" — how people actually date things aloud.
+ *
+ * Nobody says "my treatment ceased in 2019"; they say "seven years ago". The
+ * application, filled in from the same conversation, records the year. Both are
+ * the same fact in different units.
+ */
+const RELATIVE_YEARS = /(\d+)\s*(?:years?|yrs?)\s*(?:ago|back)/;
+
+/** A four-digit year, as distinct from a count of anything. */
+function isYear(n: number): boolean {
+  return Number.isInteger(n) && n >= 1900 && n <= 2099;
+}
+
+/**
+ * A year and a count of years are the same fact in different units, and
+ * comparing them as bare numbers is how "2019" and "7 years ago" became a
+ * mismatch on a real sale — in 2026, when they agree exactly.
+ *
+ * Resolved against the call's own date where one is known. Rounded to a year of
+ * tolerance because "seven years ago" is speech, not arithmetic: treatment that
+ * ended in late 2019 is six and a half years ago and nobody says that.
+ *
+ * Returns null when this pair is not a year-against-elapsed-time comparison at
+ * all, so the caller carries on with its ordinary rules.
+ */
+function compareYearToElapsed(
+  app: string,
+  call: string,
+  referenceYear: number | null
+): AnswerComparison | null {
+  const pairs: Array<[string, string]> = [
+    [app, call],
+    [call, app],
+  ];
+  for (const [yearSide, elapsedSide] of pairs) {
+    const yearNums = numbersIn(yearSide);
+    const elapsed = RELATIVE_YEARS.exec(normaliseAnswer(elapsedSide));
+    if (yearNums.length !== 1 || !isYear(yearNums[0]!) || !elapsed) continue;
+    // Without a date to count back from there is nothing to compare, and
+    // guessing would put the original mistake back. 'unclear' hands it on.
+    if (referenceYear === null) return 'unclear';
+    const resolved = referenceYear - Number(elapsed[1]);
+    return Math.abs(resolved - yearNums[0]!) <= 1 ? 'match' : 'mismatch';
+  }
+  return null;
+}
+
 export type AnswerComparison = 'match' | 'mismatch' | 'unclear';
 
 /**
@@ -356,7 +404,9 @@ export type AnswerComparison = 'match' | 'mismatch' | 'unclear';
  */
 export function compareAnswers(
   applicationAnswer: string,
-  callAnswer: string
+  callAnswer: string,
+  /** The call's date, for reading "7 years ago" against. */
+  referenceDate: Date | null = null
 ): AnswerComparison {
   const appPolarity = polarity(applicationAnswer);
   const callPolarity = polarity(callAnswer);
@@ -374,13 +424,28 @@ export function compareAnswers(
   // a few years back".
   if (app.length >= 4 && (call.includes(app) || app.includes(call))) return 'match';
 
+  // A date given as a year against one given as elapsed time is the same fact in
+  // two units, and the bare-number rule below reads it as a disagreement.
+  const elapsed = compareYearToElapsed(
+    applicationAnswer,
+    callAnswer,
+    referenceDate ? referenceDate.getUTCFullYear() : null
+  );
+  if (elapsed !== null) return elapsed;
+
   // Numeric answers are where mis-keying actually bites (50 cigarettes keyed as
   // 5). Only conclude when both sides carry exactly one number, so a compound
   // answer is escalated rather than guessed at.
   const appNums = numbersIn(applicationAnswer);
   const callNums = numbersIn(callAnswer);
   if (appNums.length === 1 && callNums.length === 1) {
-    return appNums[0] === callNums[0] ? 'match' : 'mismatch';
+    if (appNums[0] === callNums[0]) return 'match';
+    // A year against a small count is not a mis-keying, it is two different
+    // kinds of quantity — "2019" against "7", an age against a date, a year
+    // against a number of episodes. Declaring those a mismatch accuses an
+    // adviser on the strength of a unit confusion that is ours, not theirs.
+    if (isYear(appNums[0]!) !== isYear(callNums[0]!)) return 'unclear';
+    return 'mismatch';
   }
   // A number on one side and none on the other tells us nothing on its own.
   return 'unclear';
@@ -492,6 +557,11 @@ export interface ClassifyInput {
    * answer.
    */
   customerDidNotAnswer?: boolean;
+  /**
+   * When the call took place, so an answer given as elapsed time ("7 years
+   * ago") can be read against the year the application records.
+   */
+  referenceDate?: Date | null;
 }
 
 /**
@@ -536,7 +606,11 @@ export function classifyItem(input: ClassifyInput): ReconciliationOutcome {
     return 'undetermined';
   }
 
-  const comparison = compareAnswers(input.applicationAnswer, input.callAnswer);
+  const comparison = compareAnswers(
+    input.applicationAnswer,
+    input.callAnswer,
+    input.referenceDate ?? null
+  );
   if (comparison === 'unclear') return 'undetermined';
   return comparison;
 }
