@@ -408,6 +408,40 @@ function compareYearToElapsed(
 export type AnswerComparison = 'match' | 'mismatch' | 'unclear';
 
 /**
+ * A weight in kilograms, read from either side's phrasing, or null when the
+ * text does not state one in recognisable units.
+ *
+ * Customers say weight in stone; insurers record kilograms. "17 stone" IS
+ * "107.95 kg" — the adviser converted correctly — and comparing the bare
+ * numbers 17 and 107.95 declared them a contradiction on a real sale, at 0.95
+ * confidence, in the face of the model's own reasoning saying they agree.
+ * The conversion is exact arithmetic, so this is deterministic code, not
+ * model judgement.
+ */
+const KG_PER_STONE = 6.35029;
+const KG_PER_POUND = 0.453592;
+
+export function weightInKg(text: string): number | null {
+  const n = normaliseAnswer(text);
+  const kg = /(\d+(?:\.\d+)?)\s*(?:kg|kilo(?:gram)?s?)\b/.exec(n);
+  if (kg) return Number(kg[1]);
+  const stone = /(\d+(?:\.\d+)?)\s*(?:st|stones?)\b(?:\s*(\d+(?:\.\d+)?)\s*(?:lbs?|pounds?)?\b)?/.exec(n);
+  if (stone) return Number(stone[1]) * KG_PER_STONE + (stone[2] ? Number(stone[2]) * KG_PER_POUND : 0);
+  const pounds = /(\d+(?:\.\d+)?)\s*(?:lbs?|pounds?)\b/.exec(n);
+  if (pounds) return Number(pounds[1]) * KG_PER_POUND;
+  return null;
+}
+
+/**
+ * Measures of drink that are NOT units of alcohol. A pint is roughly two and a
+ * half units depending entirely on what is in the glass, so "2 pints" against
+ * "4 units" is not a numeric disagreement — the adviser converting pints to
+ * units is doing their job, and the strength assumption that conversion rests
+ * on is not ours to second-guess deterministically.
+ */
+const DRINK_MEASURE = /\b(pints?|glass(es)?|bottles?|cans?|shots?|measures?)\b/;
+
+/**
  * Compare an application answer with what the customer said.
  *
  * Returns `unclear` rather than guessing wherever the two are not
@@ -436,6 +470,21 @@ export function compareAnswers(
   // "Raised blood pressure" where the customer said "yeah, raised blood pressure
   // a few years back".
   if (app.length >= 4 && (call.includes(app) || app.includes(call))) return 'match';
+
+  // Weights first: both sides stating one in recognisable units is decidable by
+  // arithmetic, whatever units each chose. Tolerance of a kilogram either way,
+  // because "17 stone" is speech and 107.95 is a form field.
+  const appKg = weightInKg(applicationAnswer);
+  const callKg = weightInKg(callAnswer);
+  if (appKg !== null && callKg !== null) {
+    return Math.abs(appKg - callKg) <= Math.max(1, appKg * 0.02) ? 'match' : 'mismatch';
+  }
+
+  // A count of drinks against a count of units is two different quantities, and
+  // only one side of the conversion between them is on the page.
+  if (DRINK_MEASURE.test(normaliseAnswer(callAnswer)) !== DRINK_MEASURE.test(normaliseAnswer(applicationAnswer))) {
+    return 'unclear';
+  }
 
   // A date given as a year against one given as elapsed time is the same fact in
   // two units, and the bare-number rule below reads it as a disagreement.

@@ -163,6 +163,14 @@ Rules:
    simpler question hiding inside a longer one is how a correct application
    answer gets contradicted by a customer who never disagreed with it.
 
+   Follow-up questions like "Are you fully recovered?" or "When did symptoms
+   last occur?" are about ONE specific condition — the one named in the
+   question, its Section line, or the application answer's context. The
+   customer talking about a DIFFERENT ailment is not an answer to it: a rash
+   that is "just not going" says nothing about whether they recovered from
+   bowel polyps. If you cannot tell which condition the passage is about,
+   return null.
+
 8. customer_did_not_answer is a separate judgement from value, and a heavier
    one: it says the adviser recorded an answer the customer never gave, which
    goes in front of a compliance reviewer. Set it true only when you can read
