@@ -304,6 +304,44 @@ function splitQuestionBlock(
 }
 
 /**
+ * Every section-heading line anywhere in a block, in document order.
+ *
+ * splitQuestionBlock only reads the LAST paragraph of a block — everything
+ * earlier is leftover from the previous page and is discarded. A section
+ * heading sits in one of those earlier paragraphs whenever it applies to
+ * several questions in a row, which is the ordinary case: a form prints
+ * "WE NEED TO ASK YOU SOME QUESTIONS ABOUT YOUR LIFESTYLE" once and then asks
+ * a dozen questions under it. Discarding those paragraphs threw the heading
+ * away for every question but the first.
+ */
+function extractHeadings(block: string): string[] {
+  const paragraphs = block
+    .split(/\n\s*\n/)
+    .map((p) => p.trim())
+    .filter((p) => p !== '');
+  const headings: string[] = [];
+  for (const para of paragraphs) {
+    const rawLines = para.split('\n').map((l) => l.trim());
+    const headingFlags = markHeadings(rawLines);
+    // Consecutive flagged lines are one wrapped heading, not two headings — a
+    // real one splits across the page exactly like a wrapped question does
+    // ("...YOUR OCCUPATION AND\nTRAVEL"), and joining only the last physical
+    // line would report the section as "TRAVEL" and lose "OCCUPATION" entirely.
+    let current: string[] = [];
+    for (let i = 0; i < rawLines.length; i++) {
+      if (headingFlags[i] && rawLines[i] !== '') {
+        current.push(rawLines[i]!);
+      } else if (current.length > 0) {
+        headings.push(current.join(' '));
+        current = [];
+      }
+    }
+    if (current.length > 0) headings.push(current.join(' '));
+  }
+  return headings;
+}
+
+/**
  * question_answer strategy: repeated blocks of
  *   <question> [guidance] [choices] <answerDelimiter> <answer>
  */
@@ -321,18 +359,31 @@ export function parseQuestionAnswer(text: string, config: ParseConfig): ParsedPa
   // segments[0] is the preamble plus the FIRST question block; each later
   // segment opens with an answer and closes with the NEXT question block.
   let pendingQuestionBlock = segments[0]!;
+  // The section heading currently in force, carried forward across questions
+  // that do not repeat it. This is what tells apart three occurrences of the
+  // identically-worded "In the last 5 years have you had any of these?" on a
+  // real application — without it they are indistinguishable, and reconciling
+  // one against the call can locate a passage answering a DIFFERENT one of the
+  // three, which is what read a rash as an answer about bowel-polyp recovery.
+  let currentSection: string | null = null;
 
   for (let i = 1; i < segments.length; i++) {
     const segment = segments[i]!;
     const { answer, rest } = takeAnswerLines(segment.split('\n'));
 
+    const headingsHere = extractHeadings(pendingQuestionBlock);
+    if (headingsHere.length > 0) currentSection = headingsHere[headingsHere.length - 1]!;
+
     const { question, guidance, choices } = splitQuestionBlock(pendingQuestionBlock, bullet);
     if (question) {
       const answerText = answer.join(' ').trim();
+      const fullGuidance =
+        [currentSection ? `Section: ${currentSection}` : null, guidance].filter(Boolean).join(' — ') ||
+        null;
       pairs.push({
         order: pairs.length + 1,
         question,
-        guidance,
+        guidance: fullGuidance,
         choices,
         answer:
           answerText === '' || unanswered.includes(answerText.toLowerCase())

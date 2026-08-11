@@ -72,6 +72,41 @@ describe('question_answer strategy (Royal London pack)', () => {
     expect(everSmoked?.guidance).toContain('occasional basis');
   });
 
+  describe('section headings, carried forward across the questions under them', () => {
+    // The fixture prints "WE NEED TO ASK YOU SOME QUESTIONS ABOUT YOUR
+    // LIFESTYLE" once, then asks eight questions before "OCCUPATION AND
+    // TRAVEL" takes over. Real forms repeat generically-worded questions
+    // ("have you had any of these?") under different headings, and the
+    // heading is the only thing that tells them apart — reconciliation uses
+    // it to locate the right passage of call, not just any passage that
+    // happens to share a word.
+    it('attaches the heading in force to every question under it, not just the first', () => {
+      expect(byQuestion('what is your height')?.guidance).toContain('Section: WE NEED TO ASK YOU SOME QUESTIONS ABOUT YOUR LIFESTYLE');
+      // Sixth question under the same heading, with no repetition of it in between.
+      expect(byQuestion('how many units of alcohol')?.guidance).toContain('Section: WE NEED TO ASK YOU SOME QUESTIONS ABOUT YOUR LIFESTYLE');
+    });
+
+    it('moves on once a new heading appears, even one that wraps across lines', () => {
+      const job = byQuestion('what is your current job');
+      expect(job?.guidance).toContain('OCCUPATION AND TRAVEL');
+      expect(job?.guidance).not.toContain('LIFESTYLE');
+    });
+
+    it('keeps the question\'s own guidance alongside the section, not instead of it', () => {
+      const everSmoked = byQuestion('have you ever smoked');
+      expect(everSmoked?.guidance).toContain('Section: WE NEED TO ASK YOU SOME QUESTIONS ABOUT YOUR LIFESTYLE');
+      expect(everSmoked?.guidance).toContain('occasional basis');
+    });
+
+    it('says nothing about section where a document has no headings at all', () => {
+      const pairs = parseQuestionAnswer(
+        'Do you smoke?\nYour answer(s):\nNo\n\nDo you drink?\nYour answer(s):\nYes\n',
+        ROYAL_LONDON_CONFIG
+      );
+      expect(pairs[0]?.guidance).toBeNull();
+    });
+  });
+
   it('treats the insurer\'s own unanswered marker as no answer', () => {
     // Royal London prints "Unanswered" rather than leaving a value blank, so an
     // unanswered question must not read as answered-with-the-literal-word.

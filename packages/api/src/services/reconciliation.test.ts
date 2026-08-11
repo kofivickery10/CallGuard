@@ -67,6 +67,23 @@ describe('deriveSearchTerms', () => {
     expect(terms).toHaveLength(0);
     expect(absenceIsMeaningful(terms)).toBe(false);
   });
+
+  it('never turns the "Section:" label itself into a search term', () => {
+    // application-pdf.ts now prepends "Section: <heading>" to guidance so a
+    // repeated question stem can be told apart from its duplicates. The label
+    // is scaffolding CallGuard added, not the insurer's wording, and every
+    // question in a document shares it — it must never itself become
+    // something the search looks for.
+    const terms = deriveSearchTerms(
+      'Have you had any of these?',
+      'Section: WE NEED TO ASK YOU SOME QUESTIONS ABOUT YOUR LIFESTYLE'
+    );
+    expect(terms).not.toContain('section');
+    // The real heading words are exactly what should survive — they are what
+    // makes this occurrence of the question findable and distinct from the
+    // others.
+    expect(terms).toContain('lifestyle');
+  });
 });
 
 describe('absenceIsMeaningful', () => {

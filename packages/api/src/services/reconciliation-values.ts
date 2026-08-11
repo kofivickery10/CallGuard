@@ -171,6 +171,15 @@ Rules:
    bowel polyps. If you cannot tell which condition the passage is about,
    return null.
 
+   This is a case of a wider rule: the passage located is sometimes about a
+   DIFFERENT QUESTION entirely, not merely a different condition — a customer
+   agreeing to their GP being contacted is not the same as them disclosing a
+   health condition, even though both passages might mention a doctor. If your
+   own reasoning would describe the passage as being about something other than
+   what this question asks, that is your answer: return null. Do not let a
+   shared word (both mention "GP", both say "yeah") stand in for the passage
+   actually addressing the question.
+
 8. customer_did_not_answer is a separate judgement from value, and a heavier
    one: it says the adviser recorded an answer the customer never gave, which
    goes in front of a compliance reviewer. Set it true only when you can read
