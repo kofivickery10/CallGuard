@@ -260,23 +260,73 @@ async function reportOrg(org: {
     )
   );
 
-  // ── 7. The last few runs, with whatever they are complaining about ─────────
-  console.log('\n— Most recent runs —');
-  table(
-    await query(
-      `SELECT r.status,
-              r.extraction_method AS read_by,
-              r.attempts,
-              COALESCE(r.attachment_name, '—') AS document,
-              r.created_at::date AS created,
-              left(COALESCE(r.error_message, ''), 80) AS message
-         FROM capture_reconciliation_runs r
-        WHERE r.organization_id = $1
-        ORDER BY r.created_at DESC
-        LIMIT 15`,
-      O
-    )
+  // ── 7. Every sale, one line each — the actual review ────────────────────────
+  //
+  // Everything above answers "is the module working". This answers the
+  // question that actually gets asked next: which sales, which customers, what
+  // happened on each one. Ordered so the sales worth looking at surface first —
+  // a real finding, then a parked format, then a document problem, then a clean
+  // pass — rather than by date, which buries a genuine mismatch under whatever
+  // was merely re-run most recently.
+  //
+  // No LIMIT. A tenant with hundreds of sales needs paging, not truncation
+  // silently standing in for it; add one deliberately if this ever gets there.
+  console.log('\n— Every sale Data Forms has looked at —');
+  const sales = await query<{
+    client_name: string | null;
+    journey_id: string;
+    status: string;
+    read_by: string | null;
+    document: string | null;
+    items: number;
+    needing_attention: number;
+    message: string | null;
+  }>(
+    `SELECT j.client_name, r.journey_id, r.status,
+            r.extraction_method AS read_by,
+            r.attachment_name AS document,
+            COALESCE(i.total, 0)::int AS items,
+            COALESCE(i.actionable, 0)::int AS needing_attention,
+            r.error_message AS message
+       FROM capture_reconciliation_runs r
+       JOIN journeys j ON j.id = r.journey_id
+       LEFT JOIN (
+         SELECT run_id, count(*)::int AS total,
+                count(*) FILTER (
+                  WHERE outcome IN ('mismatch', 'not_asked', 'asked_no_answer')
+                     OR amendment_type = 'disclosure_withdrawn'
+                )::int AS actionable
+           FROM capture_reconciliation_items
+          GROUP BY run_id
+       ) i ON i.run_id = r.id
+      WHERE r.organization_id = $1
+      ORDER BY
+        -- Findings first, worst sale first.
+        i.actionable DESC NULLS LAST,
+        -- Then anything parked on a person, oldest first — the ones waiting
+        -- longest for a format or a document are the ones worth chasing.
+        (r.status IN ('needs_profile', 'needs_document'))::int DESC,
+        r.created_at ASC`,
+    O
   );
+  if (sales.length === 0) {
+    console.log('   (no runs yet)');
+  } else {
+    for (const s of sales) {
+      const flag = s.needing_attention > 0 ? `!! ${s.needing_attention} finding(s)` : '';
+      console.log(
+        `   ${(s.client_name ?? '(unnamed sale)').padEnd(28).slice(0, 28)} ` +
+          `${s.status.padEnd(17)} ${(s.read_by ?? '—').padEnd(8)} ` +
+          `${String(s.items).padStart(3)} items  ${flag}`
+      );
+      if (s.status === 'needs_document' || s.status === 'needs_profile') {
+        console.log(`       ${s.message ?? '(waiting)'}`);
+      } else if (s.status === 'failed' && s.message) {
+        console.log(`       failed: ${s.message.slice(0, 120)}`);
+      }
+      console.log(`       /journeys/${s.journey_id}`);
+    }
+  }
 
   // ── 7b. Which format actually read each sale? ──────────────────────────────
   // A completed run says nothing about whether the RIGHT format read it.
