@@ -35,6 +35,10 @@ const STOPWORDS = new Set([
   // Generic across insurance vocabulary — "nicotine products", "protection
   // products", "the product" — so it discriminates nothing.
   'product', 'products', 'provide',
+  // The label application-pdf.ts prepends to guidance to carry a question's
+  // section heading ("Section: YOUR HEALTH — ..."). The label itself must never
+  // become a search term, or every question in the document would share it.
+  'section',
   'question', 'questions', 'received', 'regular', 'regularly', 'related', 'result',
   'results', 'same', 'select', 'since', 'some', 'such', 'tell', 'than', 'that',
   'their', 'them', 'then', 'there', 'these', 'they', 'this', 'those', 'told',
