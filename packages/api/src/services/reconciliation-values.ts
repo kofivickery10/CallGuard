@@ -27,6 +27,19 @@ import { CACHE_TTL_HEADERS } from './scoring.js';
 
 const DEFAULT_VALUE_MODEL = CLAUDE_MODELS.HAIKU;
 
+/**
+ * Whether this model still accepts `temperature`.
+ *
+ * An ALLOWLIST, deliberately. Anthropic removed the sampling parameters on
+ * Opus 4.7 and every model since — sending one is a 400, not a warning — and
+ * the direction of travel is that newer models keep dropping them. Listing what
+ * accepts them means an unrecognised model simply runs at its default instead
+ * of failing every extraction on the tenant that adopts it.
+ */
+function acceptsTemperature(model: string): boolean {
+  return /^claude-(haiku-4-5|sonnet-4-6|opus-4-6)\b/.test(model);
+}
+
 export interface ValueExtractionRequest {
   /** Stable key so answers can be matched back. Use the question's sort order. */
   key: string;
@@ -240,6 +253,22 @@ export async function extractCallAnswers(
     {
       model,
       max_tokens: maxTokens,
+      // Read the passage the same way twice.
+      //
+      // This ran at the model's default sampling, and the cost was measurable:
+      // the same sale, re-run twice with identical code, document and
+      // transcript, differed on 7 of 17 items — including three that moved
+      // between 'undetermined' and 'asked_no_answer', i.e. between "we could
+      // not tell" and an allegation about how an adviser conducted a call. A
+      // finding that changes when you press the button again cannot be defended
+      // to the firm it is about.
+      //
+      // Not a guarantee. Zero temperature has never promised identical output,
+      // so this narrows the variance rather than removing it — the durable fix
+      // is to require two agreeing passes before an item may become actionable,
+      // the same corroboration rule already used before a document format goes
+      // live. Gated by model because sending it to Opus 4.7 or later is a 400.
+      ...(acceptsTemperature(model) ? { temperature: 0 } : {}),
       messages: [
         {
           role: 'user',
