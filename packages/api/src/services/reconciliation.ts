@@ -199,6 +199,78 @@ export function absenceIsMeaningful(terms: string[]): boolean {
   return terms.some((t) => REDACTION_RESISTANT_STEMS.has(t));
 }
 
+/**
+ * Fields the insurer generates, which cannot have been discussed on the call.
+ *
+ * A policy number does not exist while the sale is happening — it is issued on
+ * submission — so searching a call for it is not a check that can pass. Left in
+ * the comparison it produces an item that is permanently unverifiable, and a
+ * reviewer has no way to tell that apart from one we merely failed to find.
+ *
+ * Deliberately narrow. "Date of application" and a policy reference are the
+ * only fields observed that a customer could not in principle have stated;
+ * everything else on a summary sheet — name, address, date of birth, premium,
+ * direct debit date — IS said out loud and is worth checking.
+ */
+const INSURER_GENERATED =
+  /^\s*(policy|plan|application|quote|reference|agency|scheme)\s*(number|no\.?|ref(erence)?|id)\s*:?\s*$|^\s*date of (application|issue|submission)\s*:?\s*$/i;
+
+export function isInsurerGenerated(question: string): boolean {
+  return INSURER_GENERATED.test(question.trim());
+}
+
+/**
+ * Distinctive strings from the SUBMITTED ANSWER, to search the call for.
+ *
+ * The ordinary technique searches for the question's own wording, which works
+ * where the question is a question: "have you smoked" finds "do you smoke". It
+ * fails completely on a summary sheet, where the "question" is a form label
+ * nobody speaks. Searching a transcript for "Telephone" or "DOB" finds nothing
+ * on a call where the customer plainly gave both, and the item resolves
+ * unverifiable — fifteen genuinely checkable identity fields per sale, inert.
+ *
+ * So for these, search for the ANSWER instead. A phone number, a year of birth
+ * and an email local-part are far more distinctive than any label, and the
+ * customer said them aloud. Finding one produces the excerpt the model then
+ * reads, which is the step that was never being reached.
+ *
+ * Note what this deliberately does NOT do: it does not make absence meaningful.
+ * A value that cannot be found stays 'undetermined', because a customer reading
+ * digits back in fragments ("oh seven nine... oh seven...") is normal and its
+ * absence proves nothing. The gain is entirely on the finding side.
+ */
+export function deriveAnswerTerms(answer: string | null): string[] {
+  if (!answer) return [];
+  const terms = new Set<string>();
+  const value = answer.trim();
+
+  // A year, which is how a date of birth is actually identifiable in speech —
+  // "fourth of May nineteen seventy-three" shares nothing with 04/05/1973
+  // except the year.
+  for (const m of value.matchAll(/\b(19|20)\d{2}\b/g)) terms.add(m[0]);
+
+  // Digit runs, separators stripped, as a phone number or an account reference
+  // is written on a form but grouped differently when read aloud ("07907
+  // 769991"). The tail is what stays stable across groupings, so both the whole
+  // run and its last six digits are offered.
+  const digitsOnly = value.replace(/[^\d]/g, '');
+  if (digitsOnly.length >= 7) {
+    terms.add(digitsOnly);
+    terms.add(digitsOnly.slice(-6));
+  }
+
+  // The local part of an email, which is usually the customer's own name or
+  // handle and is spoken in full when they give the address.
+  const email = /([a-z0-9._%+-]{3,})@/i.exec(value);
+  if (email) terms.add(email[1]!.toLowerCase());
+
+  // A postcode's outward code, distinctive and said as one token.
+  const postcode = /\b([a-z]{1,2}\d[a-z\d]?)\s*\d[a-z]{2}\b/i.exec(value);
+  if (postcode) terms.add(postcode[1]!.toLowerCase());
+
+  return [...terms];
+}
+
 export interface EvidenceHit {
   term: string;
   /** Character offset of the match, for locating the surrounding quote. */

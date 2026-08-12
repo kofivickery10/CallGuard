@@ -5,6 +5,8 @@ import {
   absenceIsMeaningful,
   transcriptRedactsHealth,
   findEvidence,
+  deriveAnswerTerms,
+  isInsurerGenerated,
   quoteAround,
   quoteExchange,
   evidenceExcerpts,
@@ -139,6 +141,85 @@ describe('transcriptRedactsHealth', () => {
 
   it('is false for an unredacted transcript', () => {
     expect(transcriptRedactsHealth('Do you smoke at all? No, gave up in 1986.')).toBe(false);
+  });
+});
+
+describe('deriveAnswerTerms — searching for the answer, not the label', () => {
+  // A summary sheet's "questions" are form labels nobody speaks. Searching a
+  // transcript for "Telephone" or "DOB" finds nothing on a call where the
+  // customer gave both — fifteen checkable identity fields per sale, inert.
+  // Their VALUES are what was said aloud.
+
+  it('finds the phone number a customer read out, however it was grouped', () => {
+    const terms = deriveAnswerTerms('07907769991');
+    // The whole run, and the tail that survives being grouped differently.
+    expect(terms).toContain('07907769991');
+    expect(terms).toContain('769991');
+
+    const call = 'Agent: And a contact number? Customer: Yeah, it is 07907 769991.';
+    expect(findEvidence(terms, call).length).toBeGreaterThan(0);
+  });
+
+  it('finds a date of birth by its year, which is the only part spoken as written', () => {
+    // "fourth of May nineteen seventy-three" shares nothing with 04/05/1973
+    // except 1973 — and even that only when the transcriber writes digits.
+    expect(deriveAnswerTerms('04/05/1973')).toContain('1973');
+    const call = 'Agent: Date of birth? Customer: Fourth of the fifth, 1973.';
+    expect(findEvidence(deriveAnswerTerms('04/05/1973'), call).length).toBeGreaterThan(0);
+  });
+
+  it('finds an email by its local part, which is what gets spelled out', () => {
+    expect(deriveAnswerTerms('nathan.gonzalez@example.com')).toContain('nathan.gonzalez');
+  });
+
+  it('finds an address by its outward postcode', () => {
+    expect(deriveAnswerTerms('12 High Street, London SW1A 1AA')).toContain('sw1a');
+  });
+
+  it('offers nothing for a short or absent value, rather than something useless', () => {
+    // "Yes" and "4" are not distinctive; searching for them would match the
+    // whole call and locate nothing.
+    expect(deriveAnswerTerms(null)).toEqual([]);
+    expect(deriveAnswerTerms('Yes')).toEqual([]);
+    expect(deriveAnswerTerms('4')).toEqual([]);
+  });
+
+  it('never lets a value vouch for its own absence', () => {
+    // The gain is entirely on the finding side. A customer reading digits back
+    // in fragments is normal, so a value that cannot be found must stay
+    // undetermined — never "the adviser invented it".
+    expect(absenceIsMeaningful(deriveAnswerTerms('07907769991'))).toBe(false);
+    expect(absenceIsMeaningful(deriveAnswerTerms('04/05/1973'))).toBe(false);
+  });
+});
+
+describe('isInsurerGenerated — fields that could not have been said', () => {
+  it('recognises a reference the insurer issues on submission', () => {
+    // It does not exist while the sale is happening, so searching a call for it
+    // is not a check that can pass.
+    for (const label of [
+      'Policy number', 'Policy No.', 'Plan number', 'Application number',
+      'Quote reference', 'Agency number', 'Date of application', 'Date of issue',
+    ]) {
+      expect(isInsurerGenerated(label)).toBe(true);
+    }
+  });
+
+  it('leaves alone every field a customer actually states', () => {
+    // The narrowness is the point: almost everything on a summary sheet IS
+    // said out loud, and excluding it would throw away the identity check.
+    for (const label of [
+      'Name', 'Address', 'Email', 'Day tel no', 'DOB', 'Marital status',
+      'Employment status', 'Occupation', 'UK Residency', 'No. of Units',
+      'Monthly premium', 'Preferred Direct Debit date',
+      'How many units of alcohol do you drink in a typical week?',
+    ]) {
+      expect(isInsurerGenerated(label)).toBe(false);
+    }
+  });
+
+  it('does not fire on a question that merely mentions a policy', () => {
+    expect(isInsurerGenerated('Do you have any existing policy numbers with another insurer?')).toBe(false);
   });
 });
 

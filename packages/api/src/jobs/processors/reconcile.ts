@@ -18,6 +18,8 @@ import {
   transcriptRedactsHealth,
   findEvidence,
   evidenceExcerpts,
+  deriveAnswerTerms,
+  isInsurerGenerated,
   classifyItem,
   classifyAmendment,
 } from '../../services/reconciliation.js';
@@ -518,7 +520,13 @@ async function compareAndStore(
   // PHASE 1 — deterministic. Locate each question in the call and attribute the
   // hit to a specific call. No model involved.
   const located = pairs.map((pair) => {
-    const terms = deriveSearchTerms(pair.question, pair.guidance);
+    // The question's own wording, plus the submitted answer's distinctive
+    // values. The second is what makes a summary sheet checkable at all: its
+    // "questions" are form labels nobody speaks, so searching for "Telephone"
+    // or "DOB" finds nothing on a call where the customer gave both, while the
+    // number and the year of birth are right there.
+    const questionTerms = deriveSearchTerms(pair.question, pair.guidance);
+    const terms = [...questionTerms, ...deriveAnswerTerms(pair.answer)];
     const hits = findEvidence(terms, transcript);
     const offset = hits.length > 0 ? hits[0]!.index : null;
     const callNumber = offset == null ? null : callNumberAtOffset(segments, offset);
@@ -543,8 +551,13 @@ async function compareAndStore(
               const d = raw ? new Date(raw) : null;
               return d && !Number.isNaN(d.getTime()) ? d : null;
             })(),
+      // Judged on the QUESTION's terms alone. A submitted value not appearing
+      // proves nothing — digits are read back in fragments, a date of birth is
+      // spoken in words — so letting the answer's terms vouch for their own
+      // absence would turn every unmatched identity field into an accusation.
+      // The answer terms exist to FIND evidence, never to condemn its absence.
       absenceMeaningful:
-        profileFlags.get(normaliseKey(pair.question)) ?? absenceIsMeaningful(terms),
+        profileFlags.get(normaliseKey(pair.question)) ?? absenceIsMeaningful(questionTerms),
     };
   });
 
@@ -553,7 +566,14 @@ async function compareAndStore(
   // never the whole transcript. A question nobody asked needs no model to tell
   // us so, and sending it would invite an answer to be invented for it.
   const extractionTargets = located.filter(
-    (l) => l.excerpts.length > 0 && l.pair.answer !== null && l.pair.answer.trim() !== ''
+    (l) =>
+      l.excerpts.length > 0 &&
+      l.pair.answer !== null &&
+      l.pair.answer.trim() !== '' &&
+      // Nothing to extract for a reference issued after the call: comparePair
+      // resolves these without a model, so paying to read a passage about one
+      // buys nothing.
+      !isInsurerGenerated(l.pair.question)
   );
   const extracted = new Map<string, ExtractedValue>();
   if (extractionTargets.length > 0) {
@@ -682,6 +702,26 @@ function comparePair(
 ): ComparedItem {
   const { pair, terms, hits, absenceMeaningful } = located;
   const found = hits.length > 0;
+
+  // A reference the insurer issued on submission cannot have been said on a
+  // call that happened before it existed. Reported honestly rather than
+  // compared: the item stays on the record — the value was still submitted, and
+  // a reviewer may want to see it — but it is never a finding, and it says why
+  // instead of leaving someone to wonder whether we simply failed to find it.
+  if (isInsurerGenerated(pair.question)) {
+    return {
+      outcome: 'undetermined',
+      callAnswer: null,
+      callAnswerRedacted: false,
+      evidence: null,
+      reasoning:
+        'The insurer issues this on submission, so it did not exist during the call and cannot be checked against it.',
+      sourceCallId: null,
+      confidence: null,
+      amendmentType: null,
+      actionable: false,
+    };
+  }
 
   // A redaction verdict from the model is stronger evidence than the whole-
   // transcript flag: it saw the actual passage.
