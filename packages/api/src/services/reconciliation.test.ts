@@ -404,14 +404,57 @@ describe('classifyItem', () => {
     ).toBe('undetermined');
   });
 
-  it('still says not_asked on an unredacted transcript even with weak terms', () => {
-    // Nothing was removed, so absence really is absence.
+  it('does not accuse on weak terms just because the transcript is unredacted', () => {
+    // This test previously asserted the opposite — "nothing was removed, so
+    // absence really is absence" — and that assumption is what broke the
+    // moment a tenant was permitted 'phi'. Health placeholders vanished from
+    // their transcripts, redactedTranscript went false everywhere, and the
+    // safety rule stopped firing: "Uk Resident" and "Telephone" were both
+    // reported as never asked on a live sale, within a day of the setting
+    // changing.
+    //
+    // Redaction was never the whole reason absence proves nothing. An adviser
+    // asking "do you live in the UK" or "what's your number" says neither
+    // "resident" nor "telephone", so those terms are absent from a call where
+    // the question WAS put. absenceMeaningful is the judgement that covers
+    // both, and it is now the only thing consulted.
     expect(
       classifyItem({
         ...base,
         evidenceFound: false,
         absenceMeaningful: false,
         redactedTranscript: false,
+      })
+    ).toBe('undetermined');
+  });
+
+  it('cannot be turned into an accusation by changing a tenant\'s redaction settings', () => {
+    // The same question, the same call, judged either side of permitting
+    // health data. Turning redaction off must not convert "we could not tell"
+    // into "the adviser never asked" — nothing about the sale changed.
+    const question = { ...base, evidenceFound: false, absenceMeaningful: false };
+    expect(classifyItem({ ...question, redactedTranscript: true })).toBe('undetermined');
+    expect(classifyItem({ ...question, redactedTranscript: false })).toBe('undetermined');
+  });
+
+  it('still says not_asked where the terms genuinely vouch for their own absence', () => {
+    // The signal has to survive, or the module stops finding the thing it
+    // exists to find. A question whose terms would have been spoken and would
+    // have survived storage, absent from the call, is a real finding.
+    expect(
+      classifyItem({
+        ...base,
+        evidenceFound: false,
+        absenceMeaningful: true,
+        redactedTranscript: false,
+      })
+    ).toBe('not_asked');
+    expect(
+      classifyItem({
+        ...base,
+        evidenceFound: false,
+        absenceMeaningful: true,
+        redactedTranscript: true,
       })
     ).toBe('not_asked');
   });

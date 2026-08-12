@@ -717,7 +717,16 @@ function comparePair(
       ? 'This question has no distinctive wording to search for, so the call could not be checked for it.'
       : absenceMeaningful
         ? `None of these terms appear anywhere in the call: ${terms.slice(0, 6).join(', ')}.`
-        : 'The words identifying this question are removed from stored transcripts, so their absence proves nothing.'
+        // Deliberately does not blame redaction. It often is the reason — the
+        // condition names in a health question are stripped before storage —
+        // but it is not the only one, and saying so where it is untrue is
+        // worse than saying nothing. "Uk Resident" and "Telephone" are not
+        // redacted at all; their terms are simply ones an adviser would never
+        // have to say to ask the question ("do you live in the UK", "what's
+        // your number"), so finding them absent establishes nothing either way.
+        : `This question cannot be verified from its wording alone: ${terms
+            .slice(0, 4)
+            .join(', ')} would not necessarily be spoken even where the question was asked, or are removed from stored transcripts. Its absence proves nothing.`
     : extracted
       ? extracted.reasoning ||
         `Found in the call on: ${termList(hits)}.`
