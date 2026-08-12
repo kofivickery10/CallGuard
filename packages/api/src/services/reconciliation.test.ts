@@ -812,6 +812,42 @@ describe('classifyItem', () => {
   });
 });
 
+describe('compareAnswers — a polar answer carrying its detail', () => {
+  it('compares a qualified affirmative instead of giving up on it', () => {
+    // The regression this exists for. Exact whole-string matching meant only a
+    // bare "Yes" ever compared, so the module lost the finding precisely when
+    // the customer was specific — and being specific is what a disclosure IS.
+    // On a real sale the model read "Yes - £50,000 for daughter" against an
+    // application recording "No", and it resolved to "could not verify".
+    expect(compareAnswers('No', 'Yes - £50,000 for daughter', null)).toBe('mismatch');
+    expect(compareAnswers('No', 'Yes — father, bowel cancer at 58', null)).toBe('mismatch');
+    expect(compareAnswers('No', 'Yes, inhaler as a child', null)).toBe('mismatch');
+    expect(compareAnswers('Yes', 'No - never smoked', null)).toBe('mismatch');
+  });
+
+  it('refuses an answer that takes itself back', () => {
+    // "No, but I did have asthma" leads with a negative and means the opposite.
+    // Reading its first word would invent a mismatch against a form that
+    // correctly says Yes, so it stays unreadable — silence over a false
+    // allegation.
+    expect(compareAnswers('Yes', 'No, but I did have asthma as a child', null)).toBe('unclear');
+    expect(compareAnswers('No', 'Yes, although only briefly', null)).toBe('unclear');
+    expect(compareAnswers('Yes', 'No, except for one episode', null)).toBe('unclear');
+  });
+
+  it('does not read a field value that merely begins with a polar word', () => {
+    // MetLife records "No Premium details" as a value, not as someone saying
+    // no. A delimiter is required, which is what separates the two.
+    expect(compareAnswers('No Premium details', 'No', null)).toBe('match');
+    expect(compareAnswers('None of the above', 'No', null)).toBe('match');
+    expect(compareAnswers('No', 'None of these', null)).toBe('match');
+  });
+
+  it('leaves non-polar answers exactly as they were', () => {
+    expect(compareAnswers('Employed', 'Ambulance driver', null)).toBe('unclear');
+  });
+});
+
 describe('classifyAmendment', () => {
   const rev = (...values: string[]) => values.map((value) => ({ value }));
 

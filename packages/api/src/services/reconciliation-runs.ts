@@ -51,6 +51,15 @@ export interface DocumentProfileRow {
   status: 'needs_confirmation' | 'active' | 'superseded';
   /** Migration 090. True for a form that asks conditional follow-ups. */
   questions_vary: boolean;
+  /**
+   * Who approved this format, or null where it went live by corroboration.
+   *
+   * Read at judgement time, not just for display: the per-question rulings
+   * stored on a profile outrank the measured defaults only because a person
+   * made them. On an auto-confirmed profile nobody did, so those values are a
+   * stale copy of the heuristics and must not outrank the current ones.
+   */
+  confirmed_by: string | null;
 }
 
 export async function isReconciliationEnabled(organizationId: string): Promise<boolean> {

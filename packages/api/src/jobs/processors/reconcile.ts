@@ -462,20 +462,36 @@ export async function processReconcile(job: Job<{ runId: string }>) {
       return;
     }
 
-    // Per-question rulings come from the confirmed profile where it has them,
-    // falling back to the measured defaults. The profile is the authority: it
-    // was reviewed by a human, these heuristics were not.
+    // Per-question rulings override the measured defaults ONLY where a person
+    // actually made them.
     //
-    // Both fields are read independently, because a profile stored before check
-    // modes existed carries absence_meaningful and no mode, and must keep the
-    // reviewed half of its ruling rather than losing both to the defaults.
+    // The profile is the authority because a human reviewed it — that is the
+    // whole justification, and it does not hold for a profile that went live by
+    // corroboration. There, nobody ruled on anything: the stored values are a
+    // snapshot of these same heuristics taken on the day the format was learned.
+    // Treating that snapshot as authoritative freezes every bug in the heuristic
+    // at the moment of learning, and silently outranks the fix.
+    //
+    // Which is exactly what happened. MetLife's profile stores
+    // absence_meaningful=true for "Employment status" and "Occupation", learned
+    // before those words were removed from the spoken-verbatim set. Re-running
+    // three sales after that fix changed nothing: the stale `true` won, and all
+    // three advisers were still recorded as never having asked.
+    //
+    // So a human-confirmed profile keeps its rulings for ever, and an
+    // auto-confirmed one gets today's heuristics. Both fields are read
+    // independently, because a profile stored before check modes existed carries
+    // absence_meaningful and no mode.
+    const humanReviewed = profile.confirmed_by !== null;
     const profileRulings = new Map<string, ProfileRuling>();
-    for (const q of profile.questions ?? []) {
-      profileRulings.set(normaliseKey(q.question), {
-        absenceMeaningful:
-          typeof q.absence_meaningful === 'boolean' ? q.absence_meaningful : undefined,
-        checkMode: q.check_mode,
-      });
+    if (humanReviewed) {
+      for (const q of profile.questions ?? []) {
+        profileRulings.set(normaliseKey(q.question), {
+          absenceMeaningful:
+            typeof q.absence_meaningful === 'boolean' ? q.absence_meaningful : undefined,
+          checkMode: q.check_mode,
+        });
+      }
     }
 
     const { flagged } = await compareAndStore(run, parsed.pairs, profileRulings);

@@ -515,11 +515,56 @@ export function normaliseAnswer(value: string): string {
     .trim();
 }
 
+/**
+ * A polar answer followed by the detail that makes it worth having.
+ *
+ * Requires a real delimiter — "Yes, inhaler as a child", "Yes - £50,000 for
+ * daughter", "Yes — father, bowel cancer at 58". That is what separates a
+ * qualified answer from a noun phrase that merely begins with a polar word:
+ * MetLife's "No Premium details" has no delimiter and stays unreadable, which
+ * is correct, because it is a field value rather than someone saying "no".
+ *
+ * Matched on the RAW value, before normaliseAnswer replaces the punctuation
+ * with spaces and destroys the very boundary this depends on.
+ */
+const QUALIFIED_POLAR = /^\s*([a-z]+)\s*[,;:—–-]+\s*(\S[\s\S]*)$/i;
+
+/**
+ * Words that take back the answer in front of them.
+ *
+ * "No, but I did have asthma as a child" leads with a negative and means the
+ * opposite, so reading its first word would invent a mismatch against a form
+ * that correctly says Yes. Where one of these appears the answer stays
+ * unreadable, which is the safe direction: silence rather than a false
+ * allegation.
+ */
+const HEDGES = new Set(['but', 'although', 'though', 'however', 'except', 'unless', 'apart']);
+
+/**
+ * Yes, no, or neither.
+ *
+ * The qualified case is not a nicety. Exact whole-string matching meant only a
+ * bare "Yes" ever compared, so the module lost a finding precisely when the
+ * customer said something specific — and a customer being specific is what a
+ * disclosure IS. On one real sale the model extracted "Yes - £50,000 for
+ * daughter" against an application recording "No", and the comparison returned
+ * unclear: a child-cover non-disclosure, correctly read from the call, reported
+ * as "could not verify".
+ */
 function polarity(value: string): 'yes' | 'no' | null {
   const n = normaliseAnswer(value);
+  // Whole-string first, so the multi-word negatives above are never split.
   if (AFFIRMATIVE.has(n)) return 'yes';
   if (NEGATIVE.has(n)) return 'no';
-  return null;
+
+  const m = QUALIFIED_POLAR.exec(value.trim());
+  if (!m) return null;
+  const lead = normaliseAnswer(m[1] ?? '');
+  const isYes = AFFIRMATIVE.has(lead);
+  const isNo = NEGATIVE.has(lead);
+  if (!isYes && !isNo) return null;
+  if (normaliseAnswer(m[2] ?? '').split(' ').some((w) => HEDGES.has(w))) return null;
+  return isYes ? 'yes' : 'no';
 }
 
 /** Numbers present in an answer, for comparing "50" against "50 a day". */
