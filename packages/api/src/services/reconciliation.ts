@@ -508,6 +508,46 @@ export function weightInKg(text: string): number | null {
   return null;
 }
 
+/** A kilogram either way, or 2% on heavier figures: speech against a form field. */
+function sameWeight(a: number, b: number): boolean {
+  return Math.abs(a - b) <= Math.max(1, a * 0.02);
+}
+
+/**
+ * One side states a weight in units, the other is a bare number with none.
+ *
+ * An application storing "127.0058636" against a customer saying "20 stone" is
+ * a correct conversion recorded to absurd precision, and the bare-number rule
+ * below read it as a contradiction at 0.95 confidence. The form does not say
+ * what unit that number is in, so the only honest thing to do is try each one
+ * it could be: agreement under any reading is agreement, because a number
+ * landing within a kilogram of a conversion by chance does not happen.
+ *
+ * Disagreement under EVERY reading is still a mismatch — the missing unit is
+ * then not what separates the two figures, so withholding the finding would
+ * lose a genuine mis-keying rather than avoid a false accusation.
+ *
+ * Returns null when neither side states a unit, or when the bare side is not a
+ * single number — nothing here can speak to those.
+ */
+function compareBareWeight(
+  applicationAnswer: string,
+  callAnswer: string,
+  appKg: number | null,
+  callKg: number | null
+): AnswerComparison | null {
+  const known = appKg ?? callKg;
+  if (known === null || (appKg !== null && callKg !== null)) return null;
+
+  const bareSide = appKg === null ? applicationAnswer : callAnswer;
+  const bare = numbersIn(bareSide);
+  if (bare.length !== 1) return null;
+  const stated = bare[0]!;
+
+  const readings = [stated, stated * KG_PER_STONE, stated * KG_PER_POUND];
+  return readings.some((kg) => sameWeight(known, kg)) ? 'match' : 'mismatch';
+}
+
 /**
  * Measures of drink that are NOT units of alcohol. A pint is roughly two and a
  * half units depending entirely on what is in the glass, so "2 pints" against
@@ -553,14 +593,18 @@ export function compareAnswers(
   const appKg = weightInKg(applicationAnswer);
   const callKg = weightInKg(callAnswer);
   if (appKg !== null && callKg !== null) {
-    return Math.abs(appKg - callKg) <= Math.max(1, appKg * 0.02) ? 'match' : 'mismatch';
+    return sameWeight(appKg, callKg) ? 'match' : 'mismatch';
   }
-
   // A count of drinks against a count of units is two different quantities, and
-  // only one side of the conversion between them is on the page.
+  // only one side of the conversion between them is on the page. Ahead of the
+  // bare-number weight reading below, so a lone "2" beside "2 pints" is never
+  // taken for a weight.
   if (DRINK_MEASURE.test(normaliseAnswer(callAnswer)) !== DRINK_MEASURE.test(normaliseAnswer(applicationAnswer))) {
     return 'unclear';
   }
+
+  const bareWeight = compareBareWeight(applicationAnswer, callAnswer, appKg, callKg);
+  if (bareWeight !== null) return bareWeight;
 
   // A date given as a year against one given as elapsed time is the same fact in
   // two units, and the bare-number rule below reads it as a disagreement.
