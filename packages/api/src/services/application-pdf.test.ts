@@ -7,6 +7,7 @@ import {
   matchProfile,
   isolateSection,
   rankAttachmentCandidates,
+  describeUnusableAttachments,
   parseLooksHealthy,
   formatSignature,
   expectedRecordCount,
@@ -524,6 +525,50 @@ describe('link attachments and the real Trust Point naming', () => {
       { file_name: 'RL Key Facts.pdf', size: 0 },
     ]);
     expect(ranked.map((r) => r.file_name)).toEqual(['h+l frazer.pdf']);
+  });
+
+  it('says what is attached rather than claiming nothing is', () => {
+    // 22 of Trust Point's 50 sales sat at "No application document has been
+    // attached to the sale yet", and that sentence could not be trusted: the
+    // ranking drops links and non-PDFs silently, so a sale whose pack IS on the
+    // record said the same thing as one where it genuinely is not.
+    const links = describeUnusableAttachments([
+      { file_name: 'Plan Details.pdf', size: null },
+      { file_name: 'RL Key Facts.pdf', size: 0 },
+    ]);
+    expect(links).toContain('2 documents are attached');
+    expect(links).toContain('2 are links to files held elsewhere');
+    expect(links).toContain('Plan Details.pdf');
+    expect(links).not.toContain('not a PDF');
+
+    const scan = describeUnusableAttachments([{ file_name: 'application photo.jpg', size: 90000 }]);
+    expect(scan).toContain('1 document is attached');
+    expect(scan).toContain('1 is not a PDF (application photo.jpg)');
+
+    // Both problems on one sale get both sentences, and the count is of
+    // everything attached, not of either group.
+    const both = describeUnusableAttachments([
+      { file_name: 'Plan Details.pdf', size: null },
+      { file_name: 'form.png', size: 4000 },
+    ]);
+    expect(both).toContain('2 documents are attached');
+    expect(both).toContain('1 is a link to a file');
+    expect(both).toContain('1 is not a PDF');
+  });
+
+  it('names only the first few files, so a busy record stays readable', () => {
+    const many = describeUnusableAttachments(
+      ['a', 'b', 'c', 'd', 'e'].map((n) => ({ file_name: `${n}.pdf`, size: null }))
+    );
+    expect(many).toContain('a.pdf, b.pdf, c.pdf, and 2 more');
+  });
+
+  it('never claims nothing is attached, whatever the filters did', () => {
+    // A defensive path: if the ranking empties for a reason neither filter
+    // explains, the fallback still must not accuse the firm of not uploading.
+    const out = describeUnusableAttachments([{ file_name: 'pack.pdf', size: 5000 }]);
+    expect(out).not.toMatch(/has been attached to the sale yet/);
+    expect(out).toContain('none could be read');
   });
 
   it('leaves ranking untouched when size is not supplied at all', () => {

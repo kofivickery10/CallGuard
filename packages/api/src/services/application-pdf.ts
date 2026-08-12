@@ -987,6 +987,53 @@ export function isDownloadableFile(a: RankedAttachment): boolean {
 }
 
 /**
+ * Why nothing on a sale could be read, in a sentence that says what to do.
+ *
+ * The filters below drop attachments silently, and "no application document has
+ * been attached to the sale yet" was then said about sales that plainly had
+ * one — a pack uploaded as a Drive link, or a photographed form. That sentence
+ * asks the wrong thing of the firm: they look at the record, see the document,
+ * and conclude the module is broken. The three cases need three different acts,
+ * so they get three different sentences.
+ *
+ * Names a few files because "one of your attachments" is not enough to find it
+ * on a record with six.
+ */
+export function describeUnusableAttachments(attachments: RankedAttachment[]): string {
+  const isPdf = (a: RankedAttachment) => /\.pdf$/i.test(a.file_name);
+  const links = attachments.filter((a) => isPdf(a) && a.size !== undefined && !isDownloadableFile(a));
+  const nonPdf = attachments.filter((a) => !isPdf(a));
+
+  const name = (list: RankedAttachment[]) =>
+    list
+      .slice(0, 3)
+      .map((a) => a.file_name)
+      .join(', ') + (list.length > 3 ? `, and ${list.length - 3} more` : '');
+
+  const parts: string[] = [];
+  if (links.length) {
+    parts.push(
+      `${links.length} ${links.length === 1 ? 'is a link to a file' : 'are links to files'} ` +
+        `held elsewhere rather than an upload (${name(links)})`
+    );
+  }
+  if (nonPdf.length) {
+    parts.push(`${nonPdf.length} ${nonPdf.length === 1 ? 'is not a PDF' : 'are not PDFs'} (${name(nonPdf)})`);
+  }
+  if (parts.length === 0) {
+    // Belt and braces: the caller only reaches here when the ranking emptied,
+    // so one of the two filters did it. Never claim nothing is attached.
+    return `${attachments.length} document(s) are attached to this sale, but none could be read.`;
+  }
+
+  const count = attachments.length === 1 ? '1 document is' : `${attachments.length} documents are`;
+  return (
+    `${count} attached to this sale, but none can be read: ${parts.join('; ')}. ` +
+    'Upload the application pack as a PDF file on the CRM record itself.'
+  );
+}
+
+/**
  * Order attachments by how likely each is to be the submitted application.
  * Non-PDFs are dropped — every insurer pack observed is a PDF. Ties break to the
  * most recent, so an amended re-upload is inspected before the copy it replaced.
