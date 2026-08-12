@@ -646,9 +646,23 @@ export function classifyItem(input: ClassifyInput): ReconciliationOutcome {
   }
 
   if (!input.evidenceFound) {
-    // THE SAFETY RULE. Absence only proves absence when the terms would have
-    // survived redaction.
-    if (input.redactedTranscript && !input.absenceMeaningful) return 'undetermined';
+    // THE SAFETY RULE. Absence proves absence only where we can vouch for the
+    // terms — they are distinctive enough to be searched for, and nothing would
+    // have removed them from the transcript.
+    //
+    // This used to require redactedTranscript as well, which tied the whole
+    // guard to health placeholders being present. Permitting 'phi' for a tenant
+    // removes those placeholders, so the guard silently stopped firing and
+    // questions it had been protecting fell straight through to 'not_asked' —
+    // the single most serious thing this module can say about an adviser.
+    // Observed on a live sale within a day of the setting changing: "Uk
+    // Resident" and "Telephone" both alleged never asked, on a call where
+    // nothing of the sort had been established.
+    //
+    // absenceMeaningful already carries the whole judgement, so it is now asked
+    // on its own. A tenant turning redaction off cannot quietly convert
+    // "we could not tell" into an accusation.
+    if (!input.absenceMeaningful) return 'undetermined';
     // The application carries an answer and the call shows no trace of the
     // question being put. This is the serious one: the form was completed
     // without asking.
