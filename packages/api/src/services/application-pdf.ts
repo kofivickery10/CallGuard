@@ -508,10 +508,27 @@ function mergeWrappedAnswers(
  * Merged backwards over the wrapped text, stopping at anything that belongs to
  * another record, so a marker cannot swallow the document above it.
  */
-/** Is this line a question record, whichever end the extractor left the marker? */
+/**
+ * Is this line a question record, whichever end the extractor left the marker?
+ *
+ * The leading form must allow a TAB after the marker, not just a space. The
+ * marker sits in its own narrow column, so once spans are read in page order the
+ * gap between it and the question is wide enough to be a column break — which is
+ * a tab, always, never a space. Matching only "Q " made this return false for
+ * every question in a reordered document, and the one caller that matters is a
+ * guard: mergeWrappedAnswers uses it to refuse to swallow a question into the
+ * unattributed answer above it. With the guard silently off, the two questions
+ * on a real application whose answers carried no "(adviser name)" were absorbed
+ * and lost.
+ */
 function isQuestionLine(line: string, marker: string): boolean {
   const t = line.trim();
-  return t === marker || t.startsWith(`${marker} `) || new RegExp(`[\\t ]${escapeRegex(marker)}$`).test(t);
+  const escaped = escapeRegex(marker);
+  return (
+    t === marker ||
+    new RegExp(`^${escaped}[\\t ]`).test(t) ||
+    new RegExp(`[\\t ]${escaped}$`).test(t)
+  );
 }
 
 function mergeBareMarkers(

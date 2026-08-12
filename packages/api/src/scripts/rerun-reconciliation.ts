@@ -28,14 +28,24 @@
 // Needs the worker running against the same Redis: this enqueues, the worker
 // does the work.
 //
+// --in-process does the work HERE instead, and exists for one specific
+// situation: measuring a judgement change before it is deployed. Enqueueing
+// sends the job to whichever worker is running, which in that situation is the
+// DEPLOYED one on the OLD build — so the results come back from the code you are
+// trying to measure against, silently, and look like a finished re-run. Serial
+// and slower, which is the right trade for a sample of a few sales.
+//
 // Usage:
 //   tsx src/scripts/rerun-reconciliation.ts "Trust Point"            # dry run
 //   tsx src/scripts/rerun-reconciliation.ts "Trust Point" --commit
 //   tsx src/scripts/rerun-reconciliation.ts "Trust Point" --commit --include-abandoned
 //   tsx src/scripts/rerun-reconciliation.ts "Trust Point" --commit --limit=5
+//   tsx src/scripts/rerun-reconciliation.ts "Trust Point" --commit --limit=5 --in-process
+import type { Job } from 'bullmq';
 import { pool, query, queryOne } from '../db/client.js';
 import { scoringQueue } from '../jobs/queue.js';
 import { attemptJobId } from '../services/reconciliation-sweep.js';
+import { processReconcile } from '../jobs/processors/reconcile.js';
 import { recordAuditEvent } from '../services/audit.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -59,6 +69,7 @@ async function main(): Promise<void> {
   const includeAbandoned = args.includes('--include-abandoned');
   const limitArg = args.find((a) => a.startsWith('--limit='));
   const limit = limitArg ? Number(limitArg.split('=')[1]) : null;
+  const inProcess = args.includes('--in-process');
 
   if (!target) {
     console.error('Usage: tsx src/scripts/rerun-reconciliation.ts <orgId|nameSubstring> [--commit]');
@@ -195,11 +206,20 @@ async function main(): Promise<void> {
         console.warn(`  ! could not recreate the run for journey ${r.journey_id}`);
         continue;
       }
-      await scoringQueue.add(
-        'reconcile',
-        { runId: created.id },
-        { jobId: attemptJobId(created.id, 0) }
-      );
+      if (inProcess) {
+        // The processor only reads job.data.runId. Cast rather than fabricate a
+        // whole BullMQ Job: inventing the other fields would be inventing state
+        // the processor might one day rely on, and a cast at least fails loudly
+        // if that day comes.
+        await processReconcile({ data: { runId: created.id } } as Job<{ runId: string }>);
+        console.log(`  · rebuilt ${r.journey_id}`);
+      } else {
+        await scoringQueue.add(
+          'reconcile',
+          { runId: created.id },
+          { jobId: attemptJobId(created.id, 0) }
+        );
+      }
       enqueued++;
     } catch (err) {
       // One sale failing must not abandon the rest of the batch half-done.
@@ -216,12 +236,16 @@ async function main(): Promise<void> {
     entityType: 'organization',
     entityId: org.id,
     summary: `Bulk re-check of ${enqueued} sale(s) via rerun-reconciliation script`,
-    metadata: { statuses, requested: runs.length, enqueued, itemsDeleted: itemsAtStake },
+    metadata: { statuses, requested: runs.length, enqueued, itemsDeleted: itemsAtStake, inProcess },
   });
 
   console.log(`\nRe-checked ${enqueued} of ${runs.length} sale(s).`);
-  console.log('The worker processes these from the scoring queue — watch its log for');
-  console.log('"[Reconciliation] Run … completed", then re-run dataforms-status.ts.');
+  if (inProcess) {
+    console.log('Done here, in this process — the results are already written.');
+  } else {
+    console.log('The worker processes these from the scoring queue — watch its log for');
+    console.log('"[Reconciliation] Run … completed", then re-run dataforms-status.ts.');
+  }
 }
 
 main()

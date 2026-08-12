@@ -1032,3 +1032,56 @@ describe('parseQuestionMarker — the row-type column at either end', () => {
     expect(pairs[0]?.question).toBe('Have you ever:');
   });
 });
+
+describe('a leading marker must not be swallowed by the answer above it', () => {
+  it('keeps a question whose answer carries no attribution', () => {
+    // The guard that stops mergeWrappedAnswers absorbing the next line only
+    // fires if the line is recognised as a question. Once the marker leads it is
+    // separated by a TAB — a column break — and matching only "Q " turned the
+    // guard off for every question in the document. It showed up on exactly the
+    // answers with no "(adviser name)" to close them, because those are the only
+    // ones that look wrapped: two real questions were absorbed and lost.
+    const pairs = parseApplication(
+      [
+        '05/08/2026 12:23 - 30',
+        "Q\tHow many days' notice is associated with your readiness state?",
+        'A',
+        '05/08/2026 12:23 - No',
+        'Q\tDoes this involve an area of conflict, hazard, political or civil unrest?',
+        'A',
+        '',
+      ].join('\n'),
+      'question_marker',
+      PORTAL_CONFIG
+    ).pairs;
+
+    expect(pairs).toHaveLength(2);
+    expect(pairs[0]?.question).toBe(
+      "How many days' notice is associated with your readiness state?"
+    );
+    expect(pairs[0]?.answer).toBe('30');
+    expect(pairs[1]?.question).toBe(
+      'Does this involve an area of conflict, hazard, political or civil unrest?'
+    );
+    expect(pairs[1]?.answer).toBe('No');
+  });
+
+  it('still merges an answer that genuinely wrapped', () => {
+    const pairs = parseApplication(
+      [
+        '05/08/2026 12:23 - Heart attack, angina or stroke, Diabetes, and',
+        'several other things (A Adviser)',
+        'Q\tHave any of these applied to you?',
+        'A',
+        '',
+      ].join('\n'),
+      'question_marker',
+      PORTAL_CONFIG
+    ).pairs;
+
+    expect(pairs).toHaveLength(1);
+    expect(pairs[0]?.answer).toBe(
+      'Heart attack, angina or stroke, Diabetes, and several other things'
+    );
+  });
+});
