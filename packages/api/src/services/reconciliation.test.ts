@@ -10,6 +10,7 @@ import {
   quoteAround,
   quoteExchange,
   evidenceExcerpts,
+  weightInKg,
   compareAnswers,
   classifyItem,
   isActionable,
@@ -436,6 +437,24 @@ describe('compareAnswers', () => {
     expect(compareAnswers('17 stone', '107.95')).toBe('match');
     // Two numbers on the bare side is not a reading we can pick between.
     expect(compareAnswers('17 7', '20 stone')).toBe('unclear');
+  });
+
+  it('reads a weight spoken as a fraction, and never treats one as unit-less', () => {
+    // David Carter, a live sale: form "105kg or 16 stone 7 pounds", customer
+    // "About 16 and a half stone". 16st 7lb IS 16.5 stone — the same weight,
+    // written two ways. weightInKg could not see the figure at all, because the
+    // digits are not adjacent to the unit, so the bare-number reading took the
+    // 16 for a unit-less number, called it 16 stone, and made the missing half
+    // stone into an accusation.
+    expect(compareAnswers('105kg or 16 stone 7 pounds', 'About 16 and a half stone')).toBe('match');
+    expect(weightInKg('16 and a half stone')).toBeCloseTo(104.78, 1);
+    expect(weightInKg('17 and a quarter stone')).toBeCloseTo(109.54, 1);
+
+    // The backstop, for any other phrasing that beats the parser. A side naming
+    // a unit is never treated as one that omitted it — and this must say
+    // 'unclear' rather than decline, or the bare-number rule below compares 105
+    // against 16 as plain quantities and reaches the same accusation anyway.
+    expect(compareAnswers('105 kg', '16 and a third stone')).toBe('unclear');
   });
 
   it('still catches a weight that genuinely disagrees', () => {

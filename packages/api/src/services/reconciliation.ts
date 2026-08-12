@@ -497,8 +497,29 @@ export type AnswerComparison = 'match' | 'mismatch' | 'unclear';
 const KG_PER_STONE = 6.35029;
 const KG_PER_POUND = 0.453592;
 
+/**
+ * Weight units in any spelling, for telling "this states no unit" apart from
+ * "this states one and we failed to read it". The distinction is the whole
+ * safety of compareBareWeight below.
+ */
+const WEIGHT_UNIT = /\b(?:kg|kilo(?:gram)?s?|st|stones?|lbs?|pounds?)\b/;
+
+/**
+ * "16 and a half stone", as people actually say a weight aloud.
+ *
+ * The digits are not adjacent to the unit, so the patterns below cannot see the
+ * figure at all — and the half is 3.2kg, which is the whole distance between a
+ * match and an accusation.
+ */
+function foldSpokenFractions(text: string): string {
+  return text
+    .replace(/(\d+)\s+and\s+a\s+half\b/g, (_m, d: string) => `${Number(d) + 0.5}`)
+    .replace(/(\d+)\s+and\s+a\s+quarter\b/g, (_m, d: string) => `${Number(d) + 0.25}`)
+    .replace(/(\d+)\s+and\s+three\s+quarters\b/g, (_m, d: string) => `${Number(d) + 0.75}`);
+}
+
 export function weightInKg(text: string): number | null {
-  const n = normaliseAnswer(text);
+  const n = foldSpokenFractions(normaliseAnswer(text));
   const kg = /(\d+(?:\.\d+)?)\s*(?:kg|kilo(?:gram)?s?)\b/.exec(n);
   if (kg) return Number(kg[1]);
   const stone = /(\d+(?:\.\d+)?)\s*(?:st|stones?)\b(?:\s*(\d+(?:\.\d+)?)\s*(?:lbs?|pounds?)?\b)?/.exec(n);
@@ -540,6 +561,19 @@ function compareBareWeight(
   if (known === null || (appKg !== null && callKg !== null)) return null;
 
   const bareSide = appKg === null ? applicationAnswer : callAnswer;
+
+  // Only genuinely bare numbers belong here. A side that names a unit and still
+  // would not parse is one whose phrasing beat us, not one missing a unit —
+  // "16 and a half stone" did exactly that, and reading its 16 as unit-less
+  // turned 105kg and 16st 7lb, the same weight, into a mismatch on a live sale.
+  //
+  // Says 'unclear' rather than declining, because declining is not neutral
+  // here: the bare-number rule further down would then compare 105 against 16
+  // as ordinary quantities and reach the same accusation by another route. One
+  // side being a weight we could read is enough to know that comparison is
+  // meaningless.
+  if (WEIGHT_UNIT.test(normaliseAnswer(bareSide))) return 'unclear';
+
   const bare = numbersIn(bareSide);
   if (bare.length !== 1) return null;
   const stated = bare[0]!;
