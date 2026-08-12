@@ -784,10 +784,14 @@ describe('classifyItem', () => {
   });
 
   describe("checkMode 'none' — on the record, never a finding", () => {
-    it('reports a value that did not exist during the call as undetermined', () => {
+    it('reports a value that did not exist during the call as recorded, not undetermined', () => {
+      // 'undetermined' means "we tried and could not establish this". Deciding
+      // not to check a policy number is not the same as failing to check it, and
+      // a reviewer reading the unresolved pile must not find it padded with
+      // fields nobody ever intended to look at.
       expect(
         classifyItem({ ...base, checkMode: 'none', applicationAnswer: 'POL-99123' })
-      ).toBe('undetermined');
+      ).toBe('recorded');
     });
 
     it('does NOT make a blank a finding, unlike presence mode', () => {
@@ -807,7 +811,7 @@ describe('classifyItem', () => {
           absenceMeaningful: true,
           applicationAnswer: 'POL-99123',
         })
-      ).toBe('undetermined');
+      ).toBe('recorded');
     });
   });
 });

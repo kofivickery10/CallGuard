@@ -12,6 +12,8 @@ import {
   formatSignature,
   expectedRecordCount,
   relaxAttribution,
+  assembleSpans,
+  type PositionedItem,
 } from './application-pdf.js';
 import {
   ROYAL_LONDON_PACK,
@@ -894,5 +896,139 @@ A
     ).pairs;
     expect(single[0]?.question).toBe('How tall are you?');
     expect(single[0]?.answer).toBe('1.57m or 5 feet 2 inches');
+  });
+});
+
+/**
+ * Span geometry taken from a real quote-portal export (Graham Pearson Policy.pdf,
+ * page 2). The numbers are the measured x/width of each drawn run, not invented:
+ * the producer paints an emphasised phrase on top of a full-width placeholder
+ * space, and it is that overlap the repair has to survive.
+ */
+function span(str: string, x: number, width: number, y = 100, hasEOL = false): PositionedItem {
+  return { str, x, y, width, height: 10, hasEOL };
+}
+
+describe('assembleSpans — putting drawn runs back into reading order', () => {
+  it('unscrambles a question whose emphasised phrase was drawn last', () => {
+    // Printed: "In the last 5 years have you had any of these?" with the date
+    // range in bold. The bold run is emitted after the text that follows it.
+    expect(
+      assembleSpans([
+        span('Q', 49.8, 7.0),
+        span('In the', 72.0, 25.0),
+        span(' ', 97.0, 53.1),
+        span('have you had any of these?', 150.2, 118.1),
+        span('last 5 years', 99.2, 48.9),
+      ])
+    ).toBe('Q\tIn the last 5 years have you had any of these?');
+  });
+
+  it('does not insert a space before punctuation', () => {
+    // Printed: "Have you ever:" — the colon must stay tight to the word, or the
+    // question no longer matches the one the insurer asked.
+    expect(
+      assembleSpans([
+        span('Q', 49.8, 7.0),
+        span('Have you', 72.0, 40.7),
+        span(' ', 112.7, 23.2),
+        span(':', 133.7, 3.0),
+        span('ever', 114.8, 18.9),
+      ])
+    ).toBe('Q\tHave you ever:');
+  });
+
+  it('leaves a line whose spans were already in order byte-for-byte alone', () => {
+    // The guarantee the stored profiles depend on. Every summary-sheet format
+    // draws left to right, so this is the path almost all of them take, and its
+    // output must be exactly what the previous extractor produced.
+    const ordered = [span('Name', 49.8, 25.0), span('Daniel', 200.0, 30.0)];
+    expect(assembleSpans(ordered)).toBe('Name\tDaniel');
+  });
+
+  it('moves a row-type marker drawn last into the left column where it prints', () => {
+    // The marker sits in a narrow left-hand column on the page but is drawn
+    // after the question text. Reading order puts it first, so the parser has to
+    // accept it at either end — see the parseQuestionMarker tests below.
+    expect(assembleSpans([span('How tall are you?', 72.0, 140.2), span('Q', 49.8, 7.0)])).toBe(
+      'Q\tHow tall are you?'
+    );
+  });
+
+  it('does not treat an overlapping span as a column break', () => {
+    // The placeholder-space overlap reads as a huge gap under an unsigned
+    // comparison, which put a tab in the middle of a sentence: "In the \tlast 5
+    // years". Only reached once something on the line has actually been moved,
+    // which is why the trailing marker is part of the fixture.
+    expect(
+      assembleSpans([
+        span('In the', 72.0, 25.0),
+        span(' ', 97.0, 53.1),
+        span('last 5 years', 99.2, 48.9),
+        span('Q', 49.8, 7.0),
+      ])
+    ).toBe('Q\tIn the last 5 years');
+  });
+
+  it('moves a line break to the end of a line it reordered', () => {
+    const out = assembleSpans([
+      span('In the', 72.0, 25.0, 100),
+      span(' ', 97.0, 53.1, 100),
+      span('have you?', 150.2, 40.0, 100, true),
+      span('last 5 years', 99.2, 48.9, 100),
+      span('next line', 72.0, 40.0, 130),
+    ]);
+    expect(out).toBe('In the last 5 years have you?\nnext line');
+  });
+
+  it('leaves a line break alone on a line it did not reorder', () => {
+    // This producer emits an empty hasEOL span at the START of each line,
+    // carrying the previous line's break. Moving it unconditionally appended a
+    // stray newline to every line in the document.
+    const out = assembleSpans([
+      span('Yes', 305, 18.8, 100),
+      span('', 305, 0, 130, true),
+      span('18/11/2025', 305, 54.2, 130),
+    ]);
+    expect(out).toBe('Yes\n18/11/2025');
+  });
+
+  it('separates lines that are far enough apart vertically', () => {
+    expect(assembleSpans([span('first', 72, 25, 100), span('second', 72, 30, 140)])).toBe(
+      'first\nsecond'
+    );
+  });
+});
+
+describe('parseQuestionMarker — the row-type column at either end', () => {
+  it('reads a question whose marker leads, as the page prints it', () => {
+    const pairs = parseApplication(
+      '29/07/2026 11:58 - 1.57m or 5 feet 2 inches (A Adviser)\nQ\tHow tall are you?\nA\n',
+      'question_marker',
+      PORTAL_CONFIG
+    ).pairs;
+    expect(pairs).toHaveLength(1);
+    expect(pairs[0]?.question).toBe('How tall are you?');
+    expect(pairs[0]?.answer).toBe('1.57m or 5 feet 2 inches');
+  });
+
+  it('still reads a question whose marker trails', () => {
+    // Documents already parsed by the previous extractor are described by
+    // profiles learned from it; a profile must not stop matching what it matched.
+    const pairs = parseApplication(
+      '29/07/2026 11:58 - 1.57m or 5 feet 2 inches (A Adviser)\nHow tall are you?\tQ\nA\n',
+      'question_marker',
+      PORTAL_CONFIG
+    ).pairs;
+    expect(pairs[0]?.question).toBe('How tall are you?');
+  });
+
+  it('does not mistake a leading marker for the whole question', () => {
+    const pairs = parseApplication(
+      '29/07/2026 11:58 - No (A Adviser)\nQ\tHave you ever:\nA\n',
+      'question_marker',
+      PORTAL_CONFIG
+    ).pairs;
+    expect(pairs[0]?.question).toBe('Have you ever:');
   });
 });

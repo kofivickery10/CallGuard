@@ -966,7 +966,17 @@ export function classifyItem(input: ClassifyInput): ReconciliationOutcome {
   // Still reported rather than dropped: it was submitted, and a reviewer may
   // want to see it. Blank stays 'no_application_answer' rather than becoming a
   // finding, because nothing here is required of the adviser.
-  if (mode === 'none') return answered ? 'undetermined' : 'no_application_answer';
+  //
+  // A populated one is 'recorded', the same as under 'presence'. It used to be
+  // 'undetermined', and that was wrong in the way this whole module has to avoid:
+  // 'undetermined' means "we tried to establish this and could not", and a
+  // reviewer reads it as a gap in the checking. A policy number was never going
+  // to be checked — deciding not to look is not the same as looking and failing.
+  // The two were indistinguishable on screen, and together they put every policy
+  // number and application date of one tenant's sales into the unresolved pile,
+  // which is where the module's headline "half of all items undetermined" was
+  // partly coming from. The modes differ only in what they say about a BLANK.
+  if (mode === 'none') return answered ? 'recorded' : 'no_application_answer';
 
   // Nothing was submitted for this question, so there is nothing to verify.
   // Re-tested against the field rather than reusing `answered`, because this is
