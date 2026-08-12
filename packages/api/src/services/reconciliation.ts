@@ -346,6 +346,43 @@ export function defaultCheckMode(question: string): QuestionCheckMode {
  * digits back in fragments ("oh seven nine... oh seven...") is normal and its
  * absence proves nothing. The gain is entirely on the finding side.
  */
+/**
+ * Distinctive strings from the OPTIONS the question offered, to search for.
+ *
+ * A list-selection health question carries almost none of its meaning in its own
+ * wording. The portal prints "Have you ever:" or "Have you ever had any of
+ * these?" and puts the substance underneath, in the list the adviser reads out:
+ * cancer, leukaemia, multiple sclerosis, Parkinson's. Searching a call for the
+ * wording alone finds nothing distinctive, so the question was never located,
+ * never sent to be read, and resolved 'undetermined' — 39 items on one tenant,
+ * the largest single named cause in its unresolved pile, and all of them health
+ * disclosure questions.
+ *
+ * That the adviser genuinely says these words is not an assumption. It is
+ * visible in the evidence of the questions that DO resolve, whose option lists
+ * happened to survive as guidance text:
+ *
+ *     "...have you ever had any of these? Cancer, cancer in situ, leukaemia,
+ *      Hodgkin's disease, or any of the tumour? Nope."
+ *
+ * Like the answer terms, and for the same reason, these FIND evidence and never
+ * condemn its absence. An adviser is entitled to put a long list in their own
+ * words — "any of the usual heart conditions?" — so no option appearing verbatim
+ * is not proof the question went unasked. absenceIsMeaningful continues to see
+ * only the question's own wording, so nothing here can produce an accusation
+ * that the wording alone would not already have produced.
+ */
+export function deriveChoiceTerms(choices: string[] | undefined): string[] {
+  if (!choices || choices.length === 0) return [];
+  // The options that are answers rather than content. Every list ends with one,
+  // and they are the words least worth searching for: "no" and "none" appear in
+  // every call ever recorded.
+  const NON_CONTENT = /^(no|yes|none of these|neither of these|i don'?t know|other)$/i;
+  const content = choices.filter((c) => !NON_CONTENT.test(c.trim()));
+  if (content.length === 0) return [];
+  return deriveSearchTerms(content.join(' '));
+}
+
 export function deriveAnswerTerms(answer: string | null): string[] {
   if (!answer) return [];
   const terms = new Set<string>();

@@ -6,6 +6,7 @@ import {
   transcriptRedactsHealth,
   findEvidence,
   deriveAnswerTerms,
+  deriveChoiceTerms,
   isInsurerGenerated,
   isBankAccountDetail,
   defaultCheckMode,
@@ -940,5 +941,54 @@ describe('isActionable', () => {
   it('does not surface a recorded presence field', () => {
     // Nothing was verified about it, so it is neither a pass nor a flag.
     expect(isActionable('recorded')).toBe(false);
+  });
+});
+
+describe('deriveChoiceTerms — the substance of a list-selection question', () => {
+  it('takes the content of the options the adviser reads out', () => {
+    const terms = deriveChoiceTerms([
+      'Depression',
+      'Anxiety',
+      'Stress',
+      'Any other mental health issue',
+      'None of these',
+    ]);
+    expect(terms).toContain('depression');
+    expect(terms).toContain('anxiety');
+    expect(terms).toContain('stress');
+    expect(terms).toContain('mental');
+  });
+
+  it('drops the options that are answers rather than content', () => {
+    // Every list ends with one of these, and they are the words least worth
+    // searching for: "no" and "none" appear in every call ever recorded.
+    expect(deriveChoiceTerms(['No'])).toEqual([]);
+    expect(deriveChoiceTerms(['None of these'])).toEqual([]);
+    expect(deriveChoiceTerms(['Neither of these'])).toEqual([]);
+    expect(deriveChoiceTerms(['Yes', 'No'])).toEqual([]);
+  });
+
+  it('says nothing where a question offered no options', () => {
+    expect(deriveChoiceTerms(undefined)).toEqual([]);
+    expect(deriveChoiceTerms([])).toEqual([]);
+  });
+
+  it('rescues a question whose own wording carries nothing to search for', () => {
+    // "Have you ever:" is the whole question. Without its options there is
+    // nothing distinctive to look for and the call can never be checked.
+    expect(deriveSearchTerms('Have you ever:')).toEqual([]);
+    expect(
+      deriveChoiceTerms(['Been declined for insurance', 'Had special terms applied']).length
+    ).toBeGreaterThan(0);
+  });
+
+  it('cannot make an absence meaningful on its own', () => {
+    // The guarantee that keeps this from creating accusations: an adviser may
+    // put a long list in their own words, so no option appearing verbatim is
+    // not proof the question went unasked. absenceIsMeaningful sees only the
+    // question's own wording, and these terms never reach it.
+    const choiceTerms = deriveChoiceTerms(['Cancer', 'Leukaemia', 'Hodgkin\'s disease']);
+    expect(choiceTerms.length).toBeGreaterThan(0);
+    expect(absenceIsMeaningful(deriveSearchTerms('Have you ever:'))).toBe(false);
   });
 });

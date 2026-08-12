@@ -19,6 +19,7 @@ import {
   findEvidence,
   evidenceExcerpts,
   deriveAnswerTerms,
+  deriveChoiceTerms,
   defaultCheckMode,
   classifyItem,
   classifyAmendment,
@@ -552,11 +553,15 @@ async function compareAndStore(
     const ruling = profileRulings.get(normaliseKey(pair.question));
     const checkMode: QuestionCheckMode = ruling?.checkMode ?? defaultCheckMode(pair.question);
 
-    // The question's own wording, plus the submitted answer's distinctive
-    // values. The second is what makes a summary sheet checkable at all: its
-    // "questions" are form labels nobody speaks, so searching for "Telephone"
-    // or "DOB" finds nothing on a call where the customer gave both, while the
-    // number and the year of birth are right there.
+    // The question's own wording, plus the options it offered, plus the
+    // submitted answer's distinctive values.
+    //
+    // Only the first can condemn. The other two exist because a great many
+    // questions carry nothing searchable in their wording: a summary sheet's
+    // "questions" are form labels nobody speaks, so "Telephone" and "DOB" find
+    // nothing on a call where the customer gave both; and a portal's health
+    // questions are stubs — "Have you ever:" — whose substance is entirely in
+    // the list the adviser reads out.
     //
     // Not searched for at all outside 'reconcile' mode. comparePair ignores the
     // result either way, but a masked account number yields terms like "38" that
@@ -567,7 +572,7 @@ async function compareAndStore(
       checkMode === 'reconcile' ? deriveSearchTerms(pair.question, pair.guidance) : [];
     const terms =
       checkMode === 'reconcile'
-        ? [...questionTerms, ...deriveAnswerTerms(pair.answer)]
+        ? [...questionTerms, ...deriveChoiceTerms(pair.choices), ...deriveAnswerTerms(pair.answer)]
         : [];
     const hits = terms.length > 0 ? findEvidence(terms, transcript) : [];
     const offset = hits.length > 0 ? hits[0]!.index : null;
@@ -625,6 +630,7 @@ async function compareAndStore(
         extractionTargets.map((l) => ({
           key: String(l.pair.order),
           question: l.pair.question,
+          choices: l.pair.choices,
           applicationAnswer: l.pair.answer!,
           excerpts: l.excerpts,
         }))
@@ -681,6 +687,7 @@ async function compareAndStore(
         disputed.map((l) => ({
           key: String(l.pair.order),
           question: l.pair.question,
+          choices: l.pair.choices,
           applicationAnswer: l.pair.answer!,
           excerpts: l.excerpts,
         }))

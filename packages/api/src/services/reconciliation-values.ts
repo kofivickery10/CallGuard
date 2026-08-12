@@ -44,6 +44,17 @@ export interface ValueExtractionRequest {
   /** Stable key so answers can be matched back. Use the question's sort order. */
   key: string;
   question: string;
+  /**
+   * The options the question offered, where it had any.
+   *
+   * Required for the same reason the search needs them: a list-selection health
+   * question carries almost none of its meaning in its own wording. Sent
+   * "Have you ever:" with no list, the model answered — correctly — that it
+   * "lacks clear context about what specific items are being asked about", and
+   * the item resolved undetermined even though the passage in front of it held
+   * the adviser reading the list out and the customer answering.
+   */
+  choices?: string[];
   /** What the insurer recorded, for context on what kind of answer to look for. */
   applicationAnswer: string;
   /**
@@ -236,8 +247,14 @@ export async function extractCallAnswers(
           r.excerpts.length > 1 ? `Passage ${i + 1} of ${r.excerpts.length}:\n${e}` : e
         )
         .join('\n\n');
+      // The options go directly under the question, because for a stub like
+      // "Have you ever:" they ARE the question.
+      const options =
+        r.choices && r.choices.length > 0
+          ? `Options the question offered: ${r.choices.join(', ')}\n`
+          : '';
       return (
-        `--- key: ${r.key}\nQuestion: ${r.question}\n` +
+        `--- key: ${r.key}\nQuestion: ${r.question}\n${options}` +
         `Recorded on the application: ${r.applicationAnswer}\n` +
         `Passages from the call where this topic comes up:\n${passages}`
       );
