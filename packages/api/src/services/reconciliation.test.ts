@@ -424,6 +424,20 @@ describe('compareAnswers', () => {
     expect(compareAnswers('82 kg', '13 stone')).toBe('match');
   });
 
+  it('reads a form weight that states no unit against one that does', () => {
+    // From a real sale, at 0.95 confidence: form "127.0058636", customer "20
+    // stone". That is the conversion, carried out and stored to a precision no
+    // human typed — and the arithmetic above never ran, because the form omits
+    // the unit and weightInKg needs one. Landing within a kilogram of the
+    // conversion is not coincidence, so it is agreement.
+    expect(compareAnswers('127.0058636', '20 stone')).toBe('match');
+    // The same number could be the stone figure itself, or pounds.
+    expect(compareAnswers('20', '20 stone')).toBe('match');
+    expect(compareAnswers('17 stone', '107.95')).toBe('match');
+    // Two numbers on the bare side is not a reading we can pick between.
+    expect(compareAnswers('17 7', '20 stone')).toBe('unclear');
+  });
+
   it('still catches a weight that genuinely disagrees', () => {
     // 20 stone is 127 kg. A form saying 108 against a customer saying 20 stone
     // is the mis-keying this comparison exists for.
