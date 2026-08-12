@@ -649,12 +649,77 @@ async function compareAndStore(
     }
   }
 
+  // PHASE 3 — corroborate the claims that name a person.
+  //
+  // A single model read is not trusted to activate a document format; it should
+  // not be trusted to accuse an adviser either. Re-running one sale twice with
+  // identical code, document and transcript moved 7 of 17 items, including a
+  // child-cover finding that was a 'mismatch' on one pass and 'asked_no_answer'
+  // on the next — two different allegations about two different people's
+  // conduct, from the same inputs. Pinning the temperature narrowed that to 4;
+  // it did not fix it.
+  //
+  // Only 'mismatch' and 'asked_no_answer' are re-checked, because they are the
+  // only actionable outcomes the model produces. 'not_asked' comes from a string
+  // search and 'missing_from_application' from a blank field on the document —
+  // both deterministic, so a second model pass cannot tell us anything new about
+  // them. On one tenant that is 25 items out of 1,020, which is why this costs
+  // almost nothing.
+  const firstPass = new Map<number, ComparedItem>();
+  for (const l of located) {
+    firstPass.set(l.pair.order, comparePair(l, redacted, extracted.get(String(l.pair.order)) ?? null));
+  }
+
+  const secondPass = new Map<number, ComparedItem>();
+  const disputed = located.filter((l) => {
+    const outcome = firstPass.get(l.pair.order)?.outcome;
+    return outcome === 'mismatch' || outcome === 'asked_no_answer';
+  });
+  if (disputed.length > 0) {
+    try {
+      const result = await extractCallAnswers(
+        disputed.map((l) => ({
+          key: String(l.pair.order),
+          question: l.pair.question,
+          applicationAnswer: l.pair.answer!,
+          excerpts: l.excerpts,
+        }))
+      );
+      const reread = new Map(result.values.map((v) => [v.key, v]));
+      await recordUsage({
+        organizationId: run.organization_id,
+        provider: 'anthropic',
+        operation: 'reconcile',
+        modelId: result.model,
+        inputTokens: result.usage.input_tokens,
+        outputTokens: result.usage.output_tokens,
+      });
+      for (const l of disputed) {
+        secondPass.set(
+          l.pair.order,
+          comparePair(l, redacted, reread.get(String(l.pair.order)) ?? null)
+        );
+      }
+    } catch (err) {
+      // A failed second call is not evidence of instability, so it must not
+      // silently erase findings — that would hide real ones behind a transient
+      // API error. The first pass stands, uncorroborated, and says so loudly
+      // here because a run that never corroborates is a run whose findings are
+      // weaker than the rest of the tenant's.
+      console.warn(
+        `[Reconciliation] Corroboration pass failed for run ${run.id}; ` +
+          `${disputed.length} finding(s) stand on a single reading:`,
+        (err as Error).message
+      );
+    }
+  }
+
   await query('DELETE FROM capture_reconciliation_items WHERE run_id = $1', [run.id]);
 
   let flagged = 0;
   for (const l of located) {
     const pair = l.pair;
-    const item = comparePair(l, redacted, extracted.get(String(pair.order)) ?? null);
+    const item = corroborate(firstPass.get(pair.order)!, secondPass.get(pair.order));
     if (item.actionable) flagged++;
 
     // A withdrawn question has an answer but no SUBMITTED answer, and the
@@ -760,6 +825,52 @@ interface LocatedQuestion {
   absenceMeaningful: boolean;
   /** How this field is checked — the profile's ruling, or the measured default. */
   checkMode: QuestionCheckMode;
+}
+
+/**
+ * Reconcile two readings of the same question into what we are willing to say.
+ *
+ * Agreement is on the OUTCOME, not the extracted wording, because the outcome is
+ * the claim. Two passes reading "Yes" and "Yes, £50,000" against a form saying
+ * "No" both mean the same thing — the customer said yes and the application does
+ * not — and demanding identical strings would throw that finding away over a
+ * phrasing difference the comparison already handles.
+ *
+ * A disagreement is not resolved, it is reported. The item keeps its evidence so
+ * a reviewer can still read the passage and judge for themselves, but it stops
+ * being a finding, because "the module said two different things about this
+ * adviser" is not something we can put in front of the firm. That loses real
+ * findings — on the sale this was built from, a genuine child-cover
+ * non-disclosure goes quiet — and that is the deliberate trade: the same
+ * direction of error the module takes everywhere else, silence over an
+ * accusation it cannot stand behind.
+ */
+function corroborate(first: ComparedItem, second: ComparedItem | undefined): ComparedItem {
+  if (!second || second.outcome === first.outcome) return first;
+  return {
+    ...first,
+    outcome: 'undetermined',
+    actionable: false,
+    amendmentType: first.amendmentType,
+    confidence: null,
+    reasoning:
+      'Checked twice and the two readings disagreed — ' +
+      `${describeReading(first)} against ${describeReading(second)}. ` +
+      'No finding is recorded, because a claim about how a call was conducted ' +
+      'has to be one the check reaches the same way twice. The passage below is ' +
+      'the one that was read, if you want to judge it yourself.',
+  };
+}
+
+/** One reading, in the terms a reviewer would use. */
+function describeReading(item: ComparedItem): string {
+  const label =
+    item.outcome === 'mismatch'
+      ? 'a mismatch'
+      : item.outcome === 'asked_no_answer'
+        ? 'no answer given'
+        : item.outcome.replace(/_/g, ' ');
+  return item.callAnswer ? `${label} ("${item.callAnswer}")` : label;
 }
 
 /**
