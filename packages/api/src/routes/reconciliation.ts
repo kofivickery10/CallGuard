@@ -17,9 +17,63 @@ import type {
   ReconciliationRun,
   ReconciliationItem,
   DocumentProfile,
+  ReconciliationDashboardSummary,
+  ReconciliationTrendPoint,
+  ReconciliationInsurerRow,
+  ReconciliationFlaggedQuestion,
+  DocumentProfileQuestion,
+  QuestionCheckMode,
 } from '@callguard/shared';
 
 type ProfileRow = DocumentProfile;
+
+// ============================================================
+// Shared SQL fragments for the dashboard aggregates below.
+//
+// One definition of "a finding" and one of "conclusive", used by every
+// endpoint, so the tiles, the trend and the two breakdowns can never disagree
+// about the same sale. 'undetermined' and 'no_application_answer' are in
+// neither: the first means we could not tell (usually redaction removed the
+// identifying words), the second means the insurer's form was left blank where
+// blank is legitimate. Both are silence, and silence is not evidence in either
+// direction.
+// ============================================================
+
+/**
+ * Mirrors ACTIONABLE_RECONCILIATION_OUTCOMES in @callguard/shared, plus the one
+ * amendment worth surfacing. Kept as SQL rather than interpolated from the
+ * shared constant so the predicate reads as the query it is; if that list
+ * changes, this changes with it.
+ */
+const ITEM_IS_FINDING = `(i.outcome IN ('mismatch', 'not_asked', 'asked_no_answer', 'missing_from_application')
+  OR i.amendment_type = 'disclosure_withdrawn')`;
+
+/**
+ * The match-rate denominator: questions actually compared against the call.
+ *
+ * Presence-mode outcomes are deliberately absent from BOTH sides. 'recorded' is
+ * excluded because nothing was verified — migration 094 is explicit that
+ * counting it would inflate the one number a firm quotes back at us — and
+ * 'missing_from_application' is excluded with it, because a denominator holding
+ * a presence question's failures but not its successes would depress the rate
+ * by exactly the fields nobody checked.
+ */
+const ITEM_IS_CONCLUSIVE = `i.outcome IN ('match', 'mismatch', 'not_asked', 'asked_no_answer')`;
+
+/** Match rate over conclusive items, as a percentage. NULL when none were. */
+const MATCH_RATE_SQL = `CASE
+    WHEN count(i.id) FILTER (WHERE ${ITEM_IS_CONCLUSIVE}) > 0
+    THEN (count(i.id) FILTER (WHERE i.outcome = 'match')::numeric
+          / count(i.id) FILTER (WHERE ${ITEM_IS_CONCLUSIVE}) * 100)
+    ELSE NULL
+  END`;
+
+/** Clamp a ?days= window to something a dashboard can actually render. */
+function windowDays(raw: unknown): number {
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return 30;
+  return Math.min(Math.max(Math.floor(n), 1), 365);
+}
 
 // ============================================================
 // Application reconciliation routes.
@@ -196,6 +250,9 @@ reconciliationRouter.get('/runs', async (req, res, next) => {
               count(i.id) FILTER (WHERE i.outcome = 'mismatch')::int         AS mismatches,
               count(i.id) FILTER (WHERE i.outcome = 'not_asked')::int        AS not_asked,
               count(i.id) FILTER (WHERE i.outcome = 'asked_no_answer')::int  AS no_answer,
+              -- A presence-mode field left blank: a finding, and the reason
+              -- this list is not just the three call-based outcomes (094).
+              count(i.id) FILTER (WHERE i.outcome = 'missing_from_application')::int AS missing,
               count(i.id) FILTER (WHERE i.outcome = 'undetermined')::int     AS undetermined,
               count(i.id) FILTER (WHERE i.amendment_type = 'disclosure_withdrawn')::int AS withdrawn,
               count(i.id)::int AS total_questions
@@ -326,10 +383,12 @@ reconciliationRouter.put('/profiles/:id/confirm', requireAdmin, async (req, res,
       insurer: suppliedInsurer,
       product: suppliedProduct,
       questions_vary: suppliedVary,
+      check_modes: suppliedModes,
     } = (req.body ?? {}) as {
       insurer?: string;
       product?: string;
       questions_vary?: boolean;
+      check_modes?: Record<string, unknown>;
     };
     const insurer = (suppliedInsurer ?? '').trim() || profile.insurer;
     const product = suppliedProduct === undefined ? profile.product : suppliedProduct.trim() || null;
@@ -349,6 +408,42 @@ reconciliationRouter.put('/profiles/:id/confirm', requireAdmin, async (req, res,
     // never guessed.
     const questionsVary =
       typeof suppliedVary === 'boolean' ? suppliedVary : profile.questions_vary;
+
+    // Per-question check modes, keyed by the question's order.
+    //
+    // The heuristic that stamped these at proposal time is a pair of narrow
+    // regexes over a field's label, and it cannot know that one insurer calls a
+    // sort code something nobody anticipated, or that a field it took for a bank
+    // detail is genuinely read out. This is the screen where somebody who has
+    // the document in front of them can say so.
+    //
+    // Only recognised values are applied, and only to questions that exist. A
+    // malformed body must not be able to switch a disclosure question's checking
+    // off, which is what an unvalidated write here would allow.
+    const modeOverrides = new Map<number, QuestionCheckMode>();
+    for (const [key, value] of Object.entries(suppliedModes ?? {})) {
+      const order = Number(key);
+      if (!Number.isInteger(order)) continue;
+      if (value === 'reconcile' || value === 'presence' || value === 'none') {
+        modeOverrides.set(order, value);
+      }
+    }
+
+    const questionsChanged = modeOverrides.size > 0;
+    if (questionsChanged) {
+      const current = await queryOne<{ questions: DocumentProfileQuestion[] }>(
+        'SELECT questions FROM capture_document_profiles WHERE id = $1',
+        [profile.id]
+      );
+      const updated = (current?.questions ?? []).map((q) => {
+        const mode = modeOverrides.get(q.order);
+        return mode ? { ...q, check_mode: mode } : q;
+      });
+      await query(
+        'UPDATE capture_document_profiles SET questions = $2::jsonb, updated_at = now() WHERE id = $1',
+        [profile.id, JSON.stringify(updated)]
+      );
+    }
 
     if (
       insurer !== profile.insurer ||
@@ -383,6 +478,280 @@ reconciliationRouter.put('/profiles/:id/confirm', requireAdmin, async (req, res,
     });
 
     res.json({ id: profile.id, status: 'active', requeued: activated.requeued });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ============================================================
+// Dashboard aggregates.
+//
+// The same records the attention queue reads, rolled up. The queue answers
+// "what do I do next"; these answer "is the checking working, and where is it
+// concentrated" — which is a different question and needs whole-population
+// figures rather than a top-N list.
+//
+// Every window is over the run's created_at, not its completion, so a sale that
+// is still parked stays visible in the period it belongs to instead of quietly
+// leaving the denominator.
+// ============================================================
+
+/** Headline figures for the tile row. */
+reconciliationRouter.get('/dashboard/summary', async (req, res, next) => {
+  try {
+    const orgId = req.user!.organizationId;
+    const days = windowDays(req.query.days);
+
+    const runStats = await queryOne<{
+      sales_checked: number;
+      model_read: number;
+      parked: number;
+      failed: number;
+    }>(
+      `SELECT
+         count(*) FILTER (WHERE status = 'completed')::int AS sales_checked,
+         count(*) FILTER (WHERE status = 'completed' AND extraction_method = 'model')::int AS model_read,
+         count(*) FILTER (WHERE status IN ('pending','running','needs_document','needs_profile'))::int AS parked,
+         count(*) FILTER (WHERE status IN ('failed','abandoned'))::int AS failed
+       FROM capture_reconciliation_runs
+      WHERE organization_id = $1
+        AND created_at >= now() - make_interval(days => $2::int)`,
+      [orgId, days]
+    );
+
+    // Item figures come only from runs that actually completed a comparison —
+    // a parked run has no items, and counting its absence as a pass or a
+    // finding would be a lie in either direction.
+    const itemStats = await queryOne<{
+      questions_compared: number;
+      findings: number;
+      sales_with_findings: number;
+      undetermined: number;
+      recorded: number;
+      missing_from_application: number;
+      match_rate: string | null;
+    }>(
+      `SELECT
+         count(i.id)::int AS questions_compared,
+         count(i.id) FILTER (WHERE ${ITEM_IS_FINDING})::int AS findings,
+         count(DISTINCT i.run_id) FILTER (WHERE ${ITEM_IS_FINDING})::int AS sales_with_findings,
+         count(i.id) FILTER (WHERE i.outcome = 'undetermined')::int AS undetermined,
+         count(i.id) FILTER (WHERE i.outcome = 'recorded')::int AS recorded,
+         count(i.id) FILTER (WHERE i.outcome = 'missing_from_application')::int AS missing_from_application,
+         ${MATCH_RATE_SQL}::text AS match_rate
+       FROM capture_reconciliation_items i
+       JOIN capture_reconciliation_runs r ON r.id = i.run_id
+      WHERE r.organization_id = $1
+        AND r.status = 'completed'
+        AND r.created_at >= now() - make_interval(days => $2::int)`,
+      [orgId, days]
+    );
+
+    // Not windowed on purpose: an unconfirmed question set parks every sale on
+    // that format, whenever it was proposed.
+    const awaiting = await queryOne<{ n: number }>(
+      `SELECT count(*)::int AS n FROM capture_document_profiles
+        WHERE organization_id = $1 AND status = 'needs_confirmation'`,
+      [orgId]
+    );
+
+    const payload: ReconciliationDashboardSummary = {
+      days,
+      sales_checked: runStats?.sales_checked ?? 0,
+      questions_compared: itemStats?.questions_compared ?? 0,
+      match_rate: itemStats?.match_rate != null ? parseFloat(itemStats.match_rate) : null,
+      findings: itemStats?.findings ?? 0,
+      sales_with_findings: itemStats?.sales_with_findings ?? 0,
+      undetermined: itemStats?.undetermined ?? 0,
+      recorded: itemStats?.recorded ?? 0,
+      missing_from_application: itemStats?.missing_from_application ?? 0,
+      model_read: runStats?.model_read ?? 0,
+      parked: runStats?.parked ?? 0,
+      failed: runStats?.failed ?? 0,
+      awaiting_confirmation: awaiting?.n ?? 0,
+    };
+    res.json(payload);
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** Weekly checking volume and match rate, gap-filled so quiet weeks show as zero. */
+reconciliationRouter.get('/dashboard/trends', async (req, res, next) => {
+  try {
+    const weeks = Math.min(Math.max(parseInt(req.query.weeks as string) || 12, 1), 52);
+
+    const rows = await query<{
+      week_start: string;
+      checked: number;
+      unchecked: number;
+      match_rate: string | null;
+    }>(
+      `WITH weeks AS (
+         SELECT generate_series(
+                  date_trunc('week', now() AT TIME ZONE 'Europe/London')
+                    - make_interval(weeks => $2::int - 1),
+                  date_trunc('week', now() AT TIME ZONE 'Europe/London'),
+                  '1 week'::interval
+                ) AS wk
+       ),
+       runs AS (
+         SELECT r.id, r.status,
+                date_trunc('week', r.created_at AT TIME ZONE 'Europe/London') AS wk
+           FROM capture_reconciliation_runs r
+          WHERE r.organization_id = $1
+            AND r.created_at >= now() - make_interval(weeks => $2::int)
+       ),
+       agg AS (
+         SELECT ru.wk,
+                count(DISTINCT ru.id) FILTER (WHERE ru.status = 'completed')::int AS checked,
+                count(DISTINCT ru.id) FILTER (WHERE ru.status <> 'completed')::int AS unchecked,
+                ${MATCH_RATE_SQL}::text AS match_rate
+           FROM runs ru
+           LEFT JOIN capture_reconciliation_items i
+                  ON i.run_id = ru.id AND ru.status = 'completed'
+          GROUP BY ru.wk
+       )
+       SELECT to_char(w.wk, 'YYYY-MM-DD') AS week_start,
+              COALESCE(a.checked, 0) AS checked,
+              COALESCE(a.unchecked, 0) AS unchecked,
+              a.match_rate
+         FROM weeks w
+         LEFT JOIN agg a ON a.wk = w.wk
+        ORDER BY w.wk`,
+      [req.user!.organizationId, weeks]
+    );
+
+    const data: ReconciliationTrendPoint[] = rows.map((r) => ({
+      week_start: r.week_start,
+      checked: r.checked,
+      unchecked: r.unchecked,
+      match_rate: r.match_rate != null ? parseFloat(r.match_rate) : null,
+    }));
+    res.json({ data });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * Findings grouped by the insurer whose form was used.
+ *
+ * Runs read by the model fallback have no profile, so they group under a single
+ * "no stored format" row rather than being dropped — they are exactly the ones
+ * worth noticing, being the formats nobody has set up yet.
+ */
+reconciliationRouter.get('/dashboard/by-insurer', async (req, res, next) => {
+  try {
+    const days = windowDays(req.query.days);
+    const rows = await query<{
+      profile_id: string | null;
+      insurer: string;
+      product: string | null;
+      sales: number;
+      questions: number;
+      match_rate: string | null;
+      mismatches: number;
+      not_asked: number;
+      no_answer: number;
+      missing: number;
+      withdrawn: number;
+    }>(
+      `SELECT p.id AS profile_id,
+              COALESCE(p.insurer, 'No stored format') AS insurer,
+              p.product,
+              count(DISTINCT r.id)::int AS sales,
+              count(i.id)::int AS questions,
+              ${MATCH_RATE_SQL}::text AS match_rate,
+              count(i.id) FILTER (WHERE i.outcome = 'mismatch')::int        AS mismatches,
+              count(i.id) FILTER (WHERE i.outcome = 'not_asked')::int       AS not_asked,
+              count(i.id) FILTER (WHERE i.outcome = 'asked_no_answer')::int AS no_answer,
+              count(i.id) FILTER (WHERE i.outcome = 'missing_from_application')::int AS missing,
+              count(i.id) FILTER (WHERE i.amendment_type = 'disclosure_withdrawn')::int AS withdrawn
+         FROM capture_reconciliation_runs r
+         LEFT JOIN capture_document_profiles p ON p.id = r.profile_id
+         LEFT JOIN capture_reconciliation_items i ON i.run_id = r.id
+        WHERE r.organization_id = $1
+          AND r.status = 'completed'
+          AND r.created_at >= now() - make_interval(days => $2::int)
+        GROUP BY p.id, p.insurer, p.product
+        ORDER BY count(DISTINCT r.id) DESC, insurer ASC`,
+      [req.user!.organizationId, days]
+    );
+
+    const data: ReconciliationInsurerRow[] = rows.map((r) => ({
+      profile_id: r.profile_id,
+      insurer: r.insurer,
+      product: r.product,
+      sales: r.sales,
+      questions: r.questions,
+      match_rate: r.match_rate != null ? parseFloat(r.match_rate) : null,
+      mismatches: r.mismatches,
+      not_asked: r.not_asked,
+      no_answer: r.no_answer,
+      missing: r.missing,
+      withdrawn: r.withdrawn,
+    }));
+    res.json({ data });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * The questions flagged most often.
+ *
+ * Grouped by question AND insurer, never by wording alone: the same sentence on
+ * two insurers' forms is two questions, parsed by two different profiles, and
+ * merging them would hide which format is actually misbehaving.
+ */
+reconciliationRouter.get('/dashboard/flagged-questions', async (req, res, next) => {
+  try {
+    const days = windowDays(req.query.days);
+    const limit = Math.min(Math.max(parseInt(req.query.limit as string) || 10, 1), 50);
+
+    const rows = await query<{
+      question: string;
+      insurer: string | null;
+      flagged: number;
+      compared: number;
+      mismatches: number;
+      not_asked: number;
+      no_answer: number;
+      missing: number;
+    }>(
+      `SELECT i.question,
+              p.insurer,
+              count(DISTINCT r.id) FILTER (WHERE ${ITEM_IS_FINDING})::int AS flagged,
+              count(DISTINCT r.id)::int AS compared,
+              count(i.id) FILTER (WHERE i.outcome = 'mismatch')::int        AS mismatches,
+              count(i.id) FILTER (WHERE i.outcome = 'not_asked')::int       AS not_asked,
+              count(i.id) FILTER (WHERE i.outcome = 'asked_no_answer')::int AS no_answer,
+              count(i.id) FILTER (WHERE i.outcome = 'missing_from_application')::int AS missing
+         FROM capture_reconciliation_items i
+         JOIN capture_reconciliation_runs r ON r.id = i.run_id
+         LEFT JOIN capture_document_profiles p ON p.id = r.profile_id
+        WHERE r.organization_id = $1
+          AND r.status = 'completed'
+          AND r.created_at >= now() - make_interval(days => $2::int)
+        GROUP BY i.question, p.insurer
+       HAVING count(*) FILTER (WHERE ${ITEM_IS_FINDING}) > 0
+        ORDER BY flagged DESC, compared DESC
+        LIMIT $3`,
+      [req.user!.organizationId, days, limit]
+    );
+
+    const data: ReconciliationFlaggedQuestion[] = rows.map((r) => ({
+      question: r.question,
+      insurer: r.insurer,
+      flagged: r.flagged,
+      compared: r.compared,
+      mismatches: r.mismatches,
+      not_asked: r.not_asked,
+      no_answer: r.no_answer,
+      missing: r.missing,
+    }));
+    res.json({ data });
   } catch (err) {
     next(err);
   }

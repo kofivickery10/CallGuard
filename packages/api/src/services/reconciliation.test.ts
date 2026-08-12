@@ -7,6 +7,8 @@ import {
   findEvidence,
   deriveAnswerTerms,
   isInsurerGenerated,
+  isBankAccountDetail,
+  defaultCheckMode,
   quoteAround,
   quoteExchange,
   evidenceExcerpts,
@@ -122,6 +124,52 @@ describe('absenceIsMeaningful', () => {
     expect(absenceIsMeaningful(terms)).toBe(false);
   });
 
+  it('is false for a form label an adviser would never say aloud', () => {
+    // The regression this split exists for. These words survive redaction
+    // perfectly — the transcript is not why they are missing. They are missing
+    // because nobody says "what is your occupation?"; they say "what do you do
+    // for work?". Treating their absence as proof produced nine of Trust
+    // Point's eleven "never asked" findings, against six different advisers, on
+    // calls where employment had plainly been covered.
+    for (const label of ['Employment status', 'Occupation']) {
+      expect(absenceIsMeaningful(deriveSearchTerms(label))).toBe(false);
+    }
+  });
+
+  it('is false for the policy-admin labels that produced the rest of them', () => {
+    for (const label of [
+      'Active Lifestyle Cover', 'No. of Units', 'Guaranteed Sum Assured',
+      'Term', 'Name', 'Bank account held in payers name',
+    ]) {
+      expect(absenceIsMeaningful(deriveSearchTerms(label))).toBe(false);
+    }
+  });
+
+  it('still accuses on the health questions the module exists to check', () => {
+    // The other side of the trade. Loosening this far enough to silence a form
+    // label must not silence a disclosure question, or the module stops doing
+    // the one thing it is for.
+    for (const q of [
+      'Have you smoked in the last 12 months?',
+      'How many units of alcohol do you drink in a typical week?',
+      'Do you have raised blood pressure or cholesterol?',
+      'Have you seen a doctor or been to hospital in the last 5 years?',
+      'Do you take part in any dangerous sports?',
+      'What is your job?',
+    ]) {
+      expect(absenceIsMeaningful(deriveSearchTerms(q))).toBe(true);
+    }
+  });
+
+  it('keeps the alcohol question checkable without letting "units" carry it alone', () => {
+    // 'unit' means alcohol units here and units of COVER on MetLife's form, so
+    // it cannot be the term that licenses an accusation. The alcohol question
+    // survives on 'alcohol' and 'drink'; the cover field has nothing else and
+    // stops accusing.
+    expect(absenceIsMeaningful(deriveSearchTerms('How many units of alcohol do you drink?'))).toBe(true);
+    expect(absenceIsMeaningful(deriveSearchTerms('No. of Units'))).toBe(false);
+  });
+
   it('is conservative on a question mixing survivors and redacted terms', () => {
     // "Raised blood pressure, raised cholesterol, chest pain or pre-diabetes?"
     // is genuinely verifiable — advisers were observed saying "blood pressure,
@@ -221,6 +269,64 @@ describe('isInsurerGenerated — fields that could not have been said', () => {
 
   it('does not fire on a question that merely mentions a policy', () => {
     expect(isInsurerGenerated('Do you have any existing policy numbers with another insurer?')).toBe(false);
+  });
+});
+
+describe('isBankAccountDetail — values a recording cannot verify', () => {
+  it('recognises the account identifiers, however the insurer labels them', () => {
+    for (const label of [
+      'Account Number', 'Account No.', 'Account no', 'Bank account number',
+      'A/C number', 'Sort Code', 'Account Sort Code', 'Sort-code',
+      'Bank sort code', 'IBAN', 'Roll number', 'Building society roll number',
+    ]) {
+      expect(isBankAccountDetail(label)).toBe(true);
+    }
+  });
+
+  it('leaves alone the direct debit questions that ARE asked out loud', () => {
+    // The distinction the whole change turns on. "Is that account in your name?"
+    // and "do we have your permission to take it from there?" are put to the
+    // customer verbatim — one Trust Point transcript has the adviser saying "for
+    // the direct debit, the sort code and account number, is that in your name?"
+    // — so they stay checkable. Only the digits themselves are exempt.
+    for (const label of [
+      'Bank account held in payers name', 'Direct Debit allowed from account',
+      'Preferred Direct Debit date', 'Account holder name', 'Bank name',
+      'Monthly premium', 'Guaranteed Sum Assured', 'Term', 'No. of Units',
+    ]) {
+      expect(isBankAccountDetail(label)).toBe(false);
+    }
+  });
+
+  it('does not fire on a question that merely mentions an account', () => {
+    expect(
+      isBankAccountDetail('Have you ever had an account refused by a bank or building society?')
+    ).toBe(false);
+  });
+});
+
+describe('defaultCheckMode', () => {
+  it('exempts an insurer-generated reference from checking entirely', () => {
+    expect(defaultCheckMode('Policy number')).toBe('none');
+    expect(defaultCheckMode('Date of issue')).toBe('none');
+  });
+
+  it('checks bank identifiers for completion rather than against the call', () => {
+    expect(defaultCheckMode('Account Number')).toBe('presence');
+    expect(defaultCheckMode('Sort Code')).toBe('presence');
+  });
+
+  it('reconciles everything else, including the rest of the payment section', () => {
+    // The default must stay 'reconcile' for anything unrecognised: a mode that
+    // fell open would switch off checks on questions nobody has considered.
+    for (const label of [
+      'Bank account held in payers name', 'Direct Debit allowed from account',
+      'Monthly premium', 'Occupation', 'Child Cover',
+      'Have you smoked in the last 12 months?',
+      'Some label no heuristic has ever seen',
+    ]) {
+      expect(defaultCheckMode(label)).toBe('reconcile');
+    }
   });
 });
 
@@ -495,6 +601,11 @@ describe('classifyItem', () => {
     expect(classifyItem(base)).toBe('match');
   });
 
+  it('treats an absent checkMode as reconcile, so nothing changes by omission', () => {
+    expect(classifyItem({ ...base, checkMode: undefined })).toBe('match');
+    expect(classifyItem({ ...base, checkMode: 'reconcile' })).toBe('match');
+  });
+
   it('flags a mismatch', () => {
     expect(classifyItem({ ...base, applicationAnswer: 'No', callAnswer: 'yes' })).toBe('mismatch');
   });
@@ -631,6 +742,74 @@ describe('classifyItem', () => {
       })
     ).toBe('undetermined');
   });
+
+  describe("checkMode 'presence' — checked for completion, never against the call", () => {
+    it('reports a completed field as recorded, not as a match', () => {
+      // Not 'match'. Nothing was compared, and letting it count would inflate
+      // the match rate with fields nobody verified.
+      expect(
+        classifyItem({ ...base, checkMode: 'presence', applicationAnswer: 'XXXXX-388' })
+      ).toBe('recorded');
+    });
+
+    it('reports a blank field as a finding', () => {
+      expect(
+        classifyItem({ ...base, checkMode: 'presence', applicationAnswer: null })
+      ).toBe('missing_from_application');
+      expect(
+        classifyItem({ ...base, checkMode: 'presence', applicationAnswer: '   ' })
+      ).toBe('missing_from_application');
+    });
+
+    it('ignores the call entirely, whatever the evidence says', () => {
+      // The whole point: no configuration of call evidence may produce an
+      // accusation on a field that cannot be verified from a recording. This is
+      // the case that was generating eight false findings on one sale — a
+      // masked sort code matching a stray "38" somewhere in the transcript.
+      for (const evidence of [
+        { evidenceFound: false, absenceMeaningful: true },
+        { evidenceFound: true, callAnswer: null, customerDidNotAnswer: true },
+        { evidenceFound: true, callAnswer: 'something else entirely' },
+      ]) {
+        expect(
+          classifyItem({
+            ...base,
+            ...evidence,
+            checkMode: 'presence',
+            applicationAnswer: 'XX-XX-38',
+          })
+        ).toBe('recorded');
+      }
+    });
+  });
+
+  describe("checkMode 'none' — on the record, never a finding", () => {
+    it('reports a value that did not exist during the call as undetermined', () => {
+      expect(
+        classifyItem({ ...base, checkMode: 'none', applicationAnswer: 'POL-99123' })
+      ).toBe('undetermined');
+    });
+
+    it('does NOT make a blank a finding, unlike presence mode', () => {
+      // Nothing here is required of the adviser, so an empty policy number is
+      // the insurer's business and not a compliance flag.
+      expect(classifyItem({ ...base, checkMode: 'none', applicationAnswer: null })).toBe(
+        'no_application_answer'
+      );
+    });
+
+    it('never accuses, whatever the call evidence', () => {
+      expect(
+        classifyItem({
+          ...base,
+          checkMode: 'none',
+          evidenceFound: false,
+          absenceMeaningful: true,
+          applicationAnswer: 'POL-99123',
+        })
+      ).toBe('undetermined');
+    });
+  });
 });
 
 describe('classifyAmendment', () => {
@@ -706,11 +885,20 @@ describe('isActionable', () => {
     expect(isActionable('asked_no_answer')).toBe(true);
   });
 
+  it('surfaces a required field left blank on the form', () => {
+    expect(isActionable('missing_from_application')).toBe(true);
+  });
+
   it('does not surface undetermined as a finding', () => {
     // It means we could not tell. Presenting it as a finding would bury the real
     // flags under noise our own redaction created.
     expect(isActionable('undetermined')).toBe(false);
     expect(isActionable('match')).toBe(false);
     expect(isActionable('no_application_answer')).toBe(false);
+  });
+
+  it('does not surface a recorded presence field', () => {
+    // Nothing was verified about it, so it is neither a pass nor a flag.
+    expect(isActionable('recorded')).toBe(false);
   });
 });

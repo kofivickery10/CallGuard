@@ -19,9 +19,10 @@ import {
   findEvidence,
   evidenceExcerpts,
   deriveAnswerTerms,
-  isInsurerGenerated,
+  defaultCheckMode,
   classifyItem,
   classifyAmendment,
+  type QuestionCheckMode,
 } from '../../services/reconciliation.js';
 import {
   extractPdfText,
@@ -461,17 +462,23 @@ export async function processReconcile(job: Job<{ runId: string }>) {
       return;
     }
 
-    // Per-question absence judgement comes from the confirmed profile where it
-    // has one, falling back to the measured default. The profile is the
-    // authority: it was reviewed by a human, this heuristic was not.
-    const profileFlags = new Map<string, boolean>();
+    // Per-question rulings come from the confirmed profile where it has them,
+    // falling back to the measured defaults. The profile is the authority: it
+    // was reviewed by a human, these heuristics were not.
+    //
+    // Both fields are read independently, because a profile stored before check
+    // modes existed carries absence_meaningful and no mode, and must keep the
+    // reviewed half of its ruling rather than losing both to the defaults.
+    const profileRulings = new Map<string, ProfileRuling>();
     for (const q of profile.questions ?? []) {
-      if (typeof q.absence_meaningful === 'boolean') {
-        profileFlags.set(normaliseKey(q.question), q.absence_meaningful);
-      }
+      profileRulings.set(normaliseKey(q.question), {
+        absenceMeaningful:
+          typeof q.absence_meaningful === 'boolean' ? q.absence_meaningful : undefined,
+        checkMode: q.check_mode,
+      });
     }
 
-    const { flagged } = await compareAndStore(run, parsed.pairs, profileFlags);
+    const { flagged } = await compareAndStore(run, parsed.pairs, profileRulings);
 
     await finish(runId, 'completed', null, {
       profileId: profile.id,
@@ -510,7 +517,7 @@ export async function processReconcile(job: Job<{ runId: string }>) {
 async function compareAndStore(
   run: RunRow,
   pairs: ParsedPair[],
-  profileFlags: Map<string, boolean>
+  profileRulings: Map<string, ProfileRuling>
 ): Promise<{ flagged: number }> {
   const calls = await query<TranscriptCall>(
     `SELECT c.id, c.call_date, c.created_at, c.agent_name, c.transcript_text
@@ -526,14 +533,27 @@ async function compareAndStore(
   // PHASE 1 — deterministic. Locate each question in the call and attribute the
   // hit to a specific call. No model involved.
   const located = pairs.map((pair) => {
+    const ruling = profileRulings.get(normaliseKey(pair.question));
+    const checkMode: QuestionCheckMode = ruling?.checkMode ?? defaultCheckMode(pair.question);
+
     // The question's own wording, plus the submitted answer's distinctive
     // values. The second is what makes a summary sheet checkable at all: its
     // "questions" are form labels nobody speaks, so searching for "Telephone"
     // or "DOB" finds nothing on a call where the customer gave both, while the
     // number and the year of birth are right there.
-    const questionTerms = deriveSearchTerms(pair.question, pair.guidance);
-    const terms = [...questionTerms, ...deriveAnswerTerms(pair.answer)];
-    const hits = findEvidence(terms, transcript);
+    //
+    // Not searched for at all outside 'reconcile' mode. comparePair ignores the
+    // result either way, but a masked account number yields terms like "38" that
+    // match somewhere in any long transcript, and an excerpt attached to an item
+    // is read by a human as the passage we checked. Better to hold none than one
+    // picked by coincidence.
+    const questionTerms =
+      checkMode === 'reconcile' ? deriveSearchTerms(pair.question, pair.guidance) : [];
+    const terms =
+      checkMode === 'reconcile'
+        ? [...questionTerms, ...deriveAnswerTerms(pair.answer)]
+        : [];
+    const hits = terms.length > 0 ? findEvidence(terms, transcript) : [];
     const offset = hits.length > 0 ? hits[0]!.index : null;
     const callNumber = offset == null ? null : callNumberAtOffset(segments, offset);
     return {
@@ -562,8 +582,8 @@ async function compareAndStore(
       // spoken in words — so letting the answer's terms vouch for their own
       // absence would turn every unmatched identity field into an accusation.
       // The answer terms exist to FIND evidence, never to condemn its absence.
-      absenceMeaningful:
-        profileFlags.get(normaliseKey(pair.question)) ?? absenceIsMeaningful(questionTerms),
+      absenceMeaningful: ruling?.absenceMeaningful ?? absenceIsMeaningful(questionTerms),
+      checkMode,
     };
   });
 
@@ -576,10 +596,11 @@ async function compareAndStore(
       l.excerpts.length > 0 &&
       l.pair.answer !== null &&
       l.pair.answer.trim() !== '' &&
-      // Nothing to extract for a reference issued after the call: comparePair
-      // resolves these without a model, so paying to read a passage about one
-      // buys nothing.
-      !isInsurerGenerated(l.pair.question)
+      // Only 'reconcile' questions have anything to extract. The others resolve
+      // from the document alone, so paying to read a passage about a sort code
+      // or a policy number buys nothing — and asking the model about a field
+      // that cannot be verified invites an answer to be invented for it.
+      l.checkMode === 'reconcile'
   );
   const extracted = new Map<string, ExtractedValue>();
   if (extractionTargets.length > 0) {
@@ -619,6 +640,28 @@ async function compareAndStore(
     const pair = l.pair;
     const item = comparePair(l, redacted, extracted.get(String(pair.order)) ?? null);
     if (item.actionable) flagged++;
+
+    // A withdrawn question has an answer but no SUBMITTED answer, and the
+    // difference is the whole point. Storing its value in application_answer
+    // would assert the insurer was told something it was not; dropping the value
+    // would lose the disclosure. So it moves to the revision trail, which is
+    // exactly what it is — an answer that was superseded, here by removal.
+    // Only where there is a value to move. A withdrawn question the portal
+    // never captured an answer for has nothing to preserve, and an empty
+    // revision would read on screen as an answer that was given and blanked.
+    const applicationAnswer = pair.withdrawn ? null : pair.answer;
+    const revisions =
+      pair.withdrawn && pair.answer && pair.answer.trim() !== ''
+        ? [
+            ...(pair.revisions ?? []),
+            {
+              value: pair.answer,
+              timestamp: pair.answeredAt ?? null,
+              recordedBy: pair.recordedBy ?? null,
+            },
+          ]
+        : (pair.revisions ?? []);
+
     await query(
       `INSERT INTO capture_reconciliation_items
          (run_id, sort_order, question, guidance, application_answer, call_answer,
@@ -631,7 +674,7 @@ async function compareAndStore(
         pair.order,
         pair.question,
         pair.guidance,
-        pair.answer,
+        applicationAnswer,
         item.callAnswer,
         item.callAnswerRedacted,
         item.outcome,
@@ -641,9 +684,9 @@ async function compareAndStore(
         item.confidence,
         pair.answeredAt ?? null,
         pair.recordedBy ?? null,
-        (pair.revisions?.length ?? 0) > 0,
+        revisions.length > 0,
         item.amendmentType,
-        JSON.stringify(pair.revisions ?? []),
+        JSON.stringify(revisions),
       ]
     );
   }
@@ -678,6 +721,16 @@ interface ComparedItem {
   actionable: boolean;
 }
 
+/**
+ * A confirmed profile's rulings for one question. Both optional and read
+ * independently: a profile stored before check modes existed carries a reviewed
+ * absence_meaningful and no mode, and must keep the half it has.
+ */
+interface ProfileRuling {
+  absenceMeaningful?: boolean;
+  checkMode?: QuestionCheckMode;
+}
+
 /** One application question, located in the call by the deterministic pass. */
 interface LocatedQuestion {
   pair: ParsedPair;
@@ -689,6 +742,8 @@ interface LocatedQuestion {
   callDate: Date | null;
   sourceCallId: string | null;
   absenceMeaningful: boolean;
+  /** How this field is checked — the profile's ruling, or the measured default. */
+  checkMode: QuestionCheckMode;
 }
 
 /**
@@ -706,26 +761,77 @@ function comparePair(
   redacted: boolean,
   extracted: ExtractedValue | null
 ): ComparedItem {
-  const { pair, terms, hits, absenceMeaningful } = located;
+  const { pair, terms, hits, absenceMeaningful, checkMode } = located;
   const found = hits.length > 0;
 
-  // A reference the insurer issued on submission cannot have been said on a
-  // call that happened before it existed. Reported honestly rather than
-  // compared: the item stays on the record — the value was still submitted, and
-  // a reviewer may want to see it — but it is never a finding, and it says why
-  // instead of leaving someone to wonder whether we simply failed to find it.
-  if (isInsurerGenerated(pair.question)) {
+  // Answered during the application, then dropped from it before submission.
+  //
+  // Not compared, because the insurer was never asked this and flagging an
+  // adviser over it would be an accusation about a question that is not on the
+  // form. Not discarded either: what it says is the detail behind a withdrawal.
+  // On the application that prompted this, two of these rows named the relative
+  // and the cancer behind a family-history answer that had been changed from
+  // "Any other cancer" to "No" — the strongest evidence on the sale, and it was
+  // on screen as two questions the insurer had recorded nothing for.
+  //
+  // Deliberately NOT actionable, and deliberately not stamped as an amendment.
+  // The portal drops a follow-up whenever its parent answer changes, so most of
+  // this section is mechanical fallout — "Are you waiting for an operation? No",
+  // "overall vision? Good or Perfect" — and flagging each one would manufacture
+  // findings out of the form working normally. The withdrawal is already
+  // reported once, on the parent question whose answer actually changed, which
+  // is the claim that can be defended. These rows are the supporting detail a
+  // reviewer reads after that flag brings them here.
+  if (pair.withdrawn) {
     return {
-      outcome: 'undetermined',
+      outcome: 'no_application_answer',
       callAnswer: null,
       callAnswerRedacted: false,
       evidence: null,
       reasoning:
-        'The insurer issues this on submission, so it did not exist during the call and cannot be checked against it.',
+        `Answered ${pair.answer ? `"${pair.answer}"` : 'during the application'}` +
+        `${pair.answeredAt ? ` at ${pair.answeredAt}` : ''}` +
+        `${pair.recordedBy ? ` by ${pair.recordedBy}` : ''}, then removed from the application ` +
+        'before it was submitted. Not compared against the call, because it is not part of what ' +
+        'the insurer received.',
       sourceCallId: null,
       confidence: null,
       amendmentType: null,
       actionable: false,
+    };
+  }
+
+  // Fields that cannot be checked against a recording resolve from the document
+  // alone. Nothing below this point runs for them: no evidence was gathered, so
+  // there is none to weigh, and every reason string here says which of the two
+  // it is rather than leaving a reader to wonder whether we simply failed to
+  // find something.
+  if (checkMode !== 'reconcile') {
+    const outcome = classifyItem({
+      applicationAnswer: pair.answer,
+      callAnswer: null,
+      callAnswerRedacted: false,
+      evidenceFound: false,
+      absenceMeaningful: false,
+      redactedTranscript: redacted,
+      checkMode,
+    });
+    return {
+      outcome,
+      callAnswer: null,
+      callAnswerRedacted: false,
+      evidence: null,
+      reasoning:
+        checkMode === 'none'
+          ? 'The insurer issues this on submission, so it did not exist during the call and cannot be checked against it.'
+          : outcome === 'missing_from_application'
+            ? 'This had to be completed on the application and was submitted blank.'
+            : 'Recorded on the application. Values like this are read back in fragments and are ' +
+              'masked by the insurer, so they are checked for completion rather than against the call.',
+      sourceCallId: null,
+      confidence: null,
+      amendmentType: null,
+      actionable: outcome === 'missing_from_application',
     };
   }
 

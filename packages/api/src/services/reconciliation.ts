@@ -16,7 +16,12 @@ export type ReconciliationOutcome =
   | 'not_asked'
   | 'asked_no_answer'
   | 'no_application_answer'
+  | 'recorded'
+  | 'missing_from_application'
   | 'undetermined';
+
+/** See QuestionCheckMode in @callguard/shared — kept in step with it. */
+export type QuestionCheckMode = 'reconcile' | 'presence' | 'none';
 
 /**
  * Words carrying no discriminating power when searching a sales call for whether
@@ -179,6 +184,56 @@ export function deriveSearchTerms(question: string, guidance?: string | null): s
 }
 
 /**
+ * Terms an adviser would have to SAY in order to put the question at all.
+ *
+ * A second, independent bar from surviving redaction, and conflating the two was
+ * a real bug. REDACTION_RESISTANT_STEMS answers "would the provider strip this
+ * word from the transcript?" — a fact about our own pipeline. This answers
+ * "would the adviser have used this word?" — a fact about how people talk. For
+ * `smoke` or `pint` both answers are yes and nothing distinguished them. For
+ * `occupation` the first is yes and the second is emphatically no: an adviser
+ * says "what do you do for work?", never "what is your occupation?". Reusing one
+ * list for both meant the insurer's field label "Occupation" was treated as
+ * proof, and six advisers were recorded as never having asked about employment
+ * on sales where they plainly had.
+ *
+ * The omissions are the content of this list, so they are stated:
+ *
+ *   occupation, employment, employed  — form labels. Nobody speaks them.
+ *   income, salary, earnings          — the adviser asks "what do you take
+ *                                       home", "what are you on". Too easily
+ *                                       absent from a call that covered it.
+ *   height                            — the question is "how tall are you?".
+ *   medication, prescription          — "are you on anything from the doctor?"
+ *   unit, units                       — means two unrelated things. Alcohol
+ *                                       units in a health question, and units
+ *                                       of cover on MetLife's "No. of Units".
+ *                                       Costs nothing to drop: the alcohol
+ *                                       question still carries `alcohol` and
+ *                                       `drink`, while "No. of Units" has no
+ *                                       other term and stops accusing.
+ *
+ * Erring toward omission is the safe direction: a term left out downgrades a
+ * would-be `not_asked` to `undetermined`, which under-reports. A term wrongly
+ * included produces an allegation against a named adviser. Add only what an
+ * adviser could not avoid saying.
+ */
+const SPOKEN_VERBATIM_STEMS = new Set(
+  [
+    'smoke', 'smoked', 'smoking', 'vape', 'vaped', 'cigarette', 'cigarettes',
+    'tobacco', 'nicotine',
+    'alcohol', 'drink', 'drinking', 'pint', 'wine', 'spirits',
+    'weight', 'stone', 'kilo', 'kilos',
+    'blood', 'pressure', 'cholesterol', 'heart',
+    'tablet', 'tablets', 'treatment',
+    'doctor', 'surgery', 'specialist', 'hospital', 'consultant',
+    'job', 'work',
+    'driving', 'drive', 'driver', 'travel', 'sport', 'sports',
+  ].map(stem)
+);
+SPOKEN_VERBATIM_STEMS.add('gp');
+
+/**
  * Whether absence of these terms from a transcript is meaningful — i.e. whether
  * "we found none of them" may be reported as "the question was not asked".
  *
@@ -196,7 +251,11 @@ export function deriveSearchTerms(question: string, guidance?: string | null): s
  */
 export function absenceIsMeaningful(terms: string[]): boolean {
   if (terms.some((t) => REDACTION_PRONE_STEMS.has(t))) return false;
-  return terms.some((t) => REDACTION_RESISTANT_STEMS.has(t));
+  // BOTH conditions, on the same term. A term that survives redaction but that
+  // an adviser would never utter proves nothing by its absence, and a term an
+  // adviser always utters proves nothing if redaction removes it. Only a term
+  // that clears both bars can carry the claim.
+  return terms.some((t) => REDACTION_RESISTANT_STEMS.has(t) && SPOKEN_VERBATIM_STEMS.has(t));
 }
 
 /**
@@ -217,6 +276,54 @@ const INSURER_GENERATED =
 
 export function isInsurerGenerated(question: string): boolean {
   return INSURER_GENERATED.test(question.trim());
+}
+
+/**
+ * The customer's bank account identifiers, which cannot be checked against a
+ * recording even in principle.
+ *
+ * Two independent reasons, either of which would be enough. The insurer masks
+ * what it stores — "XX-XX-38", "XXXXX-388" — so there is no value to compare;
+ * and the fragments that survive are short digit runs that match a transcript
+ * somewhere by coincidence, which is worse than not matching at all. A stray
+ * "38" gets located, the model is handed a passage about something else, it
+ * correctly reports no account number in it, and that becomes 'asked_no_answer'
+ * — an allegation about how the adviser ran the call, from a coincidence. One
+ * sale ranked worst in its tenant on eight such items, none of them real.
+ *
+ * Even unmasked it would not work: customers read digits back in pieces ("oh
+ * seven nine... oh seven..."), so absence of a contiguous match proves nothing.
+ *
+ * As narrow as INSURER_GENERATED, and for the same reason — this switches off a
+ * compliance check, so it must catch the identifiers and nothing adjacent to
+ * them. "Bank account held in payers name" and "Direct Debit allowed from
+ * account" both deliberately fall outside it: those are asked out loud ("the
+ * sort code and account number, is that in your name?") and are worth checking.
+ */
+const BANK_ACCOUNT_DETAIL =
+  /^\s*(bank\s+|building\s+society\s+)?(account|a\/c)\s*(number|no\.?|num)\s*:?\s*$|^\s*(account\s+|bank\s+)?sort\s*-?\s*code\s*:?\s*$|^\s*iban\s*:?\s*$|^\s*(building\s+society\s+)?roll\s*(number|no\.?)\s*:?\s*$/i;
+
+export function isBankAccountDetail(question: string): boolean {
+  return BANK_ACCOUNT_DETAIL.test(question.trim());
+}
+
+/**
+ * How a field should be checked, absent a human's ruling on the profile.
+ *
+ * A default is required rather than optional: three of one tenant's profiles
+ * went live by corroboration with nobody reviewing them, so a mode that only
+ * ever came from a person would never be set on the formats doing most of the
+ * work.
+ *
+ * Order matters only in that the two special cases are disjoint; anything not
+ * recognised is compared against the call, which is the behaviour every question
+ * had before modes existed. Widening a case here silently stops a check running,
+ * so both predicates stay anchored and narrow.
+ */
+export function defaultCheckMode(question: string): QuestionCheckMode {
+  if (isInsurerGenerated(question)) return 'none';
+  if (isBankAccountDetail(question)) return 'presence';
+  return 'reconcile';
 }
 
 /**
@@ -778,6 +885,12 @@ export interface ClassifyInput {
    * ago") can be read against the year the application records.
    */
   referenceDate?: Date | null;
+  /**
+   * How this field is checked. Defaults to 'reconcile' so every existing caller
+   * and every stored item keeps its meaning; the non-default modes short-circuit
+   * before any call evidence is consulted.
+   */
+  checkMode?: QuestionCheckMode;
 }
 
 /**
@@ -790,8 +903,31 @@ export interface ClassifyInput {
  * questions in the application, on every single sale.
  */
 export function classifyItem(input: ClassifyInput): ReconciliationOutcome {
+  const mode = input.checkMode ?? 'reconcile';
+  const answered =
+    input.applicationAnswer !== null && input.applicationAnswer.trim() !== '';
+
+  // A field that cannot be checked against a recording is checked for
+  // completion instead, and nothing below this point applies to it: no call
+  // evidence is consulted, so no absence of it can mean anything.
+  //
+  // Note this is the ONE place a blank is a finding. On a 'reconcile' question
+  // the same emptiness is 'no_application_answer' and benign, because a
+  // conditional follow-up that did not apply is legitimately blank. The mode is
+  // what separates "nobody needed to fill this in" from "somebody should have".
+  if (mode === 'presence') return answered ? 'recorded' : 'missing_from_application';
+
+  // Never compared, never a finding — the value did not exist during the call.
+  // Still reported rather than dropped: it was submitted, and a reviewer may
+  // want to see it. Blank stays 'no_application_answer' rather than becoming a
+  // finding, because nothing here is required of the adviser.
+  if (mode === 'none') return answered ? 'undetermined' : 'no_application_answer';
+
   // Nothing was submitted for this question, so there is nothing to verify.
-  if (input.applicationAnswer === null || input.applicationAnswer.trim() === '') {
+  // Re-tested against the field rather than reusing `answered`, because this is
+  // also what narrows applicationAnswer to non-null for the comparison below.
+  const applicationAnswer = input.applicationAnswer;
+  if (applicationAnswer === null || applicationAnswer.trim() === '') {
     return 'no_application_answer';
   }
 
@@ -837,7 +973,7 @@ export function classifyItem(input: ClassifyInput): ReconciliationOutcome {
   }
 
   const comparison = compareAnswers(
-    input.applicationAnswer,
+    applicationAnswer,
     input.callAnswer,
     input.referenceDate ?? null
   );
@@ -854,6 +990,10 @@ export const ACTIONABLE_OUTCOMES: ReconciliationOutcome[] = [
   'mismatch',
   'not_asked',
   'asked_no_answer',
+  // A field the form had to carry, submitted empty. The only one of these that
+  // is not a claim about the call — it is read off the document — but it still
+  // needs somebody to act.
+  'missing_from_application',
 ];
 
 export function isActionable(outcome: ReconciliationOutcome): boolean {

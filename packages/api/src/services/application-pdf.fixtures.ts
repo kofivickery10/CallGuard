@@ -340,11 +340,57 @@ A
 -- 2 of 9 --
 `;
 
+/**
+ * The trailing section of a real portal export (Patrick Dixon, 07/08/2026).
+ *
+ * Two things about it are load-bearing and neither is obvious:
+ *
+ *  1. The family-history answer was "Any other cancer" at 09:53 and "No" at
+ *     09:56 — a disclosure withdrawn three minutes after it was given.
+ *  2. The two questions under the trailing heading carry the detail behind that
+ *     withdrawal ("1" relative, "Father") — and their answer lines have NO
+ *     "(adviser name)" attribution, unlike every other answer in the document.
+ *
+ * That second detail is why this fixture exists. The learner proposes an answer
+ * pattern with the attribution mandatory, because on the body of the document it
+ * always is, and these two lines then fail to match and the answers vanish.
+ */
+export const PORTAL_WITHDRAWN_SECTION = `07/08/2026 09:53 - Any other cancer (Lewis Moore)
+07/08/2026 09:56 - No (Lewis Moore)
+Have your birth parents, brothers, or sisters had any of these before they were 65?	Q
+You don't need to tell us if your family member was 65 or older when they first had their condition
+Options - Heart attack, angina or stroke, Any other cancer, I don't know, No
+A
+07/08/2026 10:03 - None of the above (Lewis Moore)
+Does your job involve any of the following duties or working environments?	Q
+Options - Diving, Armed forces, Mining, tunnelling or quarrying, None of the above
+A
+Questions answered but no longer included in your application:
+07/08/2026 09:55 - 1
+How many of your relatives have suffered from another type of cancer?	Q
+A
+07/08/2026 09:55 - Father
+Relative 1: Which relative suffered from another type of cancer?	Q
+Options - Father, Mother, Brother, Sister
+A
+`;
+
 /** Profile config for the quote-portal export. */
 export const PORTAL_CONFIG = {
   questionMarker: 'Q',
   optionsPrefix: 'Options - ',
   stripPatterns: [String.raw`^\s*--\s*\d+ of \d+\s*--\s*$`],
+};
+
+/**
+ * The config as the LEARNER actually proposed it for this format, attribution
+ * mandatory. Copied verbatim from the stored profile rather than written by
+ * hand — the point of the tests using it is that this is what is really out
+ * there on live tenants.
+ */
+export const PORTAL_CONFIG_STRICT_ATTRIBUTION = {
+  ...PORTAL_CONFIG,
+  answerLinePattern: String.raw`^(\d{2}/\d{2}/\d{4} \d{2}:\d{2}) - (.+?) \(([^)]+)\)$`,
 };
 
 /** Profile config for the Royal London pack. */

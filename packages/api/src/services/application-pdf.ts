@@ -57,6 +57,17 @@ export interface ParseConfig {
   answerLinePattern?: string;
   /** question_marker strategy: prefix introducing the list of choices offered. */
   optionsPrefix?: string;
+  /**
+   * question_marker strategy: headings after which the questions were answered
+   * and then dropped from the application.
+   *
+   * The portal prints these in a trailing section. They are NOT part of what was
+   * submitted, so comparing them against the call would flag an adviser over a
+   * question the insurer was never asked — but they are not noise either: they
+   * are the detail behind a withdrawal, naming what was disclosed before it was
+   * taken back.
+   */
+  withdrawnSectionMarkers?: string[];
   /** label_value strategy: the labels to extract. */
   labels?: string[];
   /**
@@ -103,6 +114,14 @@ export interface ParsedPair {
    * when the adviser knew what.
    */
   revisions?: AnswerRevision[];
+  /**
+   * Answered during the application, then removed from it before submission.
+   *
+   * `answer` still carries what was said — that is the whole value of the row —
+   * but it is not part of the submitted application and must never be compared
+   * against the call. See ParseConfig.withdrawnSectionMarkers.
+   */
+  withdrawn?: boolean;
 }
 
 export interface ParsedApplication {
@@ -519,10 +538,21 @@ function mergeBareMarkers(
       if (answerStartRe.test(prev)) break;
       // Options and guidance belong to the record, not to the question wording.
       if (prev.startsWith('Options - ')) break;
+      // A line ending in '?' terminates the walk only once we already have
+      // text, where it can only be the PREVIOUS record's closing line.
+      //
+      // This used to fire on the first line pulled, and that inverted it. A
+      // wrapped question's last line is precisely the one that ends in '?', so
+      // the walk stopped immediately and kept only that fragment: "Have you
+      // lived, worked or travelled outside of the UK or European Union in the
+      // last 2 years, or do you have any plans to do so in the next year?"
+      // was stored as "any plans to do so in the next year?". The opening lines
+      // were also left behind in the output, which blocked the backwards walk
+      // for the answer — so the question lost its wording AND its answer, and
+      // read as one the insurer had recorded nothing for.
+      if (parts.length > 0 && prev.endsWith('?')) break;
       parts.unshift(prev);
       out.pop();
-      // A complete sentence needs nothing before it.
-      if (parts[0]!.endsWith('?')) break;
     }
     if (parts.length === 0) {
       out.push(raw);
@@ -533,12 +563,62 @@ function mergeBareMarkers(
   return out;
 }
 
+/** Timestamp, value, and an OPTIONAL "(who recorded it)". */
+const DEFAULT_ANSWER_LINE = String.raw`^(\d{2}\/\d{2}\/\d{4} \d{2}:\d{2}) - (.*?)(?: \(([^()]*)\))?$`;
+
+/**
+ * The heading the quote portal prints above questions it has dropped.
+ *
+ * Kept as a prefix rather than the full sentence so the trailing colon, and a
+ * line the extractor wrapped, both still match.
+ */
+const DEFAULT_WITHDRAWN_MARKERS = ['Questions answered but no longer included'];
+
+/**
+ * Make a stored answer pattern tolerant of a missing "(adviser name)".
+ *
+ * The learner proposes this pattern from one document, and on every document it
+ * has seen the attribution is present — so it proposes it as MANDATORY. The
+ * portal drops it in exactly one place: the trailing "Questions answered but no
+ * longer included in your application" section, where the entries read
+ *
+ *     07/08/2026 09:55 - 1
+ *     07/08/2026 09:55 - Father
+ *
+ * with no name after them. Under a mandatory attribution those lines do not
+ * match, the walk-back finds no answers, and the question is recorded as one the
+ * application left blank.
+ *
+ * That is the worst possible place to lose an answer. Those two entries are the
+ * follow-ups to a family-history cancer question that was answered "Any other
+ * cancer" and then changed to "No" — they name the relative and they are the
+ * corroboration for the withdrawal. On Patrick Dixon's application both came
+ * through as 'no_application_answer', i.e. as though the insurer had been told
+ * nothing, when the document says a father had cancer.
+ *
+ * Repaired here rather than in the profiles, so it applies to every format
+ * already stored without a migration that would have to re-derive regexes it
+ * cannot verify. Only the trailing attribution group is loosened; the rest of
+ * the pattern — which is what identifies an answer line at all — is untouched.
+ */
+export function relaxAttribution(pattern: string | undefined): string | undefined {
+  if (!pattern) return undefined;
+  // Already optional — a pattern whose final group closes with ")?$" needs
+  // nothing, and rewriting it again would nest the optionality.
+  if (/\)\?\$$/.test(pattern)) return pattern;
+  // A mandatory trailing attribution: a literal " (", the group that captures
+  // the name, then a literal ")" at the end. Rewritten to the optional
+  // non-capturing form the default uses, keeping the group's own contents so a
+  // format with a stricter idea of what a name looks like keeps it. The leading
+  // space is consumed and re-emitted INSIDE the optional group — left outside it
+  // would still demand a trailing space on an unattributed line.
+  return pattern.replace(/ \\\((.+)\\\)\$$/, String.raw`(?: \($1\))?$`);
+}
+
 export function parseQuestionMarker(text: string, config: ParseConfig): ParsedPair[] {
   const marker = config.questionMarker;
   if (!marker) return [];
-  const answerRe = new RegExp(
-    config.answerLinePattern ?? String.raw`^(\d{2}\/\d{2}\/\d{4} \d{2}:\d{2}) - (.*?)(?: \(([^()]*)\))?$`
-  );
+  const answerRe = new RegExp(relaxAttribution(config.answerLinePattern) ?? DEFAULT_ANSWER_LINE);
   const optionsPrefix = config.optionsPrefix ?? 'Options - ';
   const answerStartRe = /^\d{2}\/\d{2}\/\d{4} \d{2}:\d{2} - /;
   const attributionRe = /\([^()]+\)\s*$/;
@@ -558,8 +638,23 @@ export function parseQuestionMarker(text: string, config: ParseConfig): ParsedPa
   // having been normalised to spaces by a different extractor build.
   const questionLineRe = new RegExp(String.raw`^(.*?)[\t ]+${escapeRegex(marker)}$`);
 
+  // Everything after this heading was answered and then dropped from the
+  // application. Matched loosely on the leading words, because the portal
+  // prints it with a trailing colon and extraction sometimes wraps it.
+  const withdrawnMarkers = (config.withdrawnSectionMarkers ?? DEFAULT_WITHDRAWN_MARKERS).map((m) =>
+    m.toLowerCase()
+  );
+  let withdrawnFrom = Number.POSITIVE_INFINITY;
+
   const pairs: ParsedPair[] = [];
   for (let i = 0; i < lines.length; i++) {
+    if (i < withdrawnFrom) {
+      const probe = lines[i]!.trim().toLowerCase();
+      if (probe !== '' && withdrawnMarkers.some((m) => probe.startsWith(m))) {
+        withdrawnFrom = i;
+        continue;
+      }
+    }
     const qm = questionLineRe.exec(lines[i]!);
     if (!qm) continue;
     const question = (qm[1] ?? '').replace(/\s+/g, ' ').trim();
@@ -607,6 +702,7 @@ export function parseQuestionMarker(text: string, config: ParseConfig): ParsedPa
       recordedBy: current?.recordedBy ?? null,
       // Everything before the last is a superseded answer.
       revisions: answers.slice(0, -1),
+      ...(i > withdrawnFrom ? { withdrawn: true } : {}),
     });
   }
 

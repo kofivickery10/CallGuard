@@ -21,6 +21,7 @@ import {
 } from './document-profile-learner.js';
 import { recordUsage } from './usage.js';
 import { attemptJobId } from './reconciliation-sweep.js';
+import type { QuestionCheckMode } from './reconciliation.js';
 
 // ============================================================
 // Reconciliation run orchestration: which document, which profile, and starting
@@ -40,7 +41,12 @@ export interface DocumentProfileRow {
   detect_patterns: string[];
   parse_config: ParseConfig;
   question_fingerprint: string;
-  questions: Array<{ question: string; absence_meaningful?: boolean }>;
+  questions: Array<{
+    question: string;
+    absence_meaningful?: boolean;
+    /** Absent on profiles stored before check modes existed; defaulted at read. */
+    check_mode?: QuestionCheckMode;
+  }>;
   version: number;
   status: 'needs_confirmation' | 'active' | 'superseded';
   /** Migration 090. True for a form that asks conditional follow-ups. */

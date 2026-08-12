@@ -11,6 +11,7 @@ import {
   parseLooksHealthy,
   formatSignature,
   expectedRecordCount,
+  relaxAttribution,
 } from './application-pdf.js';
 import {
   ROYAL_LONDON_PACK,
@@ -19,6 +20,8 @@ import {
   METLIFE_CONFIG,
   PORTAL_EXPORT,
   PORTAL_CONFIG,
+  PORTAL_WITHDRAWN_SECTION,
+  PORTAL_CONFIG_STRICT_ATTRIBUTION,
 } from './application-pdf.fixtures.js';
 
 describe('question_answer strategy (Royal London pack)', () => {
@@ -766,5 +769,130 @@ describe('expectedRecordCount — an expectation the parser cannot fake', () => 
     // absent rather than lost. Asserting a count there would invent failures.
     expect(expectedRecordCount('anything', 'label_value', { labels: ['Name'] })).toBeNull();
     expect(expectedRecordCount('anything', 'question_marker', {})).toBeNull();
+  });
+});
+
+describe('relaxAttribution — an answer line whose adviser name is missing', () => {
+  const STRICT = String.raw`^(\d{2}/\d{2}/\d{4} \d{2}:\d{2}) - (.+?) \(([^)]+)\)$`;
+
+  it('makes a mandatory trailing attribution optional', () => {
+    const re = new RegExp(relaxAttribution(STRICT)!);
+    // Still reads an attributed answer exactly as before, name included.
+    expect(re.exec('07/08/2026 09:56 - No (Lewis Moore)')?.slice(1, 4)).toEqual([
+      '07/08/2026 09:56', 'No', 'Lewis Moore',
+    ]);
+    // And now reads one without a name, instead of dropping the answer.
+    expect(re.exec('07/08/2026 09:55 - Father')?.slice(1, 4)).toEqual([
+      '07/08/2026 09:55', 'Father', undefined,
+    ]);
+  });
+
+  it('does not turn a non-answer into one', () => {
+    // The relaxation is confined to the trailing name. What identifies an
+    // answer line at all — the timestamp and the " - " — must still be required,
+    // or every line of guidance in the document becomes an answer.
+    const re = new RegExp(relaxAttribution(STRICT)!);
+    expect(re.test('You don’t need to tell us about business trips')).toBe(false);
+    expect(re.test('Options - Father, Mother, Brother, Sister')).toBe(false);
+    expect(re.test('Relative 1: Which relative suffered from another type of cancer?')).toBe(false);
+  });
+
+  it('leaves an already-optional pattern alone rather than nesting it', () => {
+    const optional = String.raw`^(\d{2}/\d{2}/\d{4} \d{2}:\d{2}) - (.*?)(?: \(([^()]*)\))?$`;
+    expect(relaxAttribution(optional)).toBe(optional);
+  });
+
+  it('passes through a pattern with no trailing attribution at all', () => {
+    const plain = String.raw`^(\d{2}/\d{2}/\d{4}) - (.+)$`;
+    expect(relaxAttribution(plain)).toBe(plain);
+    expect(relaxAttribution(undefined)).toBeUndefined();
+  });
+});
+
+describe('question_marker: questions dropped from the application', () => {
+  // Parsed with the config the learner really proposed — attribution mandatory —
+  // because that is the combination that lost the answers on live data.
+  const parsed = parseApplication(
+    PORTAL_WITHDRAWN_SECTION,
+    'question_marker',
+    PORTAL_CONFIG_STRICT_ATTRIBUTION
+  );
+  const byQuestion = (needle: string) =>
+    parsed.pairs.find((p) => p.question.includes(needle));
+
+  it('reads the answers under the trailing heading, attribution or not', () => {
+    // The regression this whole fixture exists for: both came through as
+    // unanswered, so a father's cancer read as "the insurer was told nothing".
+    expect(byQuestion('How many of your relatives')?.answer).toBe('1');
+    expect(byQuestion('Which relative suffered')?.answer).toBe('Father');
+  });
+
+  it('marks them as withdrawn, and does not mark the live questions', () => {
+    expect(byQuestion('How many of your relatives')?.withdrawn).toBe(true);
+    expect(byQuestion('Which relative suffered')?.withdrawn).toBe(true);
+    expect(byQuestion('birth parents')?.withdrawn).toBeUndefined();
+    expect(byQuestion('duties or working environments')?.withdrawn).toBeUndefined();
+  });
+
+  it('still records the withdrawal on the question that was changed', () => {
+    // The heading is not the only evidence of a withdrawal, and must not
+    // displace the ordinary revision trail on a live question.
+    const family = byQuestion('birth parents');
+    expect(family?.answer).toBe('No');
+    expect(family?.revisions).toEqual([
+      { value: 'Any other cancer', timestamp: '07/08/2026 09:53', recordedBy: 'Lewis Moore' },
+    ]);
+  });
+
+  it('does not treat the heading itself as a question', () => {
+    expect(parsed.pairs.some((p) => /no longer included/i.test(p.question))).toBe(false);
+    expect(parsed.pairs).toHaveLength(4);
+  });
+});
+
+describe('question_marker: a question that wrapped before its marker', () => {
+  // Verbatim shape from Patrick Dixon p6. The marker is stranded on its own
+  // line under two lines of question text.
+  const WRAPPED = `07/08/2026 10:02 - No (Lewis Moore)
+Have you lived, worked or travelled outside of the UK or European Union in the last 2 years, or do you have
+any plans to do so in the next year?
+Q
+You don't need to tell us about business trips of less than a week
+A
+07/08/2026 10:00 - Yes (Lewis Moore)
+Have you ever had an operation or surgery for your cataract?	Q
+A
+`;
+  const pairs = parseApplication(WRAPPED, 'question_marker', PORTAL_CONFIG).pairs;
+
+  it('rejoins the whole question, not just its closing line', () => {
+    expect(pairs[0]?.question).toBe(
+      'Have you lived, worked or travelled outside of the UK or European Union in the last 2 years, ' +
+        'or do you have any plans to do so in the next year?'
+    );
+  });
+
+  it('keeps the answer, which the truncation also cost', () => {
+    // The lines left behind by the early stop sat between the question and its
+    // answer and blocked the backwards walk, so the question read as one the
+    // insurer had recorded nothing for.
+    expect(pairs[0]?.answer).toBe('No');
+  });
+
+  it('does not swallow the record above it', () => {
+    expect(pairs).toHaveLength(2);
+    expect(pairs[1]?.question).toBe('Have you ever had an operation or surgery for your cataract?');
+    expect(pairs[1]?.answer).toBe('Yes');
+    expect(pairs[0]?.question).not.toContain('cataract');
+  });
+
+  it('leaves a single-line question exactly as it was', () => {
+    const single = parseApplication(
+      '29/07/2026 11:58 - 1.57m or 5 feet 2 inches (A Adviser)\nHow tall are you?\tQ\nA\n',
+      'question_marker',
+      PORTAL_CONFIG
+    ).pairs;
+    expect(single[0]?.question).toBe('How tall are you?');
+    expect(single[0]?.answer).toBe('1.57m or 5 feet 2 inches');
   });
 });

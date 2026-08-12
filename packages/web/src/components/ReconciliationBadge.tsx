@@ -12,6 +12,11 @@ const OUTCOME_STYLES: Record<ReconciliationOutcome, { label: string; className: 
   not_asked: { label: 'Not asked', className: 'bg-fail-bg text-fail' },
   asked_no_answer: { label: 'No answer given', className: 'bg-review-bg text-review' },
   no_application_answer: { label: 'Not on application', className: 'bg-table-header text-text-muted' },
+  // Presence-mode fields. 'recorded' reads as neutral rather than a pass on
+  // purpose: it says the form carries a value, and claims nothing at all about
+  // the call, so it must not wear the same green as a verified match.
+  recorded: { label: 'On application', className: 'bg-table-header text-text-muted' },
+  missing_from_application: { label: 'Left blank', className: 'bg-fail-bg text-fail' },
   undetermined: { label: 'Could not verify', className: 'bg-table-header text-text-muted' },
 };
 

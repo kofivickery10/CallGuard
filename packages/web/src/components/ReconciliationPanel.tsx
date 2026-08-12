@@ -3,7 +3,11 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
 import { ReconciliationBadge, AmendmentBadge } from './ReconciliationBadge';
-import type { ReconciliationRun, ReconciliationItem } from '@callguard/shared';
+import {
+  ACTIONABLE_RECONCILIATION_OUTCOMES,
+  type ReconciliationRun,
+  type ReconciliationItem,
+} from '@callguard/shared';
 
 interface ReconciliationRecord {
   run: ReconciliationRun | null;
@@ -351,14 +355,14 @@ export function ReconciliationPanel({
   const noAnswer = items.filter((i) => i.outcome === 'asked_no_answer').length;
   const undetermined = items.filter((i) => i.outcome === 'undetermined').length;
   const withdrawn = items.filter((i) => i.amendment_type === 'disclosure_withdrawn').length;
+  const leftBlank = items.filter((i) => i.outcome === 'missing_from_application').length;
 
   // Attention first — a supervisor should not have to scroll 50 rows to find the
-  // three that matter.
+  // three that matter. Taken from the shared constant rather than re-listed, so
+  // an outcome added there cannot go quietly missing from this queue.
   const flagged = items.filter(
     (i) =>
-      i.outcome === 'mismatch' ||
-      i.outcome === 'not_asked' ||
-      i.outcome === 'asked_no_answer' ||
+      ACTIONABLE_RECONCILIATION_OUTCOMES.includes(i.outcome) ||
       i.amendment_type === 'disclosure_withdrawn'
   );
   const rest = items.filter((i) => !flagged.includes(i));
@@ -383,6 +387,9 @@ export function ReconciliationPanel({
           {notAsked} not asked
         </span>
         {noAnswer > 0 && <span className="text-review font-semibold">{noAnswer} no answer given</span>}
+        {leftBlank > 0 && (
+          <span className="text-fail font-semibold">{leftBlank} left blank on the form</span>
+        )}
         {withdrawn > 0 && (
           <span className="text-fail font-semibold">{withdrawn} disclosure withdrawn</span>
         )}
