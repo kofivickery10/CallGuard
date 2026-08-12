@@ -23,7 +23,11 @@ import {
   classifyItem,
   classifyAmendment,
 } from '../../services/reconciliation.js';
-import { extractPdfText, fingerprintQuestions } from '../../services/application-pdf.js';
+import {
+  extractPdfText,
+  fingerprintQuestions,
+  describeUnusableAttachments,
+} from '../../services/application-pdf.js';
 import type { ParsedPair } from '../../services/application-pdf.js';
 import {
   extractApplicationPairs,
@@ -429,7 +433,9 @@ export async function processReconcile(job: Job<{ runId: string }>) {
                 : `None of the ${resolution.candidates.length} attached document(s) match a known application format for this tenant.`
               : failure === 'not_configured'
                 ? 'The CRM connection is not configured for attachment reads.'
-                : 'No application document has been attached to the sale yet.';
+                : failure === 'no_usable_attachment'
+                  ? describeUnusableAttachments(resolution.candidates)
+                  : 'No application document has been attached to the sale yet.';
         await finish(runId, status, message, {
           profileId: failure === 'drifted' ? resolution.drift?.profile.id ?? null : null,
         });

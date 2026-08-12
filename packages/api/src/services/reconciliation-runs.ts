@@ -143,6 +143,8 @@ async function corroborate(
 export type ResolutionFailure =
   | 'not_configured'
   | 'no_attachments'
+  /** Documents ARE attached; the ranking rejected every one. See below. */
+  | 'no_usable_attachment'
   | 'no_profile_match'
   | 'drifted';
 
@@ -205,9 +207,12 @@ export async function resolveApplicationDocument(
   const profiles = await getActiveProfiles(organizationId);
   const candidates = rankAttachmentCandidates(attachments);
   if (candidates.length === 0) {
+    // Attachments exist, the ranking dropped all of them — a link rather than
+    // an upload, or a photograph of the form. Telling the firm nothing is
+    // attached sends them to look at a record where they can plainly see one.
     return {
       document: null,
-      failure: 'no_attachments',
+      failure: 'no_usable_attachment',
       candidates: attachments,
       profilesAvailable: profiles.length,
     };
@@ -740,6 +745,7 @@ export function statusForFailure(failure: ResolutionFailure): string {
       // when what it actually needs is a person, once.
       return 'needs_profile';
     case 'no_attachments':
+    case 'no_usable_attachment':
     case 'not_configured':
     default:
       // Genuinely waiting: the pack is attached by hand after the call, so a
