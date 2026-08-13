@@ -1076,3 +1076,30 @@ describe('an elapsed time spoken with a fraction', () => {
     expect(compare('2020', '6 yrs back')).toBe('match');
   });
 });
+
+describe('a large figure the customer rounded when they said it', () => {
+  it('does not accuse over £250 on an income the customer approximated', () => {
+    // Live false accusation, at 0.95 confidence. The customer said "About
+    // £48,000, I believe it is"; the adviser wrote what the payslip said.
+    expect(compareAnswers('48250', '£48,000')).toBe('match');
+  });
+
+  it('still catches a figure that is genuinely different', () => {
+    expect(compareAnswers('50000', '£45,000')).toBe('mismatch');
+    expect(compareAnswers('100000', '£150,000')).toBe('mismatch');
+  });
+
+  it('leaves small numbers strict, which is where mis-keying shows up', () => {
+    // The rule exists to catch 50 cigarettes keyed as 5, and a premium of £22
+    // recorded against £36 spoken. A percentage of a small number would decide
+    // neither.
+    expect(compareAnswers('5', '50')).toBe('mismatch');
+    expect(compareAnswers('22', '36')).toBe('mismatch');
+    expect(compareAnswers('2', '3')).toBe('mismatch');
+  });
+
+  it('holds the line just outside the tolerance', () => {
+    expect(compareAnswers('100000', '101000')).toBe('match');
+    expect(compareAnswers('100000', '102000')).toBe('mismatch');
+  });
+});

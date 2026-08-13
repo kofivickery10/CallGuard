@@ -656,6 +656,42 @@ function isYear(n: number): boolean {
 }
 
 /**
+ * The smallest sum at which people start rounding when they speak. Below it a
+ * difference is a different number, not the same number said loosely: 22 against
+ * 36 is a real disagreement about a premium, and 5 cigarettes against 50 is the
+ * mis-keying the numeric rule exists to catch.
+ */
+const ROUNDING_FLOOR = 1000;
+
+/** How far apart two large figures may be and still be the same figure. */
+const ROUNDING_TOLERANCE = 0.01;
+
+/**
+ * Is one of these the other, rounded — the way a person says a large number?
+ *
+ * A customer asked their income says "about £48,000". The adviser writes down
+ * what the payslip says: 48250. Compared as bare numbers those disagree, and the
+ * module reported a mismatch at 0.95 confidence — an adviser accused of
+ * recording an income the customer never gave, over £250 on a figure the
+ * customer explicitly approximated.
+ *
+ * Deliberately relative and deliberately tight. The numeric rule exists to catch
+ * mis-keying — a digit dropped, a figure transposed — and every one of those is
+ * an order-of-magnitude error, not a 0.5% one. One percent is far below the
+ * smallest mis-keying that can occur and far above the rounding people do out
+ * loud, so it separates the two cleanly rather than trading one off against the
+ * other.
+ *
+ * The floor matters as much as the tolerance: without it, a percentage of a
+ * small number is a fraction of a unit and this would decide nothing, while
+ * "2 pints" against "3 pints" must stay a disagreement.
+ */
+function isRounded(a: number, b: number): boolean {
+  if (a < ROUNDING_FLOOR || b < ROUNDING_FLOOR) return false;
+  return Math.abs(a - b) / Math.max(a, b) <= ROUNDING_TOLERANCE;
+}
+
+/**
  * A year and a count of years are the same fact in different units, and
  * comparing them as bare numbers is how "2019" and "7 years ago" became a
  * mismatch on a real sale — in 2026, when they agree exactly.
@@ -888,6 +924,7 @@ export function compareAnswers(
     // against a number of episodes. Declaring those a mismatch accuses an
     // adviser on the strength of a unit confusion that is ours, not theirs.
     if (isYear(appNums[0]!) !== isYear(callNums[0]!)) return 'unclear';
+    if (isRounded(appNums[0]!, callNums[0]!)) return 'match';
     return 'mismatch';
   }
   // A number on one side and none on the other tells us nothing on its own.

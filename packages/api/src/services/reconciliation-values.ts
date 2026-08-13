@@ -204,6 +204,18 @@ Rules:
    shared word (both mention "GP", both say "yeah") stand in for the passage
    actually addressing the question.
 
+   Hardest of all: two facts that are RELATED BUT NOT THE SAME, where one is
+   chosen because of the other. The date a customer is PAID is not the date
+   their premium is COLLECTED — the adviser hears "I get paid on the 5th" and
+   deliberately sets collection a few days later, so a form saying the 8th is
+   the adviser doing their job, not contradicting the customer. The same trap:
+   the cover a customer ASKED about against the cover they TOOK, the premium
+   QUOTED against the premium AGREED, the job they used to do against the job
+   they do now. These feel like answers because the passage really is about the
+   right subject. Ask whether the customer stated THE fact the question asks
+   for. If they stated something the answer was merely derived from, return
+   null — you have found the reason for the answer, not the answer.
+
 8. customer_did_not_answer is a separate judgement from value, and a heavier
    one: it says the adviser recorded an answer the customer never gave, which
    goes in front of a compliance reviewer. Set it true only when you can read
