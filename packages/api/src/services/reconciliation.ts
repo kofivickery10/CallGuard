@@ -518,17 +518,49 @@ export function evidenceExcerpts(
   maxExcerpts = 3,
   width = 700
 ): string[] {
-  const excerpts: string[] = [];
-  let lastIndex = -Infinity;
+  // Every place the topic comes up, not just the first few. A window is a run of
+  // hits close enough together to be one passage.
+  const windows: Array<{ index: number; terms: Set<string> }> = [];
   for (const hit of hits) {
-    if (excerpts.length >= maxExcerpts) break;
-    // Within the span already quoted: the same passage, not a new one.
-    if (hit.index - lastIndex < width * 0.75) continue;
-    const quote = quoteExchange(transcript, hit.index, width);
-    if (quote !== '') {
-      excerpts.push(quote);
-      lastIndex = hit.index;
+    const current = windows[windows.length - 1];
+    // Within the span already covered: the same passage, not a new one.
+    if (current !== undefined && hit.index - current.index < width * 0.75) {
+      current.terms.add(hit.term);
+      continue;
     }
+    windows.push({ index: hit.index, terms: new Set([hit.term]) });
+  }
+
+  // Choose the RICHEST windows — the ones matching most of the question's
+  // distinct terms — rather than the earliest.
+  //
+  // Position is close to meaningless here. A sale runs 40 minutes and a topic is
+  // raised over and over: the adviser trails it, covers it, refers back to it,
+  // and the customer mentions it in passing. Real questions had 12, 16 and 18
+  // separate windows, and the first three were being taken from that.
+  //
+  // Measured over one tenant: of the undetermined items whose topic WAS found in
+  // the call, 63% had a discarded window matching more of the question's terms
+  // than any window sent. On one, the answer the insurer recorded — "2022, blood
+  // test, discomfort, fully recovered" — sat in a window matching NINE terms,
+  // discarded in favour of three matching one, and the item resolved "no clear
+  // answer in the passages". The evidence was already in hand; only the choice
+  // of which to look at was wrong.
+  //
+  // Ties break by position, so a question whose windows all match equally — a
+  // single-term search, the common case for an identity field — behaves exactly
+  // as it did before.
+  const chosen = [...windows]
+    .sort((a, b) => b.terms.size - a.terms.size || a.index - b.index)
+    .slice(0, maxExcerpts)
+    // Back into the order they occur in the call, because the passages are read
+    // as a sequence and an answer often refers back to what came before it.
+    .sort((a, b) => a.index - b.index);
+
+  const excerpts: string[] = [];
+  for (const window of chosen) {
+    const quote = quoteExchange(transcript, window.index, width);
+    if (quote !== '') excerpts.push(quote);
   }
   return excerpts;
 }

@@ -992,3 +992,51 @@ describe('deriveChoiceTerms — the substance of a list-selection question', () 
     expect(absenceIsMeaningful(deriveSearchTerms('Have you ever:'))).toBe(false);
   });
 });
+
+describe('evidenceExcerpts — which passages get looked at', () => {
+  // A topic raised four times across a long call. Only the third mention holds
+  // the exchange; the others are the adviser trailing it and referring back.
+  const build = () => {
+    const filler = (n: number) => ` ${'and so on. '.repeat(n)}`;
+    const parts = [
+      'Agent: We will come to your bowels in a moment.',
+      filler(70),
+      'Agent: Right, bowels again, nearly there.',
+      filler(70),
+      'Agent: When did you first suffer from this bowel condition, and what tests and treatment did you have? Customer: 2022, a blood test, and I am fully recovered.',
+      filler(70),
+      'Agent: That is your bowels done.',
+    ];
+    return parts.join('');
+  };
+
+  it('prefers the passage matching most of the question, not the earliest', () => {
+    const transcript = build();
+    const terms = ['bowel', 'suffer', 'test', 'treatment', 'recover'];
+    const excerpts = evidenceExcerpts(transcript, findEvidence(terms, transcript), 2);
+    expect(excerpts.join(' ')).toContain('blood test');
+    expect(excerpts.join(' ')).toContain('fully recovered');
+  });
+
+  it('returns the chosen passages in the order the call had them', () => {
+    const transcript = build();
+    const terms = ['bowel', 'suffer', 'test', 'treatment', 'recover'];
+    const excerpts = evidenceExcerpts(transcript, findEvidence(terms, transcript), 3);
+    const positions = excerpts.map((e) => transcript.indexOf(e.slice(0, 30)));
+    expect(positions).toEqual([...positions].sort((a, b) => a - b));
+  });
+
+  it('is unchanged where every passage matches the search equally', () => {
+    // A single-term search — an identity field, the common case — has nothing to
+    // rank on, so the earliest passages win exactly as they always did.
+    const transcript = `first mention of smoking.${' filler. '.repeat(90)}second smoking.${' filler. '.repeat(90)}third smoking.`;
+    const excerpts = evidenceExcerpts(transcript, findEvidence(['smok'], transcript), 2);
+    expect(excerpts[0]).toContain('first mention');
+    expect(excerpts[1]).toContain('second');
+  });
+
+  it('never returns more than it was asked for', () => {
+    const transcript = `smoking.${' filler. '.repeat(90)}smoking.${' filler. '.repeat(90)}smoking.${' filler. '.repeat(90)}smoking.`;
+    expect(evidenceExcerpts(transcript, findEvidence(['smok'], transcript), 3)).toHaveLength(3);
+  });
+});
