@@ -648,7 +648,7 @@ function numbersIn(value: string): number[] {
  * application, filled in from the same conversation, records the year. Both are
  * the same fact in different units.
  */
-const RELATIVE_YEARS = /(\d+)\s*(?:years?|yrs?)\s*(?:ago|back)/;
+const RELATIVE_YEARS = /(\d+(?:\.\d+)?)\s*(?:years?|yrs?)\s*(?:ago|back)/;
 
 /** A four-digit year, as distinct from a count of anything. */
 function isYear(n: number): boolean {
@@ -677,7 +677,13 @@ function compareYearToElapsed(
     [call, app],
   ];
   for (const [otherSide, elapsedSide] of pairs) {
-    const elapsed = RELATIVE_YEARS.exec(normaliseAnswer(elapsedSide));
+    // Fractions folded first, in both notations people use aloud. Without this
+    // the leading digits of "3.5 years ago" are skipped and the FIVE is taken as
+    // the whole figure: on a real sale that read as 2021 against a form saying
+    // 2023 and was reported as the adviser recording a year the customer never
+    // gave. It is the same fault as "16 and a half stone", in a different unit —
+    // a half the pattern could not see, turned into an accusation.
+    const elapsed = RELATIVE_YEARS.exec(foldSpokenFractions(normaliseAnswer(elapsedSide)));
     if (!elapsed) continue;
     const nums = numbersIn(otherSide);
     if (nums.length !== 1) continue;

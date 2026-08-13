@@ -1040,3 +1040,39 @@ describe('evidenceExcerpts — which passages get looked at', () => {
     expect(evidenceExcerpts(transcript, findEvidence(['smok'], transcript), 3)).toHaveLength(3);
   });
 });
+
+describe('an elapsed time spoken with a fraction', () => {
+  const REF = new Date('2026-08-13T00:00:00Z');
+  const compare = (app: string, call: string) => compareAnswers(app, call, REF);
+
+  it('reads "3.5 years ago" as three and a half, not five', () => {
+    // Live false accusation. The pattern required whole digits immediately
+    // before "years", so it skipped the "3." and captured the 5 — resolving to
+    // 2021 against a form recording 2023, and reporting the adviser as having
+    // written down a year the customer never gave. The customer said 3.5 years
+    // ago and the agent said "About 2023" back to them in the same breath.
+    expect(compare('2023', '3.5 years ago')).toBe('match');
+  });
+
+  it('reads the same figure written with the half spelled out', () => {
+    expect(compare('2023', '3 and a half years ago')).toBe('match');
+  });
+
+  it('declines rather than accuses where the number itself is a word', () => {
+    // "three and a half" is not folded — the helper works on digits, and the
+    // transcripts write numerals. Worth pinning that the result is 'unclear'
+    // and not 'mismatch': unresolved is a gap, an accusation is a harm.
+    expect(compare('2023', 'three and a half years ago')).toBe('unclear');
+  });
+
+  it('still disagrees where the years genuinely differ', () => {
+    // The other side of it: loosening this must not stop the check working.
+    expect(compare('2019', '3.5 years ago')).toBe('mismatch');
+    expect(compare('2023', '7 years ago')).toBe('mismatch');
+  });
+
+  it('still matches a whole number of years', () => {
+    expect(compare('2019', '7 years ago')).toBe('match');
+    expect(compare('2020', '6 yrs back')).toBe('match');
+  });
+});
