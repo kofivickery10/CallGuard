@@ -16,7 +16,12 @@ export type ReconciliationOutcome =
   | 'not_asked'
   | 'asked_no_answer'
   | 'no_application_answer'
+  | 'recorded'
+  | 'missing_from_application'
   | 'undetermined';
+
+/** See QuestionCheckMode in @callguard/shared — kept in step with it. */
+export type QuestionCheckMode = 'reconcile' | 'presence' | 'none';
 
 /**
  * Words carrying no discriminating power when searching a sales call for whether
@@ -179,6 +184,56 @@ export function deriveSearchTerms(question: string, guidance?: string | null): s
 }
 
 /**
+ * Terms an adviser would have to SAY in order to put the question at all.
+ *
+ * A second, independent bar from surviving redaction, and conflating the two was
+ * a real bug. REDACTION_RESISTANT_STEMS answers "would the provider strip this
+ * word from the transcript?" — a fact about our own pipeline. This answers
+ * "would the adviser have used this word?" — a fact about how people talk. For
+ * `smoke` or `pint` both answers are yes and nothing distinguished them. For
+ * `occupation` the first is yes and the second is emphatically no: an adviser
+ * says "what do you do for work?", never "what is your occupation?". Reusing one
+ * list for both meant the insurer's field label "Occupation" was treated as
+ * proof, and six advisers were recorded as never having asked about employment
+ * on sales where they plainly had.
+ *
+ * The omissions are the content of this list, so they are stated:
+ *
+ *   occupation, employment, employed  — form labels. Nobody speaks them.
+ *   income, salary, earnings          — the adviser asks "what do you take
+ *                                       home", "what are you on". Too easily
+ *                                       absent from a call that covered it.
+ *   height                            — the question is "how tall are you?".
+ *   medication, prescription          — "are you on anything from the doctor?"
+ *   unit, units                       — means two unrelated things. Alcohol
+ *                                       units in a health question, and units
+ *                                       of cover on MetLife's "No. of Units".
+ *                                       Costs nothing to drop: the alcohol
+ *                                       question still carries `alcohol` and
+ *                                       `drink`, while "No. of Units" has no
+ *                                       other term and stops accusing.
+ *
+ * Erring toward omission is the safe direction: a term left out downgrades a
+ * would-be `not_asked` to `undetermined`, which under-reports. A term wrongly
+ * included produces an allegation against a named adviser. Add only what an
+ * adviser could not avoid saying.
+ */
+const SPOKEN_VERBATIM_STEMS = new Set(
+  [
+    'smoke', 'smoked', 'smoking', 'vape', 'vaped', 'cigarette', 'cigarettes',
+    'tobacco', 'nicotine',
+    'alcohol', 'drink', 'drinking', 'pint', 'wine', 'spirits',
+    'weight', 'stone', 'kilo', 'kilos',
+    'blood', 'pressure', 'cholesterol', 'heart',
+    'tablet', 'tablets', 'treatment',
+    'doctor', 'surgery', 'specialist', 'hospital', 'consultant',
+    'job', 'work',
+    'driving', 'drive', 'driver', 'travel', 'sport', 'sports',
+  ].map(stem)
+);
+SPOKEN_VERBATIM_STEMS.add('gp');
+
+/**
  * Whether absence of these terms from a transcript is meaningful — i.e. whether
  * "we found none of them" may be reported as "the question was not asked".
  *
@@ -196,7 +251,11 @@ export function deriveSearchTerms(question: string, guidance?: string | null): s
  */
 export function absenceIsMeaningful(terms: string[]): boolean {
   if (terms.some((t) => REDACTION_PRONE_STEMS.has(t))) return false;
-  return terms.some((t) => REDACTION_RESISTANT_STEMS.has(t));
+  // BOTH conditions, on the same term. A term that survives redaction but that
+  // an adviser would never utter proves nothing by its absence, and a term an
+  // adviser always utters proves nothing if redaction removes it. Only a term
+  // that clears both bars can carry the claim.
+  return terms.some((t) => REDACTION_RESISTANT_STEMS.has(t) && SPOKEN_VERBATIM_STEMS.has(t));
 }
 
 /**
@@ -220,6 +279,54 @@ export function isInsurerGenerated(question: string): boolean {
 }
 
 /**
+ * The customer's bank account identifiers, which cannot be checked against a
+ * recording even in principle.
+ *
+ * Two independent reasons, either of which would be enough. The insurer masks
+ * what it stores — "XX-XX-38", "XXXXX-388" — so there is no value to compare;
+ * and the fragments that survive are short digit runs that match a transcript
+ * somewhere by coincidence, which is worse than not matching at all. A stray
+ * "38" gets located, the model is handed a passage about something else, it
+ * correctly reports no account number in it, and that becomes 'asked_no_answer'
+ * — an allegation about how the adviser ran the call, from a coincidence. One
+ * sale ranked worst in its tenant on eight such items, none of them real.
+ *
+ * Even unmasked it would not work: customers read digits back in pieces ("oh
+ * seven nine... oh seven..."), so absence of a contiguous match proves nothing.
+ *
+ * As narrow as INSURER_GENERATED, and for the same reason — this switches off a
+ * compliance check, so it must catch the identifiers and nothing adjacent to
+ * them. "Bank account held in payers name" and "Direct Debit allowed from
+ * account" both deliberately fall outside it: those are asked out loud ("the
+ * sort code and account number, is that in your name?") and are worth checking.
+ */
+const BANK_ACCOUNT_DETAIL =
+  /^\s*(bank\s+|building\s+society\s+)?(account|a\/c)\s*(number|no\.?|num)\s*:?\s*$|^\s*(account\s+|bank\s+)?sort\s*-?\s*code\s*:?\s*$|^\s*iban\s*:?\s*$|^\s*(building\s+society\s+)?roll\s*(number|no\.?)\s*:?\s*$/i;
+
+export function isBankAccountDetail(question: string): boolean {
+  return BANK_ACCOUNT_DETAIL.test(question.trim());
+}
+
+/**
+ * How a field should be checked, absent a human's ruling on the profile.
+ *
+ * A default is required rather than optional: three of one tenant's profiles
+ * went live by corroboration with nobody reviewing them, so a mode that only
+ * ever came from a person would never be set on the formats doing most of the
+ * work.
+ *
+ * Order matters only in that the two special cases are disjoint; anything not
+ * recognised is compared against the call, which is the behaviour every question
+ * had before modes existed. Widening a case here silently stops a check running,
+ * so both predicates stay anchored and narrow.
+ */
+export function defaultCheckMode(question: string): QuestionCheckMode {
+  if (isInsurerGenerated(question)) return 'none';
+  if (isBankAccountDetail(question)) return 'presence';
+  return 'reconcile';
+}
+
+/**
  * Distinctive strings from the SUBMITTED ANSWER, to search the call for.
  *
  * The ordinary technique searches for the question's own wording, which works
@@ -239,6 +346,43 @@ export function isInsurerGenerated(question: string): boolean {
  * digits back in fragments ("oh seven nine... oh seven...") is normal and its
  * absence proves nothing. The gain is entirely on the finding side.
  */
+/**
+ * Distinctive strings from the OPTIONS the question offered, to search for.
+ *
+ * A list-selection health question carries almost none of its meaning in its own
+ * wording. The portal prints "Have you ever:" or "Have you ever had any of
+ * these?" and puts the substance underneath, in the list the adviser reads out:
+ * cancer, leukaemia, multiple sclerosis, Parkinson's. Searching a call for the
+ * wording alone finds nothing distinctive, so the question was never located,
+ * never sent to be read, and resolved 'undetermined' — 39 items on one tenant,
+ * the largest single named cause in its unresolved pile, and all of them health
+ * disclosure questions.
+ *
+ * That the adviser genuinely says these words is not an assumption. It is
+ * visible in the evidence of the questions that DO resolve, whose option lists
+ * happened to survive as guidance text:
+ *
+ *     "...have you ever had any of these? Cancer, cancer in situ, leukaemia,
+ *      Hodgkin's disease, or any of the tumour? Nope."
+ *
+ * Like the answer terms, and for the same reason, these FIND evidence and never
+ * condemn its absence. An adviser is entitled to put a long list in their own
+ * words — "any of the usual heart conditions?" — so no option appearing verbatim
+ * is not proof the question went unasked. absenceIsMeaningful continues to see
+ * only the question's own wording, so nothing here can produce an accusation
+ * that the wording alone would not already have produced.
+ */
+export function deriveChoiceTerms(choices: string[] | undefined): string[] {
+  if (!choices || choices.length === 0) return [];
+  // The options that are answers rather than content. Every list ends with one,
+  // and they are the words least worth searching for: "no" and "none" appear in
+  // every call ever recorded.
+  const NON_CONTENT = /^(no|yes|none of these|neither of these|i don'?t know|other)$/i;
+  const content = choices.filter((c) => !NON_CONTENT.test(c.trim()));
+  if (content.length === 0) return [];
+  return deriveSearchTerms(content.join(' '));
+}
+
 export function deriveAnswerTerms(answer: string | null): string[] {
   if (!answer) return [];
   const terms = new Set<string>();
@@ -374,17 +518,49 @@ export function evidenceExcerpts(
   maxExcerpts = 3,
   width = 700
 ): string[] {
-  const excerpts: string[] = [];
-  let lastIndex = -Infinity;
+  // Every place the topic comes up, not just the first few. A window is a run of
+  // hits close enough together to be one passage.
+  const windows: Array<{ index: number; terms: Set<string> }> = [];
   for (const hit of hits) {
-    if (excerpts.length >= maxExcerpts) break;
-    // Within the span already quoted: the same passage, not a new one.
-    if (hit.index - lastIndex < width * 0.75) continue;
-    const quote = quoteExchange(transcript, hit.index, width);
-    if (quote !== '') {
-      excerpts.push(quote);
-      lastIndex = hit.index;
+    const current = windows[windows.length - 1];
+    // Within the span already covered: the same passage, not a new one.
+    if (current !== undefined && hit.index - current.index < width * 0.75) {
+      current.terms.add(hit.term);
+      continue;
     }
+    windows.push({ index: hit.index, terms: new Set([hit.term]) });
+  }
+
+  // Choose the RICHEST windows — the ones matching most of the question's
+  // distinct terms — rather than the earliest.
+  //
+  // Position is close to meaningless here. A sale runs 40 minutes and a topic is
+  // raised over and over: the adviser trails it, covers it, refers back to it,
+  // and the customer mentions it in passing. Real questions had 12, 16 and 18
+  // separate windows, and the first three were being taken from that.
+  //
+  // Measured over one tenant: of the undetermined items whose topic WAS found in
+  // the call, 63% had a discarded window matching more of the question's terms
+  // than any window sent. On one, the answer the insurer recorded — "2022, blood
+  // test, discomfort, fully recovered" — sat in a window matching NINE terms,
+  // discarded in favour of three matching one, and the item resolved "no clear
+  // answer in the passages". The evidence was already in hand; only the choice
+  // of which to look at was wrong.
+  //
+  // Ties break by position, so a question whose windows all match equally — a
+  // single-term search, the common case for an identity field — behaves exactly
+  // as it did before.
+  const chosen = [...windows]
+    .sort((a, b) => b.terms.size - a.terms.size || a.index - b.index)
+    .slice(0, maxExcerpts)
+    // Back into the order they occur in the call, because the passages are read
+    // as a sequence and an answer often refers back to what came before it.
+    .sort((a, b) => a.index - b.index);
+
+  const excerpts: string[] = [];
+  for (const window of chosen) {
+    const quote = quoteExchange(transcript, window.index, width);
+    if (quote !== '') excerpts.push(quote);
   }
   return excerpts;
 }
@@ -408,11 +584,56 @@ export function normaliseAnswer(value: string): string {
     .trim();
 }
 
+/**
+ * A polar answer followed by the detail that makes it worth having.
+ *
+ * Requires a real delimiter — "Yes, inhaler as a child", "Yes - £50,000 for
+ * daughter", "Yes — father, bowel cancer at 58". That is what separates a
+ * qualified answer from a noun phrase that merely begins with a polar word:
+ * MetLife's "No Premium details" has no delimiter and stays unreadable, which
+ * is correct, because it is a field value rather than someone saying "no".
+ *
+ * Matched on the RAW value, before normaliseAnswer replaces the punctuation
+ * with spaces and destroys the very boundary this depends on.
+ */
+const QUALIFIED_POLAR = /^\s*([a-z]+)\s*[,;:—–-]+\s*(\S[\s\S]*)$/i;
+
+/**
+ * Words that take back the answer in front of them.
+ *
+ * "No, but I did have asthma as a child" leads with a negative and means the
+ * opposite, so reading its first word would invent a mismatch against a form
+ * that correctly says Yes. Where one of these appears the answer stays
+ * unreadable, which is the safe direction: silence rather than a false
+ * allegation.
+ */
+const HEDGES = new Set(['but', 'although', 'though', 'however', 'except', 'unless', 'apart']);
+
+/**
+ * Yes, no, or neither.
+ *
+ * The qualified case is not a nicety. Exact whole-string matching meant only a
+ * bare "Yes" ever compared, so the module lost a finding precisely when the
+ * customer said something specific — and a customer being specific is what a
+ * disclosure IS. On one real sale the model extracted "Yes - £50,000 for
+ * daughter" against an application recording "No", and the comparison returned
+ * unclear: a child-cover non-disclosure, correctly read from the call, reported
+ * as "could not verify".
+ */
 function polarity(value: string): 'yes' | 'no' | null {
   const n = normaliseAnswer(value);
+  // Whole-string first, so the multi-word negatives above are never split.
   if (AFFIRMATIVE.has(n)) return 'yes';
   if (NEGATIVE.has(n)) return 'no';
-  return null;
+
+  const m = QUALIFIED_POLAR.exec(value.trim());
+  if (!m) return null;
+  const lead = normaliseAnswer(m[1] ?? '');
+  const isYes = AFFIRMATIVE.has(lead);
+  const isNo = NEGATIVE.has(lead);
+  if (!isYes && !isNo) return null;
+  if (normaliseAnswer(m[2] ?? '').split(' ').some((w) => HEDGES.has(w))) return null;
+  return isYes ? 'yes' : 'no';
 }
 
 /** Numbers present in an answer, for comparing "50" against "50 a day". */
@@ -497,8 +718,29 @@ export type AnswerComparison = 'match' | 'mismatch' | 'unclear';
 const KG_PER_STONE = 6.35029;
 const KG_PER_POUND = 0.453592;
 
+/**
+ * Weight units in any spelling, for telling "this states no unit" apart from
+ * "this states one and we failed to read it". The distinction is the whole
+ * safety of compareBareWeight below.
+ */
+const WEIGHT_UNIT = /\b(?:kg|kilo(?:gram)?s?|st|stones?|lbs?|pounds?)\b/;
+
+/**
+ * "16 and a half stone", as people actually say a weight aloud.
+ *
+ * The digits are not adjacent to the unit, so the patterns below cannot see the
+ * figure at all — and the half is 3.2kg, which is the whole distance between a
+ * match and an accusation.
+ */
+function foldSpokenFractions(text: string): string {
+  return text
+    .replace(/(\d+)\s+and\s+a\s+half\b/g, (_m, d: string) => `${Number(d) + 0.5}`)
+    .replace(/(\d+)\s+and\s+a\s+quarter\b/g, (_m, d: string) => `${Number(d) + 0.25}`)
+    .replace(/(\d+)\s+and\s+three\s+quarters\b/g, (_m, d: string) => `${Number(d) + 0.75}`);
+}
+
 export function weightInKg(text: string): number | null {
-  const n = normaliseAnswer(text);
+  const n = foldSpokenFractions(normaliseAnswer(text));
   const kg = /(\d+(?:\.\d+)?)\s*(?:kg|kilo(?:gram)?s?)\b/.exec(n);
   if (kg) return Number(kg[1]);
   const stone = /(\d+(?:\.\d+)?)\s*(?:st|stones?)\b(?:\s*(\d+(?:\.\d+)?)\s*(?:lbs?|pounds?)?\b)?/.exec(n);
@@ -540,6 +782,19 @@ function compareBareWeight(
   if (known === null || (appKg !== null && callKg !== null)) return null;
 
   const bareSide = appKg === null ? applicationAnswer : callAnswer;
+
+  // Only genuinely bare numbers belong here. A side that names a unit and still
+  // would not parse is one whose phrasing beat us, not one missing a unit —
+  // "16 and a half stone" did exactly that, and reading its 16 as unit-less
+  // turned 105kg and 16st 7lb, the same weight, into a mismatch on a live sale.
+  //
+  // Says 'unclear' rather than declining, because declining is not neutral
+  // here: the bare-number rule further down would then compare 105 against 16
+  // as ordinary quantities and reach the same accusation by another route. One
+  // side being a weight we could read is enough to know that comparison is
+  // meaningless.
+  if (WEIGHT_UNIT.test(normaliseAnswer(bareSide))) return 'unclear';
+
   const bare = numbersIn(bareSide);
   if (bare.length !== 1) return null;
   const stated = bare[0]!;
@@ -744,6 +999,12 @@ export interface ClassifyInput {
    * ago") can be read against the year the application records.
    */
   referenceDate?: Date | null;
+  /**
+   * How this field is checked. Defaults to 'reconcile' so every existing caller
+   * and every stored item keeps its meaning; the non-default modes short-circuit
+   * before any call evidence is consulted.
+   */
+  checkMode?: QuestionCheckMode;
 }
 
 /**
@@ -756,8 +1017,41 @@ export interface ClassifyInput {
  * questions in the application, on every single sale.
  */
 export function classifyItem(input: ClassifyInput): ReconciliationOutcome {
+  const mode = input.checkMode ?? 'reconcile';
+  const answered =
+    input.applicationAnswer !== null && input.applicationAnswer.trim() !== '';
+
+  // A field that cannot be checked against a recording is checked for
+  // completion instead, and nothing below this point applies to it: no call
+  // evidence is consulted, so no absence of it can mean anything.
+  //
+  // Note this is the ONE place a blank is a finding. On a 'reconcile' question
+  // the same emptiness is 'no_application_answer' and benign, because a
+  // conditional follow-up that did not apply is legitimately blank. The mode is
+  // what separates "nobody needed to fill this in" from "somebody should have".
+  if (mode === 'presence') return answered ? 'recorded' : 'missing_from_application';
+
+  // Never compared, never a finding — the value did not exist during the call.
+  // Still reported rather than dropped: it was submitted, and a reviewer may
+  // want to see it. Blank stays 'no_application_answer' rather than becoming a
+  // finding, because nothing here is required of the adviser.
+  //
+  // A populated one is 'recorded', the same as under 'presence'. It used to be
+  // 'undetermined', and that was wrong in the way this whole module has to avoid:
+  // 'undetermined' means "we tried to establish this and could not", and a
+  // reviewer reads it as a gap in the checking. A policy number was never going
+  // to be checked — deciding not to look is not the same as looking and failing.
+  // The two were indistinguishable on screen, and together they put every policy
+  // number and application date of one tenant's sales into the unresolved pile,
+  // which is where the module's headline "half of all items undetermined" was
+  // partly coming from. The modes differ only in what they say about a BLANK.
+  if (mode === 'none') return answered ? 'recorded' : 'no_application_answer';
+
   // Nothing was submitted for this question, so there is nothing to verify.
-  if (input.applicationAnswer === null || input.applicationAnswer.trim() === '') {
+  // Re-tested against the field rather than reusing `answered`, because this is
+  // also what narrows applicationAnswer to non-null for the comparison below.
+  const applicationAnswer = input.applicationAnswer;
+  if (applicationAnswer === null || applicationAnswer.trim() === '') {
     return 'no_application_answer';
   }
 
@@ -803,7 +1097,7 @@ export function classifyItem(input: ClassifyInput): ReconciliationOutcome {
   }
 
   const comparison = compareAnswers(
-    input.applicationAnswer,
+    applicationAnswer,
     input.callAnswer,
     input.referenceDate ?? null
   );
@@ -820,6 +1114,10 @@ export const ACTIONABLE_OUTCOMES: ReconciliationOutcome[] = [
   'mismatch',
   'not_asked',
   'asked_no_answer',
+  // A field the form had to carry, submitted empty. The only one of these that
+  // is not a claim about the call — it is read off the document — but it still
+  // needs somebody to act.
+  'missing_from_application',
 ];
 
 export function isActionable(outcome: ReconciliationOutcome): boolean {

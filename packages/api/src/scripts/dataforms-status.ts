@@ -411,6 +411,42 @@ async function reportOrg(org: {
     if (m.evidence) console.log(`  said: ${m.evidence.slice(0, 500)}`);
   }
 
+  // "This question was never put to the customer" is the most serious thing the
+  // module says about a named adviser, and it was visible only as a count and a
+  // truncated question column — no reasoning, no sale, no way to check one.
+  //
+  // Printed in full because there are few of them by design: if this list is
+  // ever long enough for that to hurt, the module is over-accusing and the list
+  // is the evidence. `asked_no_answer` joins it — it is a softer claim, but it
+  // is still a claim about how a call was conducted.
+  const accusations = await query<{
+    outcome: string;
+    sale: string | null;
+    question: string;
+    application_answer: string | null;
+    reasoning: string | null;
+    document: string | null;
+  }>(
+    `SELECT i.outcome, j.client_name AS sale, i.question, i.application_answer,
+            i.reasoning, r.attachment_name AS document
+       FROM capture_reconciliation_items i
+       JOIN capture_reconciliation_runs r ON r.id = i.run_id
+       LEFT JOIN journeys j ON j.id = r.journey_id
+      WHERE r.organization_id = $1 AND i.outcome IN ('not_asked', 'asked_no_answer')
+      ORDER BY i.outcome, j.client_name`,
+    O
+  );
+  console.log(
+    `\n— Reported as never asked, or asked without an answer (${accusations.length}) —`
+  );
+  if (accusations.length === 0) console.log('   (none)');
+  for (const a of accusations) {
+    console.log(`\n  [${a.outcome}] ${a.sale ?? '—'}  (${a.document ?? '—'})`);
+    console.log(`  Q: ${a.question}`);
+    console.log(`  form recorded: ${a.application_answer ?? '—'}`);
+    if (a.reasoning) console.log(`  why: ${a.reasoning}`);
+  }
+
   // ── 8. Spend ───────────────────────────────────────────────────────────────
   console.log('\n— Model spend on reconciliation (last 7 days) —');
   table(

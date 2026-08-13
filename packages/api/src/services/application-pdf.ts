@@ -57,6 +57,17 @@ export interface ParseConfig {
   answerLinePattern?: string;
   /** question_marker strategy: prefix introducing the list of choices offered. */
   optionsPrefix?: string;
+  /**
+   * question_marker strategy: headings after which the questions were answered
+   * and then dropped from the application.
+   *
+   * The portal prints these in a trailing section. They are NOT part of what was
+   * submitted, so comparing them against the call would flag an adviser over a
+   * question the insurer was never asked — but they are not noise either: they
+   * are the detail behind a withdrawal, naming what was disclosed before it was
+   * taken back.
+   */
+  withdrawnSectionMarkers?: string[];
   /** label_value strategy: the labels to extract. */
   labels?: string[];
   /**
@@ -103,6 +114,14 @@ export interface ParsedPair {
    * when the adviser knew what.
    */
   revisions?: AnswerRevision[];
+  /**
+   * Answered during the application, then removed from it before submission.
+   *
+   * `answer` still carries what was said — that is the whole value of the row —
+   * but it is not part of the submitted application and must never be compared
+   * against the call. See ParseConfig.withdrawnSectionMarkers.
+   */
+  withdrawn?: boolean;
 }
 
 export interface ParsedApplication {
@@ -489,10 +508,27 @@ function mergeWrappedAnswers(
  * Merged backwards over the wrapped text, stopping at anything that belongs to
  * another record, so a marker cannot swallow the document above it.
  */
-/** Is this line a question record, whichever end the extractor left the marker? */
+/**
+ * Is this line a question record, whichever end the extractor left the marker?
+ *
+ * The leading form must allow a TAB after the marker, not just a space. The
+ * marker sits in its own narrow column, so once spans are read in page order the
+ * gap between it and the question is wide enough to be a column break — which is
+ * a tab, always, never a space. Matching only "Q " made this return false for
+ * every question in a reordered document, and the one caller that matters is a
+ * guard: mergeWrappedAnswers uses it to refuse to swallow a question into the
+ * unattributed answer above it. With the guard silently off, the two questions
+ * on a real application whose answers carried no "(adviser name)" were absorbed
+ * and lost.
+ */
 function isQuestionLine(line: string, marker: string): boolean {
   const t = line.trim();
-  return t === marker || t.startsWith(`${marker} `) || new RegExp(`[\\t ]${escapeRegex(marker)}$`).test(t);
+  const escaped = escapeRegex(marker);
+  return (
+    t === marker ||
+    new RegExp(`^${escaped}[\\t ]`).test(t) ||
+    new RegExp(`[\\t ]${escaped}$`).test(t)
+  );
 }
 
 function mergeBareMarkers(
@@ -519,10 +555,21 @@ function mergeBareMarkers(
       if (answerStartRe.test(prev)) break;
       // Options and guidance belong to the record, not to the question wording.
       if (prev.startsWith('Options - ')) break;
+      // A line ending in '?' terminates the walk only once we already have
+      // text, where it can only be the PREVIOUS record's closing line.
+      //
+      // This used to fire on the first line pulled, and that inverted it. A
+      // wrapped question's last line is precisely the one that ends in '?', so
+      // the walk stopped immediately and kept only that fragment: "Have you
+      // lived, worked or travelled outside of the UK or European Union in the
+      // last 2 years, or do you have any plans to do so in the next year?"
+      // was stored as "any plans to do so in the next year?". The opening lines
+      // were also left behind in the output, which blocked the backwards walk
+      // for the answer — so the question lost its wording AND its answer, and
+      // read as one the insurer had recorded nothing for.
+      if (parts.length > 0 && prev.endsWith('?')) break;
       parts.unshift(prev);
       out.pop();
-      // A complete sentence needs nothing before it.
-      if (parts[0]!.endsWith('?')) break;
     }
     if (parts.length === 0) {
       out.push(raw);
@@ -533,12 +580,62 @@ function mergeBareMarkers(
   return out;
 }
 
+/** Timestamp, value, and an OPTIONAL "(who recorded it)". */
+const DEFAULT_ANSWER_LINE = String.raw`^(\d{2}\/\d{2}\/\d{4} \d{2}:\d{2}) - (.*?)(?: \(([^()]*)\))?$`;
+
+/**
+ * The heading the quote portal prints above questions it has dropped.
+ *
+ * Kept as a prefix rather than the full sentence so the trailing colon, and a
+ * line the extractor wrapped, both still match.
+ */
+const DEFAULT_WITHDRAWN_MARKERS = ['Questions answered but no longer included'];
+
+/**
+ * Make a stored answer pattern tolerant of a missing "(adviser name)".
+ *
+ * The learner proposes this pattern from one document, and on every document it
+ * has seen the attribution is present — so it proposes it as MANDATORY. The
+ * portal drops it in exactly one place: the trailing "Questions answered but no
+ * longer included in your application" section, where the entries read
+ *
+ *     07/08/2026 09:55 - 1
+ *     07/08/2026 09:55 - Father
+ *
+ * with no name after them. Under a mandatory attribution those lines do not
+ * match, the walk-back finds no answers, and the question is recorded as one the
+ * application left blank.
+ *
+ * That is the worst possible place to lose an answer. Those two entries are the
+ * follow-ups to a family-history cancer question that was answered "Any other
+ * cancer" and then changed to "No" — they name the relative and they are the
+ * corroboration for the withdrawal. On Patrick Dixon's application both came
+ * through as 'no_application_answer', i.e. as though the insurer had been told
+ * nothing, when the document says a father had cancer.
+ *
+ * Repaired here rather than in the profiles, so it applies to every format
+ * already stored without a migration that would have to re-derive regexes it
+ * cannot verify. Only the trailing attribution group is loosened; the rest of
+ * the pattern — which is what identifies an answer line at all — is untouched.
+ */
+export function relaxAttribution(pattern: string | undefined): string | undefined {
+  if (!pattern) return undefined;
+  // Already optional — a pattern whose final group closes with ")?$" needs
+  // nothing, and rewriting it again would nest the optionality.
+  if (/\)\?\$$/.test(pattern)) return pattern;
+  // A mandatory trailing attribution: a literal " (", the group that captures
+  // the name, then a literal ")" at the end. Rewritten to the optional
+  // non-capturing form the default uses, keeping the group's own contents so a
+  // format with a stricter idea of what a name looks like keeps it. The leading
+  // space is consumed and re-emitted INSIDE the optional group — left outside it
+  // would still demand a trailing space on an unattributed line.
+  return pattern.replace(/ \\\((.+)\\\)\$$/, String.raw`(?: \($1\))?$`);
+}
+
 export function parseQuestionMarker(text: string, config: ParseConfig): ParsedPair[] {
   const marker = config.questionMarker;
   if (!marker) return [];
-  const answerRe = new RegExp(
-    config.answerLinePattern ?? String.raw`^(\d{2}\/\d{2}\/\d{4} \d{2}:\d{2}) - (.*?)(?: \(([^()]*)\))?$`
-  );
+  const answerRe = new RegExp(relaxAttribution(config.answerLinePattern) ?? DEFAULT_ANSWER_LINE);
   const optionsPrefix = config.optionsPrefix ?? 'Options - ';
   const answerStartRe = /^\d{2}\/\d{2}\/\d{4} \d{2}:\d{2} - /;
   const attributionRe = /\([^()]+\)\s*$/;
@@ -554,15 +651,43 @@ export function parseQuestionMarker(text: string, config: ParseConfig): ParsedPa
     answerStartRe
   );
 
-  // A question line ends with the stranded column header. Tolerate the tab
-  // having been normalised to spaces by a different extractor build.
-  const questionLineRe = new RegExp(String.raw`^(.*?)[\t ]+${escapeRegex(marker)}$`);
+  // A question line carries the row-type column header, and it may sit at
+  // EITHER end.
+  //
+  // The header is printed in a narrow left-hand column, so on the page it leads
+  // the question. It used to arrive trailing only because the extractor emitted
+  // spans in the producer's drawing order, and the producer draws that column
+  // last; now that spans are put back into reading order it arrives leading, as
+  // printed. Both are accepted, because documents parsed by the old extractor
+  // are still described by profiles learned from it, and a profile must not stop
+  // matching a document it has always matched.
+  const escapedMarker = escapeRegex(marker);
+  const questionLineRe = new RegExp(
+    String.raw`^(?:(.*?)[\t ]+${escapedMarker}|${escapedMarker}[\t ]+(.*?))$`
+  );
+  /** The wording, from whichever side of the marker it fell. */
+  const questionTextOf = (m: RegExpExecArray): string => m[1] ?? m[2] ?? '';
+
+  // Everything after this heading was answered and then dropped from the
+  // application. Matched loosely on the leading words, because the portal
+  // prints it with a trailing colon and extraction sometimes wraps it.
+  const withdrawnMarkers = (config.withdrawnSectionMarkers ?? DEFAULT_WITHDRAWN_MARKERS).map((m) =>
+    m.toLowerCase()
+  );
+  let withdrawnFrom = Number.POSITIVE_INFINITY;
 
   const pairs: ParsedPair[] = [];
   for (let i = 0; i < lines.length; i++) {
+    if (i < withdrawnFrom) {
+      const probe = lines[i]!.trim().toLowerCase();
+      if (probe !== '' && withdrawnMarkers.some((m) => probe.startsWith(m))) {
+        withdrawnFrom = i;
+        continue;
+      }
+    }
     const qm = questionLineRe.exec(lines[i]!);
     if (!qm) continue;
-    const question = (qm[1] ?? '').replace(/\s+/g, ' ').trim();
+    const question = questionTextOf(qm).replace(/\s+/g, ' ').trim();
     if (question === '') continue;
 
     // Walk back over the answers belonging to this question, stopping at the
@@ -607,6 +732,7 @@ export function parseQuestionMarker(text: string, config: ParseConfig): ParsedPa
       recordedBy: current?.recordedBy ?? null,
       // Everything before the last is a superseded answer.
       revisions: answers.slice(0, -1),
+      ...(i > withdrawnFrom ? { withdrawn: true } : {}),
     });
   }
 
@@ -1061,20 +1187,234 @@ export function rankAttachmentCandidates<T extends RankedAttachment>(attachments
     .map((e) => e.a);
 }
 
+/** Matches pdf-parse's defaults, so reordering is the only behaviour we change. */
+const LINE_THRESHOLD = 4.6;
+const CELL_THRESHOLD = 7;
+const CELL_SEPARATOR = '\t';
+
+/** One drawn run of text, positioned in viewport coordinates. */
+export interface PositionedItem {
+  str: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  hasEOL: boolean;
+  /** This span was moved by the ordering repair. See reorderLineSpans. */
+  reordered?: boolean;
+}
+
+/**
+ * Put the spans of each line back into left-to-right order.
+ *
+ * A PDF's text layer carries no reading order — it is a drawing program, and the
+ * viewer's apparent order is an accident of how the producing application chose
+ * to emit its draw calls. The quote portal emits an emphasised run (the bit the
+ * form prints in bold: "in the LAST 5 YEARS...", "have you EVER...") out of
+ * line, after the text that surrounds it. Read in emission order the question
+ * comes out scrambled:
+ *
+ *     extracted: "In the have you had any of these? last 5 years"
+ *     printed:   "In the last 5 years have you had any of these?"
+ *
+ *     extracted: "Have you had any of these? ever"
+ *     printed:   "Have you ever had any of these?"
+ *
+ *     extracted: "Have you : ever"
+ *     printed:   "Have you ever:"
+ *
+ * The x coordinates are correct throughout — only the order is wrong — so
+ * sorting each line by x recovers the printed wording exactly.
+ *
+ * This matters far beyond tidiness. Those three are health disclosure questions,
+ * and the search terms the comparison derives from a question are taken from its
+ * wording; derived from scrambled wording they match nothing, so the question
+ * could never be found in the call and every sale carrying it resolved to
+ * 'undetermined'. Four questions of thirty-nine, but they were the four the
+ * module exists to check.
+ *
+ * Reordering is confined to spans already on the same line (within
+ * LINE_THRESHOLD of each other vertically, in the same unbroken run), so a line
+ * whose spans were emitted in order is returned byte-for-byte unchanged.
+ */
+function reorderLineSpans(items: PositionedItem[]): PositionedItem[] {
+  const out: PositionedItem[] = [];
+  let run: PositionedItem[] = [];
+
+  const flush = (): void => {
+    if (run.length === 0) return;
+    if (run.length > 1) {
+      // Stable, so spans that genuinely share an x keep their emitted order.
+      const sorted = [...run].sort((a, b) => a.x - b.x);
+      const moved = sorted.some((item, i) => item !== run[i]);
+      if (moved) {
+        // hasEOL means "a line ends here". Once spans have been reordered it
+        // belongs to whichever is now last; left on one that sorted into the
+        // middle it would break the line in half, which is a worse fault than
+        // the scrambling being repaired.
+        //
+        // Only done when the sort actually moved something. This producer emits
+        // an empty hasEOL span at the START of each line, carrying the previous
+        // line's break, and that span shares its x with the text that follows —
+        // so on an ordinary line the sort is a no-op and the break must be left
+        // exactly where it was. Moving it unconditionally appended a stray
+        // newline to every line in the document.
+        if (sorted.some((i) => i.hasEOL)) {
+          for (const i of sorted) i.hasEOL = false;
+          sorted[sorted.length - 1]!.hasEOL = true;
+        }
+        for (const i of sorted) i.reordered = true;
+        run = sorted;
+      }
+    }
+    out.push(...run);
+    run = [];
+  };
+
+  for (const item of items) {
+    const prev = run[run.length - 1];
+    if (prev !== undefined && Math.abs(prev.y - item.y) > LINE_THRESHOLD) flush();
+    run.push(item);
+  }
+  flush();
+  return out;
+}
+
+/** Would joining these two spans run two words into one another? */
+function wouldFuseWords(previous: string | undefined, next: string): boolean {
+  if (previous === undefined || previous === '' || next === '') return false;
+  return /[A-Za-z0-9]$/.test(previous) && /^[A-Za-z0-9]/.test(next);
+}
+
+/**
+ * Assemble page text from positioned spans.
+ *
+ * Deliberately a reimplementation of pdf-parse v2's own assembly rather than a
+ * call into it: the ordering fix has to happen between "read the spans" and
+ * "join the spans", and pdf-parse exposes no hook in between. The thresholds and
+ * the tab/newline conventions below are copied from it exactly, because every
+ * stored profile's detect patterns, parse config and question fingerprint were
+ * learned against that output — changing the shape of the text would invalidate
+ * them all, and the point here is to fix scrambled lines, not to re-cut the
+ * document.
+ */
+function assemblePageText(items: PositionedItem[]): string {
+  const buf: string[] = [];
+  let lastX: number | undefined;
+  let lastY: number | undefined;
+  let lineHeight = 0;
+
+  for (const item of items) {
+    let str = item.str;
+    if (lastY !== undefined && Math.abs(lastY - item.y) > LINE_THRESHOLD) {
+      const last = buf.length > 0 ? buf[buf.length - 1]! : undefined;
+      const startsNewLine = str.startsWith('\n') || (str.trim() === '' && item.hasEOL);
+      if (last !== undefined && !last.endsWith('\n') && !startsNewLine) {
+        if (Math.abs(lastY - item.y) - 1 > lineHeight) {
+          buf.push('\n');
+          lineHeight = 0;
+        }
+      }
+    }
+    // A wide horizontal gap is a column break, and becomes a tab. Measured from
+    // the previous span's right edge, so it is a true gap and not a distance.
+    if (lastY !== undefined && Math.abs(lastY - item.y) < LINE_THRESHOLD) {
+      // On a repaired line the gap is measured signed: a span that starts to the
+      // LEFT of where the previous one ended is painted over it, not placed in a
+      // new column. Under the unsigned test that overlap reads as a wide gap and
+      // becomes a tab in the middle of a sentence — "In the \tlast 5 years" —
+      // because the producer's full-width placeholder space runs underneath the
+      // emphasised run. Untouched lines keep the unsigned test so their output
+      // stays byte-for-byte what the profiles were learned against.
+      const gap =
+        lastX === undefined
+          ? 0
+          : item.reordered === true
+            ? item.x - lastX
+            : Math.abs(lastX - item.x);
+      if (lastX !== undefined && gap > CELL_THRESHOLD) {
+        str = `${CELL_SEPARATOR}${str}`;
+      } else if (item.reordered === true && wouldFuseWords(buf[buf.length - 1], str)) {
+        // Word separation cannot be read from the geometry on a repaired line.
+        // The producer draws the emphasised run on top of a full-width space
+        // span — "In the" then a 53pt-wide " " then "last 5 years" painted
+        // inside it — so once the spans are in reading order the gaps between
+        // them are zero or negative, and the words concatenate: "last
+        // 5 yearshave you had any of these?".
+        //
+        // Only applied to spans the reorder actually moved, and only where the
+        // join would run two word characters together. Punctuation is left
+        // alone, so "Have you" + "ever" + ":" still closes as "Have you ever:"
+        // rather than gaining a space before the colon.
+        str = ` ${str}`;
+      }
+    }
+    buf.push(str);
+    lastX = item.x + item.width;
+    lastY = item.y;
+    lineHeight = Math.max(lineHeight, item.height);
+    if (item.hasEOL) buf.push('\n');
+    if (item.hasEOL || str.endsWith('\n')) lineHeight = 0;
+  }
+
+  return buf.join('');
+}
+
+/**
+ * Turn one page's drawn spans into text: repair the order, then assemble.
+ *
+ * Exported as the seam the tests drive, because the interesting behaviour is
+ * entirely a function of span geometry and can be stated exactly — feeding a
+ * real PDF in would test pdfjs rather than this.
+ */
+export function assembleSpans(items: PositionedItem[]): string {
+  return assemblePageText(reorderLineSpans(items.map((i) => ({ ...i }))));
+}
+
 /**
  * Extract text from a PDF buffer. Kept as the single entry point so the
  * extractor can be swapped without touching any parsing logic.
  */
 export async function extractPdfText(buffer: Buffer): Promise<string> {
-  // pdf-parse v2 exports a PDFParse class, not v1's default callable. Instances
-  // hold a worker, so destroy() must run even on failure or the process will not
-  // exit.
-  const { PDFParse } = await import('pdf-parse');
-  const parser = new PDFParse({ data: new Uint8Array(buffer) });
+  // The legacy build is the one that runs under Node without a DOM.
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  const doc = await pdfjs.getDocument({
+    data: new Uint8Array(buffer),
+    useSystemFonts: true,
+    // Fonts and canvas are never needed — only the text layer is read.
+    isEvalSupported: false,
+  }).promise;
+
   try {
-    const result = await parser.getText();
-    return result.text;
+    const pages: string[] = [];
+    for (let n = 1; n <= doc.numPages; n++) {
+      const page = await doc.getPage(n);
+      try {
+        const viewport = page.getViewport({ scale: 1 });
+        const content = await page.getTextContent({ includeMarkedContent: false });
+        const items: PositionedItem[] = [];
+        for (const raw of content.items) {
+          if (!('str' in raw)) continue;
+          const [x, y] = viewport.convertToViewportPoint(raw.transform[4], raw.transform[5]);
+          items.push({
+            str: raw.str,
+            x: x!,
+            y: y!,
+            width: raw.width,
+            height: raw.height,
+            hasEOL: raw.hasEOL,
+          });
+        }
+        pages.push(assembleSpans(items));
+      } finally {
+        page.cleanup();
+      }
+    }
+    // Page separator, byte-for-byte as pdf-parse's default pageJoiner produced
+    // it. Profiles bound their section markers to these lines, so the spacing is
+    // load-bearing and not cosmetic.
+    return pages.map((text, idx) => `${text}\n\n-- ${idx + 1} of ${pages.length} --\n\n`).join('');
   } finally {
-    await parser.destroy();
+    await doc.destroy();
   }
 }

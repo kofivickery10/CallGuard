@@ -21,6 +21,7 @@ import {
 } from './document-profile-learner.js';
 import { recordUsage } from './usage.js';
 import { attemptJobId } from './reconciliation-sweep.js';
+import type { QuestionCheckMode } from './reconciliation.js';
 
 // ============================================================
 // Reconciliation run orchestration: which document, which profile, and starting
@@ -40,11 +41,25 @@ export interface DocumentProfileRow {
   detect_patterns: string[];
   parse_config: ParseConfig;
   question_fingerprint: string;
-  questions: Array<{ question: string; absence_meaningful?: boolean }>;
+  questions: Array<{
+    question: string;
+    absence_meaningful?: boolean;
+    /** Absent on profiles stored before check modes existed; defaulted at read. */
+    check_mode?: QuestionCheckMode;
+  }>;
   version: number;
   status: 'needs_confirmation' | 'active' | 'superseded';
   /** Migration 090. True for a form that asks conditional follow-ups. */
   questions_vary: boolean;
+  /**
+   * Who approved this format, or null where it went live by corroboration.
+   *
+   * Read at judgement time, not just for display: the per-question rulings
+   * stored on a profile outrank the measured defaults only because a person
+   * made them. On an auto-confirmed profile nobody did, so those values are a
+   * stale copy of the heuristics and must not outrank the current ones.
+   */
+  confirmed_by: string | null;
 }
 
 export async function isReconciliationEnabled(organizationId: string): Promise<boolean> {

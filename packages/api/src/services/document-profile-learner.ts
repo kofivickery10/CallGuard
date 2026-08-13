@@ -10,7 +10,12 @@ import {
   type ParseStrategy,
   type ParsedApplication,
 } from './application-pdf.js';
-import { deriveSearchTerms, absenceIsMeaningful } from './reconciliation.js';
+import {
+  deriveSearchTerms,
+  absenceIsMeaningful,
+  defaultCheckMode,
+  type QuestionCheckMode,
+} from './reconciliation.js';
 
 // ============================================================
 // Learning a document profile.
@@ -76,6 +81,13 @@ export interface ProfileQuestion {
    * services/reconciliation.ts.
    */
   absence_meaningful: boolean;
+  /**
+   * How this field is checked. Stamped explicitly at proposal time rather than
+   * left to the reader's default, so what a human sees on the review page is
+   * what will actually be applied, and so a later change to the heuristic cannot
+   * silently re-decide a format somebody already approved.
+   */
+  check_mode: QuestionCheckMode;
 }
 
 export interface ValidationProblem {
@@ -657,6 +669,7 @@ export function verifyProposal(rawText: string, proposal: ProfileProposal): Lear
     guidance: p.guidance,
     choices: p.choices,
     absence_meaningful: absenceIsMeaningful(deriveSearchTerms(p.question, p.guidance)),
+    check_mode: defaultCheckMode(p.question),
   }));
 
   return {

@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
-import type { DocumentProfile, QuestionSetDrift } from '@callguard/shared';
+import type { DocumentProfile, QuestionSetDrift, QuestionCheckMode } from '@callguard/shared';
 
 interface ProfileDetail {
   profile: DocumentProfile;
@@ -17,6 +17,36 @@ const STRATEGY_LABEL: Record<string, string> = {
   label_value: 'Label and value sheet',
   question_marker: 'Portal export with an answer history',
 };
+
+/**
+ * How each field will be checked, in the reviewer's terms rather than the
+ * schema's. Worded as what will HAPPEN to the field, because the consequence is
+ * the thing being approved: two of the three switch off a compliance check.
+ */
+const CHECK_MODE_OPTIONS: Array<{
+  value: QuestionCheckMode;
+  label: string;
+  detail: string;
+}> = [
+  {
+    value: 'reconcile',
+    label: 'Check against the call',
+    detail: 'Compare the submitted answer with what the customer said. The normal setting.',
+  },
+  {
+    value: 'presence',
+    label: 'Only check it was filled in',
+    detail:
+      'For values that cannot be verified from a recording — account numbers, sort codes. ' +
+      'A blank is reported; a completed one is not compared.',
+  },
+  {
+    value: 'none',
+    label: 'Do not check',
+    detail:
+      'For anything the insurer generates after the call, like a policy number. Recorded, never flagged.',
+  },
+];
 
 /** Stroke icon (§icons) — plus in a circle. */
 function AddedIcon({ className }: { className?: string }) {
@@ -72,11 +102,17 @@ export function DocumentProfileReview() {
   const [insurer, setInsurer] = useState('');
   const [questionsVary, setQuestionsVary] = useState(false);
 
+  // Overrides only — the questions the reviewer actually changed, keyed by
+  // order. Sending the full set would mean a stale copy of the page could
+  // silently rewrite modes somebody else had just corrected.
+  const [modeOverrides, setModeOverrides] = useState<Record<number, QuestionCheckMode>>({});
+
   const confirm = useMutation({
     mutationFn: () =>
       api.put<{ id: string; requeued?: number }>(`/reconciliation/profiles/${id}/confirm`, {
         ...(insurer.trim() ? { insurer: insurer.trim() } : {}),
         questions_vary: questionsVary,
+        ...(Object.keys(modeOverrides).length > 0 ? { check_modes: modeOverrides } : {}),
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['reconciliation-profiles'] });
@@ -292,6 +328,51 @@ export function DocumentProfileReview() {
                     <span className="inline-block mt-1 px-2 py-[2px] rounded-full text-badge bg-table-header text-text-secondary">
                       Not verifiable by absence
                     </span>
+                  )}
+                  {/* How this field is checked. Editable only while the format
+                      is awaiting confirmation and only by an admin — after it
+                      goes live, changing it would alter what past findings
+                      meant without re-deriving them. */}
+                  {awaiting && isAdmin ? (
+                    <div className="mt-2">
+                      <label
+                        htmlFor={`check-mode-${q.order}`}
+                        className="block text-xs text-text-muted mb-1"
+                      >
+                        How to check this field
+                      </label>
+                      <select
+                        id={`check-mode-${q.order}`}
+                        value={modeOverrides[q.order] ?? q.check_mode ?? 'reconcile'}
+                        onChange={(e) =>
+                          setModeOverrides((prev) => ({
+                            ...prev,
+                            [q.order]: e.target.value as QuestionCheckMode,
+                          }))
+                        }
+                        className="text-table-cell bg-card border border-border rounded-btn px-2 py-1
+                                   text-text-primary focus:outline-none focus:ring-2 focus:ring-primary"
+                      >
+                        {CHECK_MODE_OPTIONS.map((o) => (
+                          <option key={o.value} value={o.value}>
+                            {o.label}
+                          </option>
+                        ))}
+                      </select>
+                      <p className="text-xs text-text-subtle mt-1 leading-relaxed">
+                        {
+                          CHECK_MODE_OPTIONS.find(
+                            (o) => o.value === (modeOverrides[q.order] ?? q.check_mode ?? 'reconcile')
+                          )?.detail
+                        }
+                      </p>
+                    </div>
+                  ) : (
+                    (q.check_mode ?? 'reconcile') !== 'reconcile' && (
+                      <span className="inline-block mt-1 ml-1 px-2 py-[2px] rounded-full text-badge bg-table-header text-text-secondary">
+                        {CHECK_MODE_OPTIONS.find((o) => o.value === q.check_mode)?.label}
+                      </span>
+                    )
                   )}
                 </div>
               </li>

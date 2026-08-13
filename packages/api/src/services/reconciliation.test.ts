@@ -6,10 +6,14 @@ import {
   transcriptRedactsHealth,
   findEvidence,
   deriveAnswerTerms,
+  deriveChoiceTerms,
   isInsurerGenerated,
+  isBankAccountDetail,
+  defaultCheckMode,
   quoteAround,
   quoteExchange,
   evidenceExcerpts,
+  weightInKg,
   compareAnswers,
   classifyItem,
   isActionable,
@@ -121,6 +125,52 @@ describe('absenceIsMeaningful', () => {
     expect(absenceIsMeaningful(terms)).toBe(false);
   });
 
+  it('is false for a form label an adviser would never say aloud', () => {
+    // The regression this split exists for. These words survive redaction
+    // perfectly — the transcript is not why they are missing. They are missing
+    // because nobody says "what is your occupation?"; they say "what do you do
+    // for work?". Treating their absence as proof produced nine of Trust
+    // Point's eleven "never asked" findings, against six different advisers, on
+    // calls where employment had plainly been covered.
+    for (const label of ['Employment status', 'Occupation']) {
+      expect(absenceIsMeaningful(deriveSearchTerms(label))).toBe(false);
+    }
+  });
+
+  it('is false for the policy-admin labels that produced the rest of them', () => {
+    for (const label of [
+      'Active Lifestyle Cover', 'No. of Units', 'Guaranteed Sum Assured',
+      'Term', 'Name', 'Bank account held in payers name',
+    ]) {
+      expect(absenceIsMeaningful(deriveSearchTerms(label))).toBe(false);
+    }
+  });
+
+  it('still accuses on the health questions the module exists to check', () => {
+    // The other side of the trade. Loosening this far enough to silence a form
+    // label must not silence a disclosure question, or the module stops doing
+    // the one thing it is for.
+    for (const q of [
+      'Have you smoked in the last 12 months?',
+      'How many units of alcohol do you drink in a typical week?',
+      'Do you have raised blood pressure or cholesterol?',
+      'Have you seen a doctor or been to hospital in the last 5 years?',
+      'Do you take part in any dangerous sports?',
+      'What is your job?',
+    ]) {
+      expect(absenceIsMeaningful(deriveSearchTerms(q))).toBe(true);
+    }
+  });
+
+  it('keeps the alcohol question checkable without letting "units" carry it alone', () => {
+    // 'unit' means alcohol units here and units of COVER on MetLife's form, so
+    // it cannot be the term that licenses an accusation. The alcohol question
+    // survives on 'alcohol' and 'drink'; the cover field has nothing else and
+    // stops accusing.
+    expect(absenceIsMeaningful(deriveSearchTerms('How many units of alcohol do you drink?'))).toBe(true);
+    expect(absenceIsMeaningful(deriveSearchTerms('No. of Units'))).toBe(false);
+  });
+
   it('is conservative on a question mixing survivors and redacted terms', () => {
     // "Raised blood pressure, raised cholesterol, chest pain or pre-diabetes?"
     // is genuinely verifiable — advisers were observed saying "blood pressure,
@@ -220,6 +270,64 @@ describe('isInsurerGenerated — fields that could not have been said', () => {
 
   it('does not fire on a question that merely mentions a policy', () => {
     expect(isInsurerGenerated('Do you have any existing policy numbers with another insurer?')).toBe(false);
+  });
+});
+
+describe('isBankAccountDetail — values a recording cannot verify', () => {
+  it('recognises the account identifiers, however the insurer labels them', () => {
+    for (const label of [
+      'Account Number', 'Account No.', 'Account no', 'Bank account number',
+      'A/C number', 'Sort Code', 'Account Sort Code', 'Sort-code',
+      'Bank sort code', 'IBAN', 'Roll number', 'Building society roll number',
+    ]) {
+      expect(isBankAccountDetail(label)).toBe(true);
+    }
+  });
+
+  it('leaves alone the direct debit questions that ARE asked out loud', () => {
+    // The distinction the whole change turns on. "Is that account in your name?"
+    // and "do we have your permission to take it from there?" are put to the
+    // customer verbatim — one Trust Point transcript has the adviser saying "for
+    // the direct debit, the sort code and account number, is that in your name?"
+    // — so they stay checkable. Only the digits themselves are exempt.
+    for (const label of [
+      'Bank account held in payers name', 'Direct Debit allowed from account',
+      'Preferred Direct Debit date', 'Account holder name', 'Bank name',
+      'Monthly premium', 'Guaranteed Sum Assured', 'Term', 'No. of Units',
+    ]) {
+      expect(isBankAccountDetail(label)).toBe(false);
+    }
+  });
+
+  it('does not fire on a question that merely mentions an account', () => {
+    expect(
+      isBankAccountDetail('Have you ever had an account refused by a bank or building society?')
+    ).toBe(false);
+  });
+});
+
+describe('defaultCheckMode', () => {
+  it('exempts an insurer-generated reference from checking entirely', () => {
+    expect(defaultCheckMode('Policy number')).toBe('none');
+    expect(defaultCheckMode('Date of issue')).toBe('none');
+  });
+
+  it('checks bank identifiers for completion rather than against the call', () => {
+    expect(defaultCheckMode('Account Number')).toBe('presence');
+    expect(defaultCheckMode('Sort Code')).toBe('presence');
+  });
+
+  it('reconciles everything else, including the rest of the payment section', () => {
+    // The default must stay 'reconcile' for anything unrecognised: a mode that
+    // fell open would switch off checks on questions nobody has considered.
+    for (const label of [
+      'Bank account held in payers name', 'Direct Debit allowed from account',
+      'Monthly premium', 'Occupation', 'Child Cover',
+      'Have you smoked in the last 12 months?',
+      'Some label no heuristic has ever seen',
+    ]) {
+      expect(defaultCheckMode(label)).toBe('reconcile');
+    }
   });
 });
 
@@ -438,6 +546,24 @@ describe('compareAnswers', () => {
     expect(compareAnswers('17 7', '20 stone')).toBe('unclear');
   });
 
+  it('reads a weight spoken as a fraction, and never treats one as unit-less', () => {
+    // David Carter, a live sale: form "105kg or 16 stone 7 pounds", customer
+    // "About 16 and a half stone". 16st 7lb IS 16.5 stone — the same weight,
+    // written two ways. weightInKg could not see the figure at all, because the
+    // digits are not adjacent to the unit, so the bare-number reading took the
+    // 16 for a unit-less number, called it 16 stone, and made the missing half
+    // stone into an accusation.
+    expect(compareAnswers('105kg or 16 stone 7 pounds', 'About 16 and a half stone')).toBe('match');
+    expect(weightInKg('16 and a half stone')).toBeCloseTo(104.78, 1);
+    expect(weightInKg('17 and a quarter stone')).toBeCloseTo(109.54, 1);
+
+    // The backstop, for any other phrasing that beats the parser. A side naming
+    // a unit is never treated as one that omitted it — and this must say
+    // 'unclear' rather than decline, or the bare-number rule below compares 105
+    // against 16 as plain quantities and reaches the same accusation anyway.
+    expect(compareAnswers('105 kg', '16 and a third stone')).toBe('unclear');
+  });
+
   it('still catches a weight that genuinely disagrees', () => {
     // 20 stone is 127 kg. A form saying 108 against a customer saying 20 stone
     // is the mis-keying this comparison exists for.
@@ -474,6 +600,11 @@ describe('classifyItem', () => {
 
   it('matches when both sides agree', () => {
     expect(classifyItem(base)).toBe('match');
+  });
+
+  it('treats an absent checkMode as reconcile, so nothing changes by omission', () => {
+    expect(classifyItem({ ...base, checkMode: undefined })).toBe('match');
+    expect(classifyItem({ ...base, checkMode: 'reconcile' })).toBe('match');
   });
 
   it('flags a mismatch', () => {
@@ -612,6 +743,114 @@ describe('classifyItem', () => {
       })
     ).toBe('undetermined');
   });
+
+  describe("checkMode 'presence' — checked for completion, never against the call", () => {
+    it('reports a completed field as recorded, not as a match', () => {
+      // Not 'match'. Nothing was compared, and letting it count would inflate
+      // the match rate with fields nobody verified.
+      expect(
+        classifyItem({ ...base, checkMode: 'presence', applicationAnswer: 'XXXXX-388' })
+      ).toBe('recorded');
+    });
+
+    it('reports a blank field as a finding', () => {
+      expect(
+        classifyItem({ ...base, checkMode: 'presence', applicationAnswer: null })
+      ).toBe('missing_from_application');
+      expect(
+        classifyItem({ ...base, checkMode: 'presence', applicationAnswer: '   ' })
+      ).toBe('missing_from_application');
+    });
+
+    it('ignores the call entirely, whatever the evidence says', () => {
+      // The whole point: no configuration of call evidence may produce an
+      // accusation on a field that cannot be verified from a recording. This is
+      // the case that was generating eight false findings on one sale — a
+      // masked sort code matching a stray "38" somewhere in the transcript.
+      for (const evidence of [
+        { evidenceFound: false, absenceMeaningful: true },
+        { evidenceFound: true, callAnswer: null, customerDidNotAnswer: true },
+        { evidenceFound: true, callAnswer: 'something else entirely' },
+      ]) {
+        expect(
+          classifyItem({
+            ...base,
+            ...evidence,
+            checkMode: 'presence',
+            applicationAnswer: 'XX-XX-38',
+          })
+        ).toBe('recorded');
+      }
+    });
+  });
+
+  describe("checkMode 'none' — on the record, never a finding", () => {
+    it('reports a value that did not exist during the call as recorded, not undetermined', () => {
+      // 'undetermined' means "we tried and could not establish this". Deciding
+      // not to check a policy number is not the same as failing to check it, and
+      // a reviewer reading the unresolved pile must not find it padded with
+      // fields nobody ever intended to look at.
+      expect(
+        classifyItem({ ...base, checkMode: 'none', applicationAnswer: 'POL-99123' })
+      ).toBe('recorded');
+    });
+
+    it('does NOT make a blank a finding, unlike presence mode', () => {
+      // Nothing here is required of the adviser, so an empty policy number is
+      // the insurer's business and not a compliance flag.
+      expect(classifyItem({ ...base, checkMode: 'none', applicationAnswer: null })).toBe(
+        'no_application_answer'
+      );
+    });
+
+    it('never accuses, whatever the call evidence', () => {
+      expect(
+        classifyItem({
+          ...base,
+          checkMode: 'none',
+          evidenceFound: false,
+          absenceMeaningful: true,
+          applicationAnswer: 'POL-99123',
+        })
+      ).toBe('recorded');
+    });
+  });
+});
+
+describe('compareAnswers — a polar answer carrying its detail', () => {
+  it('compares a qualified affirmative instead of giving up on it', () => {
+    // The regression this exists for. Exact whole-string matching meant only a
+    // bare "Yes" ever compared, so the module lost the finding precisely when
+    // the customer was specific — and being specific is what a disclosure IS.
+    // On a real sale the model read "Yes - £50,000 for daughter" against an
+    // application recording "No", and it resolved to "could not verify".
+    expect(compareAnswers('No', 'Yes - £50,000 for daughter', null)).toBe('mismatch');
+    expect(compareAnswers('No', 'Yes — father, bowel cancer at 58', null)).toBe('mismatch');
+    expect(compareAnswers('No', 'Yes, inhaler as a child', null)).toBe('mismatch');
+    expect(compareAnswers('Yes', 'No - never smoked', null)).toBe('mismatch');
+  });
+
+  it('refuses an answer that takes itself back', () => {
+    // "No, but I did have asthma" leads with a negative and means the opposite.
+    // Reading its first word would invent a mismatch against a form that
+    // correctly says Yes, so it stays unreadable — silence over a false
+    // allegation.
+    expect(compareAnswers('Yes', 'No, but I did have asthma as a child', null)).toBe('unclear');
+    expect(compareAnswers('No', 'Yes, although only briefly', null)).toBe('unclear');
+    expect(compareAnswers('Yes', 'No, except for one episode', null)).toBe('unclear');
+  });
+
+  it('does not read a field value that merely begins with a polar word', () => {
+    // MetLife records "No Premium details" as a value, not as someone saying
+    // no. A delimiter is required, which is what separates the two.
+    expect(compareAnswers('No Premium details', 'No', null)).toBe('match');
+    expect(compareAnswers('None of the above', 'No', null)).toBe('match');
+    expect(compareAnswers('No', 'None of these', null)).toBe('match');
+  });
+
+  it('leaves non-polar answers exactly as they were', () => {
+    expect(compareAnswers('Employed', 'Ambulance driver', null)).toBe('unclear');
+  });
 });
 
 describe('classifyAmendment', () => {
@@ -687,11 +926,117 @@ describe('isActionable', () => {
     expect(isActionable('asked_no_answer')).toBe(true);
   });
 
+  it('surfaces a required field left blank on the form', () => {
+    expect(isActionable('missing_from_application')).toBe(true);
+  });
+
   it('does not surface undetermined as a finding', () => {
     // It means we could not tell. Presenting it as a finding would bury the real
     // flags under noise our own redaction created.
     expect(isActionable('undetermined')).toBe(false);
     expect(isActionable('match')).toBe(false);
     expect(isActionable('no_application_answer')).toBe(false);
+  });
+
+  it('does not surface a recorded presence field', () => {
+    // Nothing was verified about it, so it is neither a pass nor a flag.
+    expect(isActionable('recorded')).toBe(false);
+  });
+});
+
+describe('deriveChoiceTerms — the substance of a list-selection question', () => {
+  it('takes the content of the options the adviser reads out', () => {
+    const terms = deriveChoiceTerms([
+      'Depression',
+      'Anxiety',
+      'Stress',
+      'Any other mental health issue',
+      'None of these',
+    ]);
+    expect(terms).toContain('depression');
+    expect(terms).toContain('anxiety');
+    expect(terms).toContain('stress');
+    expect(terms).toContain('mental');
+  });
+
+  it('drops the options that are answers rather than content', () => {
+    // Every list ends with one of these, and they are the words least worth
+    // searching for: "no" and "none" appear in every call ever recorded.
+    expect(deriveChoiceTerms(['No'])).toEqual([]);
+    expect(deriveChoiceTerms(['None of these'])).toEqual([]);
+    expect(deriveChoiceTerms(['Neither of these'])).toEqual([]);
+    expect(deriveChoiceTerms(['Yes', 'No'])).toEqual([]);
+  });
+
+  it('says nothing where a question offered no options', () => {
+    expect(deriveChoiceTerms(undefined)).toEqual([]);
+    expect(deriveChoiceTerms([])).toEqual([]);
+  });
+
+  it('rescues a question whose own wording carries nothing to search for', () => {
+    // "Have you ever:" is the whole question. Without its options there is
+    // nothing distinctive to look for and the call can never be checked.
+    expect(deriveSearchTerms('Have you ever:')).toEqual([]);
+    expect(
+      deriveChoiceTerms(['Been declined for insurance', 'Had special terms applied']).length
+    ).toBeGreaterThan(0);
+  });
+
+  it('cannot make an absence meaningful on its own', () => {
+    // The guarantee that keeps this from creating accusations: an adviser may
+    // put a long list in their own words, so no option appearing verbatim is
+    // not proof the question went unasked. absenceIsMeaningful sees only the
+    // question's own wording, and these terms never reach it.
+    const choiceTerms = deriveChoiceTerms(['Cancer', 'Leukaemia', 'Hodgkin\'s disease']);
+    expect(choiceTerms.length).toBeGreaterThan(0);
+    expect(absenceIsMeaningful(deriveSearchTerms('Have you ever:'))).toBe(false);
+  });
+});
+
+describe('evidenceExcerpts — which passages get looked at', () => {
+  // A topic raised four times across a long call. Only the third mention holds
+  // the exchange; the others are the adviser trailing it and referring back.
+  const build = () => {
+    const filler = (n: number) => ` ${'and so on. '.repeat(n)}`;
+    const parts = [
+      'Agent: We will come to your bowels in a moment.',
+      filler(70),
+      'Agent: Right, bowels again, nearly there.',
+      filler(70),
+      'Agent: When did you first suffer from this bowel condition, and what tests and treatment did you have? Customer: 2022, a blood test, and I am fully recovered.',
+      filler(70),
+      'Agent: That is your bowels done.',
+    ];
+    return parts.join('');
+  };
+
+  it('prefers the passage matching most of the question, not the earliest', () => {
+    const transcript = build();
+    const terms = ['bowel', 'suffer', 'test', 'treatment', 'recover'];
+    const excerpts = evidenceExcerpts(transcript, findEvidence(terms, transcript), 2);
+    expect(excerpts.join(' ')).toContain('blood test');
+    expect(excerpts.join(' ')).toContain('fully recovered');
+  });
+
+  it('returns the chosen passages in the order the call had them', () => {
+    const transcript = build();
+    const terms = ['bowel', 'suffer', 'test', 'treatment', 'recover'];
+    const excerpts = evidenceExcerpts(transcript, findEvidence(terms, transcript), 3);
+    const positions = excerpts.map((e) => transcript.indexOf(e.slice(0, 30)));
+    expect(positions).toEqual([...positions].sort((a, b) => a - b));
+  });
+
+  it('is unchanged where every passage matches the search equally', () => {
+    // A single-term search — an identity field, the common case — has nothing to
+    // rank on, so the earliest passages win exactly as they always did.
+    const transcript = `first mention of smoking.${' filler. '.repeat(90)}second smoking.${' filler. '.repeat(90)}third smoking.`;
+    const excerpts = evidenceExcerpts(transcript, findEvidence(['smok'], transcript), 2);
+    expect(excerpts[0]).toContain('first mention');
+    expect(excerpts[1]).toContain('second');
+  });
+
+  it('never returns more than it was asked for', () => {
+    const transcript = `smoking.${' filler. '.repeat(90)}smoking.${' filler. '.repeat(90)}smoking.${' filler. '.repeat(90)}smoking.`;
+    expect(evidenceExcerpts(transcript, findEvidence(['smok'], transcript), 3)).toHaveLength(3);
   });
 });

@@ -11,6 +11,9 @@ import {
   parseLooksHealthy,
   formatSignature,
   expectedRecordCount,
+  relaxAttribution,
+  assembleSpans,
+  type PositionedItem,
 } from './application-pdf.js';
 import {
   ROYAL_LONDON_PACK,
@@ -19,6 +22,8 @@ import {
   METLIFE_CONFIG,
   PORTAL_EXPORT,
   PORTAL_CONFIG,
+  PORTAL_WITHDRAWN_SECTION,
+  PORTAL_CONFIG_STRICT_ATTRIBUTION,
 } from './application-pdf.fixtures.js';
 
 describe('question_answer strategy (Royal London pack)', () => {
@@ -766,5 +771,317 @@ describe('expectedRecordCount — an expectation the parser cannot fake', () => 
     // absent rather than lost. Asserting a count there would invent failures.
     expect(expectedRecordCount('anything', 'label_value', { labels: ['Name'] })).toBeNull();
     expect(expectedRecordCount('anything', 'question_marker', {})).toBeNull();
+  });
+});
+
+describe('relaxAttribution — an answer line whose adviser name is missing', () => {
+  const STRICT = String.raw`^(\d{2}/\d{2}/\d{4} \d{2}:\d{2}) - (.+?) \(([^)]+)\)$`;
+
+  it('makes a mandatory trailing attribution optional', () => {
+    const re = new RegExp(relaxAttribution(STRICT)!);
+    // Still reads an attributed answer exactly as before, name included.
+    expect(re.exec('07/08/2026 09:56 - No (Lewis Moore)')?.slice(1, 4)).toEqual([
+      '07/08/2026 09:56', 'No', 'Lewis Moore',
+    ]);
+    // And now reads one without a name, instead of dropping the answer.
+    expect(re.exec('07/08/2026 09:55 - Father')?.slice(1, 4)).toEqual([
+      '07/08/2026 09:55', 'Father', undefined,
+    ]);
+  });
+
+  it('does not turn a non-answer into one', () => {
+    // The relaxation is confined to the trailing name. What identifies an
+    // answer line at all — the timestamp and the " - " — must still be required,
+    // or every line of guidance in the document becomes an answer.
+    const re = new RegExp(relaxAttribution(STRICT)!);
+    expect(re.test('You don’t need to tell us about business trips')).toBe(false);
+    expect(re.test('Options - Father, Mother, Brother, Sister')).toBe(false);
+    expect(re.test('Relative 1: Which relative suffered from another type of cancer?')).toBe(false);
+  });
+
+  it('leaves an already-optional pattern alone rather than nesting it', () => {
+    const optional = String.raw`^(\d{2}/\d{2}/\d{4} \d{2}:\d{2}) - (.*?)(?: \(([^()]*)\))?$`;
+    expect(relaxAttribution(optional)).toBe(optional);
+  });
+
+  it('passes through a pattern with no trailing attribution at all', () => {
+    const plain = String.raw`^(\d{2}/\d{2}/\d{4}) - (.+)$`;
+    expect(relaxAttribution(plain)).toBe(plain);
+    expect(relaxAttribution(undefined)).toBeUndefined();
+  });
+});
+
+describe('question_marker: questions dropped from the application', () => {
+  // Parsed with the config the learner really proposed — attribution mandatory —
+  // because that is the combination that lost the answers on live data.
+  const parsed = parseApplication(
+    PORTAL_WITHDRAWN_SECTION,
+    'question_marker',
+    PORTAL_CONFIG_STRICT_ATTRIBUTION
+  );
+  const byQuestion = (needle: string) =>
+    parsed.pairs.find((p) => p.question.includes(needle));
+
+  it('reads the answers under the trailing heading, attribution or not', () => {
+    // The regression this whole fixture exists for: both came through as
+    // unanswered, so a father's cancer read as "the insurer was told nothing".
+    expect(byQuestion('How many of your relatives')?.answer).toBe('1');
+    expect(byQuestion('Which relative suffered')?.answer).toBe('Father');
+  });
+
+  it('marks them as withdrawn, and does not mark the live questions', () => {
+    expect(byQuestion('How many of your relatives')?.withdrawn).toBe(true);
+    expect(byQuestion('Which relative suffered')?.withdrawn).toBe(true);
+    expect(byQuestion('birth parents')?.withdrawn).toBeUndefined();
+    expect(byQuestion('duties or working environments')?.withdrawn).toBeUndefined();
+  });
+
+  it('still records the withdrawal on the question that was changed', () => {
+    // The heading is not the only evidence of a withdrawal, and must not
+    // displace the ordinary revision trail on a live question.
+    const family = byQuestion('birth parents');
+    expect(family?.answer).toBe('No');
+    expect(family?.revisions).toEqual([
+      { value: 'Any other cancer', timestamp: '07/08/2026 09:53', recordedBy: 'Lewis Moore' },
+    ]);
+  });
+
+  it('does not treat the heading itself as a question', () => {
+    expect(parsed.pairs.some((p) => /no longer included/i.test(p.question))).toBe(false);
+    expect(parsed.pairs).toHaveLength(4);
+  });
+});
+
+describe('question_marker: a question that wrapped before its marker', () => {
+  // Verbatim shape from Patrick Dixon p6. The marker is stranded on its own
+  // line under two lines of question text.
+  const WRAPPED = `07/08/2026 10:02 - No (Lewis Moore)
+Have you lived, worked or travelled outside of the UK or European Union in the last 2 years, or do you have
+any plans to do so in the next year?
+Q
+You don't need to tell us about business trips of less than a week
+A
+07/08/2026 10:00 - Yes (Lewis Moore)
+Have you ever had an operation or surgery for your cataract?	Q
+A
+`;
+  const pairs = parseApplication(WRAPPED, 'question_marker', PORTAL_CONFIG).pairs;
+
+  it('rejoins the whole question, not just its closing line', () => {
+    expect(pairs[0]?.question).toBe(
+      'Have you lived, worked or travelled outside of the UK or European Union in the last 2 years, ' +
+        'or do you have any plans to do so in the next year?'
+    );
+  });
+
+  it('keeps the answer, which the truncation also cost', () => {
+    // The lines left behind by the early stop sat between the question and its
+    // answer and blocked the backwards walk, so the question read as one the
+    // insurer had recorded nothing for.
+    expect(pairs[0]?.answer).toBe('No');
+  });
+
+  it('does not swallow the record above it', () => {
+    expect(pairs).toHaveLength(2);
+    expect(pairs[1]?.question).toBe('Have you ever had an operation or surgery for your cataract?');
+    expect(pairs[1]?.answer).toBe('Yes');
+    expect(pairs[0]?.question).not.toContain('cataract');
+  });
+
+  it('leaves a single-line question exactly as it was', () => {
+    const single = parseApplication(
+      '29/07/2026 11:58 - 1.57m or 5 feet 2 inches (A Adviser)\nHow tall are you?\tQ\nA\n',
+      'question_marker',
+      PORTAL_CONFIG
+    ).pairs;
+    expect(single[0]?.question).toBe('How tall are you?');
+    expect(single[0]?.answer).toBe('1.57m or 5 feet 2 inches');
+  });
+});
+
+/**
+ * Span geometry taken from a real quote-portal export (Graham Pearson Policy.pdf,
+ * page 2). The numbers are the measured x/width of each drawn run, not invented:
+ * the producer paints an emphasised phrase on top of a full-width placeholder
+ * space, and it is that overlap the repair has to survive.
+ */
+function span(str: string, x: number, width: number, y = 100, hasEOL = false): PositionedItem {
+  return { str, x, y, width, height: 10, hasEOL };
+}
+
+describe('assembleSpans — putting drawn runs back into reading order', () => {
+  it('unscrambles a question whose emphasised phrase was drawn last', () => {
+    // Printed: "In the last 5 years have you had any of these?" with the date
+    // range in bold. The bold run is emitted after the text that follows it.
+    expect(
+      assembleSpans([
+        span('Q', 49.8, 7.0),
+        span('In the', 72.0, 25.0),
+        span(' ', 97.0, 53.1),
+        span('have you had any of these?', 150.2, 118.1),
+        span('last 5 years', 99.2, 48.9),
+      ])
+    ).toBe('Q\tIn the last 5 years have you had any of these?');
+  });
+
+  it('does not insert a space before punctuation', () => {
+    // Printed: "Have you ever:" — the colon must stay tight to the word, or the
+    // question no longer matches the one the insurer asked.
+    expect(
+      assembleSpans([
+        span('Q', 49.8, 7.0),
+        span('Have you', 72.0, 40.7),
+        span(' ', 112.7, 23.2),
+        span(':', 133.7, 3.0),
+        span('ever', 114.8, 18.9),
+      ])
+    ).toBe('Q\tHave you ever:');
+  });
+
+  it('leaves a line whose spans were already in order byte-for-byte alone', () => {
+    // The guarantee the stored profiles depend on. Every summary-sheet format
+    // draws left to right, so this is the path almost all of them take, and its
+    // output must be exactly what the previous extractor produced.
+    const ordered = [span('Name', 49.8, 25.0), span('Daniel', 200.0, 30.0)];
+    expect(assembleSpans(ordered)).toBe('Name\tDaniel');
+  });
+
+  it('moves a row-type marker drawn last into the left column where it prints', () => {
+    // The marker sits in a narrow left-hand column on the page but is drawn
+    // after the question text. Reading order puts it first, so the parser has to
+    // accept it at either end — see the parseQuestionMarker tests below.
+    expect(assembleSpans([span('How tall are you?', 72.0, 140.2), span('Q', 49.8, 7.0)])).toBe(
+      'Q\tHow tall are you?'
+    );
+  });
+
+  it('does not treat an overlapping span as a column break', () => {
+    // The placeholder-space overlap reads as a huge gap under an unsigned
+    // comparison, which put a tab in the middle of a sentence: "In the \tlast 5
+    // years". Only reached once something on the line has actually been moved,
+    // which is why the trailing marker is part of the fixture.
+    expect(
+      assembleSpans([
+        span('In the', 72.0, 25.0),
+        span(' ', 97.0, 53.1),
+        span('last 5 years', 99.2, 48.9),
+        span('Q', 49.8, 7.0),
+      ])
+    ).toBe('Q\tIn the last 5 years');
+  });
+
+  it('moves a line break to the end of a line it reordered', () => {
+    const out = assembleSpans([
+      span('In the', 72.0, 25.0, 100),
+      span(' ', 97.0, 53.1, 100),
+      span('have you?', 150.2, 40.0, 100, true),
+      span('last 5 years', 99.2, 48.9, 100),
+      span('next line', 72.0, 40.0, 130),
+    ]);
+    expect(out).toBe('In the last 5 years have you?\nnext line');
+  });
+
+  it('leaves a line break alone on a line it did not reorder', () => {
+    // This producer emits an empty hasEOL span at the START of each line,
+    // carrying the previous line's break. Moving it unconditionally appended a
+    // stray newline to every line in the document.
+    const out = assembleSpans([
+      span('Yes', 305, 18.8, 100),
+      span('', 305, 0, 130, true),
+      span('18/11/2025', 305, 54.2, 130),
+    ]);
+    expect(out).toBe('Yes\n18/11/2025');
+  });
+
+  it('separates lines that are far enough apart vertically', () => {
+    expect(assembleSpans([span('first', 72, 25, 100), span('second', 72, 30, 140)])).toBe(
+      'first\nsecond'
+    );
+  });
+});
+
+describe('parseQuestionMarker — the row-type column at either end', () => {
+  it('reads a question whose marker leads, as the page prints it', () => {
+    const pairs = parseApplication(
+      '29/07/2026 11:58 - 1.57m or 5 feet 2 inches (A Adviser)\nQ\tHow tall are you?\nA\n',
+      'question_marker',
+      PORTAL_CONFIG
+    ).pairs;
+    expect(pairs).toHaveLength(1);
+    expect(pairs[0]?.question).toBe('How tall are you?');
+    expect(pairs[0]?.answer).toBe('1.57m or 5 feet 2 inches');
+  });
+
+  it('still reads a question whose marker trails', () => {
+    // Documents already parsed by the previous extractor are described by
+    // profiles learned from it; a profile must not stop matching what it matched.
+    const pairs = parseApplication(
+      '29/07/2026 11:58 - 1.57m or 5 feet 2 inches (A Adviser)\nHow tall are you?\tQ\nA\n',
+      'question_marker',
+      PORTAL_CONFIG
+    ).pairs;
+    expect(pairs[0]?.question).toBe('How tall are you?');
+  });
+
+  it('does not mistake a leading marker for the whole question', () => {
+    const pairs = parseApplication(
+      '29/07/2026 11:58 - No (A Adviser)\nQ\tHave you ever:\nA\n',
+      'question_marker',
+      PORTAL_CONFIG
+    ).pairs;
+    expect(pairs[0]?.question).toBe('Have you ever:');
+  });
+});
+
+describe('a leading marker must not be swallowed by the answer above it', () => {
+  it('keeps a question whose answer carries no attribution', () => {
+    // The guard that stops mergeWrappedAnswers absorbing the next line only
+    // fires if the line is recognised as a question. Once the marker leads it is
+    // separated by a TAB — a column break — and matching only "Q " turned the
+    // guard off for every question in the document. It showed up on exactly the
+    // answers with no "(adviser name)" to close them, because those are the only
+    // ones that look wrapped: two real questions were absorbed and lost.
+    const pairs = parseApplication(
+      [
+        '05/08/2026 12:23 - 30',
+        "Q\tHow many days' notice is associated with your readiness state?",
+        'A',
+        '05/08/2026 12:23 - No',
+        'Q\tDoes this involve an area of conflict, hazard, political or civil unrest?',
+        'A',
+        '',
+      ].join('\n'),
+      'question_marker',
+      PORTAL_CONFIG
+    ).pairs;
+
+    expect(pairs).toHaveLength(2);
+    expect(pairs[0]?.question).toBe(
+      "How many days' notice is associated with your readiness state?"
+    );
+    expect(pairs[0]?.answer).toBe('30');
+    expect(pairs[1]?.question).toBe(
+      'Does this involve an area of conflict, hazard, political or civil unrest?'
+    );
+    expect(pairs[1]?.answer).toBe('No');
+  });
+
+  it('still merges an answer that genuinely wrapped', () => {
+    const pairs = parseApplication(
+      [
+        '05/08/2026 12:23 - Heart attack, angina or stroke, Diabetes, and',
+        'several other things (A Adviser)',
+        'Q\tHave any of these applied to you?',
+        'A',
+        '',
+      ].join('\n'),
+      'question_marker',
+      PORTAL_CONFIG
+    ).pairs;
+
+    expect(pairs).toHaveLength(1);
+    expect(pairs[0]?.answer).toBe(
+      'Heart attack, angina or stroke, Diabetes, and several other things'
+    );
   });
 });
