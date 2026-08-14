@@ -648,11 +648,47 @@ function numbersIn(value: string): number[] {
  * application, filled in from the same conversation, records the year. Both are
  * the same fact in different units.
  */
-const RELATIVE_YEARS = /(\d+)\s*(?:years?|yrs?)\s*(?:ago|back)/;
+const RELATIVE_YEARS = /(\d+(?:\.\d+)?)\s*(?:years?|yrs?)\s*(?:ago|back)/;
 
 /** A four-digit year, as distinct from a count of anything. */
 function isYear(n: number): boolean {
   return Number.isInteger(n) && n >= 1900 && n <= 2099;
+}
+
+/**
+ * The smallest sum at which people start rounding when they speak. Below it a
+ * difference is a different number, not the same number said loosely: 22 against
+ * 36 is a real disagreement about a premium, and 5 cigarettes against 50 is the
+ * mis-keying the numeric rule exists to catch.
+ */
+const ROUNDING_FLOOR = 1000;
+
+/** How far apart two large figures may be and still be the same figure. */
+const ROUNDING_TOLERANCE = 0.01;
+
+/**
+ * Is one of these the other, rounded — the way a person says a large number?
+ *
+ * A customer asked their income says "about £48,000". The adviser writes down
+ * what the payslip says: 48250. Compared as bare numbers those disagree, and the
+ * module reported a mismatch at 0.95 confidence — an adviser accused of
+ * recording an income the customer never gave, over £250 on a figure the
+ * customer explicitly approximated.
+ *
+ * Deliberately relative and deliberately tight. The numeric rule exists to catch
+ * mis-keying — a digit dropped, a figure transposed — and every one of those is
+ * an order-of-magnitude error, not a 0.5% one. One percent is far below the
+ * smallest mis-keying that can occur and far above the rounding people do out
+ * loud, so it separates the two cleanly rather than trading one off against the
+ * other.
+ *
+ * The floor matters as much as the tolerance: without it, a percentage of a
+ * small number is a fraction of a unit and this would decide nothing, while
+ * "2 pints" against "3 pints" must stay a disagreement.
+ */
+function isRounded(a: number, b: number): boolean {
+  if (a < ROUNDING_FLOOR || b < ROUNDING_FLOOR) return false;
+  return Math.abs(a - b) / Math.max(a, b) <= ROUNDING_TOLERANCE;
 }
 
 /**
@@ -677,7 +713,13 @@ function compareYearToElapsed(
     [call, app],
   ];
   for (const [otherSide, elapsedSide] of pairs) {
-    const elapsed = RELATIVE_YEARS.exec(normaliseAnswer(elapsedSide));
+    // Fractions folded first, in both notations people use aloud. Without this
+    // the leading digits of "3.5 years ago" are skipped and the FIVE is taken as
+    // the whole figure: on a real sale that read as 2021 against a form saying
+    // 2023 and was reported as the adviser recording a year the customer never
+    // gave. It is the same fault as "16 and a half stone", in a different unit —
+    // a half the pattern could not see, turned into an accusation.
+    const elapsed = RELATIVE_YEARS.exec(foldSpokenFractions(normaliseAnswer(elapsedSide)));
     if (!elapsed) continue;
     const nums = numbersIn(otherSide);
     if (nums.length !== 1) continue;
@@ -882,6 +924,7 @@ export function compareAnswers(
     // against a number of episodes. Declaring those a mismatch accuses an
     // adviser on the strength of a unit confusion that is ours, not theirs.
     if (isYear(appNums[0]!) !== isYear(callNums[0]!)) return 'unclear';
+    if (isRounded(appNums[0]!, callNums[0]!)) return 'match';
     return 'mismatch';
   }
   // A number on one side and none on the other tells us nothing on its own.

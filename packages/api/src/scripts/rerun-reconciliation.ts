@@ -41,6 +41,7 @@
 //   tsx src/scripts/rerun-reconciliation.ts "Trust Point" --commit --include-abandoned
 //   tsx src/scripts/rerun-reconciliation.ts "Trust Point" --commit --limit=5
 //   tsx src/scripts/rerun-reconciliation.ts "Trust Point" --commit --limit=5 --in-process
+//   tsx src/scripts/rerun-reconciliation.ts "Trust Point" --commit --only="Brian Meek" --in-process
 import type { Job } from 'bullmq';
 import { pool, query, queryOne } from '../db/client.js';
 import { scoringQueue } from '../jobs/queue.js';
@@ -70,6 +71,11 @@ async function main(): Promise<void> {
   const limitArg = args.find((a) => a.startsWith('--limit='));
   const limit = limitArg ? Number(limitArg.split('=')[1]) : null;
   const inProcess = args.includes('--in-process');
+  // Re-check just the sales whose document name contains this. Verifying a
+  // change to how ONE finding was reached otherwise means re-running the whole
+  // tenant and paying for every sale to learn about one.
+  const onlyArg = args.find((a) => a.startsWith('--only='));
+  const only = onlyArg ? onlyArg.slice('--only='.length) : null;
 
   if (!target) {
     console.error('Usage: tsx src/scripts/rerun-reconciliation.ts <orgId|nameSubstring> [--commit]');
@@ -113,9 +119,10 @@ async function main(): Promise<void> {
       WHERE r.organization_id = $1
         AND r.status = ANY($2::text[])
         AND j.zoho_record_id IS NOT NULL
+        ${only ? 'AND r.attachment_name ILIKE $3' : ''}
       ORDER BY r.completed_at DESC NULLS LAST
       ${limit ? `LIMIT ${Number(limit)}` : ''}`,
-    [org.id, statuses]
+    only ? [org.id, statuses, `%${only}%`] : [org.id, statuses]
   );
 
   // Is anything these sales depend on still being transcribed?
