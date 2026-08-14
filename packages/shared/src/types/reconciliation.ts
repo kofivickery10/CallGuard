@@ -134,7 +134,19 @@ export type DocumentProfileStatus =
   // Proposed, never yet used to judge anything. Waiting on a human.
   | 'needs_confirmation'
   | 'active'
-  | 'superseded';
+  | 'superseded'
+  /**
+   * Proposed, and a person said no — a duplicate of a format already active, or
+   * a document that is not an application at all.
+   *
+   * Distinct from 'superseded' because the decision has to be REMEMBERED:
+   * learning looks up an existing format by signature, and a status it does not
+   * recognise is invisible to it, so the next sale carrying the document would
+   * propose it again and the dismissal would silently undo itself.
+   *
+   * Reversible — confirming a dismissed profile activates it.
+   */
+  | 'dismissed';
 
 /**
  * What kind of check one field on an application can bear.
@@ -201,6 +213,10 @@ export interface DocumentProfile {
   learned_from_journey_id: string | null;
   confirmed_by: string | null;
   confirmed_at: string | null;
+  /** Set with status 'dismissed'. Why a person rejected this proposed format. */
+  dismissed_at?: string | null;
+  dismissed_by?: string | null;
+  dismissed_reason?: string | null;
   created_at: string;
 }
 

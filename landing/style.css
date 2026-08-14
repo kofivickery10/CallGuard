@@ -1538,3 +1538,156 @@ body.no-scroll { overflow: hidden; }
 @media (max-width: 900px) {
   .pricing-grid { grid-template-columns: 1fr; gap: 16px; }
 }
+
+/* ============================================================
+   Demo request modal
+   Injected by script.js on first use, intercepting the mailto CTAs.
+   Progressive enhancement only — the mailto links keep working with
+   JS disabled, so this markup and its styles are additive.
+   ============================================================ */
+.modal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(15, 21, 18, 0.6);
+  overflow-y: auto;
+}
+.modal-overlay.is-open { display: flex; }
+
+.modal-dialog {
+  position: relative;
+  width: 100%;
+  max-width: 480px;
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card-hover);
+  padding: 32px 28px;
+}
+.modal-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  padding: 0;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.modal-close:hover { border-color: var(--primary); color: var(--primary); }
+.modal-close svg { width: 18px; height: 18px; display: block; }
+
+.modal-title {
+  font-size: 20px;
+  padding-right: 40px;
+  margin-bottom: 6px;
+}
+.modal-sub {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin: 0 0 22px;
+}
+
+.form-field { margin-bottom: 16px; }
+.form-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+}
+.form-label .form-optional {
+  font-weight: 500;
+  color: var(--text-muted);
+}
+.form-input,
+.form-select,
+.form-textarea {
+  width: 100%;
+  padding: 10px 12px;
+  font: inherit;
+  font-size: 14px;
+  color: var(--text-primary);
+  background: var(--page-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-btn);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.form-textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+.form-input:focus,
+.form-select:focus,
+.form-textarea:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-light);
+}
+.form-input[aria-invalid="true"],
+.form-select[aria-invalid="true"],
+.form-textarea[aria-invalid="true"] {
+  border-color: var(--fail);
+}
+.form-error {
+  display: none;
+  font-size: 12.5px;
+  color: var(--fail);
+  margin-top: 6px;
+}
+.form-error.is-visible { display: block; }
+
+.form-status {
+  font-size: 13.5px;
+  margin-bottom: 14px;
+}
+.form-status.is-error {
+  color: var(--fail);
+  background: var(--fail-bg);
+  border-radius: var(--radius-btn);
+  padding: 10px 12px;
+}
+
+.modal-form .btn { width: 100%; margin-top: 4px; }
+
+.modal-success {
+  text-align: center;
+  padding: 8px 0 4px;
+}
+.modal-success svg {
+  width: 40px;
+  height: 40px;
+  color: var(--primary);
+  margin: 0 auto 14px;
+}
+.modal-success .modal-title { font-size: 18px; padding-right: 0; margin-bottom: 8px; }
+.modal-success p { font-size: 14px; color: var(--text-secondary); margin: 0; }
+
+/* Visible focus rings everywhere the modal is open, matching brand green */
+.modal-dialog :focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+@media (max-width: 480px) {
+  .modal-overlay { padding: 0; align-items: flex-end; }
+  .modal-dialog {
+    max-width: none;
+    max-height: 92vh;
+    border-radius: var(--radius-card) var(--radius-card) 0 0;
+    padding: 24px 20px 28px;
+  }
+}

@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 <link rel="manifest" href="/site.webmanifest" />
 <link rel="preload" as="font" type="font/woff2" href="/fonts/InterVariable.woff2" crossorigin>
-<link rel="stylesheet" href="/style.css?v=12" />
+<link rel="stylesheet" href="/style.css?v=13" />
 
 <meta property="og:type" content="article" />
 <meta property="og:site_name" content="CallGuard AI" />
@@ -49,6 +49,44 @@
       "description": "An honest comparison of Convin and CallGuard AI for compliance call scoring.",
       "isPartOf": {"@id": "https://callguardai.co.uk/#website"},
       "about": {"@id": "https://callguardai.co.uk/#software"}
+    },
+    {
+      "@type": "FAQPage",
+      "@id": "https://callguardai.co.uk/compare/convin-alternative#faq",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "Does CallGuard AI cover chat and email like Convin?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "No. CallGuard AI is deliberately voice-first: live streams, dialler recordings and uploaded files. If omnichannel text QA is a hard requirement, Convin's breadth may fit better; some teams run CallGuard AI for regulated voice and a lighter tool for text channels."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Can CallGuard AI match Convin's coaching features?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "CallGuard AI generates a coaching draft per scored call, and per-agent coaching memory means feedback builds on what was said to that agent last week rather than repeating a template. What we do not do is auto-assign training sessions or peer-comparison leagues; our coaching output is written for the human who runs your coaching conversations."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "How does pricing compare?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Convin quotes per deployment. CallGuard AI publishes pricing from £199 per seat, per month, with volume discounts and no multi-year minimum. Full details on the pricing page."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "How do you handle FCA-regulated firms specifically?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "That is a primary design point for CallGuard AI. Our scorecards lead with COBS 9.2 suitability, FG21/1 vulnerability, and the four Consumer Duty outcomes by default. More on financial services scoring here."
+          }
+        }
+      ]
     }
   ]
 }
@@ -165,7 +203,7 @@
         </div>
         <div class="feature">
           <h3>Sales-led onboarding and custom quotes</h3>
-          <p>Getting started means a demo, discovery and a custom quote. CallGuard AI is self-serve: sign up, upload a scorecard, score calls the same day, with pricing published from £199 per seat, per month.</p>
+          <p>Getting started means a demo, discovery and a custom quote. CallGuard AI onboards fast: book a call, upload a scorecard, score calls the same day, with pricing published from £199 per seat, per month.</p>
         </div>
         <div class="feature">
           <h3>UK data residency needs diligence</h3>
@@ -195,7 +233,7 @@
           <tbody>
             <tr><td>Primary job</td><td>Broad conversation intelligence + coaching</td><td>Compliance call scoring with evidence quotes</td></tr>
             <tr><td>Channels</td><td>Calls, chat, email</td><td>Voice (live streams, recordings, uploads)</td></tr>
-            <tr><td>Time to first scored call</td><td>Sales cycle + onboarding</td><td>Same day (self-serve sign-up)</td></tr>
+            <tr><td>Time to first scored call</td><td>Sales cycle + onboarding</td><td>Same-day onboarding</td></tr>
             <tr><td>UK / FCA framing</td><td>Generic QA parameters</td><td>Native Consumer Duty, COBS 9.2, FG21/1, CONC scorecards</td></tr>
             <tr><td>Per-tenant AI learning</td><td>Coaching loop for agents</td><td>Compliance corrections recalibrate scoring automatically</td></tr>
             <tr><td>Live mid-call alerts</td><td>Agent assist prompts</td><td>Confidence-gated breach webhooks (&gt;75%)</td></tr>
@@ -277,6 +315,7 @@
       <div class="footer-col">
         <h5>Use cases</h5>
         <a href="/use-cases/financial-services">Financial services</a>
+        <a href="/use-cases/mortgage-advice">Mortgage advice</a>
         <a href="/use-cases/bpo">Contact centres &amp; BPOs</a>
         <a href="/use-cases/collections">Debt collections</a>
         <a href="/use-cases/outbound-sales">Outbound sales</a>
@@ -284,6 +323,8 @@
       <div class="footer-col">
         <h5>Integrations</h5>
         <a href="/integrations/twilio">Twilio</a>
+        <a href="/integrations/cloudtalk">CloudTalk</a>
+        <a href="/integrations/microsoft-teams">Microsoft Teams</a>
         <a href="/integrations/aws-connect">AWS Connect</a>
       </div>
       <div class="footer-col">
@@ -301,7 +342,7 @@
   </div>
 </footer>
 
-<script defer src="/script.js?v=3"></script>
+<script defer src="/script.js?v=4"></script>
 
 <script defer src="/analytics.js?v=1"></script>
 </body>

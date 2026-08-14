@@ -77,6 +77,7 @@ export type AuditActionType =
   | 'reconciliation.run'
   | 'reconciliation.profile_learned'
   | 'reconciliation.profile_confirmed'
+  | 'reconciliation.profile_dismissed'
   | 'dialer_connection.create'
   | 'dialer_connection.update'
   | 'dialer_connection.delete'

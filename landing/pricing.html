@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta name="description" content="CallGuard AI pricing: from £199 per seat, per month. AI call QA and compliance scoring with volume discounts and no multi-year minimum. Get an exact quote." />
+<meta name="description" content="CallGuard AI pricing from £199 per seat, per month. AI call QA and compliance scoring, volume discounts, no multi-year minimum. Get an exact quote." />
 <meta name="theme-color" content="#4a9e6e" />
 <meta name="robots" content="index,follow,max-image-preview:large" />
 <meta name="author" content="CallGuard AI" />
@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 <link rel="manifest" href="/site.webmanifest" />
 <link rel="preload" as="font" type="font/woff2" href="/fonts/InterVariable.woff2" crossorigin>
-<link rel="stylesheet" href="/style.css?v=12" />
+<link rel="stylesheet" href="/style.css?v=13" />
 
 <meta property="og:type" content="website" />
 <meta property="og:site_name" content="CallGuard AI" />
@@ -55,9 +55,56 @@
       "url": "https://callguardai.co.uk/pricing",
       "priceCurrency": "GBP",
       "lowPrice": "199",
+      "highPrice": "399",
       "offerCount": "3",
       "availability": "https://schema.org/InStock",
       "itemOffered": {"@id": "https://callguardai.co.uk/#software"}
+    },
+    {
+      "@type": "FAQPage",
+      "@id": "https://callguardai.co.uk/pricing#faq",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "What counts as a seat?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "A seat is any user account on your CallGuard AI tenant: the advisers whose calls we score, and the compliance officers, supervisors and QA leads who review the results. Billing is per account, not per call, so a seat is charged whether or not that person handled a call in the month. Seats are billed at the published rate for your plan — £199, £299 or £399 — and volume discounts apply as headcount grows. Tell us your headcount and we will confirm your exact monthly total."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Are there volume discounts?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes. The published £199 / £299 / £399 rates are the starting point for smaller teams; per-seat pricing steps down as seat count grows. Tell us your team size and we will confirm your exact rate."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Is there a minimum contract term?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "No multi-year minimum is required. Annual billing attracts a discount, but you can start monthly and move to annual once the product has proved itself on your own calls."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Does the price include transcription and AI scoring?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes. Transcription, redaction, AI scoring and coaching drafts are all part of the plan; there is no separate per-minute transcription bill."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Can I trial it before committing?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Book a 15-minute demo and bring five of your own call recordings; we will score them against your scorecard live, on your data. There is no 90-day pilot, no solution architects and no integration project; sign up in the morning and have 100 calls scored before lunch."
+          }
+        }
+      ]
     }
   ]
 }
@@ -154,7 +201,7 @@
 
         <article class="usecase-card">
           <div class="usecase-role">Growth</div>
-          <div class="price-line">Custom <span class="price-unit">per seat / month</span></div>
+          <div class="price-line">From £299 <span class="price-unit">per seat / month</span></div>
           <p>For compliance teams who want the AI calibrated to their firm's interpretation.</p>
           <ul class="usecase-list">
             <li>Everything in Starter</li>
@@ -169,7 +216,7 @@
 
         <article class="usecase-card">
           <div class="usecase-role">Pro</div>
-          <div class="price-line">Custom <span class="price-unit">per seat / month</span></div>
+          <div class="price-line">From £399 <span class="price-unit">per seat / month</span></div>
           <p>For live operations, BPOs and regulated firms with audit-grade requirements.</p>
           <ul class="usecase-list">
             <li>Everything in Growth</li>
@@ -197,11 +244,11 @@
       <div class="faq-list">
         <details class="faq-item">
           <summary>What counts as a seat?</summary>
-          <div class="faq-body"><p>A seat is any user account on your CallGuard AI tenant: the advisers whose calls we score, and the compliance officers, supervisors and QA leads who review the results. Billing is per account, not per call, so a seat is charged whether or not that person handled a call in the month. Tell us your headcount and we will quote the exact rate.</p></div>
+          <div class="faq-body"><p>A seat is any user account on your CallGuard AI tenant: the advisers whose calls we score, and the compliance officers, supervisors and QA leads who review the results. Billing is per account, not per call, so a seat is charged whether or not that person handled a call in the month. Seats are billed at the published rate for your plan — £199, £299 or £399 — and volume discounts apply as headcount grows. Tell us your headcount and we will confirm your exact monthly total.</p></div>
         </details>
         <details class="faq-item">
           <summary>Are there volume discounts?</summary>
-          <div class="faq-body"><p>Yes. The £199 figure is the starting point for smaller teams; per-seat pricing steps down as seat count grows. Tell us your team size and we will quote the exact rate.</p></div>
+          <div class="faq-body"><p>Yes. The published £199 / £299 / £399 rates are the starting point for smaller teams; per-seat pricing steps down as seat count grows. Tell us your team size and we will confirm your exact rate.</p></div>
         </details>
         <details class="faq-item">
           <summary>Is there a minimum contract term?</summary>
@@ -245,6 +292,7 @@
       <div class="footer-col">
         <h5>Use cases</h5>
         <a href="/use-cases/financial-services">Financial services</a>
+        <a href="/use-cases/mortgage-advice">Mortgage advice</a>
         <a href="/use-cases/bpo">Contact centres &amp; BPOs</a>
         <a href="/use-cases/collections">Debt collections</a>
         <a href="/use-cases/outbound-sales">Outbound sales</a>
@@ -252,6 +300,8 @@
       <div class="footer-col">
         <h5>Integrations</h5>
         <a href="/integrations/twilio">Twilio</a>
+        <a href="/integrations/cloudtalk">CloudTalk</a>
+        <a href="/integrations/microsoft-teams">Microsoft Teams</a>
         <a href="/integrations/aws-connect">AWS Connect</a>
       </div>
       <div class="footer-col">
@@ -269,7 +319,7 @@
   </div>
 </footer>
 
-<script defer src="/script.js?v=3"></script>
+<script defer src="/script.js?v=4"></script>
 
 <script defer src="/analytics.js?v=1"></script>
 </body>

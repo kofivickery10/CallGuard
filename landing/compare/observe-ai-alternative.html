@@ -3,29 +3,29 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta name="description" content="An honest comparison of Observe.AI and CallGuard AI. Where each one wins, where each one falls short, and which fits a UK contact centre or FCA-regulated firm best." />
+<meta name="description" content="An honest comparison of Observe.AI and CallGuard AI: where each wins, where each falls short, and which fits a UK contact centre or FCA-regulated firm." />
 <meta name="theme-color" content="#4a9e6e" />
 <meta name="robots" content="index,follow,max-image-preview:large" />
 <meta name="author" content="CallGuard AI" />
-<title>Observe.AI Alternative: Faster, Self-Serve Call QA | CallGuard AI</title>
+<title>Observe.AI Alternative: Published Pricing | CallGuard AI</title>
 <link rel="canonical" href="https://callguardai.co.uk/compare/observe-ai-alternative" />
 <link rel="icon" href="/favicon.ico" sizes="48x48" />
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 <link rel="manifest" href="/site.webmanifest" />
 <link rel="preload" as="font" type="font/woff2" href="/fonts/InterVariable.woff2" crossorigin>
-<link rel="stylesheet" href="/style.css?v=12" />
+<link rel="stylesheet" href="/style.css?v=13" />
 
 <meta property="og:type" content="article" />
 <meta property="og:site_name" content="CallGuard AI" />
 <meta property="og:locale" content="en_GB" />
 <meta property="og:url" content="https://callguardai.co.uk/compare/observe-ai-alternative" />
-<meta property="og:title" content="Observe.AI Alternative: Faster, Self-Serve Call QA | CallGuard AI" />
+<meta property="og:title" content="Observe.AI Alternative: Published Pricing | CallGuard AI" />
 <meta property="og:description" content="Where Observe.AI wins, where CallGuard AI wins, and who should pick which." />
 <meta property="og:image" content="https://callguardai.co.uk/og-image.jpg" />
 
 <meta name="twitter:card" content="summary_large_image" />
-<meta name="twitter:title" content="Observe.AI Alternative: Faster, Self-Serve Call QA | CallGuard AI" />
+<meta name="twitter:title" content="Observe.AI Alternative: Published Pricing | CallGuard AI" />
 <meta name="twitter:description" content="Where Observe.AI wins, where CallGuard AI wins, and who should pick which." />
 <meta name="twitter:image" content="https://callguardai.co.uk/og-image.jpg" />
 
@@ -44,11 +44,57 @@
     {
       "@type": "WebPage",
       "@id": "https://callguardai.co.uk/compare/observe-ai-alternative#webpage",
-      "name": "Observe.AI Alternative: Faster, Self-Serve Call QA",
+      "name": "Observe.AI Alternative: Faster Onboarding, Published Pricing",
       "url": "https://callguardai.co.uk/compare/observe-ai-alternative",
       "description": "An honest comparison of Observe.AI and CallGuard AI.",
       "isPartOf": {"@id": "https://callguardai.co.uk/#website"},
       "about": {"@id": "https://callguardai.co.uk/#software"}
+    },
+    {
+      "@type": "FAQPage",
+      "@id": "https://callguardai.co.uk/compare/observe-ai-alternative#faq",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "Does CallGuard AI do agent coaching like Observe.AI?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes. Each scored call produces a coaching draft for the agent. We also implement per-agent coaching memory: coaching the agent receives next time builds on what was said to them last time. We do not do the broader workforce-enablement and onboarding-workflow product Observe.AI ships, because compliance scoring is our headline use case. If you specifically need a coaching LMS feel, Observe.AI may fit better."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "What data residency does CallGuard AI offer?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "The UK (London region) on AWS. Sub-processors are published publicly. UK GDPR Article 28 DPA is at /dpa."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Is CallGuard AI suitable for a US BPO?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Architecturally yes; the scorecard system supports any regulatory regime including TCPA, FDCPA and mini-Miranda, and a single scorecard library can hold multiple regimes side by side. Practically, our default UK-first orientation may feel like a poorer fit if your buyers expect heavy US enterprise references. If you are running cross-Atlantic operations, talk to us."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "What does the migration look like?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "If your call recordings live in S3, SFTP or a CCaaS archive, push them to CallGuard via our REST API and we re-score them. Your scorecard transfers cleanly because CallGuard AI uses the same per-criterion structure most QA scorecards already use. Migration runways are typically a week, not a quarter."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Can I run CallGuard AI alongside Observe.AI?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes. Many teams in transition keep one platform for agent enablement and the other for compliance scoring. Both consume the same call recordings. We are not religious about being the only vendor on your floor."
+          }
+        }
+      ]
     }
   ]
 }
@@ -193,7 +239,7 @@
             <tr><th>Capability</th><th>Observe.AI</th><th>CallGuard AI</th></tr>
           </thead>
           <tbody>
-            <tr><td>Time to first scored call</td><td>Multi-week implementation</td><td>Same day (self-serve sign-up)</td></tr>
+            <tr><td>Time to first scored call</td><td>Multi-week implementation</td><td>Same-day onboarding</td></tr>
             <tr><td>FCA Consumer Duty scorecards</td><td>Achievable via configuration</td><td>Native, four outcomes by default</td></tr>
             <tr><td>UK / EU data residency</td><td>Negotiable, US-default</td><td>UK (London region)</td></tr>
             <tr><td>Per-tenant AI learning</td><td>Tracker / analyst config</td><td>Compliance corrections feed back automatically</td></tr>
@@ -282,6 +328,7 @@
       <div class="footer-col">
         <h5>Use cases</h5>
         <a href="/use-cases/financial-services">Financial services</a>
+        <a href="/use-cases/mortgage-advice">Mortgage advice</a>
         <a href="/use-cases/bpo">Contact centres &amp; BPOs</a>
         <a href="/use-cases/collections">Debt collections</a>
         <a href="/use-cases/outbound-sales">Outbound sales</a>
@@ -289,6 +336,8 @@
       <div class="footer-col">
         <h5>Integrations</h5>
         <a href="/integrations/twilio">Twilio</a>
+        <a href="/integrations/cloudtalk">CloudTalk</a>
+        <a href="/integrations/microsoft-teams">Microsoft Teams</a>
         <a href="/integrations/aws-connect">AWS Connect</a>
       </div>
       <div class="footer-col">
@@ -306,7 +355,7 @@
   </div>
 </footer>
 
-<script defer src="/script.js?v=3"></script>
+<script defer src="/script.js?v=4"></script>
 
 <script defer src="/analytics.js?v=1"></script>
 </body>

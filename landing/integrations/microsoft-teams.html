@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="description" content="Score Microsoft Teams meeting recordings against your compliance scorecard. We extract the audio at ingest and never store the video track." />
+<meta name="theme-color" content="#4a9e6e" />
+<meta name="robots" content="index,follow,max-image-preview:large" />
+<meta name="author" content="CallGuard AI" />
+<title>Microsoft Teams Call QA Integration | CallGuard AI</title>
+<link rel="canonical" href="https://callguardai.co.uk/integrations/microsoft-teams" />
+<link rel="icon" href="/favicon.ico" sizes="48x48" />
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+<link rel="manifest" href="/site.webmanifest" />
+<link rel="preload" as="font" type="font/woff2" href="/fonts/InterVariable.woff2" crossorigin>
+<link rel="stylesheet" href="/style.css?v=13" />
+
+<meta property="og:type" content="article" />
+<meta property="og:site_name" content="CallGuard AI" />
+<meta property="og:locale" content="en_GB" />
+<meta property="og:url" content="https://callguardai.co.uk/integrations/microsoft-teams" />
+<meta property="og:title" content="Microsoft Teams Call QA Integration | CallGuard AI" />
+<meta property="og:description" content="Score Microsoft Teams meeting recordings against your compliance scorecard. We extract the audio at ingest and never store the video track." />
+<meta property="og:image" content="https://callguardai.co.uk/og-image.jpg" />
+
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Microsoft Teams Call QA Integration | CallGuard AI" />
+<meta name="twitter:description" content="AI compliance scoring for the Teams recordings you already keep." />
+<meta name="twitter:image" content="https://callguardai.co.uk/og-image.jpg" />
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        {"@type": "ListItem", "position": 1, "name": "Home", "item": "https://callguardai.co.uk/"},
+        {"@type": "ListItem", "position": 2, "name": "Integrations", "item": "https://callguardai.co.uk/#live"},
+        {"@type": "ListItem", "position": 3, "name": "Microsoft Teams"}
+      ]
+    },
+    {
+      "@type": "WebPage",
+      "@id": "https://callguardai.co.uk/integrations/microsoft-teams#webpage",
+      "name": "Microsoft Teams Call QA Integration",
+      "url": "https://callguardai.co.uk/integrations/microsoft-teams",
+      "description": "AI compliance scoring for Microsoft Teams meeting recordings, with the video track stripped at ingest.",
+      "isPartOf": {"@id": "https://callguardai.co.uk/#website"},
+      "about": {"@id": "https://callguardai.co.uk/#software"}
+    },
+    {
+      "@type": "FAQPage",
+      "@id": "https://callguardai.co.uk/integrations/microsoft-teams#faq",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "Is this a live, mid-meeting integration?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "No, and we want to be unambiguous about that. There is no live Teams adapter. This is post-meeting file ingestion: the meeting finishes, the recording lands wherever your firm keeps it, and that file is sent to CallGuard to be transcribed and scored. Nothing is flagged while the meeting is still running. If you need breach alerts mid-conversation, our Twilio and AWS Connect adapters stream audio live and are the right place to look."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Does CallGuard record or archive our Teams calls for us?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "No. CallGuard is not a compliance-recording or archiving product. It does not capture your Teams calls, and it must not be relied on to discharge any recording or retention obligation your firm has. It scores recordings you already hold. As general regulatory context rather than legal advice: firms in scope of SYSC 10A are required to record certain client conversations and retain them, commonly for around five years, and a whole vendor category of capture tools exists to do that. Keep yours. Point what it produces at CallGuard and it gets reviewed."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "What happens to the video track?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "It is stripped once, at the ingest boundary, and discarded. Only the extracted MP3 audio crosses into the platform. The video is never stored, never encrypted at rest, never counted in retention and never served back to a browser. That is a deliberate design decision: scoring the call only needs the conversation, so only the conversation is kept."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Which file formats and sizes do you accept?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Video containers with the extensions .mp4, .m4v, .mov, .webm, .mkv, .avi, .mpg and .mpeg, and the matching declared MIME types, including video/mp4, video/quicktime, video/webm and video/x-matroska. When a source streams a container as a generic binary type such as application/octet-stream, we fall back to the file extension so it is not mistaken for audio. Files up to 500MB are accepted, which matters because a 45 to 60 minute recording is routinely over 300MB. The extracted MP3 is typically under 30MB."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "How do recordings actually get to CallGuard?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Two routes, both of which exist today. Drag and drop the file into the dashboard, which suits a firm reviewing a handful of advice meetings a week. Or push it through our REST API, as a file or as a URL we fetch, which suits an archive that can hand off a recording automatically. There is no Teams or Microsoft Graph connector, and we are not going to pretend otherwise."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Does this work for Zoom and Google Meet recordings too?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes. Nothing here is specific to Teams. We handle the container, not the meeting platform that produced it, so a Zoom or Google Meet export in any of the supported formats goes through exactly the same path: audio extracted at ingest, video discarded, transcript diarised and redacted, call scored against your scorecard."
+          }
+        }
+      ]
+    }
+  ]
+}
+</script>
+<script>
+  (function () {
+    try {
+      var s = localStorage.getItem('cg-theme');
+      var d = s ? s === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+      document.documentElement.setAttribute('data-theme', d ? 'dark' : 'light');
+    } catch (e) {}
+  })();
+</script>
+</head>
+<body>
+
+<header class="nav" role="banner">
+  <div class="container nav-inner">
+    <a class="brand" href="/" aria-label="CallGuard AI home"><img class="brand-logo brand-logo--light" src="/brand/svg/callguard-logo-horizontal.svg" alt="CallGuard AI" width="152" height="32" /><img class="brand-logo brand-logo--dark" src="/brand/svg/callguard-logo-horizontal-dark.svg" alt="CallGuard AI" width="152" height="32" /></a>
+    <nav class="nav-links" aria-label="Primary">
+      <a href="/#how-it-works">How it works</a>
+      <a href="/#live">Live &amp; embedded</a>
+      <a href="/#learning">AI learning</a>
+      <a href="/#use-cases">Use cases</a>
+      <a href="/pricing">Pricing</a>
+      <a href="/blog/">Blog</a>
+      <a href="/#faq">FAQ</a>
+    </nav>
+    <a href="https://app.callguardai.co.uk/" class="nav-login">Log in</a>
+    <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20Microsoft%20Teams%20demo" class="btn btn-primary nav-cta">Book a demo</a>
+    <button class="theme-switch" type="button" aria-label="Toggle dark mode" aria-pressed="false">
+      <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+    </button>
+    <button class="nav-toggle" aria-label="Open menu" aria-controls="mobile-drawer" aria-expanded="false">
+      <svg class="icon-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="7"  x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>
+      <svg class="icon-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="6" y1="6"  x2="18" y2="18"/><line x1="6" y1="18" x2="18" y2="6"/></svg>
+    </button>
+  </div>
+  <div class="nav-drawer" id="mobile-drawer" aria-label="Mobile menu">
+    <a href="/#how-it-works">How it works</a>
+    <a href="/#live">Live &amp; embedded</a>
+    <a href="/#learning">AI learning</a>
+    <a href="/#use-cases">Use cases</a>
+    <a href="/pricing">Pricing</a>
+    <a href="/blog/">Blog</a>
+      <a href="/#faq">FAQ</a>
+    <a href="https://app.callguardai.co.uk/">Log in</a>
+    <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20Microsoft%20Teams%20demo" class="btn btn-primary">Book a demo</a>
+  </div>
+</header>
+
+<main id="top">
+
+  <section class="hero">
+    <div class="container">
+      <span class="eyebrow">Integration · Microsoft Teams</span>
+      <h1 class="hero-headline">
+        Compliance scoring for <span class="accent">Teams meeting recordings.</span>
+      </h1>
+      <p class="hero-sub">
+        Regulated advice is increasingly given over a screen share rather than a dialer, so the only record of the conversation is a video file sitting in an archive nobody has capacity to watch. Send us that file and CallGuard extracts the audio at the door, transcribes it with speaker diarisation and scores it against your scorecard. To be clear about what this is: post-meeting scoring of recordings you already hold, not live monitoring and not a recording product.
+      </p>
+      <div class="hero-ctas">
+        <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20Microsoft%20Teams%20demo" class="btn btn-primary btn-lg">Book a 15-min demo</a>
+        <a href="#how" class="btn btn-ghost btn-lg">How the integration works ↓</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section-alt" id="how">
+    <div class="container">
+      <span class="section-tag">How the integration works</span>
+      <h2 class="section-h2">
+        Send us the file. <span class="accent">We keep the audio and bin the video.</span>
+      </h2>
+      <p class="lead">
+        There is no Teams connector and no Microsoft Graph app to consent to — CallGuard works on the recording itself, however your firm gets it out of Teams. From there it is the same pipeline that scores a dialer call, with one extra step at the front: the video track is stripped and the audio extracted as MP3 before anything else touches it.
+      </p>
+
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">1</div>
+          <h3>Get the recording out of Teams</h3>
+          <p>However you already do it. A recording saved to your firm's storage, an export from the compliance-recording tool you run alongside Teams, or a file an adviser downloads after a meeting. CallGuard does not need to be in the meeting to score it.</p>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <h3>Upload it, or push it by API</h3>
+          <p>Drag and drop in the dashboard, or POST the file or a URL to our REST API when an archive can hand recordings over automatically. Files up to 500MB are accepted, because a 45 to 60 minute meeting is routinely over 300MB.</p>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <h3>The video is stripped at the ingest boundary</h3>
+          <p>A bundled ffmpeg-static binary extracts the audio as MP3 — typically under 30MB — and the video is discarded there and then. No server-side install, and a 15-minute transcode ceiling bounds a malformed container. Only audio crosses into the platform.</p>
+        </div>
+        <div class="step">
+          <div class="step-num">4</div>
+          <h3>Transcribed, redacted, scored</h3>
+          <p>Speaker-diarised transcription with source-side PII redaction, then scoring against your firm's scorecard: pass or fail per criterion, each backed by a direct quote from the transcript. Your compliance officer corrects anything they disagree with, and the AI recalibrates to your bar.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="container">
+      <span class="section-tag">What you get</span>
+      <h2 class="section-h2">
+        Video in. <span class="accent">Audio only, from there on.</span>
+      </h2>
+      <p class="lead">
+        CallGuard is the review layer, not the capture layer. As general regulatory context rather than legal advice: firms in scope of SYSC 10A are required to record certain client conversations and retain them, commonly for around five years, and firms running a Teams compliance-recording product to satisfy that typically end up with an archive far larger than any QA team can review. CallGuard does not replace that tool and does not discharge any recording duty. It reads what the tool produces, so every meeting gets scored rather than one in twenty. The firms that ask for this most often are doing <a href="/use-cases/mortgage-advice">mortgage advice over a screen share</a>; there is wider context on our <a href="/use-cases/financial-services">financial services use case</a>, and pricing is published at <a href="/pricing">/pricing</a>.
+      </p>
+
+      <div class="feature-grid feature-grid-2">
+        <div class="feature">
+          <h3>The video never reaches storage</h3>
+          <p>Stripped once, at ingest. Never stored, never encrypted at rest, never counted in retention, never served back to a browser. A compliance system does not need footage of a client's living room to check whether the fee was disclosed.</p>
+        </div>
+        <div class="feature">
+          <h3>The containers a meeting export actually produces</h3>
+          <p>.mp4, .m4v, .mov, .webm, .mkv, .avi, .mpg and .mpeg, plus the matching declared MIME types. When a source streams a container as a generic binary type, the file extension is used as a fallback so it is not mistaken for audio.</p>
+        </div>
+        <div class="feature">
+          <h3>Sized for real meetings, not clips</h3>
+          <p>Files up to 500MB are handled, covering the 300MB-plus recordings a long advice appointment produces. The extracted MP3 is usually under 30MB, so what you store and retain is a fraction of what arrived.</p>
+        </div>
+        <div class="feature">
+          <h3>Nothing to install, nothing to deploy</h3>
+          <p>Audio extraction runs on a bundled ffmpeg-static binary. No server-side package to approve, no middleware, no container to run on your side — the same low-friction setup as the rest of our ingestion routes.</p>
+        </div>
+        <div class="feature">
+          <h3>Platform-agnostic by design</h3>
+          <p>We handle the container, not the meeting platform. Teams, Zoom or Google Meet exports all take the identical path, so a firm whose advisers use more than one tool does not need more than one integration.</p>
+        </div>
+        <div class="feature">
+          <h3>Everything downstream is unchanged</h3>
+          <p>AES-256-GCM encryption at rest, speaker-diarised transcription, source-side PII redaction so personal data becomes typed tags before it reaches the model, scoring against your scorecard, journey scoring across a multi-meeting sale, and retention purge on your schedule.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section-alt" id="faq">
+    <div class="container">
+      <span class="section-tag">Microsoft Teams integration FAQ</span>
+      <h2 class="section-h2">Common questions, <span class="accent">answered.</span></h2>
+
+      <div class="faq-list">
+        <details class="faq-item">
+          <summary>Is this a live, mid-meeting integration?</summary>
+          <div class="faq-body"><p>No, and we want to be unambiguous about that. There is no live Teams adapter. This is post-meeting file ingestion: the meeting finishes, the recording lands wherever your firm keeps it, and that file is sent to CallGuard to be transcribed and scored. Nothing is flagged while the meeting is still running. If you need breach alerts mid-conversation, our <a href="/integrations/twilio">Twilio</a> and <a href="/integrations/aws-connect">AWS Connect</a> adapters stream audio live and are the right place to look.</p></div>
+        </details>
+        <details class="faq-item">
+          <summary>Does CallGuard record or archive our Teams calls for us?</summary>
+          <div class="faq-body"><p>No. CallGuard is not a compliance-recording or archiving product. It does not capture your Teams calls, and it must not be relied on to discharge any recording or retention obligation your firm has. It scores recordings you already hold. As general regulatory context rather than legal advice: firms in scope of SYSC 10A are required to record certain client conversations and retain them, commonly for around five years, and a whole vendor category of capture tools exists to do that. Keep yours. Point what it produces at CallGuard and it gets reviewed.</p></div>
+        </details>
+        <details class="faq-item">
+          <summary>What happens to the video track?</summary>
+          <div class="faq-body"><p>It is stripped once, at the ingest boundary, and discarded. Only the extracted MP3 audio crosses into the platform. The video is never stored, never encrypted at rest, never counted in retention and never served back to a browser. That is a deliberate design decision: scoring the call only needs the conversation, so only the conversation is kept.</p></div>
+        </details>
+        <details class="faq-item">
+          <summary>Which file formats and sizes do you accept?</summary>
+          <div class="faq-body"><p>Video containers with the extensions .mp4, .m4v, .mov, .webm, .mkv, .avi, .mpg and .mpeg, and the matching declared MIME types, including video/mp4, video/quicktime, video/webm and video/x-matroska. When a source streams a container as a generic binary type such as application/octet-stream, we fall back to the file extension so it is not mistaken for audio. Files up to 500MB are accepted, which matters because a 45 to 60 minute recording is routinely over 300MB. The extracted MP3 is typically under 30MB.</p></div>
+        </details>
+        <details class="faq-item">
+          <summary>How do recordings actually get to CallGuard?</summary>
+          <div class="faq-body"><p>Two routes, both of which exist today. Drag and drop the file into the dashboard, which suits a firm reviewing a handful of advice meetings a week. Or push it through our REST API, as a file or as a URL we fetch, which suits an archive that can hand off a recording automatically. There is no Teams or Microsoft Graph connector, and we are not going to pretend otherwise.</p></div>
+        </details>
+        <details class="faq-item">
+          <summary>Does this work for Zoom and Google Meet recordings too?</summary>
+          <div class="faq-body"><p>Yes. Nothing here is specific to Teams. We handle the container, not the meeting platform that produced it, so a Zoom or Google Meet export in any of the supported formats goes through exactly the same path: audio extracted at ingest, video discarded, transcript diarised and redacted, call scored against your scorecard.</p></div>
+        </details>
+      </div>
+
+      <div style="margin-top: 36px; text-align: center;">
+        <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20Microsoft%20Teams%20demo" class="btn btn-primary btn-lg">Book a 15-min demo</a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="footer">
+  <div class="container footer-inner">
+    <div class="footer-brand">
+      <a class="brand brand-footer" href="/" aria-label="CallGuard AI home"><img class="brand-logo brand-logo--footer" src="/brand/svg/callguard-logo-horizontal-dark.svg" alt="CallGuard AI" width="160" height="34" /></a>
+      <p class="footer-tag">AI compliance scoring for every regulated conversation.</p>
+    </div>
+    <div class="footer-links">
+      <div class="footer-col">
+        <h5>Product</h5>
+        <a href="/#how-it-works">How it works</a>
+        <a href="/#live">Live &amp; embedded</a>
+        <a href="/#learning">AI learning</a>
+        <a href="/#use-cases">Use cases</a>
+        <a href="/pricing">Pricing</a>
+        <a href="/compare">Compare</a>
+        <a href="/about">About</a>
+        <a href="/blog/">Blog</a>
+      <a href="/#faq">FAQ</a>
+      </div>
+      <div class="footer-col">
+        <h5>Use cases</h5>
+        <a href="/use-cases/financial-services">Financial services</a>
+        <a href="/use-cases/mortgage-advice">Mortgage advice</a>
+        <a href="/use-cases/bpo">Contact centres &amp; BPOs</a>
+        <a href="/use-cases/collections">Debt collections</a>
+        <a href="/use-cases/outbound-sales">Outbound sales</a>
+      </div>
+      <div class="footer-col">
+        <h5>Integrations</h5>
+        <a href="/integrations/twilio">Twilio</a>
+        <a href="/integrations/cloudtalk">CloudTalk</a>
+        <a href="/integrations/microsoft-teams">Microsoft Teams</a>
+        <a href="/integrations/aws-connect">AWS Connect</a>
+      </div>
+      <div class="footer-col">
+        <h5>Legal</h5>
+        <a href="/privacy">Privacy policy</a>
+        <a href="/terms">Terms of service</a>
+        <a href="/dpa">DPA</a>
+        <a href="/sub-processors">Sub-processors</a>
+      </div>
+    </div>
+  </div>
+  <div class="container footer-bottom">
+    <span>© 2026 CallGuard AI.</span>
+    <span>UK-based · GDPR-compliant by default</span>
+  </div>
+</footer>
+
+<script defer src="/script.js?v=4"></script>
+
+<script defer src="/analytics.js?v=1"></script>
+</body>
+</html>

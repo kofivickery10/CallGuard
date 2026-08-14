@@ -107,6 +107,12 @@ export function DocumentProfileReview() {
   // silently rewrite modes somebody else had just corrected.
   const [modeOverrides, setModeOverrides] = useState<Record<number, QuestionCheckMode>>({});
 
+  // Dismissing is behind a confirm step rather than a bare button. It is not
+  // destructive — the sales still get read, by the model fallback — but it is a
+  // decision another admin will see the consequences of, so it asks why.
+  const [dismissing, setDismissing] = useState(false);
+  const [dismissReason, setDismissReason] = useState('');
+
   const confirm = useMutation({
     mutationFn: () =>
       api.put<{ id: string; requeued?: number }>(`/reconciliation/profiles/${id}/confirm`, {
@@ -117,6 +123,18 @@ export function DocumentProfileReview() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['reconciliation-profiles'] });
       queryClient.invalidateQueries({ queryKey: ['reconciliation-runs'] });
+      queryClient.invalidateQueries({ queryKey: ['reconciliation-profile', id] });
+      navigate('/data-forms');
+    },
+  });
+
+  const dismiss = useMutation({
+    mutationFn: () =>
+      api.put<{ id: string; status: string }>(`/reconciliation/profiles/${id}/dismiss`, {
+        ...(dismissReason.trim() ? { reason: dismissReason.trim() } : {}),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['reconciliation-profiles'] });
       queryClient.invalidateQueries({ queryKey: ['reconciliation-profile', id] });
       navigate('/data-forms');
     },
@@ -451,6 +469,13 @@ export function DocumentProfileReview() {
               >
                 Not now
               </Link>
+              <button
+                onClick={() => setDismissing(true)}
+                disabled={dismiss.isPending}
+                className="px-4 py-2 rounded-btn text-table-cell font-semibold border border-border text-text-secondary hover:bg-table-header disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+              >
+                Not a format we need
+              </button>
               <span className="text-xs text-text-muted">
                 Sales waiting on this question set are checked as soon as you confirm.
               </span>
@@ -463,9 +488,71 @@ export function DocumentProfileReview() {
         </div>
       )}
 
-      {confirm.isError && (
+      {awaiting && isAdmin && dismissing && (
+        <div className="mt-4 bg-card border border-border rounded-card p-5 max-w-2xl">
+          <h3 className="text-table-cell font-semibold text-text-primary">
+            Dismiss this proposed format?
+          </h3>
+          <p className="text-xs text-text-muted mt-2 leading-relaxed">
+            It stops appearing in the review queue, and CallGuard will not propose it again when
+            another sale arrives carrying the same document. Sales on this format are still
+            checked &mdash; without a stored format they are read directly instead, which is what
+            already happens for an insurer never seen before.
+          </p>
+          <p className="text-xs text-text-muted mt-2 leading-relaxed">
+            Reversible: a dismissed format can be confirmed later if this turns out to be wrong.
+          </p>
+          <label
+            htmlFor="dismiss-reason"
+            className="block text-table-cell font-semibold text-text-primary mt-4"
+          >
+            Why? <span className="font-normal text-text-muted">(optional)</span>
+          </label>
+          <input
+            id="dismiss-reason"
+            type="text"
+            value={dismissReason}
+            onChange={(e) => setDismissReason(e.target.value)}
+            placeholder="e.g. duplicate of the format already in use"
+            className="mt-2 w-full px-3 py-2 rounded-btn border border-border bg-card text-table-cell text-text-primary placeholder:text-text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+          />
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <button
+              onClick={() => dismiss.mutate()}
+              disabled={dismiss.isPending}
+              className="px-4 py-2 rounded-btn text-table-cell font-semibold bg-primary text-white hover:opacity-90 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+            >
+              {dismiss.isPending ? 'Dismissing…' : 'Dismiss this format'}
+            </button>
+            <button
+              onClick={() => setDismissing(false)}
+              disabled={dismiss.isPending}
+              className="px-4 py-2 rounded-btn text-table-cell font-semibold border border-border text-text-secondary hover:bg-table-header disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+            >
+              Keep it
+            </button>
+          </div>
+        </div>
+      )}
+
+      {profile.status === 'dismissed' && (
+        <div className="mt-4 bg-card border border-border rounded-card p-5 max-w-2xl">
+          <p className="text-table-cell text-text-primary font-semibold">
+            This format was dismissed.
+          </p>
+          {profile.dismissed_reason && (
+            <p className="text-table-cell text-text-secondary mt-1">{profile.dismissed_reason}</p>
+          )}
+          <p className="text-xs text-text-muted mt-2 leading-relaxed">
+            Sales carrying it are read directly rather than by a stored format. An administrator
+            can still confirm it if it should be used after all.
+          </p>
+        </div>
+      )}
+
+      {(confirm.isError || dismiss.isError) && (
         <div className="bg-fail-bg text-fail px-3 py-2 rounded-btn text-table-cell mt-3 inline-block">
-          {(confirm.error as Error).message}
+          {((confirm.error ?? dismiss.error) as Error).message}
         </div>
       )}
     </div>
