@@ -31,6 +31,8 @@ interface ProfileRow {
   version: number;
   question_count: number;
   confirmed_at: string | null;
+  dismissed_at: string | null;
+  dismissed_reason: string | null;
   created_at: string;
 }
 
@@ -98,6 +100,10 @@ export function DataForms() {
   const profiles = profilesData?.data ?? [];
   const awaiting = profiles.filter((p) => p.status === 'needs_confirmation');
   const active = profiles.filter((p) => p.status === 'active');
+  // Shown, quietly, rather than hidden. Dismissing is reversible, and a decision
+  // you cannot find is not reversible in practice — the only way back would be a
+  // URL nobody kept.
+  const dismissed = profiles.filter((p) => p.status === 'dismissed');
 
   const runs = runsData?.data ?? [];
   // 'undetermined' is deliberately not a finding: it means we could not tell,
@@ -161,6 +167,38 @@ export function DataForms() {
             </Link>
           ))}
         </div>
+      )}
+
+      {dismissed.length > 0 && (
+        <details className="bg-card border border-border rounded-card overflow-hidden mb-5">
+          <summary className="px-5 py-3 cursor-pointer text-table-cell text-text-secondary hover:bg-table-header focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40">
+            Formats dismissed ({dismissed.length})
+          </summary>
+          <p className="px-5 pb-3 text-xs text-text-subtle leading-relaxed">
+            Proposed formats somebody decided not to use. They are not proposed again, and sales
+            carrying them are read directly instead. Open one to use it after all.
+          </p>
+          {dismissed.map((p) => (
+            <Link
+              key={p.id}
+              to={`/data-forms/profiles/${p.id}`}
+              className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 border-t border-border-light hover:bg-table-header transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+            >
+              <div className="min-w-0">
+                <div className="text-table-cell text-text-secondary">
+                  {p.insurer}
+                  {p.product ? <span className="text-text-muted"> — {p.product}</span> : null}
+                </div>
+                {p.dismissed_reason ? (
+                  <div className="text-xs text-text-muted mt-0.5">{p.dismissed_reason}</div>
+                ) : null}
+              </div>
+              <span className="text-xs text-text-muted flex-shrink-0">
+                {p.dismissed_at ? new Date(p.dismissed_at).toLocaleDateString('en-GB') : ''}
+              </span>
+            </Link>
+          ))}
+        </details>
       )}
 
       {/* Sales needing attention */}

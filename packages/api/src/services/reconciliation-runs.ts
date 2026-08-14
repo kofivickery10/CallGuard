@@ -385,6 +385,14 @@ export interface LearnOutcome {
   questionCount: number;
   /** True when an identical profile was already awaiting confirmation. */
   reusedExisting: boolean;
+  /**
+   * True when this format was already proposed and a person rejected it.
+   *
+   * Distinct from reusedExisting because nothing is awaiting anybody: the
+   * decision has been made, and the caller must not report a new proposal or
+   * ask for a review that would only repeat it.
+   */
+  dismissed: boolean;
 }
 
 /**
@@ -410,6 +418,7 @@ export async function learnProfileFromSale(
     product: null,
     questionCount: 0,
     reusedExisting: false,
+    dismissed: false,
   };
 
   const { configured, attachments } = await listSaleAttachments(organizationId, zohoRecordId);
@@ -572,13 +581,26 @@ export async function learnProfileFromSale(
     `SELECT id, status, question_fingerprint, questions_vary, corroborating_journeys
        FROM capture_document_profiles
       WHERE organization_id = $1 AND format_signature = $2
-        AND status IN ('needs_confirmation', 'active')
+        AND status IN ('needs_confirmation', 'active', 'dismissed')
       ORDER BY status = 'active' DESC, created_at DESC
       LIMIT 1`,
     [organizationId, signature]
   );
 
   if (existing) {
+    // Already rejected by a person. Say so and change nothing.
+    //
+    // This branch is why 'dismissed' is a status of its own rather than a flavour
+    // of 'superseded': superseded rows are invisible to the lookup above, so
+    // without it the next sale carrying this document would propose a fresh copy
+    // and the dismissal would silently undo itself. Corroboration is deliberately
+    // NOT recorded — counting sales towards a threshold that can no longer be
+    // reached is bookkeeping nobody reads, and it would misrepresent a rejected
+    // format as one gathering support.
+    if (existing.status === 'dismissed') {
+      return { ...base, failure: null, profileId: existing.id, reusedExisting: true, dismissed: true };
+    }
+
     // A DIFFERENT sale reaching the same format is the corroboration that lets
     // it go live without anyone approving it. The same sale re-read (an admin
     // clicking twice) proves nothing and must not count towards the threshold.
@@ -676,8 +698,16 @@ export async function activateProfile(
     product: string | null;
     format_signature: string | null;
   }>(
+    // A dismissed profile can be activated, which is the undo for dismissing the
+    // wrong row. Without it, a mis-click would cost the tenant every sale on that
+    // insurer until another one happened to arrive.
+    //
+    // Auto-activation cannot reach here: the corroboration path returns early on
+    // a dismissed profile without counting the sale, so the only way in is a
+    // person choosing it.
     `SELECT insurer, product, format_signature FROM capture_document_profiles
-      WHERE id = $1 AND organization_id = $2 AND status = 'needs_confirmation'`,
+      WHERE id = $1 AND organization_id = $2
+        AND status IN ('needs_confirmation', 'dismissed')`,
     [profileId, organizationId]
   );
   if (!profile) return null;
@@ -720,6 +750,11 @@ export async function activateProfile(
             confirmed_by = $2,
             confirmed_at = now(),
             auto_confirmed_at = CASE WHEN $2::uuid IS NULL THEN now() ELSE NULL END,
+            -- Clearing the dismissal, so a row that was rejected and then
+            -- activated does not read as both at once.
+            dismissed_at = NULL,
+            dismissed_by = NULL,
+            dismissed_reason = NULL,
             updated_at = now()
       WHERE id = $1`,
     [profileId, opts.auto ? null : opts.userId]
@@ -742,6 +777,41 @@ export async function activateProfile(
   }
 
   return { insurer: profile.insurer, product: profile.product, requeued: waiting.length };
+}
+
+/**
+ * Reject a proposed format. The other exit from the review queue.
+ *
+ * Returns null when the profile is not in a state that can be dismissed, so the
+ * caller can tell "already gone" from "not found" without a second query.
+ *
+ * Deliberately refuses an ACTIVE profile. Dismissing one would stop every sale
+ * on that insurer being read deterministically, silently and with no
+ * replacement — a destructive act wearing the clothes of tidying a queue. The
+ * way to retire an active format is to confirm its successor, which supersedes
+ * it and re-checks the sales that were on it.
+ */
+export async function dismissProfile(
+  organizationId: string,
+  profileId: string,
+  userId: string,
+  reason: string | null
+): Promise<{ insurer: string; product: string | null } | null> {
+  // One statement, so the status guard and the write cannot come apart: two
+  // admins clicking at once means the second updates no rows and is told so,
+  // rather than both believing they dismissed it.
+  return queryOne<{ insurer: string; product: string | null }>(
+    `UPDATE capture_document_profiles
+        SET status = 'dismissed',
+            dismissed_at = now(),
+            dismissed_by = $3,
+            dismissed_reason = $4,
+            updated_at = now()
+      WHERE id = $1 AND organization_id = $2
+        AND status = 'needs_confirmation'
+      RETURNING insurer, product`,
+    [profileId, organizationId, userId, reason]
+  );
 }
 
 /** Run status implied by a resolution failure. */

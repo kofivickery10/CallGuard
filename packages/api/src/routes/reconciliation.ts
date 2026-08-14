@@ -9,6 +9,7 @@ import {
   isReconciliationEnabled,
   learnProfileFromSale,
   activateProfile,
+  dismissProfile,
 } from '../services/reconciliation-runs.js';
 import { attemptJobId } from '../services/reconciliation-sweep.js';
 import { detectDrift } from '../services/application-pdf.js';
@@ -279,7 +280,8 @@ reconciliationRouter.get('/profiles', async (req, res, next) => {
     const rows = await query<Record<string, unknown>>(
       `SELECT id, insurer, product, strategy, status, version, question_fingerprint,
               jsonb_array_length(questions) AS question_count,
-              confirmed_by, confirmed_at, created_at
+              confirmed_by, confirmed_at, created_at,
+              dismissed_at, dismissed_reason
          FROM capture_document_profiles
         WHERE organization_id = $1
         ORDER BY insurer, product, version DESC`,
@@ -478,6 +480,72 @@ reconciliationRouter.put('/profiles/:id/confirm', requireAdmin, async (req, res,
     });
 
     res.json({ id: profile.id, status: 'active', requeued: activated.requeued });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * Reject a proposed format — the other exit from the review queue.
+ *
+ * Until this existed the queue had one exit, so a proposal that should never go
+ * live had nowhere to go. One tenant's queue held seven formats of which three
+ * were duplicates: the same form learned twice under two names, and a copy of a
+ * profile already active and reading ten sales. A queue showing work that is not
+ * work is one people stop reading, and this queue is where an unread application
+ * format turns into sales nobody is checking.
+ *
+ * Dismissing does NOT stop those sales being checked. With no active profile the
+ * run lands at 'needs_profile' and the model fallback reads the document, as it
+ * does for any insurer never seen before.
+ */
+reconciliationRouter.put('/profiles/:id/dismiss', requireAdmin, async (req, res, next) => {
+  try {
+    if (!isUuid(req.params.id)) throw new AppError(400, 'Invalid profile id');
+    const organizationId = req.user!.organizationId;
+
+    const { reason: suppliedReason } = (req.body ?? {}) as { reason?: string };
+    const reason = (suppliedReason ?? '').trim() || null;
+
+    const dismissed = await dismissProfile(organizationId, req.params.id, req.user!.userId, reason);
+
+    if (!dismissed) {
+      // Either it does not exist, or it is not awaiting a decision. Told apart
+      // here so an admin is not left guessing which — and so dismissing an
+      // ACTIVE profile refuses loudly rather than appearing to work. Retiring a
+      // live format is done by confirming its successor, which supersedes it and
+      // re-checks the sales that were on it; there is no path that quietly stops
+      // an insurer being read.
+      const existing = await queryOne<{ status: string }>(
+        'SELECT status FROM capture_document_profiles WHERE id = $1 AND organization_id = $2',
+        [req.params.id, organizationId]
+      );
+      if (!existing) throw new AppError(404, 'Profile not found');
+      if (existing.status === 'dismissed') {
+        return res.json({ id: req.params.id, status: 'dismissed' });
+      }
+      throw new AppError(
+        409,
+        existing.status === 'active'
+          ? 'This format is in use. Confirm a replacement for it instead — dismissing it would stop these sales being read with nothing to take its place.'
+          : 'This format is no longer awaiting a decision.'
+      );
+    }
+
+    await recordAuditEvent({
+      organizationId,
+      userId: req.user!.userId,
+      actionType: 'reconciliation.profile_dismissed',
+      entityType: 'capture_document_profile',
+      entityId: req.params.id,
+      summary:
+        `Proposed format dismissed for ${dismissed.insurer}` +
+        `${dismissed.product ? ` — ${dismissed.product}` : ''}` +
+        `${reason ? `: ${reason}` : ''}`,
+      req,
+    });
+
+    res.json({ id: req.params.id, status: 'dismissed' });
   } catch (err) {
     next(err);
   }
