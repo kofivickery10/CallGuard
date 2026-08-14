@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="description" content="AI call QA for CloudTalk. Point CloudTalk's webhook at CallGuard and every call is transcribed, scored and matched to the right agent automatically." />
+<meta name="theme-color" content="#4a9e6e" />
+<meta name="robots" content="index,follow,max-image-preview:large" />
+<meta name="author" content="CallGuard AI" />
+<title>CloudTalk Call QA Integration | CallGuard AI</title>
+<link rel="canonical" href="https://callguardai.co.uk/integrations/cloudtalk" />
+<link rel="icon" href="/favicon.ico" sizes="48x48" />
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+<link rel="manifest" href="/site.webmanifest" />
+<link rel="preload" as="font" type="font/woff2" href="/fonts/InterVariable.woff2" crossorigin>
+<link rel="stylesheet" href="/style.css?v=13" />
+
+<meta property="og:type" content="article" />
+<meta property="og:site_name" content="CallGuard AI" />
+<meta property="og:locale" content="en_GB" />
+<meta property="og:url" content="https://callguardai.co.uk/integrations/cloudtalk" />
+<meta property="og:title" content="CloudTalk Call QA Integration | CallGuard AI" />
+<meta property="og:description" content="Point CloudTalk's webhook at CallGuard and every call is transcribed, scored and matched to the right agent automatically." />
+<meta property="og:image" content="https://callguardai.co.uk/og-image.jpg" />
+
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="CloudTalk Call QA Integration | CallGuard AI" />
+<meta name="twitter:description" content="AI call QA for CloudTalk, wired up in minutes." />
+<meta name="twitter:image" content="https://callguardai.co.uk/og-image.jpg" />
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        {"@type": "ListItem", "position": 1, "name": "Home", "item": "https://callguardai.co.uk/"},
+        {"@type": "ListItem", "position": 2, "name": "Integrations", "item": "https://callguardai.co.uk/#live"},
+        {"@type": "ListItem", "position": 3, "name": "CloudTalk"}
+      ]
+    },
+    {
+      "@type": "WebPage",
+      "@id": "https://callguardai.co.uk/integrations/cloudtalk#webpage",
+      "name": "CloudTalk Call QA Integration",
+      "url": "https://callguardai.co.uk/integrations/cloudtalk",
+      "description": "AI call QA for CloudTalk, wired up via webhook in minutes.",
+      "isPartOf": {"@id": "https://callguardai.co.uk/#website"},
+      "about": {"@id": "https://callguardai.co.uk/#software"}
+    },
+    {
+      "@type": "FAQPage",
+      "@id": "https://callguardai.co.uk/integrations/cloudtalk#faq",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "Is this a live, mid-call integration like your Twilio or AWS Connect adapters?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "No, and we want to be upfront about that. CloudTalk's webhook fires when a call has ended and its recording is ready, not while the call is still live, so a CloudTalk call is transcribed and scored shortly after it finishes, typically within a minute or two, rather than flagged mid-call. If you need breach alerts while the call is still happening, our Twilio and AWS Connect adapters stream audio live; CloudTalk doesn't currently expose a live media stream for us to integrate against."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Do we need to deploy anything on our side?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "No. Unlike our AWS Connect integration, which needs a small Lambda bridge, CloudTalk's webhook can point directly at our endpoint. You generate a CallGuard API key, add it to CloudTalk's \"Call Ended\" webhook config, and you're done. No code to deploy, no infrastructure to run."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "How do calls get matched to the right agent?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "By CloudTalk's stable numeric agent ID, not by matching names. Dialer webhooks and agent rosters spell the same person differently, for example a webhook sending \"Vish\" where the roster has \"Vish Bhalla\" and CallGuard has \"Vishall Bhalla\", so matching on the ID CloudTalk assigns avoids misattributing a call to the wrong adviser."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "What if CloudTalk's webhook payload doesn't match your default field names?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "CloudTalk's own webhook documentation doesn't fully specify the \"Call Ended\" payload shape, so our default field map tries several likely key names for each field (recording URL, agent, customer number, call duration and so on) and takes the first one that matches. If your account sends different keys, you can override the mapping per field in Settings, without waiting on us to ship a fix."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Can you backfill calls from before we connected CloudTalk?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes. With your CloudTalk API credentials, CallGuard can pull a customer's call history directly from CloudTalk by phone number and date window. This is what lets a multi-call sale journey be assembled correctly even when an earlier call in that journey happened before your CloudTalk connection was configured."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Is the webhook secured?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Every request needs a valid CallGuard API key. For a stronger check, set a signing secret in your CloudTalk connection and CallGuard will verify an HMAC signature on every webhook, rejecting anything that doesn't match, before it's processed."
+          }
+        }
+      ]
+    }
+  ]
+}
+</script>
+<script>
+  (function () {
+    try {
+      var s = localStorage.getItem('cg-theme');
+      var d = s ? s === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+      document.documentElement.setAttribute('data-theme', d ? 'dark' : 'light');
+    } catch (e) {}
+  })();
+</script>
+</head>
+<body>
+
+<header class="nav" role="banner">
+  <div class="container nav-inner">
+    <a class="brand" href="/" aria-label="CallGuard AI home"><img class="brand-logo brand-logo--light" src="/brand/svg/callguard-logo-horizontal.svg" alt="CallGuard AI" width="152" height="32" /><img class="brand-logo brand-logo--dark" src="/brand/svg/callguard-logo-horizontal-dark.svg" alt="CallGuard AI" width="152" height="32" /></a>
+    <nav class="nav-links" aria-label="Primary">
+      <a href="/#how-it-works">How it works</a>
+      <a href="/#live">Live &amp; embedded</a>
+      <a href="/#learning">AI learning</a>
+      <a href="/#use-cases">Use cases</a>
+      <a href="/pricing">Pricing</a>
+      <a href="/blog/">Blog</a>
+      <a href="/#faq">FAQ</a>
+    </nav>
+    <a href="https://app.callguardai.co.uk/" class="nav-login">Log in</a>
+    <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20CloudTalk%20demo" class="btn btn-primary nav-cta">Book a demo</a>
+    <button class="theme-switch" type="button" aria-label="Toggle dark mode" aria-pressed="false">
+      <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+    </button>
+    <button class="nav-toggle" aria-label="Open menu" aria-controls="mobile-drawer" aria-expanded="false">
+      <svg class="icon-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="7"  x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>
+      <svg class="icon-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="6" y1="6"  x2="18" y2="18"/><line x1="6" y1="18" x2="18" y2="6"/></svg>
+    </button>
+  </div>
+  <div class="nav-drawer" id="mobile-drawer" aria-label="Mobile menu">
+    <a href="/#how-it-works">How it works</a>
+    <a href="/#live">Live &amp; embedded</a>
+    <a href="/#learning">AI learning</a>
+    <a href="/#use-cases">Use cases</a>
+    <a href="/pricing">Pricing</a>
+    <a href="/blog/">Blog</a>
+      <a href="/#faq">FAQ</a>
+    <a href="https://app.callguardai.co.uk/">Log in</a>
+    <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20CloudTalk%20demo" class="btn btn-primary">Book a demo</a>
+  </div>
+</header>
+
+<main id="top">
+
+  <section class="hero">
+    <div class="container">
+      <span class="eyebrow">Integration · CloudTalk</span>
+      <h1 class="hero-headline">
+        AI call QA for <span class="accent">CloudTalk.</span>
+      </h1>
+      <p class="hero-sub">
+        Point CloudTalk's "Call Ended" webhook at CallGuard and every call is pulled, transcribed, scored against your scorecard and matched to the right agent automatically — no code to deploy, no middleware, no manual export. It's our most deeply built-out dialer integration: tolerant field mapping, agent-ID matching, and full call-history backfill for journey scoring.
+      </p>
+      <div class="hero-ctas">
+        <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20CloudTalk%20demo" class="btn btn-primary btn-lg">Book a 15-min demo</a>
+        <a href="#how" class="btn btn-ghost btn-lg">How the integration works ↓</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section-alt" id="how">
+    <div class="container">
+      <span class="section-tag">How the integration works</span>
+      <h2 class="section-h2">
+        Point CloudTalk at us. <span class="accent">That's the integration.</span>
+      </h2>
+      <p class="lead">
+        CloudTalk fires a "Call Ended" (or "Recording Uploaded") webhook when a call finishes. CallGuard validates it, dedupes it, and enqueues the call for processing — waiting a short, tunable delay by default, since the recording is often still processing on CloudTalk's side when the event lands — then pulls the recording via CloudTalk's own API and scores it. No Lambda bridge, no container to run.
+      </p>
+
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">1</div>
+          <h3>Point the webhook at us</h3>
+          <p>Generate a CallGuard API key and add it to CloudTalk's "Call Ended" webhook config, pointed at our ingestion endpoint. Takes a few minutes, no code required.</p>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <h3>We fetch the recording automatically</h3>
+          <p>CallGuard waits (60 seconds by default, tunable per account) for CloudTalk to finish processing, then downloads the recording via CloudTalk's API using your API credentials. Calls under 15 seconds — no-answers, voicemails, instant hangups — are dropped automatically.</p>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <h3>Transcribed, scored, attributed</h3>
+          <p>Speaker-diarised transcription, scored against your scorecard, and matched to the correct agent by CloudTalk's stable numeric agent ID rather than a fragile name match.</p>
+        </div>
+        <div class="step">
+          <div class="step-num">4</div>
+          <h3>Harden it when you're ready</h3>
+          <p>In Settings, add an HMAC signing secret so CallGuard verifies every webhook genuinely came from CloudTalk, override field mapping if your account's payload differs from the default, and tune the fetch delay to match how long your account actually takes to process a recording.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="container">
+      <span class="section-tag">What you get</span>
+      <h2 class="section-h2">
+        CloudTalk's calls in. <span class="accent">Compliance evidence out.</span>
+      </h2>
+
+      <div class="feature-grid feature-grid-2">
+        <div class="feature">
+          <h3>Webhook-driven, no middleware</h3>
+          <p>CloudTalk's "Call Ended" webhook posts straight to our endpoint. Unlike our AWS Connect adapter, there's no Lambda bridge or container to deploy on your side.</p>
+        </div>
+        <div class="feature">
+          <h3>Idempotent by design</h3>
+          <p>A retried webhook delivery is deduplicated on the call's own ID, or a hash of the recording URL when CloudTalk's payload doesn't carry one, so a flaky delivery never double-scores a call.</p>
+        </div>
+        <div class="feature">
+          <h3>Stable agent attribution</h3>
+          <p>Calls are matched to your agent roster by CloudTalk's numeric agent ID, not by name-matching — so spelling differences between what CloudTalk's webhook, CloudTalk's roster and your CallGuard account each call the same person never misattribute a call.</p>
+        </div>
+        <div class="feature">
+          <h3>Tunable recording-fetch delay</h3>
+          <p>Defaults to 60 seconds after the webhook fires, adjustable per account so it fits how long your CloudTalk account genuinely takes to finish processing a recording.</p>
+        </div>
+        <div class="feature">
+          <h3>HMAC-verified webhooks, optional but recommended</h3>
+          <p>Works on API-key auth alone. Add a signing secret in Settings and CallGuard rejects any request that doesn't carry a matching HMAC signature.</p>
+        </div>
+        <div class="feature">
+          <h3>Call-history backfill for journeys</h3>
+          <p>CallGuard can pull a customer's full CloudTalk call history by phone number, so a multi-call sale journey is assembled correctly even when an earlier call predates your CloudTalk connection being configured.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section-alt" id="faq">
+    <div class="container">
+      <span class="section-tag">CloudTalk integration FAQ</span>
+      <h2 class="section-h2">Common questions, <span class="accent">answered.</span></h2>
+
+      <div class="faq-list">
+        <details class="faq-item">
+          <summary>Is this a live, mid-call integration like your Twilio or AWS Connect adapters?</summary>
+          <div class="faq-body"><p>No, and we want to be upfront about that. CloudTalk's webhook fires when a call has ended and its recording is ready, not while the call is still live, so a CloudTalk call is transcribed and scored shortly after it finishes, typically within a minute or two, rather than flagged mid-call. If you need breach alerts while the call is still happening, our Twilio and AWS Connect adapters stream audio live; CloudTalk doesn't currently expose a live media stream for us to integrate against.</p></div>
+        </details>
+        <details class="faq-item">
+          <summary>Do we need to deploy anything on our side?</summary>
+          <div class="faq-body"><p>No. Unlike our AWS Connect integration, which needs a small Lambda bridge, CloudTalk's webhook can point directly at our endpoint. You generate a CallGuard API key, add it to CloudTalk's "Call Ended" webhook config, and you're done. No code to deploy, no infrastructure to run.</p></div>
+        </details>
+        <details class="faq-item">
+          <summary>How do calls get matched to the right agent?</summary>
+          <div class="faq-body"><p>By CloudTalk's stable numeric agent ID, not by matching names. Dialer webhooks and agent rosters spell the same person differently, for example a webhook sending "Vish" where the roster has "Vish Bhalla" and CallGuard has "Vishall Bhalla", so matching on the ID CloudTalk assigns avoids misattributing a call to the wrong adviser.</p></div>
+        </details>
+        <details class="faq-item">
+          <summary>What if CloudTalk's webhook payload doesn't match your default field names?</summary>
+          <div class="faq-body"><p>CloudTalk's own webhook documentation doesn't fully specify the "Call Ended" payload shape, so our default field map tries several likely key names for each field (recording URL, agent, customer number, call duration and so on) and takes the first one that matches. If your account sends different keys, you can override the mapping per field in Settings, without waiting on us to ship a fix.</p></div>
+        </details>
+        <details class="faq-item">
+          <summary>Can you backfill calls from before we connected CloudTalk?</summary>
+          <div class="faq-body"><p>Yes. With your CloudTalk API credentials, CallGuard can pull a customer's call history directly from CloudTalk by phone number and date window. This is what lets a multi-call sale journey be assembled correctly even when an earlier call in that journey happened before your CloudTalk connection was configured.</p></div>
+        </details>
+        <details class="faq-item">
+          <summary>Is the webhook secured?</summary>
+          <div class="faq-body"><p>Every request needs a valid CallGuard API key. For a stronger check, set a signing secret in your CloudTalk connection and CallGuard will verify an HMAC signature on every webhook, rejecting anything that doesn't match, before it's processed.</p></div>
+        </details>
+      </div>
+
+      <div style="margin-top: 36px; text-align: center;">
+        <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20CloudTalk%20demo" class="btn btn-primary btn-lg">Book a 15-min demo</a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="footer">
+  <div class="container footer-inner">
+    <div class="footer-brand">
+      <a class="brand brand-footer" href="/" aria-label="CallGuard AI home"><img class="brand-logo brand-logo--footer" src="/brand/svg/callguard-logo-horizontal-dark.svg" alt="CallGuard AI" width="160" height="34" /></a>
+      <p class="footer-tag">AI compliance scoring for every regulated conversation.</p>
+    </div>
+    <div class="footer-links">
+      <div class="footer-col">
+        <h5>Product</h5>
+        <a href="/#how-it-works">How it works</a>
+        <a href="/#live">Live &amp; embedded</a>
+        <a href="/#learning">AI learning</a>
+        <a href="/#use-cases">Use cases</a>
+        <a href="/pricing">Pricing</a>
+        <a href="/compare">Compare</a>
+        <a href="/about">About</a>
+        <a href="/blog/">Blog</a>
+      <a href="/#faq">FAQ</a>
+      </div>
+      <div class="footer-col">
+        <h5>Use cases</h5>
+        <a href="/use-cases/financial-services">Financial services</a>
+        <a href="/use-cases/mortgage-advice">Mortgage advice</a>
+        <a href="/use-cases/bpo">Contact centres &amp; BPOs</a>
+        <a href="/use-cases/collections">Debt collections</a>
+        <a href="/use-cases/outbound-sales">Outbound sales</a>
+      </div>
+      <div class="footer-col">
+        <h5>Integrations</h5>
+        <a href="/integrations/twilio">Twilio</a>
+        <a href="/integrations/cloudtalk">CloudTalk</a>
+        <a href="/integrations/microsoft-teams">Microsoft Teams</a>
+        <a href="/integrations/aws-connect">AWS Connect</a>
+      </div>
+      <div class="footer-col">
+        <h5>Legal</h5>
+        <a href="/privacy">Privacy policy</a>
+        <a href="/terms">Terms of service</a>
+        <a href="/dpa">DPA</a>
+        <a href="/sub-processors">Sub-processors</a>
+      </div>
+    </div>
+  </div>
+  <div class="container footer-bottom">
+    <span>© 2026 CallGuard AI.</span>
+    <span>UK-based · GDPR-compliant by default</span>
+  </div>
+</footer>
+
+<script defer src="/script.js?v=4"></script>
+
+<script defer src="/analytics.js?v=1"></script>
+</body>
+</html>

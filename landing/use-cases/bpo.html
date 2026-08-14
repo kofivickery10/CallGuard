@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta name="description" content="Automated quality assurance for contact centres and BPOs. Score 100% of calls, coach agents, and give every client its own scorecard and portal." />
+<meta name="description" content="Automated quality assurance for contact centres and BPOs. Score 100% of calls, coach agents, and give every client its own scorecard and share link." />
 <meta name="theme-color" content="#4a9e6e" />
 <meta name="robots" content="index,follow,max-image-preview:large" />
 <meta name="author" content="CallGuard AI" />
@@ -14,14 +14,14 @@
 <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 <link rel="manifest" href="/site.webmanifest" />
 <link rel="preload" as="font" type="font/woff2" href="/fonts/InterVariable.woff2" crossorigin>
-<link rel="stylesheet" href="/style.css?v=12" />
+<link rel="stylesheet" href="/style.css?v=13" />
 
 <meta property="og:type" content="article" />
 <meta property="og:site_name" content="CallGuard AI" />
 <meta property="og:locale" content="en_GB" />
 <meta property="og:url" content="https://callguardai.co.uk/use-cases/bpo" />
 <meta property="og:title" content="Contact Centre &amp; BPO QA Software | CallGuard AI" />
-<meta property="og:description" content="Automated quality assurance for contact centres and BPOs. Score 100% of calls, coach agents, and give every client its own scorecard and portal." />
+<meta property="og:description" content="Automated quality assurance for contact centres and BPOs. Score 100% of calls, coach agents, and give every client its own scorecard and share link." />
 <meta property="og:image" content="https://callguardai.co.uk/og-image.jpg" />
 
 <meta name="twitter:card" content="summary_large_image" />
@@ -49,6 +49,52 @@
       "description": "Contact centre QA software for contact centres and BPOs.",
       "isPartOf": {"@id": "https://callguardai.co.uk/#website"},
       "about": {"@id": "https://callguardai.co.uk/#software"}
+    },
+    {
+      "@type": "FAQPage",
+      "@id": "https://callguardai.co.uk/use-cases/bpo#faq",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "Can each client of our BPO have their own scorecard?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes. CallGuard AI is multi-tenant by design. Each client (or campaign, or programme) gets its own scorecard, knowledge base and reporting. You can also issue scoped customer share links so each client only sees their own data."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "How do you handle peak-volume calls?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Calls are processed through a queue, so a backlog drains steadily without manual intervention. A single call is transcribed and scored in about a minute; large overnight batches process in the background and are ready by morning. For sustained high-volume programmes we scale processing capacity to match your call rate."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Will it integrate with our existing dialer (Genesys, Five9, NICE, etc.)?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Twilio Media Streams and AWS Connect Voice Streams are first-class adapters, and other dialers can connect via our generic WebSocket protocol for live streaming. For any dialer, including Genesys, Five9 or NICE, you can also export call recordings and bring them in via upload or our REST API (including pushing a recording URL)."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "How do you avoid alert fatigue from live breach detection?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Live scoring only emits a breach when the AI is over 75% confident a criterion has clearly already failed. Not \"might be\" or \"could happen\". The threshold is set conservatively at 75% to keep false positives low. Confidence is checked every 30 seconds against the rolling transcript."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Can clients see live scores on their own dashboard rather than ours?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes. Two ways. Either embed CallGuard AI inside your existing client portal via the REST API, or issue scoped share links that give the client read-only access to a CallGuard view filtered to their programme."
+          }
+        }
+      ]
     }
   ]
 }
@@ -148,7 +194,7 @@
             <li>One AI calibrated to each programme's scorecard</li>
             <li>Coaching draft ready before the agent's next call</li>
             <li>Critical breaches alert the supervisor mid-call via webhook</li>
-            <li>Clients log into a per-programme portal with live data</li>
+            <li>Clients get read-only share links to live results per programme</li>
             <li>Headcount can grow without QA capacity becoming the constraint</li>
           </ul>
         </div>
@@ -185,7 +231,7 @@
         </div>
         <div class="feature">
           <h3>Multi-tenant client scorecards</h3>
-          <p>Each client gets their own scorecard, knowledge base, target metrics and reporting. Customer share links let each client log in to a scoped portal showing only their own programme. Replaces a multi-person reporting team.</p>
+          <p>Each client gets their own scorecard, knowledge base, target metrics and reporting. Tokenised, read-only share links let each client view results scoped to only their own programme. Replaces a multi-person reporting team.</p>
         </div>
         <div class="feature">
           <h3>Agent risk profiles</h3>
@@ -253,7 +299,7 @@
       </div>
 
       <p class="lead" style="margin-top: 36px;">
-        Further reading: <a href="/blog/score-100-percent-contact-centre-calls">How to score 100% of contact centre calls</a> and <a href="/blog/ai-vs-human-call-scoring">AI vs human call scoring: accuracy, cost and consistency</a>.
+        Further reading: <a href="/blog/score-100-percent-contact-centre-calls">How to score 100% of contact centre calls</a> and <a href="/blog/ai-vs-human-call-scoring">AI vs human call scoring: accuracy, cost and consistency</a>. If you are still shortlisting QA platforms, our <a href="/compare">comparison hub</a> sets out how CallGuard AI stacks up against the alternatives.
       </p>
 
       <div style="margin-top: 36px; text-align: center;">
@@ -286,6 +332,7 @@
       <div class="footer-col">
         <h5>Use cases</h5>
         <a href="/use-cases/financial-services">Financial services</a>
+        <a href="/use-cases/mortgage-advice">Mortgage advice</a>
         <a href="/use-cases/bpo">Contact centres &amp; BPOs</a>
         <a href="/use-cases/collections">Debt collections</a>
         <a href="/use-cases/outbound-sales">Outbound sales</a>
@@ -293,6 +340,8 @@
       <div class="footer-col">
         <h5>Integrations</h5>
         <a href="/integrations/twilio">Twilio</a>
+        <a href="/integrations/cloudtalk">CloudTalk</a>
+        <a href="/integrations/microsoft-teams">Microsoft Teams</a>
         <a href="/integrations/aws-connect">AWS Connect</a>
       </div>
       <div class="footer-col">
@@ -310,7 +359,7 @@
   </div>
 </footer>
 
-<script defer src="/script.js?v=3"></script>
+<script defer src="/script.js?v=4"></script>
 
 <script defer src="/analytics.js?v=1"></script>
 </body>

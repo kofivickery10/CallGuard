@@ -3,24 +3,24 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta name="description" content="AI call quality assurance for Twilio Media Streams. Stream live audio over WebSocket, score every call against your scorecard, fire signed webhooks on critical breaches." />
+<meta name="description" content="AI call QA for Twilio Media Streams. Stream live audio over WebSocket, score every call against your scorecard, and fire signed webhooks on breaches." />
 <meta name="theme-color" content="#4a9e6e" />
 <meta name="robots" content="index,follow,max-image-preview:large" />
 <meta name="author" content="CallGuard AI" />
-<title>Twilio Call QA Integration: Live AI Scoring on Media Streams | CallGuard AI</title>
+<title>Twilio Call QA Integration: Live AI Scoring | CallGuard AI</title>
 <link rel="canonical" href="https://callguardai.co.uk/integrations/twilio" />
 <link rel="icon" href="/favicon.ico" sizes="48x48" />
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 <link rel="manifest" href="/site.webmanifest" />
 <link rel="preload" as="font" type="font/woff2" href="/fonts/InterVariable.woff2" crossorigin>
-<link rel="stylesheet" href="/style.css?v=12" />
+<link rel="stylesheet" href="/style.css?v=13" />
 
 <meta property="og:type" content="article" />
 <meta property="og:site_name" content="CallGuard AI" />
 <meta property="og:locale" content="en_GB" />
 <meta property="og:url" content="https://callguardai.co.uk/integrations/twilio" />
-<meta property="og:title" content="Twilio Call QA Integration: Live AI Scoring on Media Streams | CallGuard AI" />
+<meta property="og:title" content="Twilio Call QA Integration: Live AI Scoring | CallGuard AI" />
 <meta property="og:description" content="AI call QA for Twilio Media Streams. Live scoring, signed webhooks, mid-call breach detection." />
 <meta property="og:image" content="https://callguardai.co.uk/og-image.jpg" />
 
@@ -49,6 +49,60 @@
       "description": "Live AI scoring on Twilio Media Streams.",
       "isPartOf": {"@id": "https://callguardai.co.uk/#website"},
       "about": {"@id": "https://callguardai.co.uk/#software"}
+    },
+    {
+      "@type": "FAQPage",
+      "@id": "https://callguardai.co.uk/integrations/twilio#faq",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "Do we need to deploy any middleware between Twilio and CallGuard?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "No. The Twilio adapter is built into CallGuard. Your Twilio TwiML points directly at our streaming URL with your API key in custom parameters. No Lambda bridge, no middleware, no audio re-encoding."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "What audio format does the adapter handle?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Twilio Media Streams sends μ-law 8kHz mono. Our adapter handles this natively. No transcoding required on your side. If you also need to support Twilio Programmable Voice recordings (post-call upload), the same scorecard works via our REST ingest API."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "How do calls map back to records in our CRM?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Twilio's start.callSid is captured as the external ID on the CallGuard call record. You can also pass any number of custom parameters in the <Stream> TwiML verb (agent ID, lead ID, campaign ID) which are stored as session metadata and returned in webhooks."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Can we still use post-call recordings (Programmable Voice) instead of streaming?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes. Push the Twilio recording URL or the audio file into our REST ingest endpoint after the call ends. You get the same scoring output, just without the mid-call breach webhooks. You can run streaming for compliance-critical campaigns and post-call ingest for the rest."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "How do we handle consent capture?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "The streaming protocol takes a consent.captured event before scoring proceeds, with the consent excerpt and timestamp captured in the call record. For Twilio specifically, you can inject the consent event from your TwiML <Say> or <Play> flow when the customer's \"yes\" is recorded."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "What happens if the WebSocket disconnects mid-call?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "The session enters a graceful-disconnect state. Whatever has been transcribed and scored up to that point is preserved as the call record. When the WebSocket re-connects (Twilio retries automatically), the session resumes against the same external ID."
+          }
+        }
+      ]
     }
   ]
 }
@@ -247,6 +301,7 @@
       <div class="footer-col">
         <h5>Use cases</h5>
         <a href="/use-cases/financial-services">Financial services</a>
+        <a href="/use-cases/mortgage-advice">Mortgage advice</a>
         <a href="/use-cases/bpo">Contact centres &amp; BPOs</a>
         <a href="/use-cases/collections">Debt collections</a>
         <a href="/use-cases/outbound-sales">Outbound sales</a>
@@ -254,6 +309,8 @@
       <div class="footer-col">
         <h5>Integrations</h5>
         <a href="/integrations/twilio">Twilio</a>
+        <a href="/integrations/cloudtalk">CloudTalk</a>
+        <a href="/integrations/microsoft-teams">Microsoft Teams</a>
         <a href="/integrations/aws-connect">AWS Connect</a>
       </div>
       <div class="footer-col">
@@ -271,7 +328,7 @@
   </div>
 </footer>
 
-<script defer src="/script.js?v=3"></script>
+<script defer src="/script.js?v=4"></script>
 
 <script defer src="/analytics.js?v=1"></script>
 </body>

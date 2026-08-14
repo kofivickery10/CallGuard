@@ -16,7 +16,7 @@
 <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 <link rel="manifest" href="/site.webmanifest" />
 <link rel="preload" as="font" type="font/woff2" href="/fonts/InterVariable.woff2" crossorigin>
-<link rel="stylesheet" href="style.css?v=12" />
+<link rel="stylesheet" href="/style.css?v=13" />
 
 <!-- Open Graph -->
 <meta property="og:type" content="website" />
@@ -52,8 +52,15 @@
       "email": "hello@callguardai.co.uk",
       "address": {
         "@type": "PostalAddress",
+        "streetAddress": "106 Haytor Avenue",
+        "addressLocality": "Paignton",
+        "postalCode": "TQ4 7TB",
         "addressCountry": "GB"
-      }
+      },
+      "founder": [
+        { "@type": "Person", "name": "Kofi Vickery" },
+        { "@type": "Person", "name": "Charlotte Court" }
+      ]
     },
     {
       "@type": "WebSite",
@@ -76,6 +83,7 @@
         "@type": "AggregateOffer",
         "priceCurrency": "GBP",
         "lowPrice": "199",
+        "highPrice": "399",
         "offerCount": "3",
         "availability": "https://schema.org/InStock",
         "url": "https://callguardai.co.uk/pricing"
@@ -125,7 +133,7 @@
           "name": "Can I display CallGuard results inside my own CRM or agent desktop?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "Yes. Mint an API key in the dashboard, push calls in with a POST, then pull the result back per call. The result includes the score percentage, pass/fail per criterion, evidence quotes, breach list and the coaching draft. Render it however you want. Live streaming sessions also fire HMAC-signed webhooks on breach and scored events to your CRM or supervisor screen."
+            "text": "Yes. Mint an API key in the dashboard, push calls in with a POST, then pull the result back per call. The result includes the score percentage, pass/fail per criterion, evidence quotes, breach list and the coaching draft. Render it however you want. Live streaming sessions also fire HMAC-signed webhooks on breach and scored events to your own CRM or agent desktop."
           }
         },
         {
@@ -149,7 +157,7 @@
           "name": "How long does it take to set up?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "Sign up at 9am and have 100 calls scored before lunch. Each call is transcribed and scored in under a minute. There is no 90-day pilot, no solution architects, and no integration project. Upload an existing scorecard CSV, drop in any QA manuals or product cheatsheets to the knowledge base, and start scoring."
+            "text": "Onboard at 9am and have 100 calls scored before lunch. Each call is transcribed and scored in under a minute. There is no 90-day pilot, no solution architects, and no integration project. Upload an existing scorecard CSV, drop in any QA manuals or product cheatsheets to the knowledge base, and start scoring."
           }
         },
         {
@@ -186,6 +194,7 @@
       <a href="#how-it-works">How it works</a>
       <a href="#live">Live &amp; embedded</a>
       <a href="#learning">AI learning</a>
+      <a href="#data-forms">Data Forms</a>
       <a href="#use-cases">Use cases</a>
       <a href="/pricing">Pricing</a>
       <a href="/blog/">Blog</a>
@@ -209,6 +218,7 @@
     <a href="#how-it-works">How it works</a>
     <a href="#live">Live &amp; embedded</a>
     <a href="#learning">AI learning</a>
+    <a href="#data-forms">Data Forms</a>
     <a href="#use-cases">Use cases</a>
     <a href="/pricing">Pricing</a>
     <a href="/blog/">Blog</a>
@@ -318,7 +328,7 @@
           <div class="step-num">1</div>
           <h3>Ingest, live or batch</h3>
           <p>
-            Drag-and-drop, REST API (including pushing a recording URL), or <strong>live WebSocket streaming</strong> from Twilio, AWS Connect, or any dialer that can stream over our generic WebSocket protocol. Encrypted at rest with AES-256-GCM.
+            Drag-and-drop, REST API (including pushing a recording URL), a native <a href="/integrations/cloudtalk">CloudTalk</a> webhook that pulls and scores calls automatically, or <strong>live WebSocket streaming</strong> from Twilio, AWS Connect, or any dialer that can stream over our generic WebSocket protocol. Encrypted at rest with AES-256-GCM.
           </p>
         </div>
         <div class="step">
@@ -332,7 +342,7 @@
           <div class="step-num">3</div>
           <h3>Act, before the call ends</h3>
           <p>
-            Pass / fail per criterion, weighted overall score, exact quote evidence, an agent-specific coaching brief. Critical breaches fire instantly to email, Slack or your supervisor's screen, and stream back via signed webhooks to your CRM or dialer.
+            Pass / fail per criterion, weighted overall score, exact quote evidence, an agent-specific coaching brief. Critical breaches fire instantly to email and Slack, and stream via HMAC-signed webhooks straight into your own CRM, dialer or agent desktop.
           </p>
         </div>
       </div>
@@ -432,6 +442,67 @@
     </div>
   </section>
 
+  <!-- ============== Data Forms ============== -->
+  <section class="section section-feature" id="data-forms">
+    <div class="container">
+      <span class="section-tag">Data Forms</span>
+      <h2 class="section-h2">
+        Reconcile the call <span class="accent">against the paperwork.</span>
+      </h2>
+      <p class="lead">
+        For sales teams whose products mean working through a fixed set of provider or lender questions, Data Forms reconciles what the customer told your rep against what was submitted on their behalf on the insurer's application. It catches a non-disclosure gap while the paperwork can still be corrected, not after a claim gets declined.
+      </p>
+
+      <div class="feature-grid feature-grid-3">
+        <div class="feature">
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+            </svg>
+          </div>
+          <h3>Submitted-form extraction</h3>
+          <p>Every answer on the insurer's submitted application PDF is parsed and lined up against the question it belongs to, no manual re-keying.</p>
+        </div>
+        <div class="feature">
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+            </svg>
+          </div>
+          <h3>Call-to-paperwork reconciliation</h3>
+          <p>Each submitted answer is checked against what the customer actually said on the call, and any answer that doesn't match what was recorded is flagged.</p>
+        </div>
+        <div class="feature">
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="8" y="2" width="8" height="4" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
+            </svg>
+          </div>
+          <h3>Amendment classification</h3>
+          <p>Where the insurer's own audit trail shows an answer was changed after submission, Data Forms classifies the amendment rather than just flagging a difference, so a benign correction doesn't get treated the same as one that needs a look.</p>
+        </div>
+        <div class="feature">
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/>
+            </svg>
+          </div>
+          <h3>Per-insurer parse profiles</h3>
+          <p>Data Forms learns the layout of each insurer's application form the first time it sees one, then reuses that parse profile on every submission that follows.</p>
+        </div>
+        <div class="feature">
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>
+            </svg>
+          </div>
+          <h3>Form-change detection, with a fallback</h3>
+          <p>If an insurer changes their form, Data Forms detects the change rather than silently mis-parsing it. For an insurer it hasn't seen before, it falls back to model-based extraction, so reconciliation still runs on day one.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <!-- ============== Use cases ============== -->
   <section class="section" id="use-cases">
     <div class="container">
@@ -455,6 +526,19 @@
             <li>Consumer Duty outcomes evidence</li>
           </ul>
           <a href="/use-cases/financial-services" class="usecase-link">FCA call monitoring for advice firms →</a>
+        </article>
+
+        <article class="usecase-card">
+          <div class="usecase-role">For mortgage advisers &amp; brokers</div>
+          <h3>Mortgage advice</h3>
+          <p>Score every mortgage advice conversation against MCOB: scope of service, fee and procuration-fee disclosure, repayment-method rationale, payment shock at the end of the initial rate, and affordability tested at a higher rate. Screen-share appointments score the same as dialer calls.</p>
+          <ul class="usecase-list">
+            <li>Fee and commission disclosure</li>
+            <li>Suitability linked to stated needs</li>
+            <li>Affordability and vulnerability screening</li>
+            <li>Teams and Zoom recordings ingested</li>
+          </ul>
+          <a href="/use-cases/mortgage-advice" class="usecase-link">MCOB mortgage call monitoring →</a>
         </article>
 
         <article class="usecase-card">
@@ -533,7 +617,7 @@
         <details class="faq-item">
           <summary>Can I display CallGuard results inside my own CRM or agent desktop?</summary>
           <div class="faq-body">
-            <p>Yes. Mint an API key in the dashboard, push calls in with a POST, then pull the result back per call. The result includes the score percentage, pass/fail per criterion, evidence quotes, breach list and the coaching draft. Render it however you want. Live streaming sessions also fire HMAC-signed webhooks on breach + scored events to your CRM or supervisor screen.</p>
+            <p>Yes. Mint an API key in the dashboard, push calls in with a POST, then pull the result back per call. The result includes the score percentage, pass/fail per criterion, evidence quotes, breach list and the coaching draft. Render it however you want. Live streaming sessions also fire HMAC-signed webhooks on breach + scored events to your own CRM or agent desktop.</p>
           </div>
         </details>
 
@@ -554,7 +638,7 @@
         <details class="faq-item">
           <summary>How long does it take to set up?</summary>
           <div class="faq-body">
-            <p>Sign up at 9am and have 100 calls scored before lunch. Each call is transcribed and scored in under a minute. There is no 90-day pilot, no solution architects, and no integration project. Upload an existing scorecard CSV, drop in any QA manuals or product cheatsheets to the knowledge base, and start scoring.</p>
+            <p>Onboard at 9am and have 100 calls scored before lunch. Each call is transcribed and scored in under a minute. There is no 90-day pilot, no solution architects, and no integration project. Upload an existing scorecard CSV, drop in any QA manuals or product cheatsheets to the knowledge base, and start scoring.</p>
           </div>
         </details>
 
@@ -573,11 +657,8 @@
     <div class="container">
       <span class="section-tag section-tag-light">What's coming</span>
       <h2 class="section-h2 section-h2-light">
-        Data Forms reconciliation <span class="accent-light">·</span> Live in-call coaching <span class="accent-light">·</span> Field-sales mobile.
+        Live in-call coaching <span class="accent-light">·</span> Field-sales mobile.
       </h2>
-      <p class="lead lead-light">
-        For sales teams whose products mean working through a fixed set of provider or lender questions, a Data Forms module captures every answer given on the call, flags any required question an agent skipped, and reconciles what the customer actually told you against what was submitted on their behalf — catching a non-disclosure gap while the paperwork can still be corrected, not after a claim gets declined. Capture and missed-question detection are live with our first design partner; document reconciliation is in build now.
-      </p>
       <p class="lead lead-light">
         Beyond breach detection: a real-time AI coach that whispers context-aware nudges to the rep mid-call, things like <em>"ask about capacity for loss now," "soften the close," "screen for vulnerability,"</em> via earpiece, on-screen prompt or haptic pulse. Personalised to each rep using your company's prior coaching memory.
       </p>
@@ -612,7 +693,7 @@
           <span class="dot">·</span>
           <span>AES-256-GCM file encryption</span>
           <span class="dot">·</span>
-          <span><a href="/sub-processors.html">Sub-processor list</a></span>
+          <span><a href="/sub-processors">Sub-processor list</a></span>
         </div>
       </div>
     </div>
@@ -635,6 +716,7 @@
         <a href="#how-it-works">How it works</a>
         <a href="#live">Live &amp; embedded</a>
         <a href="#learning">AI learning</a>
+        <a href="#data-forms">Data Forms</a>
         <a href="/pricing">Pricing</a>
         <a href="/compare">Compare</a>
         <a href="/about">About</a>
@@ -644,6 +726,7 @@
       <div class="footer-col">
         <h5>Use cases</h5>
         <a href="/use-cases/financial-services">Financial services</a>
+        <a href="/use-cases/mortgage-advice">Mortgage advice</a>
         <a href="/use-cases/bpo">Contact centres &amp; BPOs</a>
         <a href="/use-cases/collections">Debt collections</a>
         <a href="/use-cases/outbound-sales">Outbound sales</a>
@@ -651,6 +734,8 @@
       <div class="footer-col">
         <h5>Integrations</h5>
         <a href="/integrations/twilio">Twilio</a>
+        <a href="/integrations/cloudtalk">CloudTalk</a>
+        <a href="/integrations/microsoft-teams">Microsoft Teams</a>
         <a href="/integrations/aws-connect">AWS Connect</a>
       </div>
       <div class="footer-col">
@@ -669,7 +754,7 @@
   </div>
 </footer>
 
-<script defer src="/script.js?v=3"></script>
+<script defer src="/script.js?v=4"></script>
 <script defer src="/analytics.js?v=1"></script>
 
 </body>

@@ -3,24 +3,24 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta name="description" content="AI call quality assurance for AWS Connect Voice Streams. Live scoring, mid-call breach detection, signed webhooks back to Connect or your supervisor screen." />
+<meta name="description" content="AI call QA for AWS Connect Voice Streams. Live scoring, mid-call breach detection, and signed webhooks back to Connect or your supervisor screen." />
 <meta name="theme-color" content="#4a9e6e" />
 <meta name="robots" content="index,follow,max-image-preview:large" />
 <meta name="author" content="CallGuard AI" />
-<title>AWS Connect Call QA Integration: Live AI Scoring on Voice Streams | CallGuard AI</title>
+<title>AWS Connect QA Integration: Live AI Scoring | CallGuard AI</title>
 <link rel="canonical" href="https://callguardai.co.uk/integrations/aws-connect" />
 <link rel="icon" href="/favicon.ico" sizes="48x48" />
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 <link rel="manifest" href="/site.webmanifest" />
 <link rel="preload" as="font" type="font/woff2" href="/fonts/InterVariable.woff2" crossorigin>
-<link rel="stylesheet" href="/style.css?v=12" />
+<link rel="stylesheet" href="/style.css?v=13" />
 
 <meta property="og:type" content="article" />
 <meta property="og:site_name" content="CallGuard AI" />
 <meta property="og:locale" content="en_GB" />
 <meta property="og:url" content="https://callguardai.co.uk/integrations/aws-connect" />
-<meta property="og:title" content="AWS Connect Call QA Integration: Live AI Scoring on Voice Streams | CallGuard AI" />
+<meta property="og:title" content="AWS Connect QA Integration: Live AI Scoring | CallGuard AI" />
 <meta property="og:description" content="AI call QA for AWS Connect Voice Streams. Live scoring, signed webhooks, mid-call breach detection." />
 <meta property="og:image" content="https://callguardai.co.uk/og-image.jpg" />
 
@@ -49,6 +49,60 @@
       "description": "Live AI scoring on AWS Connect Voice Streams.",
       "isPartOf": {"@id": "https://callguardai.co.uk/#website"},
       "about": {"@id": "https://callguardai.co.uk/#software"}
+    },
+    {
+      "@type": "FAQPage",
+      "@id": "https://callguardai.co.uk/integrations/aws-connect#faq",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "Why a Lambda bridge instead of a direct Kinesis Video integration?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Two reasons. First, the bridge keeps audio inside your AWS account until CallGuard explicitly receives it, which is the data-residency story most security teams want to hear. Second, the bridge is small, single-purpose and cheap to run, so you do not need to grant CallGuard cross-account IAM permissions to your Kinesis stream."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "How do calls map back to Connect's contact records?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "The bridge passes Connect's ContactId as the external ID on the CallGuard call record. Whatever attributes you set on the contact (queue, agent ARN, customer ANI) are forwarded as session metadata and returned in webhooks."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Can we use this with Connect post-call recordings instead of streaming?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes. Push the Connect recording URL or audio file into our REST ingest endpoint after the call ends. You get the same scoring output without the mid-call breach webhooks. You can run streaming for compliance-critical queues and post-call ingest for the rest."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Does the bridge Lambda count against our AWS service limits?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "The bridge runs as concurrent executions, one per active streamed call. AWS default Lambda concurrency is plenty for most contact centres. For large floors we can switch the bridge to ECS Fargate for tighter capacity control."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "What happens if the streaming connection drops mid-call?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "The session enters a graceful-disconnect state. Whatever has been transcribed and scored up to that point is preserved. When the bridge re-connects (Lambda retries automatically), the session resumes against the same external ID."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Can we keep audio in our own S3 instead of CallGuard storage?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes. The default deployment retains audio in CallGuard for the audit trail, but you can keep the audio in your own bucket and pass a presigned URL to our REST endpoint instead. CallGuard fetches it to transcribe and score, and you keep the master copy."
+          }
+        }
+      ]
     }
   ]
 }
@@ -126,7 +180,7 @@
         AWS Connect's voice stream <span class="accent">in. Compliance evidence out.</span>
       </h2>
       <p class="lead">
-        AWS Connect publishes voice streams to Kinesis Video. CallGuard runs a lightweight bridge that re-emits those frames over our generic WebSocket protocol as PCM 16-bit 8kHz mono, which our AWS Connect adapter consumes natively. Setup is a single Lambda you deploy from a template, plus a streaming endpoint on the CallGuard side.
+        AWS Connect publishes voice streams to Kinesis Video rather than to a WebSocket, so unlike our Twilio integration — where we read Media Streams frames directly — this one runs through a small bridge in between. You deploy a single Lambda from our template; it re-emits those frames over our generic WebSocket protocol as PCM 16-bit 8kHz mono, which our AWS Connect adapter consumes natively. It is a well-understood pattern for AWS Connect, and it is the only extra moving part.
       </p>
 
       <div class="steps">
@@ -247,6 +301,7 @@
       <div class="footer-col">
         <h5>Use cases</h5>
         <a href="/use-cases/financial-services">Financial services</a>
+        <a href="/use-cases/mortgage-advice">Mortgage advice</a>
         <a href="/use-cases/bpo">Contact centres &amp; BPOs</a>
         <a href="/use-cases/collections">Debt collections</a>
         <a href="/use-cases/outbound-sales">Outbound sales</a>
@@ -254,6 +309,8 @@
       <div class="footer-col">
         <h5>Integrations</h5>
         <a href="/integrations/twilio">Twilio</a>
+        <a href="/integrations/cloudtalk">CloudTalk</a>
+        <a href="/integrations/microsoft-teams">Microsoft Teams</a>
         <a href="/integrations/aws-connect">AWS Connect</a>
       </div>
       <div class="footer-col">
@@ -271,7 +328,7 @@
   </div>
 </footer>
 
-<script defer src="/script.js?v=3"></script>
+<script defer src="/script.js?v=4"></script>
 
 <script defer src="/analytics.js?v=1"></script>
 </body>

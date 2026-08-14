@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 <link rel="manifest" href="/site.webmanifest" />
 <link rel="preload" as="font" type="font/woff2" href="/fonts/InterVariable.woff2" crossorigin>
-<link rel="stylesheet" href="/style.css?v=12" />
+<link rel="stylesheet" href="/style.css?v=13" />
 
 <meta property="og:type" content="article" />
 <meta property="og:site_name" content="CallGuard AI" />
@@ -49,6 +49,52 @@
       "description": "An honest comparison of CallMiner Eureka and CallGuard AI.",
       "isPartOf": {"@id": "https://callguardai.co.uk/#website"},
       "about": {"@id": "https://callguardai.co.uk/#software"}
+    },
+    {
+      "@type": "FAQPage",
+      "@id": "https://callguardai.co.uk/compare/callminer-alternative#faq",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "Can CallGuard AI replace CallMiner for an existing CallMiner customer?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "For most teams under 5,000 seats, yes. The capabilities that matter for compliance scoring (transcription, per-criterion judgement, evidence quotes, breach detection, coaching) are all in CallGuard AI. The capabilities that matter for traditional speech analytics (acoustic features, prosody, agitation scoring) are not our focus. If your team uses CallMiner for the analytics half and would still want compliance scoring done with modern LLMs, you can run CallGuard AI alongside CallMiner rather than instead of it."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "What about data migration from CallMiner?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "If your call recordings are in S3, SFTP or a Genesys / Avaya / Five9 archive, push them into CallGuard via our REST API and we re-score them. If they are inside CallMiner's storage, we work with you to export per-call audio plus your scorecard configuration; the scorecard transfers cleanly because CallGuard AI uses the same item-by-item structure."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "How does pricing actually work?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "From £199 per seat, per month, with volume discounts as your team grows and no multi-year minimum required. The AI learning, exemplar library and coaching memory are included on Growth and Pro plans. Full details on the pricing page."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Is CallGuard AI suitable for a 10,000-seat contact centre?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Architecturally yes; calls are processed in parallel and the system scales with throughput. Practically, very large floors often prefer a vendor with 20-year references, dedicated technical account management and on-prem options. We do not sell on those terms today. If those are your hard requirements, CallMiner or NICE may fit better. If they are not, talk to us."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "How do you handle FCA-regulated firms specifically?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "That is a primary design point for CallGuard AI. Our scorecards lead with COBS 9.2 suitability, FG21/1 vulnerability, and the four Consumer Duty outcomes by default. More on financial services scoring here."
+          }
+        }
+      ]
     }
   ]
 }
@@ -193,7 +239,7 @@
             <tr><th>Capability</th><th>CallMiner</th><th>CallGuard AI</th></tr>
           </thead>
           <tbody>
-            <tr><td>Time to first scored call</td><td>Months (services-led implementation)</td><td>Same day (self-serve sign-up)</td></tr>
+            <tr><td>Time to first scored call</td><td>Months (services-led implementation)</td><td>Same-day onboarding</td></tr>
             <tr><td>Scoring engine</td><td>Pre-LLM classifiers + categories</td><td>Claude with per-criterion evidence quotes</td></tr>
             <tr><td>Per-tenant AI learning</td><td>Analyst-driven configuration</td><td>Compliance corrections feed back automatically</td></tr>
             <tr><td>FCA Consumer Duty framing</td><td>Generic compliance, configurable</td><td>Native COBS 9.2 + four outcomes scorecards</td></tr>
@@ -282,6 +328,7 @@
       <div class="footer-col">
         <h5>Use cases</h5>
         <a href="/use-cases/financial-services">Financial services</a>
+        <a href="/use-cases/mortgage-advice">Mortgage advice</a>
         <a href="/use-cases/bpo">Contact centres &amp; BPOs</a>
         <a href="/use-cases/collections">Debt collections</a>
         <a href="/use-cases/outbound-sales">Outbound sales</a>
@@ -289,6 +336,8 @@
       <div class="footer-col">
         <h5>Integrations</h5>
         <a href="/integrations/twilio">Twilio</a>
+        <a href="/integrations/cloudtalk">CloudTalk</a>
+        <a href="/integrations/microsoft-teams">Microsoft Teams</a>
         <a href="/integrations/aws-connect">AWS Connect</a>
       </div>
       <div class="footer-col">
@@ -306,7 +355,7 @@
   </div>
 </footer>
 
-<script defer src="/script.js?v=3"></script>
+<script defer src="/script.js?v=4"></script>
 
 <script defer src="/analytics.js?v=1"></script>
 </body>
