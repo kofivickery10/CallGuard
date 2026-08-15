@@ -12,7 +12,7 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { api } from '../api/client';
-import { useTheme } from '../lib/theme';
+import { useChartColors } from '../lib/chartColors';
 import { useScoreOnly } from '../context/AuthContext';
 import type {
   CallsPerDayPoint,
@@ -21,40 +21,8 @@ import type {
   BreachSeverityPoint,
 } from '@callguard/shared';
 
-// Recharts paints series/grid/tick colours as SVG attributes, which don't
-// resolve CSS var(), so we mirror the app's semantic tokens as concrete values
-// for each theme. Series colours re-theme too, so e.g. fail-red lightens on dark
-// to stay legible — matching the --cg-* tokens in src/index.css.
-const CHART_COLORS = {
-  light: {
-    primary: '#4a9e6e',
-    fail: '#c0392b',
-    high: '#e57766',
-    review: '#b8860b',
-    processing: '#2d5a9e',
-    neutral: '#c2c5c5',
-    grid: '#c2c5c5',
-    tick: '#8a9e8a',
-  },
-  dark: {
-    primary: '#57ab7a',
-    fail: '#f0726a',
-    high: '#e8938c',
-    review: '#d6a838',
-    processing: '#6f9bdb',
-    neutral: '#4a554e',
-    grid: '#2b3630',
-    tick: '#8a9c8d',
-  },
-};
-
 interface TrendChartsProps {
   agentFilter: string | null;
-}
-
-function useChartColors() {
-  const { theme } = useTheme();
-  return theme === 'dark' ? CHART_COLORS.dark : CHART_COLORS.light;
 }
 
 export function TrendCharts({ agentFilter }: TrendChartsProps) {

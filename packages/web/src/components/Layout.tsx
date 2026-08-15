@@ -1,4 +1,4 @@
-import { ReactNode, useEffect, useRef, useState } from 'react';
+import { ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
@@ -119,6 +119,10 @@ const NAV_SECTIONS: NavSection[] = [
   {
     label: 'Compliance',
     items: [
+      // The section's overview sits at its head, the way the top-level Dashboard
+      // does. Still gated on 'reconciliation' because every figure on it comes
+      // from Data Forms — without the module it would be a page of zeroes.
+      { path: '/compliance', label: 'Dashboard', icon: 'M3 3v18h18M7 15l3.5-4 3 2.5L20 7', roles: ORG_VIEW, requiresFeature: 'reconciliation' },
       { path: '/compliance-docs', label: 'Compliance Docs', icon: 'M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8zM14 2v6h6M16 13H8M16 17H8M10 9H8', roles: ORG_VIEW },
       { path: '/data-capture', label: 'Data Capture', icon: 'M4 4h16v4H4zM4 10h16v4H4zM4 16h10v4H4zM18 18l2 2 4-4', roles: ORG_VIEW, requiresFeature: 'capture' },
       { path: '/data-forms', label: 'Data Forms', icon: 'M14 3v4a1 1 0 0 0 1 1h4M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8l-5-5ZM9 14.5l2 2 4-4', roles: ORG_VIEW, requiresFeature: 'reconciliation' },
@@ -165,6 +169,22 @@ export function Layout({ children }: { children: ReactNode }) {
 
   // Close the mobile drawer whenever the route changes.
   useEffect(() => { setNavOpen(false); }, [location.pathname]);
+
+  // Which single nav item owns the current URL.
+  //
+  // Two rules, each earning its keep in the Compliance section. A prefix must
+  // end at a path segment, so '/compliance' does not claim '/compliance-docs' —
+  // bare startsWith would light up the dashboard on the docs page. And where
+  // several items genuinely match, the longest wins, so a future
+  // '/thing/detail' leaves '/thing' inactive rather than highlighting both.
+  const activeNavPath = useMemo(() => {
+    const { pathname } = location;
+    return NAV_SECTIONS.flatMap((s) => s.items.map((i) => i.path))
+      .filter((p) =>
+        p === '/' ? pathname === '/' : pathname === p || pathname.startsWith(`${p}/`)
+      )
+      .sort((a, b) => b.length - a.length)[0] ?? null;
+  }, [location]);
 
   return (
     <div className="min-h-screen">
@@ -214,10 +234,7 @@ export function Layout({ children }: { children: ReactNode }) {
                   </div>
                 )}
                 {visible.map((item) => {
-                  const isActive =
-                    item.path === '/'
-                      ? location.pathname === '/'
-                      : location.pathname.startsWith(item.path);
+                  const isActive = item.path === activeNavPath;
                   return (
                     <Link
                       key={item.path}

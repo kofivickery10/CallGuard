@@ -1,4 +1,5 @@
-import { Link } from 'react-router-dom';
+import { useEffect } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../api/client';
 import type { ReconciliationRunStatus, DocumentProfileStatus } from '@callguard/shared';
@@ -17,6 +18,8 @@ interface RunRow {
   mismatches: number;
   not_asked: number;
   no_answer: number;
+  /** Presence-mode fields left blank where the application required one. */
+  missing: number;
   undetermined: number;
   withdrawn: number;
   total_questions: number;
@@ -105,6 +108,15 @@ export function DataForms() {
   // URL nobody kept.
   const dismissed = profiles.filter((p) => p.status === 'dismissed');
 
+  // The Compliance dashboard deep-links into these sections (#attention,
+  // #awaiting). React Router does not act on a hash by itself, and the target
+  // does not exist until its query has painted, so this re-runs as they load.
+  const { hash } = useLocation();
+  useEffect(() => {
+    if (!hash) return;
+    document.getElementById(hash.slice(1))?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [hash, runsLoading, profilesLoading]);
+
   const runs = runsData?.data ?? [];
   // 'undetermined' is deliberately not a finding: it means we could not tell,
   // usually because redaction removed the words that identify the question.
@@ -114,6 +126,9 @@ export function DataForms() {
       r.mismatches > 0 ||
       r.not_asked > 0 ||
       r.no_answer > 0 ||
+      // A required field left blank on the application. Unlike the others this
+      // is visible from the document alone, but it still needs someone.
+      r.missing > 0 ||
       r.withdrawn > 0 ||
       r.status === 'needs_profile' ||
       r.status === 'failed'
@@ -131,7 +146,7 @@ export function DataForms() {
 
       {/* Waiting on a person — first, because nothing moves until it is done. */}
       {awaiting.length > 0 && (
-        <div className="bg-card border border-review rounded-card overflow-hidden mb-5">
+        <div id="awaiting" className="bg-card border border-review rounded-card overflow-hidden mb-5 scroll-mt-4">
           <div className="px-5 py-4 border-b border-border flex items-start gap-3">
             <DocumentAlertIcon className="w-5 h-5 text-review flex-shrink-0 mt-0.5" />
             <div>
@@ -202,7 +217,7 @@ export function DataForms() {
       )}
 
       {/* Sales needing attention */}
-      <div className="bg-card border border-border rounded-card overflow-hidden mb-5">
+      <div id="attention" className="bg-card border border-border rounded-card overflow-hidden mb-5 scroll-mt-4">
         <div className="px-5 py-4 border-b border-border">
           <h3 className="text-section-title text-text-primary">
             Sales needing attention ({attention.length})
@@ -259,6 +274,11 @@ export function DataForms() {
                   {r.not_asked > 0 && (
                     <span className="px-2.5 py-[3px] rounded-full text-badge font-semibold bg-fail-bg text-fail">
                       {r.not_asked} not asked
+                    </span>
+                  )}
+                  {r.missing > 0 && (
+                    <span className="px-2.5 py-[3px] rounded-full text-badge font-semibold bg-fail-bg text-fail">
+                      {r.missing} left blank
                     </span>
                   )}
                   {r.withdrawn > 0 && (
