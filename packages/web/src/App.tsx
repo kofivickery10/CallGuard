@@ -23,6 +23,7 @@ const DataCaptureForms = lazyWithRetry(() => import('./pages/DataCaptureForms').
 const DataCaptureFormEditor = lazyWithRetry(() => import('./pages/DataCaptureFormEditor').then((m) => ({ default: m.DataCaptureFormEditor })));
 const DataCapture = lazyWithRetry(() => import('./pages/DataCapture').then((m) => ({ default: m.DataCapture })));
 const DataForms = lazyWithRetry(() => import('./pages/DataForms').then((m) => ({ default: m.DataForms })));
+const ComplianceDashboard = lazyWithRetry(() => import('./pages/ComplianceDashboard').then((m) => ({ default: m.ComplianceDashboard })));
 const DocumentProfileReview = lazyWithRetry(() => import('./pages/DocumentProfileReview').then((m) => ({ default: m.DocumentProfileReview })));
 const Team = lazyWithRetry(() => import('./pages/Team').then((m) => ({ default: m.Team })));
 const KnowledgeBase = lazyWithRetry(() => import('./pages/KnowledgeBase').then((m) => ({ default: m.KnowledgeBase })));
@@ -106,6 +107,7 @@ export function App() {
                     <Route path="/capture-forms/:id/edit" element={<DataCaptureFormEditor />} />
                     <Route path="/data-capture" element={<DataCapture />} />
                     <Route path="/data-forms" element={<DataForms />} />
+                    <Route path="/compliance" element={<ComplianceDashboard />} />
                     <Route
                       path="/data-forms/profiles/:id"
                       element={<DocumentProfileReview />}

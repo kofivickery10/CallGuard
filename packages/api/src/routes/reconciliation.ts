@@ -22,6 +22,8 @@ import type {
   ReconciliationTrendPoint,
   ReconciliationInsurerRow,
   ReconciliationFlaggedQuestion,
+  ReconciliationAdviserRow,
+  UncoveredSale,
   DocumentProfileQuestion,
   QuestionCheckMode,
 } from '@callguard/shared';
@@ -61,13 +63,37 @@ const ITEM_IS_FINDING = `(i.outcome IN ('mismatch', 'not_asked', 'asked_no_answe
  */
 const ITEM_IS_CONCLUSIVE = `i.outcome IN ('match', 'mismatch', 'not_asked', 'asked_no_answer')`;
 
-/** Match rate over conclusive items, as a percentage. NULL when none were. */
-const MATCH_RATE_SQL = `CASE
-    WHEN count(i.id) FILTER (WHERE ${ITEM_IS_CONCLUSIVE}) > 0
-    THEN (count(i.id) FILTER (WHERE i.outcome = 'match')::numeric
-          / count(i.id) FILTER (WHERE ${ITEM_IS_CONCLUSIVE}) * 100)
+/**
+ * Match rate over conclusive items, as a percentage. NULL when none were.
+ *
+ * Restricted to runs parsed with a stored profile. A model-read run is the
+ * fallback for a format no profile fits yet: migration 093 is explicit that it
+ * "cannot be re-derived" and "must never be mistaken for" a deterministic
+ * parse, and it is thrown away and re-read the moment a profile goes live. The
+ * match rate is the one number a firm quotes back at us, so it is computed only
+ * from results that will still say the same thing tomorrow.
+ *
+ * Model-read findings are NOT suppressed elsewhere — they are real enough to
+ * action, and the attention queue shows them. It is only the published *rate*
+ * that refuses to average provisional data into a headline.
+ *
+ * @param runAlias the query's alias for capture_reconciliation_runs.
+ */
+const matchRateSql = (runAlias: string) => {
+  const deterministic = `${runAlias}.extraction_method = 'profile'`;
+  return `CASE
+    WHEN count(i.id) FILTER (WHERE ${ITEM_IS_CONCLUSIVE} AND ${deterministic}) > 0
+    THEN (count(i.id) FILTER (WHERE i.outcome = 'match' AND ${deterministic})::numeric
+          / count(i.id) FILTER (WHERE ${ITEM_IS_CONCLUSIVE} AND ${deterministic}) * 100)
     ELSE NULL
   END`;
+};
+
+/** Runs that have not finished and have not given up — a live backlog. */
+const RUN_IS_PARKED = `status IN ('pending', 'running', 'needs_document', 'needs_profile')`;
+
+/** How many example sales a flagged question carries for the drill-through. */
+const FLAGGED_SALE_SAMPLE = 8;
 
 /** Clamp a ?days= window to something a dashboard can actually render. */
 function windowDays(raw: unknown): number {
@@ -573,17 +599,55 @@ reconciliationRouter.get('/dashboard/summary', async (req, res, next) => {
     const runStats = await queryOne<{
       sales_checked: number;
       model_read: number;
-      parked: number;
+      summary_only: number;
       failed: number;
     }>(
       `SELECT
          count(*) FILTER (WHERE status = 'completed')::int AS sales_checked,
          count(*) FILTER (WHERE status = 'completed' AND extraction_method = 'model')::int AS model_read,
-         count(*) FILTER (WHERE status IN ('pending','running','needs_document','needs_profile'))::int AS parked,
+         -- Parsed fine, but the document carried no question set. Counted on its
+         -- own because it belongs to none of the others: it is not a check, not
+         -- a failure, and not something waiting. Without this the tiles silently
+         -- fail to account for every run.
+         count(*) FILTER (WHERE status = 'summary_only')::int AS summary_only,
          count(*) FILTER (WHERE status IN ('failed','abandoned'))::int AS failed
        FROM capture_reconciliation_runs
       WHERE organization_id = $1
         AND created_at >= now() - make_interval(days => $2::int)`,
+      [orgId, days]
+    );
+
+    // The backlog is deliberately NOT windowed.
+    //
+    // A run parked before the window opened is the one that matters most: parked
+    // runs retry for 30 days and 'needs_document' gives up after 7, after which
+    // nothing self-heals. Counting only the last N days would hide exactly the
+    // sales about to age out permanently, which is the opposite of the job.
+    const backlog = await queryOne<{ parked: number; oldest_days: number | null }>(
+      `SELECT count(*)::int AS parked,
+              floor(EXTRACT(EPOCH FROM (now() - min(created_at))) / 86400)::int AS oldest_days
+         FROM capture_reconciliation_runs
+        WHERE organization_id = $1 AND ${RUN_IS_PARKED}`,
+      [orgId]
+    );
+
+    // Coverage: sales that should have been checked, against those that were.
+    //
+    // Every other figure here counts runs that exist, so none of them can see a
+    // sale that never got one. That is the failure mode worth catching — if
+    // reconciliation quietly stopped being enqueued, a page built only on run
+    // rows would look perfectly healthy while nothing was being checked at all.
+    const coverage = await queryOne<{ sales_due: number; missing_a_run: number }>(
+      `SELECT count(*)::int AS sales_due,
+              count(*) FILTER (WHERE r.id IS NULL)::int AS missing_a_run
+         FROM journeys j
+         LEFT JOIN capture_reconciliation_runs r ON r.journey_id = j.id
+        WHERE j.organization_id = $1
+          AND j.status = 'scored'
+          -- No CRM record means no application document could ever be attached,
+          -- so such a sale is not owed a check and must not count against us.
+          AND j.zoho_record_id IS NOT NULL
+          AND j.scored_at >= now() - make_interval(days => $2::int)`,
       [orgId, days]
     );
 
@@ -606,7 +670,7 @@ reconciliationRouter.get('/dashboard/summary', async (req, res, next) => {
          count(i.id) FILTER (WHERE i.outcome = 'undetermined')::int AS undetermined,
          count(i.id) FILTER (WHERE i.outcome = 'recorded')::int AS recorded,
          count(i.id) FILTER (WHERE i.outcome = 'missing_from_application')::int AS missing_from_application,
-         ${MATCH_RATE_SQL}::text AS match_rate
+         ${matchRateSql('r')}::text AS match_rate
        FROM capture_reconciliation_items i
        JOIN capture_reconciliation_runs r ON r.id = i.run_id
       WHERE r.organization_id = $1
@@ -623,9 +687,13 @@ reconciliationRouter.get('/dashboard/summary', async (req, res, next) => {
       [orgId]
     );
 
+    const parked = backlog?.parked ?? 0;
     const payload: ReconciliationDashboardSummary = {
       days,
+      sales_due: coverage?.sales_due ?? 0,
+      missing_a_run: coverage?.missing_a_run ?? 0,
       sales_checked: runStats?.sales_checked ?? 0,
+      summary_only: runStats?.summary_only ?? 0,
       questions_compared: itemStats?.questions_compared ?? 0,
       match_rate: itemStats?.match_rate != null ? parseFloat(itemStats.match_rate) : null,
       findings: itemStats?.findings ?? 0,
@@ -634,7 +702,9 @@ reconciliationRouter.get('/dashboard/summary', async (req, res, next) => {
       recorded: itemStats?.recorded ?? 0,
       missing_from_application: itemStats?.missing_from_application ?? 0,
       model_read: runStats?.model_read ?? 0,
-      parked: runStats?.parked ?? 0,
+      parked,
+      // Only meaningful when something is actually waiting.
+      oldest_waiting_days: parked > 0 ? (backlog?.oldest_days ?? 0) : null,
       failed: runStats?.failed ?? 0,
       awaiting_confirmation: awaiting?.n ?? 0,
     };
@@ -664,7 +734,7 @@ reconciliationRouter.get('/dashboard/trends', async (req, res, next) => {
                 ) AS wk
        ),
        runs AS (
-         SELECT r.id, r.status,
+         SELECT r.id, r.status, r.extraction_method,
                 date_trunc('week', r.created_at AT TIME ZONE 'Europe/London') AS wk
            FROM capture_reconciliation_runs r
           WHERE r.organization_id = $1
@@ -674,7 +744,7 @@ reconciliationRouter.get('/dashboard/trends', async (req, res, next) => {
          SELECT ru.wk,
                 count(DISTINCT ru.id) FILTER (WHERE ru.status = 'completed')::int AS checked,
                 count(DISTINCT ru.id) FILTER (WHERE ru.status <> 'completed')::int AS unchecked,
-                ${MATCH_RATE_SQL}::text AS match_rate
+                ${matchRateSql('ru')}::text AS match_rate
            FROM runs ru
            LEFT JOIN capture_reconciliation_items i
                   ON i.run_id = ru.id AND ru.status = 'completed'
@@ -730,7 +800,9 @@ reconciliationRouter.get('/dashboard/by-insurer', async (req, res, next) => {
               p.product,
               count(DISTINCT r.id)::int AS sales,
               count(i.id)::int AS questions,
-              ${MATCH_RATE_SQL}::text AS match_rate,
+              -- Null for the "no stored format" row by construction: its runs
+              -- are all model-read, and there is no rate we would stand behind.
+              ${matchRateSql('r')}::text AS match_rate,
               count(i.id) FILTER (WHERE i.outcome = 'mismatch')::int        AS mismatches,
               count(i.id) FILTER (WHERE i.outcome = 'not_asked')::int       AS not_asked,
               count(i.id) FILTER (WHERE i.outcome = 'asked_no_answer')::int AS no_answer,
@@ -767,6 +839,124 @@ reconciliationRouter.get('/dashboard/by-insurer', async (req, res, next) => {
 });
 
 /**
+ * The sales owed a check that do not have one, so the coverage tile can be
+ * acted on rather than only believed.
+ *
+ * Ordered oldest first: a sale that has gone longest without a check is the one
+ * closest to being unexplainable to a regulator.
+ */
+reconciliationRouter.get('/dashboard/uncovered-sales', async (req, res, next) => {
+  try {
+    const days = windowDays(req.query.days);
+    const limit = Math.min(Math.max(parseInt(req.query.limit as string) || 20, 1), 100);
+
+    const rows = await query<{
+      journey_id: string;
+      customer_name: string | null;
+      scored_at: string;
+    }>(
+      `SELECT j.id AS journey_id, c.name AS customer_name, j.scored_at
+         FROM journeys j
+         JOIN customers c ON c.id = j.customer_id
+         LEFT JOIN capture_reconciliation_runs r ON r.journey_id = j.id
+        WHERE j.organization_id = $1
+          AND j.status = 'scored'
+          AND j.zoho_record_id IS NOT NULL
+          AND j.scored_at >= now() - make_interval(days => $2::int)
+          AND r.id IS NULL
+        ORDER BY j.scored_at ASC
+        LIMIT $3`,
+      [req.user!.organizationId, days, limit]
+    );
+
+    const data: UncoveredSale[] = rows.map((r) => ({
+      journey_id: r.journey_id,
+      customer_name: r.customer_name,
+      scored_at: r.scored_at,
+    }));
+    res.json({ data });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * Findings per adviser, attributed to the wrap-up (closing) agent — the same
+ * attribution the Zoho QA owner and the call dashboard already use, so one sale
+ * is never credited to two different people depending on which page you opened.
+ *
+ * Restricted to deterministic runs. This is the one view that puts a named
+ * person against a finding, and migration 094 exists because this system was
+ * generating false accusations at scale — one sale ranked worst in its tenant
+ * on eight findings, none of them real. A provisional model reading must never
+ * be what a supervisor confronts someone with.
+ *
+ * Ordered by volume, never by findings. A table sorted worst-first reads as a
+ * league table of wrongdoing, and with small per-adviser sample sizes the top
+ * of it is mostly noise.
+ */
+reconciliationRouter.get('/dashboard/by-adviser', async (req, res, next) => {
+  try {
+    const days = windowDays(req.query.days);
+    const rows = await query<{
+      adviser_id: string;
+      adviser_name: string;
+      sales: number;
+      questions: number;
+      match_rate: string | null;
+      findings: number;
+      mismatches: number;
+      not_asked: number;
+      no_answer: number;
+      missing: number;
+      withdrawn: number;
+    }>(
+      `SELECT u.id AS adviser_id,
+              u.name AS adviser_name,
+              count(DISTINCT r.id)::int AS sales,
+              count(i.id)::int AS questions,
+              ${matchRateSql('r')}::text AS match_rate,
+              count(i.id) FILTER (WHERE ${ITEM_IS_FINDING})::int AS findings,
+              count(i.id) FILTER (WHERE i.outcome = 'mismatch')::int        AS mismatches,
+              count(i.id) FILTER (WHERE i.outcome = 'not_asked')::int       AS not_asked,
+              count(i.id) FILTER (WHERE i.outcome = 'asked_no_answer')::int AS no_answer,
+              count(i.id) FILTER (WHERE i.outcome = 'missing_from_application')::int AS missing,
+              count(i.id) FILTER (WHERE i.amendment_type = 'disclosure_withdrawn')::int AS withdrawn
+         FROM capture_reconciliation_runs r
+         JOIN journeys j ON j.id = r.journey_id
+         JOIN journey_calls jc ON jc.journey_id = j.id AND jc.role = 'wrap_up'
+         JOIN calls wc ON wc.id = jc.call_id
+         JOIN users u ON u.id = wc.agent_id
+         LEFT JOIN capture_reconciliation_items i ON i.run_id = r.id
+        WHERE r.organization_id = $1
+          AND r.status = 'completed'
+          AND r.extraction_method = 'profile'
+          AND r.created_at >= now() - make_interval(days => $2::int)
+        GROUP BY u.id, u.name
+        ORDER BY count(DISTINCT r.id) DESC, u.name ASC`,
+      [req.user!.organizationId, days]
+    );
+
+    const data: ReconciliationAdviserRow[] = rows.map((r) => ({
+      adviser_id: r.adviser_id,
+      adviser_name: r.adviser_name,
+      sales: r.sales,
+      questions: r.questions,
+      match_rate: r.match_rate != null ? parseFloat(r.match_rate) : null,
+      findings: r.findings,
+      mismatches: r.mismatches,
+      not_asked: r.not_asked,
+      no_answer: r.no_answer,
+      missing: r.missing,
+      withdrawn: r.withdrawn,
+    }));
+    res.json({ data });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
  * The questions flagged most often.
  *
  * Grouped by question AND insurer, never by wording alone: the same sentence on
@@ -787,17 +977,25 @@ reconciliationRouter.get('/dashboard/flagged-questions', async (req, res, next) 
       not_asked: number;
       no_answer: number;
       missing: number;
+      sales: { journey_id: string; customer_name: string | null }[] | null;
     }>(
       `SELECT i.question,
               p.insurer,
               count(DISTINCT r.id) FILTER (WHERE ${ITEM_IS_FINDING})::int AS flagged,
               count(DISTINCT r.id)::int AS compared,
+              -- The sales behind the count, so "flagged on 9" can be opened
+              -- rather than hunted for. Capped: this is a way in, not a report,
+              -- and the number beside it already says how many there are.
+              (array_agg(DISTINCT jsonb_build_object('journey_id', r.journey_id, 'customer_name', cu.name))
+                 FILTER (WHERE ${ITEM_IS_FINDING}))[1:${FLAGGED_SALE_SAMPLE}] AS sales,
               count(i.id) FILTER (WHERE i.outcome = 'mismatch')::int        AS mismatches,
               count(i.id) FILTER (WHERE i.outcome = 'not_asked')::int       AS not_asked,
               count(i.id) FILTER (WHERE i.outcome = 'asked_no_answer')::int AS no_answer,
               count(i.id) FILTER (WHERE i.outcome = 'missing_from_application')::int AS missing
          FROM capture_reconciliation_items i
          JOIN capture_reconciliation_runs r ON r.id = i.run_id
+         JOIN journeys j ON j.id = r.journey_id
+         JOIN customers cu ON cu.id = j.customer_id
          LEFT JOIN capture_document_profiles p ON p.id = r.profile_id
         WHERE r.organization_id = $1
           AND r.status = 'completed'
@@ -818,6 +1016,7 @@ reconciliationRouter.get('/dashboard/flagged-questions', async (req, res, next) 
       not_asked: r.not_asked,
       no_answer: r.no_answer,
       missing: r.missing,
+      sales: r.sales ?? [],
     }));
     res.json({ data });
   } catch (err) {

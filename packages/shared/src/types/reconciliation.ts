@@ -242,8 +242,26 @@ export interface QuestionSetDrift {
 export interface ReconciliationDashboardSummary {
   /** Days the windowed figures cover. */
   days: number;
+  /**
+   * Sales scored in the window that carry a CRM record, and so were owed a
+   * check. A sale with no CRM record can never have an application document
+   * attached and is excluded — it is not a miss.
+   */
+  sales_due: number;
+  /**
+   * Of those, how many have no reconciliation run at all. The one failure every
+   * other figure here is blind to: they all count runs that exist, so silence
+   * would otherwise read as health.
+   */
+  missing_a_run: number;
   /** Runs that finished a comparison in the window. */
   sales_checked: number;
+  /**
+   * Runs that parsed but found no question set (a unit-based product's summary
+   * of key facts). Neither a check nor a failure nor a wait — reported so the
+   * figures account for every run.
+   */
+  summary_only: number;
   /** Items produced by those runs. */
   questions_compared: number;
   /**
@@ -251,6 +269,13 @@ export interface ReconciliationDashboardSummary {
    * on (match + mismatch + not_asked + asked_no_answer). Questions the
    * application left blank and undetermined ones are excluded from both sides —
    * neither is evidence either way. Null when nothing was conclusive.
+   *
+   * Counts ONLY runs parsed with a stored profile. A model-read run is
+   * provisional and gets replaced when a profile goes live (migration 093), and
+   * this is the number a firm quotes back at us, so it is built only from
+   * results that will still say the same thing tomorrow. Findings from
+   * model-read runs are still counted and still actionable — it is the rate,
+   * not the flags, that excludes them. See `model_read`.
    */
   match_rate: number | null;
   /** Items flagged: mismatch, not asked, asked but unanswered, or withdrawn. */
@@ -268,11 +293,23 @@ export interface ReconciliationDashboardSummary {
   missing_from_application: number;
   /**
    * Completed runs read by a model rather than a stored profile. Provisional:
-   * they are re-read deterministically once a profile for the format goes live.
+   * they are re-read deterministically once a profile for the format goes live,
+   * and excluded from `match_rate` until then.
    */
   model_read: number;
-  /** Runs waiting on something — a document, a profile, or the queue. */
+  /**
+   * Runs waiting on something — a document, a profile, or the queue.
+   *
+   * NOT windowed. Parked runs retry for 30 days and 'needs_document' gives up
+   * after 7, after which nothing self-heals; a window would hide exactly the
+   * sales closest to ageing out.
+   */
   parked: number;
+  /**
+   * Age in days of the longest-waiting parked run. Null when nothing is parked.
+   * A count alone reads the same at twelve hours and at twenty-nine days.
+   */
+  oldest_waiting_days: number | null;
   /** Runs that gave up or errored. */
   failed: number;
   /**
@@ -328,4 +365,44 @@ export interface ReconciliationFlaggedQuestion {
   no_answer: number;
   /** Presence-mode fields left blank on the submitted application. */
   missing: number;
+  /**
+   * The sales behind `flagged`, so the count can be opened. Capped at a sample
+   * — `flagged` remains the true total, and this is a way in rather than a
+   * report.
+   */
+  sales: FlaggedQuestionSale[];
+}
+
+export interface FlaggedQuestionSale {
+  journey_id: string;
+  customer_name: string | null;
+}
+
+/** A scored sale that was owed an application check and never got one. */
+export interface UncoveredSale {
+  journey_id: string;
+  customer_name: string | null;
+  scored_at: string;
+}
+
+/**
+ * Findings attributed to the adviser who closed the sale.
+ *
+ * Built only from deterministic (profile-read) runs. This is the one view that
+ * puts a named person against a finding, and a provisional model reading must
+ * never be what a supervisor confronts someone with — see `match_rate` on
+ * ReconciliationDashboardSummary and migration 094.
+ */
+export interface ReconciliationAdviserRow {
+  adviser_id: string;
+  adviser_name: string;
+  sales: number;
+  questions: number;
+  match_rate: number | null;
+  findings: number;
+  mismatches: number;
+  not_asked: number;
+  no_answer: number;
+  missing: number;
+  withdrawn: number;
 }

@@ -1,5 +1,5 @@
 {
-  "projectId": "6b527e58-39d2-4a87-9f61-af098362b0cc",
+  "projectId": "122fa2d8-f38c-47e9-ae4b-094b9d14b21a",
   "pkg": "@callguard/web",
   "globalName": "CallGuard",
   "shape": "package",
@@ -10,6 +10,7 @@
     "BRAND_GUIDELINES.md",
     "DESIGN_SYSTEM.md"
   ],
+  "readmeHeader": ".design-sync/conventions.md",
   "componentSrcMap": {
     "AgentFilter": "packages/web/src/components/AgentFilter.tsx",
     "AlertRuleModal": "packages/web/src/components/AlertRuleModal.tsx",
