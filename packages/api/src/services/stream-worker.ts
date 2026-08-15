@@ -2,6 +2,8 @@ import type { WebSocket } from 'ws';
 import { v4 as uuid } from 'uuid';
 import { query, queryOne } from '../db/client.js';
 import { DeepgramStream } from './deepgram-stream.js';
+import { resolveRedactCategories } from './transcription.js';
+import { redactBankDetails } from './digit-redaction.js';
 import { detectLiveBreaches } from './live-scorer.js';
 import { recordUsage } from './usage.js';
 import { deliverWebhook } from './webhook-delivery.js';
@@ -85,7 +87,23 @@ export class StreamWorker {
       [this.init.sessionId],
     );
 
-    this.dg.start();
+    // Resolve the tenant's redact list the same way the batch path does
+    // (services/transcription.ts's resolveRedactCategories), so the two paths
+    // cannot drift apart. If the org row can't be read, fail closed and redact
+    // everything — an unreadable config is not grounds to loosen redaction.
+    let redactCategories: string[];
+    try {
+      const orgRow = await queryOne<{ pii_unredacted_categories: string[] | null }>(
+        'SELECT pii_unredacted_categories FROM organizations WHERE id = $1',
+        [this.init.organizationId],
+      );
+      redactCategories = resolveRedactCategories(orgRow?.pii_unredacted_categories ?? []);
+    } catch (err) {
+      console.error(`[Stream ${this.init.sessionId}] Failed to load redaction settings, redacting everything:`, (err as Error).message);
+      redactCategories = resolveRedactCategories([]);
+    }
+
+    this.dg.start(redactCategories);
 
     this.sendToClient({ type: 'ack', session_id: this.init.sessionId });
 
@@ -135,7 +153,20 @@ export class StreamWorker {
 
   private onDeepgramTranscript(text: string, speaker: number | null, isFinal: boolean): void {
     if (isFinal) {
-      const labelled = speaker != null ? `[Speaker ${speaker}] ${text}` : text;
+      // Deepgram's entity redaction is unreliable for numbers spoken aloud (see
+      // the equivalent comment in services/transcription.ts), so this second
+      // layer runs unconditionally, same as the batch path. Applying it here at
+      // accumulation — not only in finalize() — means the rolling transcript
+      // used for live scoring (sent to Anthropic roughly every 30s) is covered
+      // too, not just the copy eventually written to live_sessions.transcript_text
+      // and calls.transcript_text. Redact before adding the "[Speaker N] " label,
+      // not after: redacting the labelled string can swallow the speaker number
+      // itself when a match sits close to the label (e.g. "[Speaker [SORT_CODE]]").
+      const { text: redactedText, redactions } = redactBankDetails(text);
+      if (redactions > 0) {
+        console.log(`[Stream ${this.init.sessionId}] Redacted bank details: ${redactions} in a final segment`);
+      }
+      const labelled = speaker != null ? `[Speaker ${speaker}] ${redactedText}` : redactedText;
       this.finalSegments.push(labelled);
       if (this.totalTranscriptLength() > MAX_TRANSCRIPT_CHARS) {
         // Cap transcript to avoid runaway memory on multi-hour sessions
@@ -243,7 +274,19 @@ export class StreamWorker {
 
     this.dg.finish();
 
-    const finalTranscript = this.currentTranscript();
+    // A second pass over the fully joined transcript, on top of the per-segment
+    // pass in onDeepgramTranscript: an anchor phrase ("sort code is") and the
+    // digits that follow it can land in two different Deepgram utterances, so
+    // neither final segment alone contains an anchor-and-digits pair for
+    // redactBankDetails to match. Joining first is what the batch path already
+    // gets for free by running once over the whole assembled transcript. A
+    // second pass over text the first pass already redacted is inert (no
+    // anchors left to match), so this is safe to run unconditionally alongside
+    // the segment-level pass rather than instead of it.
+    const { text: finalTranscript, redactions: finalRedactions } = redactBankDetails(this.currentTranscript());
+    if (finalRedactions > 0) {
+      console.log(`[Stream ${this.init.sessionId}] Redacted bank details: ${finalRedactions} spanning segment boundaries`);
+    }
     const durationSec = Math.round((this.endedAt.getTime() - this.startedAt.getTime()) / 1000);
 
     // Persist transcript on the session

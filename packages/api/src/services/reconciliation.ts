@@ -855,6 +855,24 @@ function compareBareWeight(
 const DRINK_MEASURE = /\b(pints?|glass(es)?|bottles?|cans?|shots?|measures?)\b/;
 
 /**
+ * True if `needle` occurs in `haystack` as a whole phrase rather than an
+ * arbitrary substring: the match must begin at the start of the string or
+ * straight after a space, and end at the end of the string or straight
+ * before a space. Deliberately not a regex — the needle is user text that
+ * can contain `.` and `/`, which would otherwise need escaping.
+ */
+function containsAsPhrase(haystack: string, needle: string): boolean {
+  for (let from = 0; ; ) {
+    const at = haystack.indexOf(needle, from);
+    if (at === -1) return false;
+    const startsClean = at === 0 || haystack[at - 1] === ' ';
+    const endsClean = at + needle.length === haystack.length || haystack[at + needle.length] === ' ';
+    if (startsClean && endsClean) return true;
+    from = at + 1;
+  }
+}
+
+/**
  * Compare an application answer with what the customer said.
  *
  * Returns `unclear` rather than guessing wherever the two are not
@@ -881,8 +899,12 @@ export function compareAnswers(
 
   // One containing the other is a match: the application stores a canonical
   // "Raised blood pressure" where the customer said "yeah, raised blood pressure
-  // a few years back".
-  if (app.length >= 4 && (call.includes(app) || app.includes(call))) return 'match';
+  // a few years back". The containment has to land on word boundaries, though —
+  // an unanchored substring test reads "£150,000" as containing "£15,000" and
+  // "15 cigarettes a day" as containing "5 cigarettes a day", which is a false
+  // agreement between numerically different answers, not a paraphrase of the
+  // same one.
+  if (app.length >= 4 && (containsAsPhrase(call, app) || containsAsPhrase(app, call))) return 'match';
 
   // Weights first: both sides stating one in recognisable units is decidable by
   // arithmetic, whatever units each chose. Tolerance of a kilogram either way,
