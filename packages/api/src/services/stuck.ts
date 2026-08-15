@@ -107,6 +107,34 @@ const NEEDED_BY_LIVE_JOURNEY = `
 `;
 
 /**
+ * The stuck test for one call, as SQL over a `calls c`. Exported so any panel
+ * that labels a call "stuck" asks the same question the repair sweep does —
+ * the superadmin tenant view used to carry its own looser copy (any
+ * pre-terminal status older than 15 minutes), which flagged the resting
+ * 'transcribed' calls of every sales_only tenant as stuck forever.
+ *
+ * $1 = STUCK_QUEUED_AFTER_MINUTES, $2 = STUCK_INFLIGHT_AFTER_MINUTES.
+ */
+export const STUCK_CALL_SQL = `
+  (c.status = 'captured'
+    AND c.updated_at < now() - interval '1 minute' * $1
+    AND ${NEEDED_BY_LIVE_JOURNEY})
+  OR (c.status = 'uploaded'
+    AND c.updated_at < now() - interval '1 minute' * $1)
+  OR (c.status = 'transcribing'
+    AND c.updated_at < now() - interval '1 minute' * $2)
+  OR (c.status = 'transcribed'
+    AND c.updated_at < now() - interval '1 minute' * $1
+    AND NOT ${LINKED_TO_ANY_JOURNEY}
+    AND c.organization_id NOT IN (${DEFERRING_ORGS}))
+  -- 'scoring' means per-call scoring already started, so finishing it is
+  -- right regardless of the org's current scope.
+  OR (c.status = 'scoring'
+    AND c.updated_at < now() - interval '1 minute' * $2
+    AND NOT ${LINKED_TO_ANY_JOURNEY})
+`;
+
+/**
  * Calls that are genuinely stranded, each tagged with the job that would
  * unstick it. See the header for what is deliberately excluded.
  */
@@ -120,23 +148,7 @@ export async function findStuckCalls(): Promise<StuckCall[]> {
               ELSE 'score'
             END AS action
        FROM calls c
-      WHERE
-        (c.status = 'captured'
-          AND c.updated_at < now() - interval '1 minute' * $1
-          AND ${NEEDED_BY_LIVE_JOURNEY})
-        OR (c.status = 'uploaded'
-          AND c.updated_at < now() - interval '1 minute' * $1)
-        OR (c.status = 'transcribing'
-          AND c.updated_at < now() - interval '1 minute' * $2)
-        OR (c.status = 'transcribed'
-          AND c.updated_at < now() - interval '1 minute' * $1
-          AND NOT ${LINKED_TO_ANY_JOURNEY}
-          AND c.organization_id NOT IN (${DEFERRING_ORGS}))
-        -- 'scoring' means per-call scoring already started, so finishing it is
-        -- right regardless of the org's current scope.
-        OR (c.status = 'scoring'
-          AND c.updated_at < now() - interval '1 minute' * $2
-          AND NOT ${LINKED_TO_ANY_JOURNEY})
+      WHERE ${STUCK_CALL_SQL}
       ORDER BY c.updated_at ASC`,
     [STUCK_QUEUED_AFTER_MINUTES, STUCK_INFLIGHT_AFTER_MINUTES]
   );

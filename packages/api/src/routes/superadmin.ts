@@ -29,7 +29,12 @@ import {
   getMaintenanceQueue,
 } from '../jobs/queue.js';
 import { readWorkerHeartbeat } from '../services/redis.js';
-import { summariseStuckWork } from '../services/stuck.js';
+import {
+  summariseStuckWork,
+  STUCK_CALL_SQL,
+  STUCK_QUEUED_AFTER_MINUTES,
+  STUCK_INFLIGHT_AFTER_MINUTES,
+} from '../services/stuck.js';
 
 export const superadminRouter = Router();
 
@@ -1321,8 +1326,11 @@ superadminRouter.put('/tenants/:id/pii-redaction-exemption', async (req, res, ne
 });
 
 // ── Failed / stuck calls for one tenant ───────────────────────────────────────
-// Calls that failed, or have sat in a processing state for over 15 minutes
-// (a sign the worker died or a job is wedged). Newest first.
+// Calls that failed, or that services/stuck.ts calls stuck — the same test the
+// repair sweep and the dashboard health strip use. This panel used to define
+// "stuck" itself as any pre-terminal status older than 15 minutes, which
+// permanently flagged the calls of every sales_only tenant: 'transcribed' is
+// where their calls rest by design until the sale trigger fires. Newest first.
 
 superadminRouter.get('/tenants/:id/failed-calls', async (req, res, next) => {
   try {
@@ -1338,18 +1346,15 @@ superadminRouter.get('/tenants/:id/failed-calls', async (req, res, next) => {
       updated_at: string;
       stuck: boolean;
     }>(
-      `SELECT id, status, file_name, external_id, agent_name, customer_phone,
-              error_message, created_at, updated_at,
-              (status IN ('uploaded','transcribing','transcribed','scoring')
-               AND updated_at < now() - interval '15 minutes') AS stuck
-       FROM calls
-       WHERE organization_id = $1
-         AND (status = 'failed'
-              OR (status IN ('uploaded','transcribing','transcribed','scoring')
-                  AND updated_at < now() - interval '15 minutes'))
-       ORDER BY updated_at DESC
+      `SELECT c.id, c.status, c.file_name, c.external_id, c.agent_name, c.customer_phone,
+              c.error_message, c.created_at, c.updated_at,
+              (${STUCK_CALL_SQL}) AS stuck
+       FROM calls c
+       WHERE c.organization_id = $3
+         AND (c.status = 'failed' OR (${STUCK_CALL_SQL}))
+       ORDER BY c.updated_at DESC
        LIMIT 100`,
-      [req.params.id]
+      [STUCK_QUEUED_AFTER_MINUTES, STUCK_INFLIGHT_AFTER_MINUTES, req.params.id]
     );
     res.json({ calls: rows });
   } catch (err) {
