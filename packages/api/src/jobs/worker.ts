@@ -21,6 +21,11 @@ import { refreshSFTPSchedules } from './scheduler.js';
 import { refreshRetentionSchedule } from './retention-scheduler.js';
 import { writeWorkerHeartbeat, closeRedis } from '../services/redis.js';
 import { sendJobFailureAlert } from '../services/ops-alert.js';
+import { assertWorkerDatabaseIsSafe } from '../db/remote-guard.js';
+
+// Before any worker registers: a dev worker pointed at the production database
+// fails real calls against a local uploads directory. See db/remote-guard.ts.
+assertWorkerDatabaseIsSafe();
 
 const connection = {
   url: config.redis.url,
