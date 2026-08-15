@@ -64,7 +64,8 @@ export async function processHydrateCall(job: Job<{ callId: string }>) {
     await query(
       `UPDATE calls SET
          file_name = $2, file_key = $3, file_size_bytes = $4, mime_type = $5,
-         encrypted_at_rest = true, status = 'uploaded', updated_at = now()
+         encrypted_at_rest = true, status = 'uploaded', error_message = NULL,
+         updated_at = now()
        WHERE id = $1 AND status = 'captured'`,
       [callId, safeFileName, fileKey, downloaded.buffer.length, downloaded.mimeType]
     );

@@ -155,6 +155,10 @@ export async function processTranscription(job: Job<{ callId: string }>) {
         speaker_attribution_confidence = $4,
         speaker_integrity_flag = $5,
         status = 'transcribed',
+        -- A retry that succeeds must clear the last failure's text, or the
+        -- superadmin panel keeps showing a dead error against a healthy call
+        -- (a whole tenant's calls read as broken for days that way).
+        error_message = NULL,
         updated_at = now()
        WHERE id = $6`,
       [
