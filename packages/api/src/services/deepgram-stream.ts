@@ -28,7 +28,7 @@ export class DeepgramStream {
     private readonly callbacks: DeepgramStreamCallbacks,
   ) {}
 
-  start(): void {
+  start(redactCategories: string[]): void {
     if (!config.deepgram.apiKey) {
       throw new Error('DEEPGRAM_API_KEY not set - required for live streaming');
     }
@@ -49,9 +49,15 @@ export class DeepgramStream {
       // Redact PII/PCI/PHI at source (streaming redaction is English-only, which
       // matches en-GB). Customers' personal/payment/health data is replaced with
       // typed tags before any transcript reaches our store or the LLM scorer.
+      // The category list itself comes from services/transcription.ts's
+      // resolveRedactCategories, via the caller in stream-worker.ts, rather than
+      // being hardcoded here — that is the same explicit list (never the broad
+      // `pii` group, which also tags organisation/regulator names and
+      // prices/durations, breaking mandatory-disclosure scorecard items) the
+      // batch path uses, so the two paths cannot drift apart.
       // Note: we deliberately do not set no_delay, which would trade redaction
       // accuracy for latency.
-      redact: ['pci', 'pii', 'phi'],
+      redact: redactCategories,
       encoding: this.opts.encoding,
       sample_rate: this.opts.sampleRate,
       channels: this.opts.channels ?? 1,
