@@ -478,6 +478,18 @@ describe('compareAnswers', () => {
     expect(compareAnswers('Raised blood pressure', 'yeah, raised blood pressure a few years back')).toBe('match');
   });
 
+  it('does not let one figure being a substring of another pass as a paraphrase', () => {
+    // The containment rule exists for phrases like "raised blood pressure"
+    // being a paraphrase of a longer sentence — it must not also catch
+    // "£15,000" sitting inside the digits of "£150,000", which is a firm
+    // misreading the sum assured, not the customer restating it.
+    expect(compareAnswers('£150,000', '£15,000')).toBe('mismatch');
+    expect(compareAnswers('£250,000', '£50,000')).toBe('mismatch');
+    expect(compareAnswers('£45.60', '£145.60')).toBe('mismatch');
+    expect(compareAnswers('5 cigarettes a day', '15 cigarettes a day')).toBe('mismatch');
+    expect(compareAnswers('10 units a week', '110 units a week')).toBe('mismatch');
+  });
+
   it('reads a date given as elapsed time against the year on the form', () => {
     // From a real sale: "When did your treatment cease?" recorded as 2019, the
     // customer saying "7 years ago" on a call in 2026. The same fact in two
