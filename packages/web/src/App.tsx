@@ -48,6 +48,7 @@ const BillingOverview = lazyWithRetry(() => import('./pages/BillingOverview'));
 const Settings = lazyWithRetry(() => import('./pages/Settings'));
 const Products = lazyWithRetry(() => import('./pages/Products'));
 const BoardPack = lazyWithRetry(() => import('./pages/BoardPack').then((m) => ({ default: m.BoardPack })));
+const ClaimsDefence = lazyWithRetry(() => import('./pages/ClaimsDefence').then((m) => ({ default: m.ClaimsDefence })));
 
 function PageLoader() {
   return (
@@ -143,6 +144,7 @@ export function App() {
                     <Route path="/customers/:id" element={<CustomerProfile />} />
                     <Route path="/journeys" element={<Journeys />} />
                     <Route path="/journeys/:id" element={<JourneyDetail />} />
+                    <Route path="/journeys/:id/claims-defence" element={<ClaimsDefence />} />
                     <Route path="/account" element={<Account />} />
                     <Route path="/billing" element={<BillingOverview />} />
                   </Routes>

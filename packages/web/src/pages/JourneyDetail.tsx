@@ -313,6 +313,29 @@ export function JourneyDetail() {
               {rescoreMutation.isPending || journey.status === 'scoring' ? 'Re-scoring…' : 'Re-score'}
             </button>
           )}
+          {/* The only export/print affordance on this page. Scored-only: an
+              unscored sale has no checkpoint verdicts or findings yet to put
+              in front of an insurer or the Ombudsman. */}
+          {journey.status === 'scored' && (
+            <Link
+              to={`/journeys/${journey.id}/claims-defence`}
+              className="inline-flex items-center gap-1.5 px-[18px] py-[9px] rounded-btn text-table-cell font-semibold border border-border text-text-cell hover:bg-sidebar-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+            >
+              <svg
+                className="w-4 h-4"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M14 3v4a1 1 0 0 0 1 1h4M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8l-5-5ZM9 15l3 3 3-3M12 11v7" />
+              </svg>
+              Claims-defence pack
+            </Link>
+          )}
           {/* Next to Re-score because they are the two things you do to a
               reviewed sale. Shows the state; the send flow itself lives in the
               panel below, so the findings are always seen before sending. */}

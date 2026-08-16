@@ -7,7 +7,24 @@ import { recordAuditEvent } from '../services/audit.js';
 import { getScoringSettings } from '../services/tenant-settings.js';
 import { pushJourneyScoreUpdate } from '../services/score-writeback.js';
 import { deriveSeverity, isItemPass, callPasses } from '@callguard/shared';
-import type { Journey, JourneyItemScore, JourneyWithDetail, JourneyListItem, JourneyStatus, JourneyProduct, JourneyScoreRun, BreachSeverity } from '@callguard/shared';
+import type {
+  Journey,
+  JourneyItemScore,
+  JourneyWithDetail,
+  JourneyListItem,
+  JourneyStatus,
+  JourneyProduct,
+  JourneyScoreRun,
+  BreachSeverity,
+  ClaimsDefenceResponse,
+  ClaimsDefenceHeader,
+  ClaimsDefenceCall,
+  ClaimsDefenceCheckpoint,
+  ClaimsDefenceFinding,
+  ClaimsDefenceReconciliation,
+  ClaimsDefenceReconciliationItem,
+  ClaimsDefenceCorrection,
+} from '@callguard/shared';
 
 export const journeysRouter = Router();
 journeysRouter.use(authenticate);
@@ -352,6 +369,229 @@ journeysRouter.get('/:id', requireOrgView, async (req, res, next) => {
       customer_name: customer?.name ?? null,
       customer_phone: customer?.phone_normalized ?? null,
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/journeys/:id/claims-defence — a per-sale evidence pack for when an
+// insurer declines a claim or a customer complains: what was said on the
+// call, what was submitted to the insurer, the AI's checkpoint verdicts, the
+// findings against them, and every human ruling on top. Audience is a
+// compliance officer, an insurer, or the Financial Ombudsman — this document
+// leaves the building, so every field on it is chosen for that.
+//
+// Same guard as every other report route (requireOrgView: admin/supervisor/
+// viewer — advisers must not reach it) and the same org.
+// scope as GET /:id: a journey belonging to another org 404s rather than
+// 403s, so a probing request cannot tell the difference between "not yours"
+// and "does not exist".
+//
+// PRIVACY: capture_reconciliation_items.call_answer is the field this route
+// exports for "what the customer said" — not because it was picked over some
+// redacted alternative, but because there is no such alternative to pick.
+// call_answer_redacted is a boolean, not a second text column: when the
+// customer's answer was itself redacted before storage, comparePair (jobs/
+// processors/reconcile.ts) forces call_answer to null and sets that flag
+// instead, so a non-null call_answer never carries a redaction placeholder —
+// and because it is read from the call's own transcript, which had personal
+// data (PII/PCI/PHI) redacted at source by Deepgram before the transcript was
+// ever written to storage, it never carried the customer's personal data to
+// begin with. Both fields travel together so a reader can tell "the customer
+// answered, here it is" from "the customer answered, the value was redacted"
+// rather than reading a bare null as silence.
+//
+// Deliberately does not surface journeys.coverage — same Phase 2 gate as the
+// board pack (routes/board-pack.ts) — see the TODO in the limitations block
+// below.
+journeysRouter.get('/:id/claims-defence', requireOrgView, async (req, res, next) => {
+  try {
+    const orgId = req.user!.organizationId;
+
+    const journey = await queryOne<{
+      id: string;
+      status: JourneyStatus;
+      overall_score: string | null;
+      pass: boolean | null;
+      scorecard_version: number;
+      customer_id: string;
+      scorecard_name: string | null;
+      sale_date: string;
+    }>(
+      `SELECT j.id, j.status, j.overall_score, j.pass, j.scorecard_version, j.customer_id,
+              sc.name AS scorecard_name, ${SALE_DATE_SQL} AS sale_date
+         FROM journeys j
+         LEFT JOIN scorecards sc ON sc.id = j.scorecard_id
+        WHERE j.id = $1 AND j.organization_id = $2`,
+      [req.params.id, orgId]
+    );
+    if (!journey) throw new AppError(404, 'Sale not found');
+
+    const customer = await queryOne<{ name: string | null; phone_normalized: string }>(
+      'SELECT name, phone_normalized FROM customers WHERE id = $1',
+      [journey.customer_id]
+    );
+
+    // The closing adviser, resolved exactly as the sales list and the
+    // breaches report attribute a sale (JOURNEY_AGENT_JOIN in routes/
+    // breaches.ts): earliest call flagged wrap_up, else the latest call in
+    // the set. Written out here rather than reused because that join is keyed
+    // to a breach's journey_id, not a journeys row.
+    const adviser = await queryOne<{ agent_name: string | null }>(
+      `SELECT COALESCE(u.name, c.agent_name) AS agent_name
+         FROM journey_calls jc
+         JOIN calls c ON c.id = jc.call_id
+         LEFT JOIN users u ON u.id = c.agent_id
+        WHERE jc.journey_id = $1
+        ORDER BY (jc.role = 'wrap_up') DESC,
+                 CASE WHEN jc.role = 'wrap_up'
+                      THEN COALESCE(c.call_date, c.created_at) END ASC,
+                 COALESCE(c.call_date, c.created_at) DESC
+        LIMIT 1`,
+      [journey.id]
+    );
+
+    const header: ClaimsDefenceHeader = {
+      journey_id: journey.id,
+      customer_name: customer?.name ?? null,
+      customer_phone: customer?.phone_normalized ?? null,
+      sale_date: journey.sale_date,
+      adviser_name: adviser?.agent_name ?? null,
+      scorecard_name: journey.scorecard_name,
+      scorecard_version: journey.scorecard_version,
+      status: journey.status,
+      overall_score: journey.overall_score != null ? Number(journey.overall_score) : null,
+      pass: journey.pass,
+    };
+
+    // 2. Evidence basis — the calls the verdict rests on.
+    const evidenceBasis = await query<ClaimsDefenceCall>(
+      `SELECT c.id, jc.role,
+              COALESCE(c.call_date::timestamptz, c.created_at) AS call_date,
+              c.duration_seconds,
+              COALESCE(u.name, c.agent_name) AS agent_name
+         FROM journey_calls jc
+         JOIN calls c ON c.id = jc.call_id
+         LEFT JOIN users u ON u.id = c.agent_id
+        WHERE jc.journey_id = $1
+        ORDER BY COALESCE(c.call_date::timestamptz, c.created_at) ASC`,
+      [journey.id]
+    );
+
+    // 3. Checkpoint results — every item, including na / manual_review. An
+    // omitted checkpoint looks like something hidden.
+    const checkpoints = await query<ClaimsDefenceCheckpoint>(
+      `SELECT jis.id, si.label, si.section, jis.result, jis.evidence, jis.reasoning,
+              jis.confidence, jis.source_call_id, jis.source_timestamp
+         FROM journey_item_scores jis
+         JOIN scorecard_items si ON si.id = jis.scorecard_item_id
+        WHERE jis.journey_id = $1
+        ORDER BY si.sort_order`,
+      [journey.id]
+    );
+
+    // 4. Findings — breaches for this sale, with the caveat and confirmation
+    // fields the breaches report template omits today. Ordered severity then
+    // recency, matching GET /breaches/report's own (alphabetical-on-severity)
+    // ordering, for consistency across the app's reports.
+    const findings = await query<ClaimsDefenceFinding>(
+      `SELECT b.id, si.label AS scorecard_item_label, b.severity, b.status,
+              b.evidence_caveats, b.confirmed_at, b.detected_at,
+              u.name AS confirmed_by_name
+         FROM breaches b
+         JOIN scorecard_items si ON si.id = b.scorecard_item_id
+         LEFT JOIN users u ON u.id = b.confirmed_by
+        WHERE b.journey_id = $1
+        ORDER BY b.severity, b.detected_at DESC`,
+      [journey.id]
+    );
+
+    // 5. Said versus submitted — the latest reconciliation run for this sale,
+    // if one exists. No run is a normal case (module not in use, or no
+    // application document has arrived yet), not an error.
+    const run = await queryOne<{
+      id: string;
+      status: string;
+      extraction_method: 'profile' | 'model';
+      completed_at: string | null;
+    }>(
+      `SELECT id, status, extraction_method, completed_at
+         FROM capture_reconciliation_runs
+        WHERE journey_id = $1 AND organization_id = $2
+        ORDER BY created_at DESC LIMIT 1`,
+      [journey.id, orgId]
+    );
+    let reconciliation: ClaimsDefenceReconciliation | null = null;
+    if (run) {
+      const items = await query<ClaimsDefenceReconciliationItem>(
+        `SELECT id, question, application_answer, call_answer, call_answer_redacted,
+                outcome, evidence, source_call_id, source_timestamp,
+                answer_amended, amendment_type, revisions
+           FROM capture_reconciliation_items
+          WHERE run_id = $1
+          ORDER BY sort_order ASC`,
+        [run.id]
+      );
+      reconciliation = {
+        status: run.status,
+        extraction_method: run.extraction_method,
+        completed_at: run.completed_at,
+        items,
+      };
+    }
+
+    // 6. Human review trail — score_corrections for this sale, oldest first
+    // (a trail reads chronologically). original_pass IS NULL distinguishes
+    // "the AI could not decide and a human ruled" from "a human overturned a
+    // confident AI verdict" (migration 077).
+    const humanReview = await query<ClaimsDefenceCorrection>(
+      `SELECT sc.id, si.label AS scorecard_item_label, u.name AS corrected_by_name,
+              sc.created_at, sc.original_pass, sc.corrected_pass, sc.reason
+         FROM score_corrections sc
+         JOIN scorecard_items si ON si.id = sc.scorecard_item_id
+         LEFT JOIN users u ON u.id = sc.corrected_by
+        WHERE sc.journey_id = $1
+        ORDER BY sc.created_at ASC`,
+      [journey.id]
+    );
+
+    // 7. Limitations — read alongside the sections above, not as small print.
+    const limitations: string[] = [
+      "Reconciliation outcomes recorded as 'undetermined' mean the system could not establish an answer (most often health redaction removing the words needed to identify the question). This is deliberately never read as a failure, and never as a pass either.",
+      "Questions checked for presence only ('recorded' / 'missing_from_application') are never compared against the call — they are excluded from any match-rate figure by design, because nothing about them was verified against the recording.",
+    ];
+    if (reconciliation) {
+      limitations.push(
+        reconciliation.extraction_method === 'profile'
+          ? "This sale's application was parsed deterministically, against a stored profile of this insurer's document — the same document parses the same way every time, which is what lets the \"said versus submitted\" findings below stand as evidence."
+          : "This sale's application was read directly by a model rather than a stored profile, because no profile for this document format existed yet. That reading is a best effort and is not reproducible, and is replaced automatically once a profile for the format goes live — treat the \"said versus submitted\" findings below as provisional until then."
+      );
+    } else {
+      limitations.push(
+        'This sale has no reconciliation run: no application document has been matched to it, or the reconciliation module is not in use for this organisation. The findings above rest on the calls alone, with nothing to compare against a submitted application.'
+      );
+    }
+    // TODO(partial-journey-coverage): once Phase 2 ships (false-positive
+    // measurement approved per docs/partial-journey-detection.md §6), add a
+    // limitations bullet here disclosing this sale's own coverage verdict
+    // (journeys.coverage: complete / partial / unknown) and, when partial,
+    // which stages the model judged missing (coverage_missing_stages) — the
+    // strongest "an earlier call may be missing from this evidence" signal
+    // this pack could carry. Not surfaced anywhere user-facing yet; see
+    // migration 100_journey_coverage.sql.
+
+    const response: ClaimsDefenceResponse = {
+      header,
+      evidence_basis: evidenceBasis,
+      checkpoints,
+      findings,
+      reconciliation,
+      human_review: humanReview,
+      limitations,
+      generated_at: new Date().toISOString(),
+    };
+
+    res.json(response);
   } catch (err) {
     next(err);
   }
