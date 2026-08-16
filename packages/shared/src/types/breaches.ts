@@ -92,7 +92,14 @@ export type BreachEvidenceCaveat =
   // checkpoint may not have applied to the sale at all.
   | 'guessed_branch'
   // Scored by a model no longer in use, under the retired two-pass design.
-  | 'retired_model';
+  | 'retired_model'
+  // The sale's earlier calls are missing (journeys.coverage = 'partial'), so
+  // this checkpoint may have been met on a call CallGuard never saw
+  // (docs/partial-journey-detection.md). Added to the enum in Phase 1
+  // alongside journeys.coverage; NOT YET applied to any breach —
+  // breachCaveats() in jobs/processors/score-journey.ts still needs wiring
+  // up, deliberately deferred to Phase 2 pending false-positive measurement.
+  | 'incomplete_journey';
 
 // Reviewer-facing wording. Kept with the type so the API, the register and any
 // export describe a caveat the same way.
@@ -103,6 +110,7 @@ export const BREACH_CAVEAT_LABELS: Record<BreachEvidenceCaveat, string> = {
   unattributed_evidence: 'The scorer did not say which call this came from',
   guessed_branch: 'The sale\'s branch was inferred, so this checkpoint may not apply',
   retired_model: 'Scored by a model no longer in use',
+  incomplete_journey: 'The sale\'s earlier calls are missing, so this checkpoint may have been met on a call CallGuard never saw',
 };
 
 export interface BreachWithDetail extends Breach {

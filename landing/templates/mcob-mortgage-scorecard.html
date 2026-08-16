@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="description" content="The free MCOB mortgage advice scorecard template: all 34 criteria, weights, severities and consent-gated items, browsable in full." />
+<meta name="theme-color" content="#4a9e6e" />
+<meta name="robots" content="index,follow,max-image-preview:large" />
+<meta name="author" content="CallGuard AI" />
+<title>MCOB Mortgage Advice Scorecard Template (34 Criteria) | CallGuard AI</title>
+<link rel="canonical" href="https://callguardai.co.uk/templates/mcob-mortgage-scorecard" />
+<link rel="icon" href="/favicon.ico" sizes="48x48" />
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+<link rel="manifest" href="/site.webmanifest" />
+<link rel="preload" as="font" type="font/woff2" href="/fonts/InterVariable.woff2" crossorigin>
+<link rel="stylesheet" href="/style.css?v=14" />
+
+<meta property="og:type" content="article" />
+<meta property="og:site_name" content="CallGuard AI" />
+<meta property="og:locale" content="en_GB" />
+<meta property="og:url" content="https://callguardai.co.uk/templates/mcob-mortgage-scorecard" />
+<meta property="og:title" content="MCOB Mortgage Advice Scorecard Template (34 Criteria)" />
+<meta property="og:description" content="All 34 criteria of CallGuard's MCOB mortgage advice scorecard: disclosure, fact find, suitability, costs, affordability, related needs and close." />
+<meta property="og:image" content="https://callguardai.co.uk/og-image.jpg" />
+
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="MCOB Mortgage Advice Scorecard Template (34 Criteria)" />
+<meta name="twitter:description" content="All 34 criteria of CallGuard's MCOB mortgage advice scorecard, browsable in full." />
+<meta name="twitter:image" content="https://callguardai.co.uk/og-image.jpg" />
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        {"@type": "ListItem", "position": 1, "name": "Home", "item": "https://callguardai.co.uk/"},
+        {"@type": "ListItem", "position": 2, "name": "Templates", "item": "https://callguardai.co.uk/templates"},
+        {"@type": "ListItem", "position": 3, "name": "MCOB mortgage advice scorecard"}
+      ]
+    },
+    {
+      "@type": "WebPage",
+      "@id": "https://callguardai.co.uk/templates/mcob-mortgage-scorecard#webpage",
+      "name": "MCOB Mortgage Advice Scorecard Template",
+      "url": "https://callguardai.co.uk/templates/mcob-mortgage-scorecard",
+      "description": "All 34 criteria of CallGuard's MCOB mortgage advice scorecard: disclosure, fact find, suitability, costs, affordability, related needs and close.",
+      "isPartOf": {"@id": "https://callguardai.co.uk/#website"},
+      "about": {"@id": "https://callguardai.co.uk/#software"}
+    },
+    {
+      "@type": "FAQPage",
+      "@id": "https://callguardai.co.uk/templates/mcob-mortgage-scorecard#faq",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "Is this scorecard FCA-approved or endorsed?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "No. It is a starting template, not an FCA-endorsed standard, and using it does not guarantee compliance. It exists so a firm building its first AI-scored QA programme is editing a scorecard on day one rather than starting from a blank page. Reword criteria, change weights and severities, delete what does not apply and add what your permissions or lender panel demand."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "What does the weight and severity on each item mean?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Weight (1, 1.5 or 2) sets how much a criterion counts toward the overall percentage score. Severity (low, medium, high or critical) is separate: a critical item failing can flag the whole call for review regardless of the overall score, so a missed early repayment charge explanation does not carry the same consequence as a missed pleasantry."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "What does consent-gated mean?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "A clear affirmative from the customer is required, and it cannot be inferred from silence or from the adviser simply saying the words. No unambiguous yes in the recording, no pass. Where the AI is not confident either way, the item routes to a manual review queue for a human to decide rather than being auto-scored, because a false pass on a consent item is the worst outcome available."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "How do I get the CSV version?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Use the request form on this page. It is the same lead form used across the rest of the site, so there is no separate account to create. A member of the CallGuard AI team emails the CSV across, formatted as one row per criterion with label, description, weight, severity, section and consent-gate columns, ready to import."
+          }
+        }
+      ]
+    }
+  ]
+}
+</script>
+<script>
+  (function () {
+    try {
+      var s = localStorage.getItem('cg-theme');
+      var d = s ? s === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+      document.documentElement.setAttribute('data-theme', d ? 'dark' : 'light');
+    } catch (e) {}
+  })();
+</script>
+</head>
+<body>
+
+<header class="nav" role="banner">
+  <div class="container nav-inner">
+    <a class="brand" href="/" aria-label="CallGuard AI home"><img class="brand-logo brand-logo--light" src="/brand/svg/callguard-logo-horizontal.svg" alt="CallGuard AI" width="152" height="32" /><img class="brand-logo brand-logo--dark" src="/brand/svg/callguard-logo-horizontal-dark.svg" alt="CallGuard AI" width="152" height="32" /></a>
+    <nav class="nav-links" aria-label="Primary">
+      <a href="/#how-it-works">How it works</a>
+      <a href="/#live">Live &amp; embedded</a>
+      <a href="/#learning">AI learning</a>
+      <a href="/#data-forms">Reconciliation</a>
+      <a href="/#use-cases">Use cases</a>
+      <a href="/pricing">Pricing</a>
+      <a href="/blog/">Blog</a>
+    </nav>
+    <a href="https://app.callguardai.co.uk/" class="nav-login">Log in</a>
+    <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request" class="btn btn-primary nav-cta">Book a demo</a>
+    <button class="theme-switch" type="button" aria-label="Toggle dark mode" aria-pressed="false">
+      <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+    </button>
+    <button class="nav-toggle" aria-label="Open menu" aria-controls="mobile-drawer" aria-expanded="false">
+      <svg class="icon-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="7"  x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>
+      <svg class="icon-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="6" y1="6"  x2="18" y2="18"/><line x1="6" y1="18" x2="18" y2="6"/></svg>
+    </button>
+  </div>
+  <div class="nav-drawer" id="mobile-drawer" aria-label="Mobile menu">
+    <a href="/#how-it-works">How it works</a>
+    <a href="/#live">Live &amp; embedded</a>
+    <a href="/#learning">AI learning</a>
+    <a href="/#data-forms">Reconciliation</a>
+    <a href="/#use-cases">Use cases</a>
+    <a href="/pricing">Pricing</a>
+    <a href="/blog/">Blog</a>
+    <a href="/#faq">FAQ</a>
+    <a href="https://app.callguardai.co.uk/">Log in</a>
+    <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request" class="btn btn-primary">Book a demo</a>
+  </div>
+</header>
+
+<main id="top">
+
+  <section class="hero">
+    <div class="container">
+      <span class="eyebrow">Template · MCOB mortgage advice</span>
+      <h1 class="hero-headline">The MCOB mortgage advice scorecard, <span class="accent">all 34 criteria.</span></h1>
+      <p class="hero-sub">
+        Seven sections — disclosure, fact find, suitability, costs, affordability, related needs and close — each criterion weighted and given a severity, with two items consent-gated. Every row is below; nothing is trimmed for the page.
+      </p>
+      <div class="hero-ctas">
+        <a href="#criteria" class="btn btn-primary btn-lg">See all 34 criteria ↓</a>
+        <a href="#get-csv" class="btn btn-ghost btn-lg">Get the CSV ↓</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="criteria">
+    <div class="container">
+      <span class="section-tag">The template</span>
+      <h2 class="section-h2">One bar, <span class="accent">seven sections.</span></h2>
+      <p class="lead">
+        Weight (1, 1.5 or 2) sets how much a criterion counts toward the overall percentage score. Severity is scored separately: a critical item failing can flag the call for review regardless of the overall percentage, so a missed early repayment charge explanation does not carry the same consequence as a missed pleasantry. Two items are consent-gated, meaning a clear affirmative is required and cannot be inferred from silence.
+      </p>
+
+      <div class="compare-table">
+        <table>
+          <thead>
+            <tr><th>Criterion</th><th>Section</th><th>Weight</th><th>Severity</th><th>Consent-gated</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Adviser, firm and FCA authorisation stated</td><td>Disclosure</td><td>1</td><td>Medium</td><td>—</td></tr>
+            <tr><td>Call recording and data use disclosed</td><td>Disclosure</td><td>1</td><td>Medium</td><td>—</td></tr>
+            <tr><td>Scope of service made clear (whole of market or panel)</td><td>Disclosure</td><td>1.5</td><td>High</td><td>—</td></tr>
+            <tr><td>Advised basis made clear</td><td>Disclosure</td><td>1.5</td><td>High</td><td>—</td></tr>
+            <tr><td>Broker fee disclosed: amount, when payable, refundable</td><td>Disclosure</td><td>2</td><td>Critical</td><td>—</td></tr>
+            <tr><td>Lender commission / procuration fee disclosed</td><td>Disclosure</td><td>1.5</td><td>High</td><td>—</td></tr>
+            <tr><td>Data sharing explained and customer agreement obtained</td><td>Disclosure</td><td>1.5</td><td>High</td><td>Yes</td></tr>
+            <tr><td>Needs and circumstances established before any recommendation</td><td>Fact find</td><td>2</td><td>Critical</td><td>—</td></tr>
+            <tr><td>Income, employment and expenditure captured</td><td>Fact find</td><td>1.5</td><td>High</td><td>—</td></tr>
+            <tr><td>Existing credit commitments captured</td><td>Fact find</td><td>1</td><td>Medium</td><td>—</td></tr>
+            <tr><td>Deposit or available equity established</td><td>Fact find</td><td>1</td><td>Medium</td><td>—</td></tr>
+            <tr><td>Credit history explored</td><td>Fact find</td><td>1</td><td>Medium</td><td>—</td></tr>
+            <tr><td>Foreseeable changes in circumstances explored</td><td>Fact find</td><td>1.5</td><td>High</td><td>—</td></tr>
+            <tr><td>Term extending into retirement addressed</td><td>Fact find</td><td>1.5</td><td>High</td><td>—</td></tr>
+            <tr><td>Repayment method rationale given</td><td>Suitability</td><td>2</td><td>Critical</td><td>—</td></tr>
+            <tr><td>Term rationale given</td><td>Suitability</td><td>1.5</td><td>High</td><td>—</td></tr>
+            <tr><td>Product type rationale given</td><td>Suitability</td><td>1.5</td><td>High</td><td>—</td></tr>
+            <tr><td>End of initial rate period and payment shock explained</td><td>Suitability</td><td>2</td><td>Critical</td><td>—</td></tr>
+            <tr><td>Recommendation explicitly linked to stated needs</td><td>Suitability</td><td>2</td><td>Critical</td><td>—</td></tr>
+            <tr><td>Alternatives considered and rejection explained</td><td>Suitability</td><td>1</td><td>Medium</td><td>—</td></tr>
+            <tr><td>Product transfer versus remortgage compared</td><td>Suitability</td><td>1</td><td>Medium</td><td>—</td></tr>
+            <tr><td>Total cost of borrowing explained, not just the monthly payment</td><td>Costs</td><td>1.5</td><td>High</td><td>—</td></tr>
+            <tr><td>Early repayment charges explained</td><td>Costs</td><td>2</td><td>Critical</td><td>—</td></tr>
+            <tr><td>Product, valuation and legal fees explained</td><td>Costs</td><td>1.5</td><td>High</td><td>—</td></tr>
+            <tr><td>Overpayments and portability explained where material</td><td>Costs</td><td>1</td><td>Low</td><td>—</td></tr>
+            <tr><td>Affordability affirmatively checked</td><td>Affordability</td><td>2</td><td>Critical</td><td>—</td></tr>
+            <tr><td>Affordability at a higher rate discussed</td><td>Affordability</td><td>1.5</td><td>High</td><td>—</td></tr>
+            <tr><td>Vulnerability screened and responded to</td><td>Affordability</td><td>2</td><td>Critical</td><td>—</td></tr>
+            <tr><td>Protection need raised</td><td>Related needs</td><td>1</td><td>Medium</td><td>—</td></tr>
+            <tr><td>Buildings insurance requirement mentioned</td><td>Related needs</td><td>1</td><td>Low</td><td>—</td></tr>
+            <tr><td>Understanding checked and questions invited</td><td>Close</td><td>1</td><td>Medium</td><td>—</td></tr>
+            <tr><td>Next steps, timescales and documentation explained</td><td>Close</td><td>1</td><td>Medium</td><td>—</td></tr>
+            <tr><td>No pressure or false urgency</td><td>Close</td><td>2</td><td>Critical</td><td>—</td></tr>
+            <tr><td>Consent to proceed and credit search obtained</td><td>Close</td><td>2</td><td>Critical</td><td>Yes</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section-cta" id="get-csv">
+    <div class="container">
+      <div class="cta-card">
+        <h2 class="cta-headline">Get the CSV, ready to import.</h2>
+        <p class="cta-sub">
+          The table above is the full template — nothing held back to make you ask. What the form gets you is the file: one row per criterion, with the description and AI-check guidance behind each label, in the exact column format CallGuard's scoring engine imports directly. Ask below and a real person on our team emails it across.
+        </p>
+        <div class="cta-buttons">
+          <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20MCOB%20scorecard%20CSV" class="btn btn-primary btn-lg">Email me the CSV</a>
+          <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20Mortgage%20advice%20demo" class="btn btn-ghost btn-lg">Book a 15-min demo instead</a>
+        </div>
+        <div class="cta-meta">
+          <span>No account required</span>
+          <span class="dot">·</span>
+          <span>Same lead form used sitewide</span>
+          <span class="dot">·</span>
+          <span>Not FCA-endorsed — a starting point only</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section-alt">
+    <div class="container">
+      <span class="section-tag">Beyond the template</span>
+      <h2 class="section-h2">A scorecard is the start, <span class="accent">not the whole system.</span></h2>
+      <p class="lead">
+        This template is the criteria list. CallGuard AI is the engine that transcribes every advice call, scores it against a scorecard like this one, evidences each verdict with a transcript quote, and learns your compliance officer's interpretation over time. Full detail is on our <a href="/use-cases/mortgage-advice">mortgage advice use case</a>. Selling protection alongside the mortgage? See the <a href="/templates/protection-consent-gate-checklist">protection consent-gate checklist</a>, or browse the full <a href="/templates">template library</a>.
+      </p>
+      <div style="margin-top: 12px; text-align: center;">
+        <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20Mortgage%20advice%20demo" class="btn btn-primary btn-lg">Book a 15-min demo</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="faq">
+    <div class="container">
+      <span class="section-tag">FAQ</span>
+      <h2 class="section-h2">Common questions, <span class="accent">answered.</span></h2>
+
+      <div class="faq-list">
+        <details class="faq-item">
+          <summary>Is this scorecard FCA-approved or endorsed?</summary>
+          <div class="faq-body"><p>No. It is a starting template, not an FCA-endorsed standard, and using it does not guarantee compliance. It exists so a firm building its first AI-scored QA programme is editing a scorecard on day one rather than starting from a blank page. Reword criteria, change weights and severities, delete what does not apply and add what your permissions or lender panel demand.</p></div>
+        </details>
+        <details class="faq-item">
+          <summary>What does the weight and severity on each item mean?</summary>
+          <div class="faq-body"><p>Weight (1, 1.5 or 2) sets how much a criterion counts toward the overall percentage score. Severity (low, medium, high or critical) is separate: a critical item failing can flag the whole call for review regardless of the overall score, so a missed early repayment charge explanation does not carry the same consequence as a missed pleasantry.</p></div>
+        </details>
+        <details class="faq-item">
+          <summary>What does consent-gated mean?</summary>
+          <div class="faq-body"><p>A clear affirmative from the customer is required, and it cannot be inferred from silence or from the adviser simply saying the words. No unambiguous yes in the recording, no pass. Where the AI is not confident either way, the item routes to a manual review queue for a human to decide rather than being auto-scored, because a false pass on a consent item is the worst outcome available.</p></div>
+        </details>
+        <details class="faq-item">
+          <summary>How do I get the CSV version?</summary>
+          <div class="faq-body"><p>Use the request form above. It is the same lead form used across the rest of the site, so there is no separate account to create. A member of the CallGuard AI team emails the CSV across, formatted as one row per criterion with label, description, weight, severity, section and consent-gate columns, ready to import.</p></div>
+        </details>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="footer">
+  <div class="container footer-inner">
+    <div class="footer-brand">
+      <a class="brand brand-footer" href="/" aria-label="CallGuard AI home"><img class="brand-logo brand-logo--footer" src="/brand/svg/callguard-logo-horizontal-dark.svg" alt="CallGuard AI" width="160" height="34" /></a>
+      <p class="footer-tag">AI compliance scoring for every regulated conversation.</p>
+    </div>
+    <div class="footer-links">
+      <div class="footer-col">
+        <h5>Product</h5>
+        <a href="/#how-it-works">How it works</a>
+        <a href="/#live">Live &amp; embedded</a>
+        <a href="/#learning">AI learning</a>
+        <a href="/#data-forms">Reconciliation</a>
+        <a href="/pricing">Pricing</a>
+        <a href="/compare">Compare</a>
+        <a href="/about">About</a>
+        <a href="/#faq">FAQ</a>
+        <a href="/blog/">Blog</a>
+      </div>
+      <div class="footer-col">
+        <h5>Use cases</h5>
+        <a href="/use-cases/financial-services">Financial services</a>
+        <a href="/use-cases/mortgage-advice">Mortgage advice</a>
+        <a href="/use-cases/bpo">Contact centres &amp; BPOs</a>
+        <a href="/use-cases/collections">Debt collections</a>
+        <a href="/use-cases/outbound-sales">Outbound sales</a>
+      </div>
+      <div class="footer-col">
+        <h5>Integrations</h5>
+        <a href="/integrations/twilio">Twilio</a>
+        <a href="/integrations/cloudtalk">CloudTalk</a>
+        <a href="/integrations/microsoft-teams">Microsoft Teams</a>
+        <a href="/integrations/aws-connect">AWS Connect</a>
+      </div>
+      <div class="footer-col">
+        <h5>Legal</h5>
+        <a href="/privacy">Privacy policy</a>
+        <a href="/terms">Terms of service</a>
+        <a href="/dpa">DPA</a>
+        <a href="/sub-processors">Sub-processors</a>
+      </div>
+    </div>
+  </div>
+  <div class="container footer-bottom">
+    <span>© 2026 CallGuard AI.</span>
+    <span>UK-based · GDPR-compliant by default</span>
+  </div>
+</footer>
+
+<script defer src="/script.js?v=4"></script>
+
+<script defer src="/analytics.js?v=1"></script>
+</body>
+</html>

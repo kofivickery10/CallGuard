@@ -83,7 +83,7 @@
           "name": "Does the bridge Lambda count against our AWS service limits?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "The bridge runs as concurrent executions, one per active streamed call. AWS default Lambda concurrency is plenty for most contact centres. For large floors we can switch the bridge to ECS Fargate for tighter capacity control."
+            "text": "The bridge runs as concurrent executions, one per active streamed call. AWS default Lambda concurrency is plenty for most contact centres."
           }
         },
         {
@@ -91,7 +91,7 @@
           "name": "What happens if the streaming connection drops mid-call?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "The session enters a graceful-disconnect state. Whatever has been transcribed and scored up to that point is preserved. When the bridge re-connects (Lambda retries automatically), the session resumes against the same external ID."
+            "text": "No audio is lost. The bridge buffers audio while it reconnects, then resumes reading from the exact Kinesis Video fragment it left off at, and nothing already transcribed and scored is discarded. What it does not do is stitch the before-drop and after-drop audio into one session: a reconnect opens a new one. So an interrupted call, or a call long enough to need more than one Lambda invocation, lands as two or more scored call records rather than a single resumed transcript — all tagged with the same Connect ContactId so you can tell they belong together."
           }
         },
         {
@@ -260,11 +260,11 @@
         </details>
         <details class="faq-item">
           <summary>Does the bridge Lambda count against our AWS service limits?</summary>
-          <div class="faq-body"><p>The bridge runs as concurrent executions, one per active streamed call. AWS default Lambda concurrency is plenty for most contact centres. For large floors we can switch the bridge to ECS Fargate for tighter capacity control.</p></div>
+          <div class="faq-body"><p>The bridge runs as concurrent executions, one per active streamed call. AWS default Lambda concurrency is plenty for most contact centres.</p></div>
         </details>
         <details class="faq-item">
           <summary>What happens if the streaming connection drops mid-call?</summary>
-          <div class="faq-body"><p>The session enters a graceful-disconnect state. Whatever has been transcribed and scored up to that point is preserved. When the bridge re-connects (Lambda retries automatically), the session resumes against the same external ID.</p></div>
+          <div class="faq-body"><p>No audio is lost. The bridge buffers audio while it reconnects, then resumes reading from the exact Kinesis Video fragment it left off at, and nothing already transcribed and scored is discarded. What it does not do is stitch the before-drop and after-drop audio into one session: a reconnect opens a new one. So an interrupted call, or a call long enough to need more than one Lambda invocation, lands as two or more scored call records rather than a single resumed transcript — all tagged with the same Connect <code>ContactId</code> so you can tell they belong together.</p></div>
         </details>
         <details class="faq-item">
           <summary>Can we keep audio in our own S3 instead of CallGuard storage?</summary>

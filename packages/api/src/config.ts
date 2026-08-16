@@ -61,6 +61,23 @@ export const config = {
 
   encryptionKey: required('ENCRYPTION_KEY'),
 
+  // Key-rotation support for services/crypto.ts. Every encrypted blob now
+  // carries the id of the key that produced it, so ENCRYPTION_KEY can be
+  // swapped for a new key later without losing the ability to read data
+  // written under the old one. ENCRYPTION_KEY_ID names the key that new
+  // writes are stamped with (defaults to "1", the id crypto.ts also assumes
+  // for the original, no-prefix blob format written before key ids existed —
+  // so upgrading to this code with no env changes is a no-op). encryptionLegacyKeys
+  // holds keys that are no longer current but must stay available for reads —
+  // "id:hexkey" pairs, comma-separated, e.g. "1:aaaa...,2:bbbb...". To rotate:
+  // move the outgoing ENCRYPTION_KEY value into ENCRYPTION_LEGACY_KEYS under
+  // its existing id, then set a new ENCRYPTION_KEY and bump ENCRYPTION_KEY_ID.
+  // Both are empty by default — nobody has rotated yet, and there is
+  // deliberately no re-encryption job here; this only adds the format
+  // capability for one to use later.
+  encryptionKeyId: optional('ENCRYPTION_KEY_ID', '1'),
+  encryptionLegacyKeys: optional('ENCRYPTION_LEGACY_KEYS', ''),
+
   uploadsDir: optional('UPLOADS_DIR', path.resolve(__dirname, '../../../uploads')),
 
   deepgram: {

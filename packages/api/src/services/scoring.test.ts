@@ -4,14 +4,18 @@ import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 // (`await import('@anthropic-ai/sdk')` in scoring.ts), specifically so a test
 // can stand in for it. The mock hands back one submit_scores payload per call
 // to `messages.stream(...).finalMessage()`, taken in order from a queue the
-// test fills in — one entry per consensus sampling run.
-const rawScoreQueue: number[] = [];
+// test fills in — one entry per consensus sampling run. An entry is either a
+// bare score (the common case) or `{ score, coverage }` when a test also
+// needs to control the journey-level coverage object riding the same call
+// (docs/partial-journey-detection.md §3.1).
+const rawScoreQueue: Array<number | { score: number; coverage?: Record<string, unknown> }> = [];
 
 vi.mock('@anthropic-ai/sdk', () => ({
   default: class MockAnthropic {
     messages = {
       stream: () => {
-        const score = rawScoreQueue.shift() ?? 0;
+        const next = rawScoreQueue.shift() ?? 0;
+        const entry = typeof next === 'number' ? { score: next } : next;
         return {
           finalMessage: async () => ({
             stop_reason: 'tool_use',
@@ -23,12 +27,13 @@ vi.mock('@anthropic-ai/sdk', () => ({
                   items: [
                     {
                       scorecard_item_id: 'item-1',
-                      score,
+                      score: entry.score,
                       confidence: 0.9,
                       evidence: 'quote',
                       reasoning: 'reasoning',
                     },
                   ],
+                  ...(entry.coverage ? { coverage: entry.coverage } : {}),
                 },
               },
             ],
@@ -116,5 +121,87 @@ describe('scoreTranscriptConsensus — threshold-aware voting', () => {
     const item = result.items.find((i) => i.scorecard_item_id === 'item-1')!;
     expect(item.disputed).toBe(false);
     expect(item.agreement).toBe(1);
+  });
+});
+
+// docs/partial-journey-detection.md §3.1 — coverage rides the same
+// submit_scores call as the checkpoints, so consensus voting must resolve it
+// the same way: majority verdict, with disagreement recorded rather than
+// settled by whichever sample happened to run first.
+describe('scoreTranscriptConsensus — coverage majority vote', () => {
+  const items = [
+    { id: 'item-1', label: 'Test criterion', description: null, score_type: 'binary' as const },
+  ];
+
+  it('takes the majority verdict on starts_mid_conversation and records the disagreement', async () => {
+    rawScoreQueue.push(
+      {
+        score: 1,
+        coverage: { starts_mid_conversation: true, missing_stages: ['intro'], rationale: 'Opens mid-process.' },
+      },
+      {
+        score: 1,
+        coverage: {
+          starts_mid_conversation: true,
+          missing_stages: ['intro', 'fact_find'],
+          rationale: 'Continuation of a prior, uncaptured call.',
+        },
+      },
+      {
+        score: 1,
+        coverage: { starts_mid_conversation: false, missing_stages: [], rationale: 'Looks complete.' },
+      }
+    );
+
+    const result = await scoreTranscriptConsensus(
+      3,
+      undefined,
+      'irrelevant transcript',
+      items,
+      null,
+      null,
+      undefined,
+      false,
+      null,
+      true // journeyMode — only then does the schema request coverage at all
+    );
+
+    expect(result.coverage).toBeDefined();
+    expect(result.coverage!.raw.starts_mid_conversation).toBe(true);
+    expect(result.coverage!.agreement).toBeCloseTo(2 / 3);
+    expect(result.coverage!.disputed).toBe(true);
+  });
+
+  it('is unanimous (undisputed) when every run agrees', async () => {
+    rawScoreQueue.push(
+      { score: 1, coverage: { starts_mid_conversation: false, missing_stages: [], rationale: 'Complete.' } },
+      { score: 1, coverage: { starts_mid_conversation: false, missing_stages: [], rationale: 'Complete.' } },
+      { score: 1, coverage: { starts_mid_conversation: false, missing_stages: [], rationale: 'Complete.' } }
+    );
+
+    const result = await scoreTranscriptConsensus(
+      3,
+      undefined,
+      'irrelevant transcript',
+      items,
+      null,
+      null,
+      undefined,
+      false,
+      null,
+      true
+    );
+
+    expect(result.coverage!.raw.starts_mid_conversation).toBe(false);
+    expect(result.coverage!.agreement).toBe(1);
+    expect(result.coverage!.disputed).toBe(false);
+  });
+
+  it('is undefined when the runs never returned a coverage object at all (e.g. journeyMode false)', async () => {
+    rawScoreQueue.push({ score: 1 }, { score: 1 }, { score: 1 });
+
+    const result = await scoreTranscriptConsensus(3, undefined, 'irrelevant transcript', items);
+
+    expect(result.coverage).toBeUndefined();
   });
 });

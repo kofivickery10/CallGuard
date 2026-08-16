@@ -44,9 +44,26 @@ export interface Journey {
   // Fed into the scoring prompt via getLearningContext (requires ai_learning).
   is_exemplar: boolean;
   exemplar_reason: string | null;
+  // Partial-journey coverage (docs/partial-journey-detection.md, Phase 1):
+  // whether this journey's captured calls read as the complete sale.
+  // 'partial' = the model judged the evidence starts mid-conversation (an
+  // earlier call was likely never captured); 'unknown' = the model judged it
+  // complete but structural signals disagree, logged for tuning; 'complete'
+  // = model and structure agree. NULL = never assessed — a journey scored
+  // before this feature shipped, or an assessment that failed on its run.
+  // Phase 1 only: populated on every new scoring run, but nothing downstream
+  // reacts to it yet (no breach caveat, no UI, no aggregate exclusion).
+  coverage: JourneyCoverage | null;
+  // Sale stages (e.g. "intro", "fact_find", "regulatory_disclosures") the
+  // model judged missing. Empty unless coverage = 'partial'.
+  coverage_missing_stages: string[];
+  // The model's stated evidence for its coverage judgement.
+  coverage_rationale: string | null;
   created_at: string;
   updated_at: string;
 }
+
+export type JourneyCoverage = 'complete' | 'partial' | 'unknown';
 
 export interface JourneyCall {
   journey_id: string;

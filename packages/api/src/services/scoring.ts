@@ -30,9 +30,22 @@ export interface ItemScoreOutput {
   reasoning: string;
 }
 
+// The model's raw, unvalidated coverage judgement (docs/partial-journey-
+// detection.md §3.1) — only requested/returned when journeyMode is true (see
+// the submit_scores schema below). Fields are typed `unknown` because the
+// model is not guaranteed to honour the schema's types; services/journey.ts's
+// assessJourneyCoverage() is responsible for defaulting/validating each one,
+// exactly as it did when this used to be a live API response of its own.
+export interface RawCoverageSignal {
+  starts_mid_conversation?: unknown;
+  missing_stages?: unknown;
+  rationale?: unknown;
+}
+
 export interface ScoringOutput {
   items: ItemScoreOutput[];
   coaching?: CallCoaching;
+  coverage?: RawCoverageSignal;
 }
 
 export interface LearningContext {
@@ -173,6 +186,12 @@ Evaluate the call transcript${journeyMode ? '(s)' : ''} (provided below) against
 4. Assess your confidence from 0.0 to 1.0
 ${journeyMode ? `
 This is a customer JOURNEY spanning multiple calls, each delimited by a header like "=== Call 2 (2026-01-15, agent: Jane) ===". Score each criterion against the whole journey, not any single call in isolation — a statement, disclosure or consent counts as met if it was given anywhere across the calls, even if the criterion's specific call ended without it. When you cite evidence, prefix the quote with the matching call marker in brackets exactly as shown, e.g. \`[Call 2] "...quote..."\`, so it's clear which call it came from.
+
+## Coverage (REQUIRED)
+
+Separately from the criteria above, judge whether the calls provided look like the COMPLETE sale, or whether they open mid-conversation because an earlier call in this sale was never captured — e.g. it opens as a continuation/callback of a prior conversation, skips straight to wrap-up/paperwork with no intro or fact-find, or an adviser refers back to a recommendation or disclosure that is never actually given on any call present.
+
+Do not confuse this with an adviser who simply skipped a step on the call(s) you CAN see — that is a real compliance failure, not a missing call, and must not be reported as starts_mid_conversation. Only report starts_mid_conversation when the transcript itself reads as a continuation of something earlier. Submit this via the "coverage" field: \`starts_mid_conversation\` (boolean), \`missing_stages\` (which stages appear to be missing, e.g. "intro", "fact_find", "regulatory_disclosures" — empty if starts_mid_conversation is false), and \`rationale\` (1-2 sentences of evidence for the judgement).
 ` : ''}
 Where a criterion requires SEVERAL things — "explained the exclusions and the 30-day cancellation rights", "confirmed the name, address and date of birth" — it is met only if the transcript shows EVERY element. Partial satisfaction is not a pass: score it as not met and name the missing element in your reasoning. Delivering one half of a two-part disclosure convincingly is the single most common way a criterion gets wrongly marked as met.
 
@@ -395,8 +414,40 @@ export async function scoreTranscript(
                   required: ['summary', 'strengths', 'improvements', 'next_actions'],
                 },
               } : {}),
+              // Partial-journey coverage (docs/partial-journey-detection.md
+              // §3.1). Rides this same, already-billed submit_scores call
+              // rather than a second one — the model already has the whole
+              // transcript in context, so this costs nothing beyond the
+              // tokens for the extra field. journeyMode-only: a single call
+              // scored on its own has no "earlier call in this sale" to be
+              // missing.
+              ...(journeyMode ? {
+                coverage: {
+                  type: 'object',
+                  description: "Whether this journey's captured calls look like the complete sale or a partial one — see the Coverage instructions above.",
+                  properties: {
+                    starts_mid_conversation: {
+                      type: 'boolean',
+                      description: 'True if the visible evidence opens as a continuation of a prior, uncaptured call.',
+                    },
+                    missing_stages: {
+                      type: 'array',
+                      items: { type: 'string' },
+                      description: 'Which stages of the sale process appear to be missing, e.g. "intro", "fact_find", "regulatory_disclosures". Empty if starts_mid_conversation is false.',
+                    },
+                    rationale: {
+                      type: 'string',
+                      description: '1-2 sentences of evidence for the judgement above.',
+                    },
+                  },
+                  required: ['starts_mid_conversation', 'missing_stages', 'rationale'],
+                },
+              } : {}),
             },
-            required: withCoaching ? ['items', 'coaching'] : ['items'],
+            required: [
+              ...(withCoaching ? ['items', 'coaching'] : ['items']),
+              ...(journeyMode ? ['coverage'] : []),
+            ],
           },
         },
       ],
@@ -506,9 +557,28 @@ export interface ConsensusItem extends ItemScoreOutput {
   disputed: boolean;
 }
 
+/**
+ * The journey-level coverage signal (docs/partial-journey-detection.md §3.1)
+ * after voting across independent scoring runs, mirroring ConsensusItem
+ * above. `raw` is the winning run's unvalidated object — services/journey.ts's
+ * assessJourneyCoverage() does the field-by-field defaulting against it,
+ * exactly as it used to against a live API response.
+ */
+export interface ConsensusCoverage {
+  raw: RawCoverageSignal;
+  // Fraction of runs that agreed with the winning starts_mid_conversation
+  // verdict (1.0 = unanimous).
+  agreement: number;
+  // True when the runs did not all agree on starts_mid_conversation.
+  disputed: boolean;
+}
+
 export interface ConsensusResult {
   items: ConsensusItem[];
   coaching?: CallCoaching;
+  // Only present when the caller requested journeyMode — see the
+  // submit_scores schema in scoreTranscript.
+  coverage?: ConsensusCoverage;
   usage: { input_tokens: number; output_tokens: number; cache_creation_input_tokens: number; cache_read_input_tokens: number };
   model: string;
   samples: number;
@@ -596,9 +666,33 @@ export async function scoreTranscriptConsensus(
     });
   }
 
+  // Coverage (docs/partial-journey-detection.md §3.1) rides the same runs the
+  // checkpoints above were voted from — only present when journeyMode asked
+  // for it (see the submit_scores schema in scoreTranscript), so a per-call
+  // consensus (score.ts) simply never populates this. Vote on the boolean
+  // verdict the same way checkpoints are voted on: the majority wins, and
+  // disagreement is recorded (agreement/disputed) rather than silently
+  // resolved by whichever sample happened to run. The winning run's raw
+  // object is handed to journey.ts's assessJourneyCoverage() for the actual
+  // field-by-field defaulting.
+  const coverageRuns = runs
+    .map((r) => r.coverage)
+    .filter((c): c is RawCoverageSignal => c !== undefined);
+  let coverage: ConsensusCoverage | undefined;
+  if (coverageRuns.length > 0) {
+    const mid = coverageRuns.filter((c) => c.starts_mid_conversation === true);
+    const majorityMid = mid.length * 2 > coverageRuns.length;
+    const agreeing = majorityMid ? mid : coverageRuns.filter((c) => c.starts_mid_conversation !== true);
+    coverage = {
+      raw: agreeing[0]!,
+      agreement: agreeing.length / coverageRuns.length,
+      disputed: agreeing.length !== coverageRuns.length,
+    };
+  }
+
   // Coaching is narrative rather than a verdict, so there is nothing to vote
   // on — take the first run's.
-  return { items: out, coaching: runs[0]?.coaching, usage, model, samples: runs.length };
+  return { items: out, coaching: runs[0]?.coaching, coverage, usage, model, samples: runs.length };
 }
 
 // Clamped to [0, 100] — Claude's raw score is expected within the scale's

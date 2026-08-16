@@ -1,0 +1,214 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  CallGuard AI - Amazon Connect bridge. Deploys a single-purpose Lambda that
+  reads a Connect contact's Kinesis Video Stream audio, downmixes it to mono
+  PCM16 8kHz, and forwards it to CallGuard's live scoring WebSocket. Runs
+  entirely inside your own AWS account; the CallGuard API key is read from
+  Secrets Manager at invocation time, never stored in this template. See
+  README.md before deploying.
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: CallGuard connection
+        Parameters:
+          - CallGuardWebSocketHost
+          - CallGuardApiKeySecretArn
+      - Label:
+          default: Amazon Connect
+        Parameters:
+          - ConnectInstanceArn
+          - KvsStreamArnPattern
+      - Label:
+          default: Deployment package
+        Parameters:
+          - LambdaCodeS3Bucket
+          - LambdaCodeS3Key
+      - Label:
+          default: Lambda tuning (defaults are sensible for most contact centres)
+        Parameters:
+          - FunctionName
+          - LambdaTimeoutSeconds
+          - LambdaMemoryMB
+          - LogRetentionDays
+          - StopBeforeTimeoutMs
+
+Parameters:
+  CallGuardWebSocketHost:
+    Type: String
+    Description: >-
+      CallGuard streaming WebSocket host, no scheme (e.g. stream.callguardai.co.uk).
+      The bridge connects to wss://<this host>/v1/stream/dialer/aws-connect.
+    AllowedPattern: '^[A-Za-z0-9.-]+$'
+    ConstraintDescription: Hostname only - no scheme, path or query string.
+
+  CallGuardApiKeySecretArn:
+    Type: String
+    Description: >-
+      ARN of a Secrets Manager secret whose SecretString is either the raw
+      CallGuard API key, or JSON of the form {"apiKey":"..."}. Create this
+      secret yourself before deploying this stack - the key is never a
+      template parameter.
+    AllowedPattern: '^arn:aws:secretsmanager:[a-z0-9-]+:\d{12}:secret:.+$'
+
+  ConnectInstanceArn:
+    Type: String
+    Description: >-
+      ARN of the Amazon Connect instance this bridge serves. Used both to
+      scope the Lambda's resource-based policy (only this instance may
+      invoke the function) and as a runtime check inside the function.
+    AllowedPattern: '^arn:aws:connect:[a-z0-9-]+:\d{12}:instance/[a-f0-9-]+$'
+
+  KvsStreamArnPattern:
+    Type: String
+    Description: >-
+      Resource pattern for the Kinesis Video Streams the bridge is allowed
+      to read (kinesisvideo:GetMedia / GetDataEndpoint). Amazon Connect
+      creates one stream per contact, so this must be a wildcarded pattern,
+      not a single stream ARN - e.g.
+      arn:aws:kinesisvideo:eu-west-2:123456789012:stream/*
+      Narrow the part after "stream/" to match your Connect instance's
+      configured Kinesis Video Stream name prefix (Data streaming settings)
+      if you want tighter scoping than "any stream in this account".
+    AllowedPattern: '^arn:aws:kinesisvideo:[a-z0-9-]+:\d{12}:stream/.*$'
+
+  LambdaCodeS3Bucket:
+    Type: String
+    Description: S3 bucket holding the built deployment package (see README "Deploy").
+
+  LambdaCodeS3Key:
+    Type: String
+    Description: S3 key of the built deployment package zip (see README "Deploy").
+    Default: callguard-aws-connect-bridge/bridge.zip
+
+  FunctionName:
+    Type: String
+    Description: >-
+      Lambda function name. Must be unique per account/region - change this
+      if deploying more than one bridge stack in the same account+region.
+    Default: callguard-aws-connect-bridge
+
+  LambdaTimeoutSeconds:
+    Type: Number
+    Description: >-
+      Lambda execution timeout. Kept below the 900s (15 min) Lambda hard
+      ceiling so there is always time for a clean handover to a self-invoked
+      continuation on calls that run long - see README "How long calls are handled".
+    Default: 840
+    MinValue: 60
+    MaxValue: 890
+
+  LambdaMemoryMB:
+    Type: Number
+    Description: Lambda memory. This is a light I/O-bound workload; raised a little above the 128MB floor for EBML buffering headroom.
+    Default: 512
+    MinValue: 256
+    MaxValue: 3008
+
+  LogRetentionDays:
+    Type: Number
+    Default: 30
+    AllowedValues: [1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1827, 3653]
+
+  StopBeforeTimeoutMs:
+    Type: Number
+    Description: >-
+      Milliseconds of headroom before Lambda's own timeout at which the
+      bridge stops reading new audio, flushes, and (if the call is still
+      live) self-invokes a continuation. Must comfortably cover one
+      Secrets Manager read + WebSocket close + async self-invoke.
+    Default: 60000
+    MinValue: 15000
+
+Resources:
+  BridgeLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${FunctionName}
+      RetentionInDays: !Ref LogRetentionDays
+
+  BridgeExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CloudWatchLogsWriteOnly
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !GetAtt BridgeLogGroup.Arn
+        - PolicyName: ReadConnectKinesisVideoStreams
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - kinesisvideo:GetDataEndpoint
+                  - kinesisvideo:GetMedia
+                Resource: !Ref KvsStreamArnPattern
+        - PolicyName: ReadCallGuardApiKeySecret
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource: !Ref CallGuardApiKeySecretArn
+        - PolicyName: SelfInvokeForLongCallContinuation
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource: !Sub arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${FunctionName}
+
+  BridgeFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: BridgeLogGroup
+    Properties:
+      FunctionName: !Ref FunctionName
+      Description: Bridges an Amazon Connect Kinesis Video Stream to CallGuard's live scoring WebSocket.
+      Runtime: nodejs20.x
+      Handler: src/index.handler
+      Role: !GetAtt BridgeExecutionRole.Arn
+      Timeout: !Ref LambdaTimeoutSeconds
+      MemorySize: !Ref LambdaMemoryMB
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+      Environment:
+        Variables:
+          CALLGUARD_WS_HOST: !Ref CallGuardWebSocketHost
+          CALLGUARD_API_KEY_SECRET_ARN: !Ref CallGuardApiKeySecretArn
+          CONNECT_INSTANCE_ARN: !Ref ConnectInstanceArn
+          STOP_BEFORE_TIMEOUT_MS: !Ref StopBeforeTimeoutMs
+
+  BridgeInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref BridgeFunction
+      Action: lambda:InvokeFunction
+      Principal: connect.amazonaws.com
+      SourceArn: !Ref ConnectInstanceArn
+      SourceAccount: !Ref AWS::AccountId
+
+Outputs:
+  BridgeFunctionArn:
+    Description: ARN to select in the Contact Flow's "Invoke AWS Lambda function" block.
+    Value: !GetAtt BridgeFunction.Arn
+  BridgeFunctionName:
+    Value: !Ref BridgeFunction
+  BridgeLogGroupName:
+    Value: !Ref BridgeLogGroup

@@ -2,7 +2,8 @@ import { query, queryOne, withTransaction } from '../db/client.js';
 import { getDialerConnection, getJourneyWindowDays } from './tenant-settings.js';
 import { scoringQueue, ingestionQueue } from '../jobs/queue.js';
 import type { ResolvedProduct } from './product-resolution.js';
-import type { JourneyTriggerSource, Scorecard, Call, ProductSource } from '@callguard/shared';
+import type { RawCoverageSignal } from './scoring.js';
+import type { JourneyTriggerSource, Scorecard, Call, ProductSource, JourneyCoverage } from '@callguard/shared';
 
 const DEFAULT_HISTORY_WINDOW_DAYS = 30;
 
@@ -431,4 +432,153 @@ export async function maybeScoreJourneyWhenReady(journeyId: string): Promise<voi
     await scoringQueue.add('score-journey', { journeyId }, { jobId: `score-journey-${journeyId}` });
     console.log(`[Journey] ${journeyId}: all calls transcribed — enqueued scoring`);
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Partial-journey coverage detection (docs/partial-journey-detection.md).
+//
+// Phase 1 only (spec §6): detect and persist on every new scoring run, do
+// not act — nothing downstream (breach caveats, UI, aggregates, Zoho
+// write-back) changes yet. That is deliberate: the spec gates those on
+// measuring the false-positive rate first, and announcing before enabling.
+// ─────────────────────────────────────────────────────────────────────────
+
+/** The model's own judgement of whether a journey's evidence looks complete (spec §3.1). */
+export interface CoverageModelSignal {
+  startsMidConversation: boolean;
+  missingStages: string[];
+  rationale: string;
+}
+
+/**
+ * Turn the model's raw coverage judgement (spec §3.1) into a validated,
+ * defaulted CoverageModelSignal.
+ *
+ * The spec asks for this as one extra object on the main scoring pass's
+ * existing submit_scores tool schema (services/scoring.ts), billed once per
+ * run rather than a second call — scoreTranscript requests it whenever
+ * journeyMode is true, and scoreTranscriptConsensus resolves the majority
+ * verdict across consensus runs into a single winning raw object (see
+ * ConsensusCoverage there). This function's only job is defending against
+ * the model omitting or malforming a field, exactly as it did when this used
+ * to be a live API response of its own — never throws, since coverage
+ * assessment is best-effort and must not fail a journey score.
+ */
+export function assessJourneyCoverage(raw: RawCoverageSignal | undefined): CoverageModelSignal {
+  return {
+    startsMidConversation: raw?.starts_mid_conversation === true,
+    missingStages: Array.isArray(raw?.missing_stages)
+      ? raw.missing_stages.filter((s): s is string => typeof s === 'string')
+      : [],
+    rationale: typeof raw?.rationale === 'string' ? raw.rationale.slice(0, 2000) : '',
+  };
+}
+
+/** Free, computed corroboration of the model's coverage judgement (spec §3.2). Never sufficient alone. */
+export interface StructuralCorroboration {
+  agrees: boolean;
+  reasons: Array<'front_fail_back_pass' | 'no_prior_history' | 'single_call_below_median'>;
+}
+
+// A tenant needs at least this many days of call history before "this
+// customer's first call is also the org's earliest" counts as evidence of a
+// missing prior call, rather than the tenant simply being new (spec §3.2:
+// "on a tenant whose capture has been live materially longer").
+const MATERIALLY_LONGER_CAPTURE_DAYS = 14;
+
+export async function computeStructuralCorroboration(params: {
+  organizationId: string;
+  journeyId: string;
+  customerId: string;
+  // The earliest call's created_at (when CallGuard first saw it), not
+  // call_date — the Jimara case compares record-creation timestamps
+  // ("customer created 09:52:16, its only call created 09:52:16").
+  earliestCallCreatedAt: string;
+  callCount: number;
+  itemResults: Array<{ sortOrder: number; pass: boolean }>;
+}): Promise<StructuralCorroboration> {
+  const reasons: StructuralCorroboration['reasons'] = [];
+
+  // Front-fail / back-pass shape: every checkpoint in the scorecard's
+  // opening half failed while the closing half largely passed — the Jimara
+  // shape exactly (every front-of-sale item at 0, every back-of-sale item
+  // passing). Requires a reasonably sized scorecard so a 2-item split isn't
+  // read as a shape.
+  const sorted = [...params.itemResults].sort((a, b) => a.sortOrder - b.sortOrder);
+  if (sorted.length >= 6) {
+    const mid = Math.floor(sorted.length / 2);
+    const front = sorted.slice(0, mid);
+    const back = sorted.slice(mid);
+    const frontFailRate = front.filter((i) => !i.pass).length / front.length;
+    const backPassRate = back.filter((i) => i.pass).length / back.length;
+    if (frontFailRate >= 0.8 && backPassRate >= 0.8) {
+      reasons.push('front_fail_back_pass');
+    }
+  }
+
+  // No prior history: this customer's record was created at the same moment
+  // as their only call in the journey, on a tenant whose capture has been
+  // live materially longer.
+  const customer = await queryOne<{ first_seen_at: string }>(
+    'SELECT first_seen_at FROM customers WHERE id = $1',
+    [params.customerId]
+  );
+  if (customer) {
+    const firstSeen = new Date(customer.first_seen_at).getTime();
+    const earliestCall = new Date(params.earliestCallCreatedAt).getTime();
+    const sameInstant = Math.abs(firstSeen - earliestCall) < 60_000;
+    if (sameInstant) {
+      const orgHistory = await queryOne<{ earliest: string | null }>(
+        'SELECT min(created_at)::text AS earliest FROM calls WHERE organization_id = $1',
+        [params.organizationId]
+      );
+      if (orgHistory?.earliest) {
+        const daysOfHistory = (earliestCall - new Date(orgHistory.earliest).getTime()) / (24 * 60 * 60 * 1000);
+        if (daysOfHistory >= MATERIALLY_LONGER_CAPTURE_DAYS) {
+          reasons.push('no_prior_history');
+        }
+      }
+    }
+  }
+
+  // Single-call sale where the tenant's median sale spans more.
+  if (params.callCount === 1) {
+    const median = await queryOne<{ median: string | null }>(
+      `SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY calls_scored)::text AS median
+         FROM journey_score_runs
+        WHERE organization_id = $1 AND journey_id <> $2 AND calls_scored IS NOT NULL`,
+      [params.organizationId, params.journeyId]
+    );
+    if (median?.median && Number(median.median) > 1) {
+      reasons.push('single_call_below_median');
+    }
+  }
+
+  return { agrees: reasons.length > 0, reasons };
+}
+
+/**
+ * Combine the model's declared judgement with the structural check (spec
+ * §3.3's table). Crucially, structure agreeing on its own (model says
+ * complete) never produces 'partial' — that is the adviser-skipped-
+ * everything case, which must keep scoring at face value rather than being
+ * waved away as a coverage gap.
+ */
+export function resolveCoverage(
+  modelSignal: CoverageModelSignal,
+  structural: StructuralCorroboration
+): { coverage: JourneyCoverage; rationale: string } {
+  if (modelSignal.startsMidConversation) {
+    const rationale = structural.agrees
+      ? modelSignal.rationale
+      : `${modelSignal.rationale} (structural signals do not corroborate this — flagged for review)`.trim();
+    return { coverage: 'partial', rationale };
+  }
+  if (structural.agrees) {
+    return {
+      coverage: 'unknown',
+      rationale: `Model reported the journey complete, but structural signals (${structural.reasons.join(', ')}) suggest otherwise — logged for tuning.`,
+    };
+  }
+  return { coverage: 'complete', rationale: modelSignal.rationale };
 }

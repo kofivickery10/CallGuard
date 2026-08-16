@@ -6,6 +6,8 @@ import {
   REDACTION_CATEGORIES,
   resolveTenantRedactCategories,
   redactForTenant,
+  assembleTranscript,
+  type TranscriptUtterance,
 } from './transcription.js';
 
 vi.mock('../db/client.js', () => ({
@@ -125,5 +127,212 @@ describe('redactForTenant — the single entry point for the in-house bank-detai
     const { raw, rawRedactions } = redactForTenant('sort code 20 45 67');
     expect(raw).toBeUndefined();
     expect(rawRedactions).toBe(0);
+  });
+});
+
+// assembleTranscript is the pure core of transcribeCall (services/transcription.ts):
+// speaker-cluster-to-Agent/Customer assignment (stereo pin, mono content-vs-
+// positional heuristic), the confidence calculation, and the utterance-joining
+// / text fallback chain — described as the highest-risk logic in the pipeline
+// since a mislabelled speaker can turn a customer's own words into a false
+// compliance breach against the adviser. Extracted so it's testable without
+// Deepgram or the DB.
+describe('assembleTranscript', () => {
+  it('stereo pin: exact attribution regardless of who speaks first', () => {
+    const utterances: TranscriptUtterance[] = [
+      { transcript: 'Hello, how can I help?', channel: 1, start: 0 },
+      { transcript: 'Hi, I have a question.', channel: 0, start: 3 },
+    ];
+    const result = assembleTranscript({
+      utterances,
+      isMultichannel: true,
+      pinnedAdviserChannel: 1,
+      monoFirstSpeaker: 'agent',
+      channelFallbackText: '',
+    });
+    expect(result.text).toBe('Agent: Hello, how can I help?\n\nCustomer: Hi, I have a question.');
+    expect(result.outcome).toBe('assembled');
+    expect(result.speaker_attribution_confidence).toBe(1.0);
+    expect(result.adviser_identified_by_content).toBe(true);
+  });
+
+  it('stereo without a pinned channel: whoever speaks first is assumed the adviser, confidence 0.7', () => {
+    const utterances: TranscriptUtterance[] = [
+      { transcript: 'Hi there', channel: 0, start: 0 },
+      { transcript: 'Hello', channel: 1, start: 2 },
+    ];
+    const result = assembleTranscript({
+      utterances,
+      isMultichannel: true,
+      pinnedAdviserChannel: null,
+      monoFirstSpeaker: 'agent',
+      channelFallbackText: '',
+    });
+    expect(result.text).toBe('Agent: Hi there\n\nCustomer: Hello');
+    expect(result.speaker_attribution_confidence).toBe(0.7);
+    expect(result.adviser_identified_by_content).toBe(false);
+  });
+
+  it('mono: content identification overrides the positional guess when it disagrees, confidence 0.8', () => {
+    const customerWords = 'My doctor said this was fine'
+      .split(' ')
+      .map((word) => ({ word, speaker: 0 }));
+    const adviserWords =
+      'Calls are recorded and you are authorised and regulated and this is whole of market advice'
+        .split(' ')
+        .map((word) => ({ word, speaker: 1 }));
+    const utterances: TranscriptUtterance[] = [
+      // Speaker 0 speaks first — the positional heuristic would call them the
+      // adviser under monoFirstSpeaker='agent'. Content evidence says otherwise.
+      { transcript: 'My doctor said this was fine', speaker: 0, start: 0, words: customerWords },
+      {
+        transcript: 'Calls are recorded and you are authorised and regulated and this is whole of market advice',
+        speaker: 1,
+        start: 5,
+        words: adviserWords,
+      },
+    ];
+    const result = assembleTranscript({
+      utterances,
+      isMultichannel: false,
+      pinnedAdviserChannel: null,
+      monoFirstSpeaker: 'agent',
+      channelFallbackText: '',
+    });
+    expect(result.positionalAgentKey).toBe(0);
+    expect(result.contentPick?.key).toBe(1);
+    expect(result.agentKey).toBe(1);
+    expect(result.speaker_attribution_confidence).toBe(0.8);
+    expect(result.adviser_identified_by_content).toBe(true);
+    expect(result.text).toContain('Customer: My doctor said this was fine');
+    expect(result.text).toContain('Agent: Calls are recorded');
+  });
+
+  it('mono, inbound (monoFirstSpeaker="agent"): positional heuristic when content abstains, confidence 0.45', () => {
+    const utterances: TranscriptUtterance[] = [
+      { transcript: 'Hello, thanks for calling.', speaker: 0, start: 0 },
+      { transcript: 'Hi, I wanted to ask about my quote.', speaker: 1, start: 4 },
+    ];
+    const result = assembleTranscript({
+      utterances,
+      isMultichannel: false,
+      pinnedAdviserChannel: null,
+      monoFirstSpeaker: 'agent',
+      channelFallbackText: '',
+    });
+    expect(result.contentPick).toBeNull();
+    expect(result.positionalAgentKey).toBe(0);
+    expect(result.agentKey).toBe(0);
+    expect(result.text).toBe('Agent: Hello, thanks for calling.\n\nCustomer: Hi, I wanted to ask about my quote.');
+    expect(result.speaker_attribution_confidence).toBe(0.45);
+    expect(result.adviser_identified_by_content).toBe(false);
+  });
+
+  it('mono, outbound (monoFirstSpeaker="customer"): the OTHER speaker is the adviser when content abstains', () => {
+    const utterances: TranscriptUtterance[] = [
+      { transcript: 'Hello?', speaker: 0, start: 0 },
+      { transcript: 'Hi, this is Jane calling about your quote.', speaker: 1, start: 3 },
+    ];
+    const result = assembleTranscript({
+      utterances,
+      isMultichannel: false,
+      pinnedAdviserChannel: null,
+      monoFirstSpeaker: 'customer',
+      channelFallbackText: '',
+    });
+    // Speaker 0 spoke first and is assumed the customer on an outbound call,
+    // so the adviser is the OTHER speaker (1) — the inverse of the inbound case.
+    expect(result.positionalAgentKey).toBe(1);
+    expect(result.agentKey).toBe(1);
+    expect(result.text).toBe('Customer: Hello?\n\nAgent: Hi, this is Jane calling about your quote.');
+    expect(result.speaker_attribution_confidence).toBe(0.45);
+  });
+
+  it('mono with 3+ diarised clusters and no content markers: abstains, confidence drops to 0.3', () => {
+    const utterances: TranscriptUtterance[] = [
+      { transcript: 'Hello, thanks for calling.', speaker: 0, start: 0 },
+      { transcript: 'Hi, I need help with my account.', speaker: 1, start: 4 },
+      { transcript: 'Let me transfer you now.', speaker: 2, start: 10 },
+    ];
+    const result = assembleTranscript({
+      utterances,
+      isMultichannel: false,
+      pinnedAdviserChannel: null,
+      monoFirstSpeaker: 'agent',
+      channelFallbackText: '',
+    });
+    expect(result.contentPick).toBeNull();
+    expect(result.speakerCount).toBe(3);
+    expect(result.speaker_attribution_confidence).toBe(0.3);
+  });
+
+  it('joins consecutive same-speaker words into one turn and splits a mid-utterance speaker change at word level', () => {
+    const utterances: TranscriptUtterance[] = [
+      {
+        transcript: 'a doctor but no not as far as I am aware to your knowledge',
+        speaker: 0,
+        start: 0,
+        words: [
+          { word: 'a', speaker: 0 }, { word: 'doctor', speaker: 0 }, { word: 'but', speaker: 0 },
+          { word: 'no', speaker: 0 }, { word: 'not', speaker: 0 }, { word: 'as', speaker: 0 },
+          { word: 'far', speaker: 0 }, { word: 'as', speaker: 0 }, { word: 'I', speaker: 0 },
+          { word: 'am', speaker: 0 }, { word: 'aware', speaker: 0 },
+          { word: 'to', speaker: 1 }, { word: 'your', speaker: 1 }, { word: 'knowledge', speaker: 1 },
+        ],
+      },
+    ];
+    const result = assembleTranscript({
+      utterances,
+      isMultichannel: false,
+      pinnedAdviserChannel: null,
+      monoFirstSpeaker: 'agent',
+      channelFallbackText: '',
+    });
+    // A single Deepgram utterance carrying both speakers' words still comes out
+    // as two turns, split exactly where the speaker changes.
+    expect(result.text).toBe(
+      'Agent: a doctor but no not as far as I am aware\n\nCustomer: to your knowledge'
+    );
+  });
+
+  it('no utterances and no raw channel transcript: outcome "empty", text is ""', () => {
+    const result = assembleTranscript({
+      utterances: [],
+      isMultichannel: false,
+      pinnedAdviserChannel: null,
+      monoFirstSpeaker: 'agent',
+      channelFallbackText: '',
+    });
+    expect(result.outcome).toBe('empty');
+    expect(result.text).toBe('');
+    expect(result.speakerCount).toBe(0);
+  });
+
+  it('no utterances but Deepgram returned a raw channel transcript: falls back to it, unlabelled', () => {
+    const result = assembleTranscript({
+      utterances: [],
+      isMultichannel: false,
+      pinnedAdviserChannel: null,
+      monoFirstSpeaker: 'agent',
+      channelFallbackText: 'raw unlabelled transcript text',
+    });
+    expect(result.outcome).toBe('channel_fallback');
+    expect(result.text).toBe('raw unlabelled transcript text');
+  });
+
+  it('falls back to the utterance-level speaker label when word-level speakers are absent', () => {
+    const utterances: TranscriptUtterance[] = [
+      { transcript: 'Good morning, how can I help?', speaker: 0, start: 0 },
+      { transcript: 'Hi, quick question about my cover.', speaker: 1, start: 3 },
+    ];
+    const result = assembleTranscript({
+      utterances,
+      isMultichannel: false,
+      pinnedAdviserChannel: null,
+      monoFirstSpeaker: 'agent',
+      channelFallbackText: '',
+    });
+    expect(result.outcome).toBe('assembled');
+    expect(result.text).toBe('Agent: Good morning, how can I help?\n\nCustomer: Hi, quick question about my cover.');
   });
 });
