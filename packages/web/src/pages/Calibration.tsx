@@ -4,8 +4,10 @@ import { api } from '../api/client';
 interface TrendPoint {
   month: string;
   scored_calls: number;
+  scored_journeys: number;
+  scored_units: number;
   corrections: number;
-  overrides_per_100_calls: number | null;
+  overrides_per_100_scored: number | null;
   reviewed_items: number;
   agreement_pct: number | null;
 }
@@ -20,6 +22,8 @@ interface CalibrationData {
   total_reviewed_items: number;
   current_agreement_pct: number | null;
   previous_agreement_pct: number | null;
+  agreement_scope: 'calls_only';
+  agreement_note: string;
   current_override_rate: number | null;
   previous_override_rate: number | null;
   trend: TrendPoint[];
@@ -39,7 +43,7 @@ export function Calibration() {
     queryFn: () => api.get<CalibrationData>('/insights/calibration'),
   });
 
-  const maxRate = Math.max(1, ...(data?.trend ?? []).map((t) => t.overrides_per_100_calls ?? 0));
+  const maxRate = Math.max(1, ...(data?.trend ?? []).map((t) => t.overrides_per_100_scored ?? 0));
   const cur = data?.current_override_rate;
   const prev = data?.previous_override_rate;
   const improving = cur != null && prev != null && cur < prev;
@@ -101,6 +105,9 @@ export function Calibration() {
                   <div className="text-xs text-text-muted mt-1">
                     Across {data.total_reviewed_items} reviewed item scores.
                   </div>
+                  <p className="text-xs text-text-subtle mt-2 border-t border-border-light pt-2">
+                    {data.agreement_note}
+                  </p>
                 </div>
               )}
 
@@ -110,13 +117,13 @@ export function Calibration() {
                   Reviewer override rate
                 </h3>
                 <p className="text-xs text-text-subtle mb-3">
-                  How often a reviewer had to override the AI, per 100 scored calls. Lower means the
-                  AI is more aligned with your team.
+                  How often a reviewer had to override the AI, per 100 scored calls and sales combined.
+                  Lower means the AI is more aligned with your team.
                 </p>
                 <div className="flex items-end gap-3">
                   <div className="text-[34px] font-bold text-text-primary leading-none">
                     {cur != null ? cur : '—'}
-                    <span className="text-base text-text-muted font-semibold"> / 100 calls</span>
+                    <span className="text-base text-text-muted font-semibold"> / 100 scored</span>
                   </div>
                   {prev != null && cur != null && (
                     <span
@@ -140,17 +147,17 @@ export function Calibration() {
                 </h3>
                 <div className="flex items-end gap-3 h-32">
                   {data.trend.map((t) => {
-                    const rate = t.overrides_per_100_calls ?? 0;
+                    const rate = t.overrides_per_100_scored ?? 0;
                     const h = Math.round((rate / maxRate) * 100);
                     return (
                       <div key={t.month} className="flex-1 flex flex-col items-center justify-end h-full">
                         <div className="text-[11px] text-text-muted mb-1">
-                          {t.overrides_per_100_calls != null ? t.overrides_per_100_calls : '–'}
+                          {t.overrides_per_100_scored != null ? t.overrides_per_100_scored : '–'}
                         </div>
                         <div
                           className="w-full bg-primary/70 rounded-t"
-                          style={{ height: `${Math.max(h, t.scored_calls > 0 ? 4 : 0)}%` }}
-                          title={`${t.corrections} corrections / ${t.scored_calls} scored calls`}
+                          style={{ height: `${Math.max(h, t.scored_units > 0 ? 4 : 0)}%` }}
+                          title={`${t.corrections} corrections / ${t.scored_units} scored (${t.scored_calls} calls, ${t.scored_journeys} sales)`}
                         />
                         <div className="text-[11px] text-text-muted mt-1.5">{monthLabel(t.month)}</div>
                       </div>

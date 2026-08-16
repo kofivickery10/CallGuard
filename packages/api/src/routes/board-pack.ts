@@ -8,7 +8,9 @@ import type {
   AdviserRisk,
   BoardPackResponse,
   BoardPackOutcomesWindow,
+  BoardPackConsumerDutyOutcomeCount,
   BreachSeverity,
+  ConsumerDutyOutcome,
 } from '@callguard/shared';
 
 export const boardPackRouter = Router();
@@ -231,6 +233,41 @@ boardPackRouter.get('/', requireOrgView, async (req, res, next) => {
       [orgId, from, to, ...journeyProductParams]
     );
 
+    // ── 4b. Findings by Consumer Duty outcome ───────────────────────────
+    // Same population and product scoping as the theme query above, grouped
+    // by the checkpoint's tagged outcome instead of its section. A checkpoint
+    // nobody has tagged (consumer_duty_outcome IS NULL — the default for
+    // every scorecard until migration 101) groups under NULL here, which is
+    // rendered below as an explicit "Unmapped" bucket rather than dropped.
+    const consumerDutyRows = await query<{ consumer_duty_outcome: ConsumerDutyOutcome | null; count: string }>(
+      `SELECT si.consumer_duty_outcome, COUNT(*)::text AS count
+         FROM breaches b
+         JOIN scorecard_items si ON si.id = b.scorecard_item_id
+        WHERE b.organization_id = $1
+          AND b.detected_at >= $2::date AND b.detected_at < ($3::date + interval '1 day')
+          ${breachProductClause}
+        GROUP BY si.consumer_duty_outcome
+        ORDER BY COUNT(*) DESC`,
+      [orgId, from, to, ...journeyProductParams]
+    );
+
+    // ── 4c. Vulnerability ────────────────────────────────────────────────
+    // Vulnerability is a cross-cutting Consumer Duty consideration, not a
+    // fifth outcome (see ScorecardItem.vulnerability_related), so it is
+    // counted independently of findings_by_consumer_duty above rather than
+    // as one more bucket in that grouping.
+    const vulnerabilityRow = await queryOne<{ total: string; vulnerability_related: string }>(
+      `SELECT
+         COUNT(*)::text AS total,
+         COUNT(*) FILTER (WHERE si.vulnerability_related)::text AS vulnerability_related
+         FROM breaches b
+         JOIN scorecard_items si ON si.id = b.scorecard_item_id
+        WHERE b.organization_id = $1
+          AND b.detected_at >= $2::date AND b.detected_at < ($3::date + interval '1 day')
+          ${breachProductClause}`,
+      [orgId, from, to, ...journeyProductParams]
+    );
+
     // ── 5. Human oversight ───────────────────────────────────────────────
     // Journeys: score_corrections carries both pathways (manual-review
     // resolution AND an explicit override of a confident verdict) for sales,
@@ -407,8 +444,8 @@ boardPackRouter.get('/', requireOrgView, async (req, res, next) => {
 
     // ── Methodology / limitations ───────────────────────────────────────
     const methodology: string[] = [
-      "Findings are grouped under the firm's own scorecard sections (this scorecard's own headings, e.g. Disclosure, Suitability, Affordability) — not an FCA or Consumer Duty outcomes taxonomy. CallGuard does not map or rename these onto Consumer Duty outcomes; no such mapping exists, and inventing one would misrepresent the data.",
-      "Vulnerability is only visible where this firm's scorecard contains a checkpoint that looks for it. There is no system-level vulnerability signal independent of the scorecard — a scorecard with no vulnerability checkpoint will show none here, which is a gap in the scorecard, not evidence that no vulnerable customers were served.",
+      "Findings are grouped under the firm's own scorecard sections (this scorecard's own headings, e.g. Disclosure, Suitability, Affordability) in findings_by_theme — not an FCA or Consumer Duty outcomes taxonomy, and CallGuard never renames or infers one onto these headings. A separate grouping, findings_by_consumer_duty, uses the Consumer Duty outcome (products and services; price and value; consumer understanding; consumer support) explicitly tagged on each checkpoint by an admin. That tagging is opt-in per checkpoint: any checkpoint nobody has tagged appears under an explicit \"Unmapped\" bucket there rather than being guessed at, dropped, or folded into an outcome it was not assigned.",
+      "Vulnerability (vulnerability field below) counts findings on checkpoints a person has explicitly marked vulnerability_related. Vulnerability is a cross-cutting Consumer Duty consideration, not a fifth outcome, so it is tracked separately from findings_by_consumer_duty rather than as one more bucket within it. This remains scorecard-dependent: a scorecard with no vulnerability-tagged checkpoint will show zero here, which reflects a gap in the scorecard's tagging, not evidence that no vulnerable customers were served.",
       'The pass threshold in force at the time of scoring is not stored against each individual score. If the threshold has changed since a score was produced, that score\'s pass/fail cannot be re-derived at the old or the new threshold — the pass/fail shown is the one recorded at scoring time.',
       'Per-call scores are replaced on re-score, not versioned, so call-level figures reflect current verdicts, not necessarily the verdict a customer conversation or coaching session was originally based on. Sale (journey) scores keep a full run history and do not share this limitation.',
       "Reconciliation outcomes recorded as 'undetermined' mean the system could not establish an answer (most often redaction removing the words needed to identify a question) — deliberately not counted as a failure.",
@@ -459,6 +496,24 @@ boardPackRouter.get('/', requireOrgView, async (req, res, next) => {
       findings_by_theme: {
         note: "Grouped by this firm's own scorecard sections, not an FCA or Consumer Duty outcomes taxonomy.",
         sections: themeRows.map((r) => ({ section: r.section, count: parseInt(r.count, 10) })),
+      },
+
+      findings_by_consumer_duty: {
+        note:
+          'Grouped by the Consumer Duty outcome explicitly tagged on each checkpoint. "Unmapped" (outcome: null) is a checkpoint nobody has tagged yet, shown here rather than dropped or guessed at — it is not a fifth outcome.',
+        outcomes: consumerDutyRows.map(
+          (r): BoardPackConsumerDutyOutcomeCount => ({
+            outcome: r.consumer_duty_outcome,
+            count: parseInt(r.count, 10),
+          })
+        ),
+      },
+
+      vulnerability: {
+        vulnerability_related_findings: parseInt(vulnerabilityRow?.vulnerability_related || '0', 10),
+        total_findings: parseInt(vulnerabilityRow?.total || '0', 10),
+        note:
+          'Findings on checkpoints explicitly tagged vulnerability_related — a cross-cutting Consumer Duty consideration, not one of the four outcomes above. Scorecard-dependent: zero here means no tagged checkpoint fired, not that no vulnerable customers were served.',
       },
 
       human_oversight: {

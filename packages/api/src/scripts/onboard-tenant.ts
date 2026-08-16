@@ -74,7 +74,19 @@ export interface CsvItem {
   expectation: string | null;
   ai_check: string | null;
   consent_gate: boolean;
+  // Both OPTIONAL columns (migration 101) — absent from a CSV, they parse to
+  // null/false, identical to a scorecard nobody has tagged for Consumer Duty
+  // yet. A CSV without these columns must import exactly as it did before.
+  consumer_duty_outcome: string | null;
+  vulnerability_related: boolean;
 }
+
+const CONSUMER_DUTY_OUTCOMES = [
+  'products_and_services',
+  'price_and_value',
+  'consumer_understanding',
+  'consumer_support',
+];
 
 const TRUTHY = ['true', 'yes', 'y', '1'];
 
@@ -120,6 +132,10 @@ export function parseScorecardCsv(csvPath: string): CsvItem[] {
       expectation: pick('expectation') || null,
       ai_check: pick('ai_check') || null,
       consent_gate: TRUTHY.includes(pick('consent_gate').toLowerCase()),
+      consumer_duty_outcome: CONSUMER_DUTY_OUTCOMES.includes(pick('consumer_duty_outcome').toLowerCase())
+        ? pick('consumer_duty_outcome').toLowerCase()
+        : null,
+      vulnerability_related: TRUTHY.includes(pick('vulnerability_related').toLowerCase()),
     });
   }
   return items;
@@ -244,12 +260,14 @@ async function main() {
           await tx.query(
             `INSERT INTO scorecard_items
                (scorecard_id, label, description, score_type, weight, sort_order,
-                severity, section, item_type, applies_when, expectation, ai_check, consent_gate)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+                severity, section, item_type, applies_when, expectation, ai_check, consent_gate,
+                consumer_duty_outcome, vulnerability_related)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
             [
               sc!.id, it.label, it.description || null, it.score_type, it.weight, i,
               it.severity, it.section, it.item_type, branchToAppliesWhen(it.branch),
               it.expectation, it.ai_check, it.consent_gate,
+              it.consumer_duty_outcome, it.vulnerability_related,
             ]
           );
         }

@@ -1,5 +1,6 @@
 import type { BreachSeverity } from './breaches.js';
 import type { AdviserRisk } from './risk.js';
+import type { ConsumerDutyOutcome } from './scorecard.js';
 
 // A single evidence pack for a compliance committee / board sign-off over a
 // period, optionally narrowed to one product. See GET /api/board-pack.
@@ -66,6 +67,30 @@ export interface BoardPackFindingsByTheme {
   sections: BoardPackThemeCount[];
 }
 
+export interface BoardPackConsumerDutyOutcomeCount {
+  // Null = the checkpoint that produced this finding has no
+  // consumer_duty_outcome set. Shown explicitly as an "Unmapped" bucket —
+  // never silently dropped and never folded into an outcome it was not
+  // assigned (see migration 101_consumer_duty_outcomes.sql).
+  outcome: ConsumerDutyOutcome | null;
+  count: number;
+}
+
+export interface BoardPackFindingsByConsumerDuty {
+  // Explains that this is only as complete as the firm's own tagging.
+  note: string;
+  outcomes: BoardPackConsumerDutyOutcomeCount[];
+}
+
+export interface BoardPackVulnerability {
+  // Findings in the period whose checkpoint was tagged vulnerability_related.
+  vulnerability_related_findings: number;
+  // All findings in the period (same population as findings_by_severity),
+  // for context on what share vulnerability_related_findings represents.
+  total_findings: number;
+  note: string;
+}
+
 export interface BoardPackJourneyOversight {
   total_resolved: number;
   // original_pass IS NULL in score_corrections — the AI had no confident
@@ -119,6 +144,8 @@ export interface BoardPackResponse {
   outcomes: BoardPackOutcomes;
   findings_by_severity: BoardPackSeverityCount[];
   findings_by_theme: BoardPackFindingsByTheme;
+  findings_by_consumer_duty: BoardPackFindingsByConsumerDuty;
+  vulnerability: BoardPackVulnerability;
   human_oversight: BoardPackHumanOversight;
   advisers_needing_attention: AdviserRisk[];
   action_taken: BoardPackActionTaken;
