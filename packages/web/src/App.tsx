@@ -47,6 +47,7 @@ const Account = lazyWithRetry(() => import('./pages/Account'));
 const BillingOverview = lazyWithRetry(() => import('./pages/BillingOverview'));
 const Settings = lazyWithRetry(() => import('./pages/Settings'));
 const Products = lazyWithRetry(() => import('./pages/Products'));
+const BoardPack = lazyWithRetry(() => import('./pages/BoardPack').then((m) => ({ default: m.BoardPack })));
 
 function PageLoader() {
   return (
@@ -117,6 +118,7 @@ export function App() {
                     <Route path="/reconciliation" element={<Reconciliation />} />
                     <Route path="/data-forms" element={<Navigate to="/reconciliation" replace />} />
                     <Route path="/compliance" element={<ComplianceDashboard />} />
+                    <Route path="/compliance/board-pack" element={<BoardPack />} />
                     <Route
                       path="/reconciliation/profiles/:id"
                       element={<DocumentProfileReview />}

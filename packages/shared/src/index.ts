@@ -18,5 +18,6 @@ export * from './types/journey.js';
 export * from './types/capture.js';
 export * from './types/reconciliation.js';
 export * from './types/product.js';
+export * from './types/board-pack.js';
 export * from './constants.js';
 export * from './scoring.js';

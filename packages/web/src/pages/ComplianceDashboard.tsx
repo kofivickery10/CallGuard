@@ -336,19 +336,27 @@ export function ComplianceDashboard() {
             findings sit.
           </p>
         </div>
-        <div className="flex items-center gap-1" role="group" aria-label="Reporting period">
-          {DAY_OPTIONS.map((d) => (
-            <button
-              key={d}
-              onClick={() => setDays(d)}
-              aria-pressed={days === d}
-              className={`px-2.5 py-1 rounded-btn text-badge font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
-                days === d ? 'bg-primary text-white' : 'text-text-secondary hover:bg-table-header'
-              }`}
-            >
-              {d}d
-            </button>
-          ))}
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1" role="group" aria-label="Reporting period">
+            {DAY_OPTIONS.map((d) => (
+              <button
+                key={d}
+                onClick={() => setDays(d)}
+                aria-pressed={days === d}
+                className={`px-2.5 py-1 rounded-btn text-badge font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
+                  days === d ? 'bg-primary text-white' : 'text-text-secondary hover:bg-table-header'
+                }`}
+              >
+                {d}d
+              </button>
+            ))}
+          </div>
+          <Link
+            to="/compliance/board-pack"
+            className="px-[18px] py-[9px] rounded-btn text-table-cell font-semibold border border-border text-text-cell hover:bg-sidebar-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+          >
+            Board Pack
+          </Link>
         </div>
       </div>
 

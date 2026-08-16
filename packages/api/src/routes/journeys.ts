@@ -25,7 +25,9 @@ journeysRouter.use(authenticate);
 //
 // Fixed SQL, no user input — safe to interpolate, and shared by the list, the
 // count and the range filter so all three agree on what a sale's date means.
-const SALE_DATE_SQL = `COALESCE(
+// Exported so other org-wide reports (e.g. routes/board-pack.ts) date a sale
+// the same way rather than inventing a second definition.
+export const SALE_DATE_SQL = `COALESCE(
         (SELECT max(COALESCE(sc2.call_date, sc2.created_at))
            FROM journey_calls sjc JOIN calls sc2 ON sc2.id = sjc.call_id
           WHERE sjc.journey_id = j.id),

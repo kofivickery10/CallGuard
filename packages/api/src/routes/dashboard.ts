@@ -21,14 +21,18 @@ dashboardRouter.use(authenticate);
 // ============================================================
 
 // EXISTS clause: journey j's wrap-up agent matches the given param index.
-function journeyWrapUpAgentClause(paramIdx: number): string {
+// Exported so other org-wide reports (e.g. routes/board-pack.ts) attribute a
+// journey to an adviser exactly this way, rather than re-deriving it.
+export function journeyWrapUpAgentClause(paramIdx: number): string {
   return `EXISTS (
     SELECT 1 FROM journey_calls jc JOIN calls wc ON wc.id = jc.call_id
     WHERE jc.journey_id = j.id AND jc.role = 'wrap_up' AND wc.agent_id = $${paramIdx}
   )`;
 }
 
-const CALL_IS_SCORED = `(c.status = 'scored'
+// Exported for the same reason as journeyWrapUpAgentClause above — a "scored
+// unit" must mean one thing everywhere it's counted.
+export const CALL_IS_SCORED = `(c.status = 'scored'
   OR EXISTS (SELECT 1 FROM journeys j2 WHERE j2.id = c.journey_id AND j2.status = 'scored'))`;
 
 // Summary stats (role-scoped)
@@ -502,7 +506,9 @@ dashboardRouter.get('/adviser-risk', requireOrgView, async (req, res, next) => {
   }
 });
 
-function classifyRisk(critical: number, high: number, medium: number, low: number): 'high_risk' | 'elevated' | 'monitor' | 'low_risk' | 'compliant' {
+// Exported so routes/board-pack.ts's "advisers needing attention" section
+// reuses this exact classification rather than duplicating it.
+export function classifyRisk(critical: number, high: number, medium: number, low: number): 'high_risk' | 'elevated' | 'monitor' | 'low_risk' | 'compliant' {
   if (critical + high + medium + low === 0) return 'compliant';
   if (critical >= 2 || high >= 4) return 'high_risk';
   if (critical >= 1 || high >= 2) return 'elevated';
@@ -510,7 +516,7 @@ function classifyRisk(critical: number, high: number, medium: number, low: numbe
   return 'low_risk';
 }
 
-function recommendAction(
+export function recommendAction(
   risk: 'high_risk' | 'elevated' | 'monitor' | 'low_risk' | 'compliant',
   topBreachLabel: string | null
 ): string {

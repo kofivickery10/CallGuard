@@ -108,6 +108,12 @@ export function Breaches() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Link
+            to="/compliance/board-pack"
+            className="px-[18px] py-[9px] rounded-btn text-table-cell font-semibold border border-border text-text-cell hover:bg-sidebar-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+          >
+            Board Pack
+          </Link>
           <button
             onClick={handleExport}
             className="px-[18px] py-[9px] rounded-btn text-table-cell font-semibold border border-border text-text-cell hover:bg-sidebar-hover transition-colors"

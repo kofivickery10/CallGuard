@@ -197,9 +197,11 @@ export function Layout({ children }: { children: ReactNode }) {
         />
       )}
 
-      {/* Sidebar surface. Fixed on desktop; slides in as a drawer below lg. */}
+      {/* Sidebar surface. Fixed on desktop; slides in as a drawer below lg.
+          print:hidden — app chrome has no place in a printed/PDF page (e.g.
+          the board pack, which builds its own print-only header instead). */}
       <aside
-        className={`w-[220px] bg-card border-r border-sidebar-border flex flex-col fixed left-0 top-0 h-screen z-40 transform transition-transform duration-200 lg:translate-x-0 ${
+        className={`print:hidden w-[220px] bg-card border-r border-sidebar-border flex flex-col fixed left-0 top-0 h-screen z-40 transform transition-transform duration-200 lg:translate-x-0 ${
           navOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
@@ -315,9 +317,9 @@ export function Layout({ children }: { children: ReactNode }) {
       </aside>
 
       {/* Main content */}
-      <main className="lg:ml-[220px] min-h-screen relative">
+      <main className="print:ml-0 lg:ml-[220px] min-h-screen relative">
         {/* Mobile top bar: hamburger + logo + bell (below lg only) */}
-        <div className="lg:hidden sticky top-0 z-20 flex items-center justify-between h-14 px-4 bg-card border-b border-sidebar-border">
+        <div className="print:hidden lg:hidden sticky top-0 z-20 flex items-center justify-between h-14 px-4 bg-card border-b border-sidebar-border">
           <button
             onClick={() => setNavOpen(true)}
             aria-label="Open menu"
@@ -331,14 +333,16 @@ export function Layout({ children }: { children: ReactNode }) {
           <NotificationBell />
         </div>
 
-        <AppBanners />
+        <div className="print:hidden">
+          <AppBanners />
+        </div>
 
         {/* Content: fills the viewport width, gently capped only on ultra-wide. */}
-        <div className="pt-6 pb-28 px-4 sm:px-6 lg:px-8 w-full max-w-[1760px] mx-auto">
+        <div className="print:p-0 pt-6 pb-28 px-4 sm:px-6 lg:px-8 w-full max-w-[1760px] mx-auto">
           {/* Desktop notification bell (lg+ only). In normal flow and aligned to
               the content's right edge so it reserves its own space — an absolute
               overlay here would sit on top of each page's top-right controls. */}
-          <div className="hidden lg:flex justify-end -mt-1 mb-3">
+          <div className="print:hidden hidden lg:flex justify-end -mt-1 mb-3">
             <NotificationBell />
           </div>
           {children}
@@ -346,7 +350,9 @@ export function Layout({ children }: { children: ReactNode }) {
       </main>
 
       {/* Tenant-facing support chat (self-hides for staff) */}
-      <SupportWidget />
+      <div className="print:hidden">
+        <SupportWidget />
+      </div>
     </div>
   );
 }
