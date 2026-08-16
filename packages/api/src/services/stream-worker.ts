@@ -2,9 +2,9 @@ import type { WebSocket } from 'ws';
 import { v4 as uuid } from 'uuid';
 import { query, queryOne } from '../db/client.js';
 import { DeepgramStream } from './deepgram-stream.js';
-import { resolveRedactCategories } from './transcription.js';
-import { redactBankDetails } from './digit-redaction.js';
+import { resolveTenantRedactCategories, redactForTenant } from './transcription.js';
 import { detectLiveBreaches } from './live-scorer.js';
+import { UNRELIABLE_SPEAKER_CONFIDENCE } from './speaker-integrity.js';
 import { recordUsage } from './usage.js';
 import { deliverWebhook } from './webhook-delivery.js';
 import { getKBContext } from './kb.js';
@@ -87,21 +87,11 @@ export class StreamWorker {
       [this.init.sessionId],
     );
 
-    // Resolve the tenant's redact list the same way the batch path does
-    // (services/transcription.ts's resolveRedactCategories), so the two paths
-    // cannot drift apart. If the org row can't be read, fail closed and redact
-    // everything — an unreadable config is not grounds to loosen redaction.
-    let redactCategories: string[];
-    try {
-      const orgRow = await queryOne<{ pii_unredacted_categories: string[] | null }>(
-        'SELECT pii_unredacted_categories FROM organizations WHERE id = $1',
-        [this.init.organizationId],
-      );
-      redactCategories = resolveRedactCategories(orgRow?.pii_unredacted_categories ?? []);
-    } catch (err) {
-      console.error(`[Stream ${this.init.sessionId}] Failed to load redaction settings, redacting everything:`, (err as Error).message);
-      redactCategories = resolveRedactCategories([]);
-    }
+    // Resolve the tenant's redact list through the single function that owns
+    // this decision for both transcription paths (services/transcription.ts's
+    // resolveTenantRedactCategories — load + fail-closed + resolve all live
+    // there), so batch and live cannot drift apart on redaction policy again.
+    const redactCategories = await resolveTenantRedactCategories(this.init.organizationId);
 
     this.dg.start(redactCategories);
 
@@ -162,9 +152,9 @@ export class StreamWorker {
       // and calls.transcript_text. Redact before adding the "[Speaker N] " label,
       // not after: redacting the labelled string can swallow the speaker number
       // itself when a match sits close to the label (e.g. "[Speaker [SORT_CODE]]").
-      const { text: redactedText, redactions } = redactBankDetails(text);
-      if (redactions > 0) {
-        console.log(`[Stream ${this.init.sessionId}] Redacted bank details: ${redactions} in a final segment`);
+      const { text: redactedText, textRedactions } = redactForTenant(text);
+      if (textRedactions > 0) {
+        console.log(`[Stream ${this.init.sessionId}] Redacted bank details: ${textRedactions} in a final segment`);
       }
       const labelled = speaker != null ? `[Speaker ${speaker}] ${redactedText}` : redactedText;
       this.finalSegments.push(labelled);
@@ -283,7 +273,7 @@ export class StreamWorker {
     // second pass over text the first pass already redacted is inert (no
     // anchors left to match), so this is safe to run unconditionally alongside
     // the segment-level pass rather than instead of it.
-    const { text: finalTranscript, redactions: finalRedactions } = redactBankDetails(this.currentTranscript());
+    const { text: finalTranscript, textRedactions: finalRedactions } = redactForTenant(this.currentTranscript());
     if (finalRedactions > 0) {
       console.log(`[Stream ${this.init.sessionId}] Redacted bank details: ${finalRedactions} spanning segment boundaries`);
     }
@@ -303,16 +293,35 @@ export class StreamWorker {
       // Create a calls row from the streamed session and route it through the
       // standard scoring pipeline. The scoring worker handles everything from
       // here: scoring, breach insertion, alert evaluation, exemplar tagging.
+      // speaker_attribution_confidence is set explicitly rather than left NULL.
+      // Deepgram's live streaming session hands back anonymous speaker clusters
+      // with none of the batch path's attribution machinery run against them —
+      // no stereo-channel pin (the tenant config that would give 1.0/0.7), and
+      // no mono "who spoke first + call direction" heuristic either (the 0.3-0.45
+      // range in computeSpeakerAttributionConfidence). So which cluster is the
+      // adviser is genuinely unknown here, not merely unmeasured, and that must
+      // be stated as an explicit low value rather than as a NULL a gate could
+      // misread as "fully confident" (see score.ts / score-journey.ts). Reusing
+      // UNRELIABLE_SPEAKER_CONFIDENCE rather than inventing a new number keeps
+      // this on the same scale as every other "don't trust this split" case,
+      // and it is pinned below CONSENT_SPEAKER_CONFIDENCE_FLOOR by construction.
+      //
+      // Consequence, by design: every consent-gate checkpoint on a live-streamed
+      // call now routes to manual review instead of auto-scoring, which is a
+      // real jump in review volume for tenants that stream. That is the correct
+      // trade — a false pass on a consent gate is the worst thing this product
+      // can output — not a regression to chase back out.
       const callRow = await queryOne<{ id: string }>(
         `INSERT INTO calls (
             id, organization_id, uploaded_by, file_name, file_key,
             file_size_bytes, mime_type, agent_id, agent_name,
             duration_seconds, status, transcript_text,
-            ingestion_source, encrypted_at_rest, external_id
+            ingestion_source, encrypted_at_rest, external_id,
+            speaker_attribution_confidence
           )
           VALUES ($1, $2, NULL, $3, $4, 0, 'audio/stream', $5,
                   (SELECT name FROM users WHERE id = $5),
-                  $6, 'transcribing', $7, 'live_stream', false, $8)
+                  $6, 'transcribing', $7, 'live_stream', false, $8, $9)
           RETURNING id`,
         [
           uuid(),
@@ -323,6 +332,7 @@ export class StreamWorker {
           durationSec,
           finalTranscript,
           this.init.externalId,
+          UNRELIABLE_SPEAKER_CONFIDENCE,
         ],
       );
       callId = callRow!.id;

@@ -2,6 +2,8 @@ import crypto from 'crypto';
 import { query, queryOne } from '../db/client.js';
 import { encrypt, decrypt } from './crypto.js';
 import { config } from '../config.js';
+import { notify, recipientsByRole } from './notify.js';
+import { alertsQueue } from '../jobs/queue.js';
 import type {
   WebhookCallScoredPayload,
   WebhookJourneyScoredPayload,
@@ -355,14 +357,32 @@ interface ZohoMatch {
   ownerId: string | null;
 }
 
-// Search the module by Phone/Mobile across every phone variant; if several match,
-// return the most recently modified one.
-async function findRecordByPhone(
+// Outcome of a phone search against Leads/Contacts. Deliberately three-valued
+// rather than `ZohoMatch | null`: a caller must not be able to collapse "more
+// than one record matched" into "no record matched" — see findRecordByPhone.
+export type PhoneMatchResult =
+  | { kind: 'found'; match: ZohoMatch }
+  | { kind: 'not_found' }
+  | { kind: 'ambiguous'; recordIds: string[] };
+
+// Search the module by Phone/Mobile across every phone variant.
+//
+// This used to break a multi-match tie by picking the most recently modified
+// record. That is a data-protection defect, not just an accuracy one: shared
+// household numbers and company switchboards make multiple matches routine,
+// and picking one writes one customer's compliance breach detail — pass/fail
+// score, breach evidence — onto a completely different customer's CRM record.
+// A wrong guess here is worse than no write at all, because it looks correct:
+// nothing fails, nothing retries, and the mistake sits silently on someone
+// else's record until a person happens to notice. So an ambiguous search is
+// reported to the caller instead of resolved by picking one; the caller must
+// skip the write-back and flag it for a human (see pushScoredPayload).
+export async function findRecordByPhone(
   apiDomain: string,
   accessToken: string,
   module: ZohoModule,
   phone: string
-): Promise<ZohoMatch | null> {
+): Promise<PhoneMatchResult> {
   const clauses = phoneVariants(phone).flatMap((v) => [
     `(Phone:equals:${v})`,
     `(Mobile:equals:${v})`,
@@ -374,7 +394,7 @@ async function findRecordByPhone(
     accessToken,
     `/crm/v8/${module}/search?criteria=${encodeURIComponent(criteria)}`
   );
-  if (res.status === 204) return null; // Zoho returns 204 for no matches
+  if (res.status === 204) return { kind: 'not_found' }; // Zoho returns 204 for no matches
   if (!res.ok) {
     throw new Error(`Zoho search failed: ${res.status} ${(await res.text()).slice(0, 300)}`);
   }
@@ -383,14 +403,45 @@ async function findRecordByPhone(
     data?: Array<{ id: string; Modified_Time?: string; Owner?: { id?: string } }>;
   };
   const rows = body.data ?? [];
-  if (rows.length === 0) return null;
+  if (rows.length === 0) return { kind: 'not_found' };
+  if (rows.length > 1) return { kind: 'ambiguous', recordIds: rows.map((r) => r.id) };
 
-  rows.sort(
-    (a, b) =>
-      new Date(b.Modified_Time ?? 0).getTime() - new Date(a.Modified_Time ?? 0).getTime()
-  );
-  const best = rows[0]!;
-  return { id: best.id, ownerId: best.Owner?.id ?? null };
+  const only = rows[0]!;
+  return { kind: 'found', match: { id: only.id, ownerId: only.Owner?.id ?? null } };
+}
+
+// Tell admins a phone search matched more than one CRM record, so a person can
+// work out which (if any) is the right customer and update it by hand.
+// Deduped per organisation+phone so a persistently ambiguous number (e.g. a
+// shared office line every call comes in on) raises one notification, not one
+// per scored call. Best-effort, matching every other notification path here:
+// a failure to notify must not stop the rest of pushScoredPayload running.
+async function notifyAmbiguousPhoneMatch(
+  organizationId: string,
+  module: ZohoModule,
+  phone: string,
+  recordIds: string[],
+  label: string
+): Promise<void> {
+  try {
+    const recipients = await recipientsByRole(organizationId, ['admin']);
+    if (recipients.length === 0) return;
+    await notify({
+      organizationId,
+      recipients,
+      type: 'zoho.ambiguous_phone_match',
+      severity: 'warning',
+      title: 'Zoho phone match is ambiguous — nothing was written',
+      body:
+        `${recordIds.length} ${module} records in Zoho share the phone number ${phone}, found while ` +
+        `writing back the compliance score for ${label}. CallGuard does not guess which one is the right ` +
+        `customer, so no score or breach task was written. Record ids: ${recordIds.join(', ')}. ` +
+        'Resolve the duplicate/shared number in Zoho, then re-run the write-back if needed.',
+      dedupeKey: `zoho-ambiguous-${organizationId}-${phone}`,
+    });
+  } catch (err) {
+    console.warn(`[Zoho] could not notify ambiguous phone match: ${(err as Error).message}`);
+  }
 }
 
 // A related-record field can be a plain picklist/text value or a lookup object
@@ -854,13 +905,22 @@ async function createBreachTask(
 
 // Resolve a CallGuard adviser's email to a Zoho CRM user id, so the QA record's
 // owner can be set to the agent. Users change rarely, so the full active-user
-// list is cached per Zoho account (api_domain) for an hour. Returns null if the
-// email is absent or has no matching Zoho user — the caller then leaves the
-// owner defaulting rather than failing.
+// list is cached for an hour. Returns null if the email is absent or has no
+// matching Zoho user — the caller then leaves the owner defaulting rather than
+// failing.
 const USER_CACHE_TTL_MS = 60 * 60 * 1000;
+// Keyed by organisation, composed with api_domain — NOT api_domain alone.
+// api_domain is a Zoho data-centre host (www.zohoapis.eu, www.zohoapis.com,
+// …), not a tenant boundary: every EU tenant's connection resolves to the same
+// domain, so keying the cache on it alone meant one org's cached user list —
+// and its hour-long TTL window — was silently served to every other org on
+// that data centre. api_domain still rides along in the key alongside the org
+// id because a connection's data centre can change on reconnect; dropping it
+// would let a stale cross-region cache entry survive that.
 const userCaches = new Map<string, { at: number; byEmail: Map<string, string> }>();
 
-async function resolveZohoUserIdByEmail(
+export async function resolveZohoUserIdByEmail(
+  organizationId: string,
   apiDomain: string,
   accessToken: string,
   email: string | null
@@ -869,7 +929,8 @@ async function resolveZohoUserIdByEmail(
   const key = email.trim().toLowerCase();
   if (!key) return null;
 
-  let cache = userCaches.get(apiDomain);
+  const cacheKey = `${organizationId}:${apiDomain}`;
+  let cache = userCaches.get(cacheKey);
   if (!cache || Date.now() - cache.at > USER_CACHE_TTL_MS) {
     const res = await zohoApi(apiDomain, accessToken, `/crm/v8/users?type=ActiveUsers`);
     if (!res.ok) {
@@ -882,7 +943,7 @@ async function resolveZohoUserIdByEmail(
       if (u.email) byEmail.set(u.email.trim().toLowerCase(), u.id);
     }
     cache = { at: Date.now(), byEmail };
-    userCaches.set(apiDomain, cache);
+    userCaches.set(cacheKey, cache);
   }
   return cache.byEmail.get(key) ?? null;
 }
@@ -963,7 +1024,7 @@ async function pushQARecord(
   if (qa.agent && payload.agent_name) record[qa.agent] = payload.agent_name;
 
   // Owner = the closing agent, if we can resolve them to a Zoho user.
-  const ownerId = await resolveZohoUserIdByEmail(apiDomain, accessToken, payload.agent_email);
+  const ownerId = await resolveZohoUserIdByEmail(conn.organization_id, apiDomain, accessToken, payload.agent_email);
   if (ownerId) record.Owner = { id: ownerId };
 
   const existingId = await findQARecordByCustomer(
@@ -989,18 +1050,299 @@ async function pushQARecord(
   }
 }
 
+// ── Per-call/journey delivery tracking + retry ────────────────────────────────
+// zoho_connections.last_error only ever holds the LATEST problem across the
+// whole connection — a failed write-back for one call is silently overwritten
+// by the next call's success. zoho_deliveries (migration 097) fixes that: one
+// row per call/journey per write-back target (`kind`), recording every
+// attempt's outcome rather than just the connection's current state. Mirrors
+// webhook_deliveries (migration 013) — same column shape, same "insert
+// pending, update in place as attempts happen" pattern.
+
+type ZohoDeliveryKind = 'record' | 'qa';
+
+interface ZohoDeliveryOutcome {
+  status: 'delivered' | 'failed' | 'skipped';
+  // Updated target description — e.g. the resolved Leads/Contacts id once a
+  // match is found. Falls back to the row's original target when omitted.
+  target?: string;
+  retryable: boolean;
+  errorMessage?: string;
+}
+
+// Buckets a write-back failure into "worth retrying later" or "needs a
+// person". Deliberately conservative: only a transport error (fetch never got
+// a response) or the same statuses zohoApi already retries inline (429, 5xx)
+// count as retryable. Everything else — an expired/revoked token (401/403), a
+// rejected field or a record that no longer exists (4xx from
+// checkZohoWriteResult) — would just fail the same way again, so retrying
+// blindly would only delay a person finding out. classify* never sees the
+// 'ambiguous' phone-match outcome: that is not an error at all (see
+// findRecordByPhone) and is recorded as 'skipped', not run through this.
+function classifyZohoFailure(err: unknown): { retryable: boolean } {
+  if (err instanceof ZohoScopeError) return { retryable: false };
+  const message = (err as Error)?.message ?? String(err);
+  if (/not authorised|no refresh token/i.test(message)) return { retryable: false };
+
+  const statusMatch = message.match(/\b(\d{3})\b/);
+  const status = statusMatch ? Number(statusMatch[1]) : null;
+  if (status === 429 || (status !== null && status >= 500 && status < 600)) {
+    return { retryable: true };
+  }
+  if (status !== null && status >= 400 && status < 500) return { retryable: false };
+
+  // No status code in the message at all means the fetch itself threw
+  // (DNS/connection reset/timeout) before a response ever came back — exactly
+  // the kind of blip a delayed retry can ride out.
+  return { retryable: true };
+}
+
+// Widening backoff (minutes) for queued retries of a failed delivery: 2, 10,
+// then 30 minutes — three attempts beyond the original, generous enough to
+// ride out a Zoho outage or a temporarily-exhausted rate limit without
+// hammering it. Capped, not unbounded: past this a delivery is left 'failed'
+// for a person to find via zoho_deliveries rather than retried forever.
+const ZOHO_RETRY_BACKOFF_MINUTES = [2, 10, 30];
+
+async function startZohoDelivery(params: {
+  organizationId: string;
+  callId: string | null;
+  journeyId: string | null;
+  kind: ZohoDeliveryKind;
+  target: string;
+  payload: ScoredPayload;
+}): Promise<string | null> {
+  try {
+    const row = await queryOne<{ id: string }>(
+      `INSERT INTO zoho_deliveries
+         (organization_id, call_id, journey_id, kind, target, payload, status)
+       VALUES ($1, $2, $3, $4, $5, $6, 'pending')
+       RETURNING id`,
+      [
+        params.organizationId,
+        params.callId,
+        params.journeyId,
+        params.kind,
+        params.target,
+        JSON.stringify(params.payload),
+      ]
+    );
+    return row?.id ?? null;
+  } catch (err) {
+    console.warn(`[Zoho] could not record delivery start (${params.kind}):`, (err as Error).message);
+    return null;
+  }
+}
+
+async function finishZohoDelivery(deliveryId: string | null, outcome: ZohoDeliveryOutcome): Promise<void> {
+  if (!deliveryId) return;
+  await query(
+    `UPDATE zoho_deliveries
+        SET status = $2,
+            target = COALESCE($3, target),
+            retryable = $4,
+            last_error = $5,
+            attempts = attempts + 1,
+            last_attempt_at = now(),
+            delivered_at = CASE WHEN $2 = 'delivered' THEN now() ELSE delivered_at END
+      WHERE id = $1`,
+    [deliveryId, outcome.status, outcome.target ?? null, outcome.retryable, outcome.errorMessage ?? null]
+  ).catch((err) => {
+    console.warn(`[Zoho] could not record delivery outcome for ${deliveryId}:`, (err as Error).message);
+  });
+}
+
+// Enqueue the next retry attempt on the alerts queue (same home as every
+// other best-effort delivery job here — notify-email, alert-rule delivery).
+// `nextAttempt` is 1-indexed into ZOHO_RETRY_BACKOFF_MINUTES; past the end of
+// the schedule this is a no-op and the delivery is left 'failed' for a
+// person to find.
+async function scheduleZohoRetry(deliveryId: string, nextAttempt: number): Promise<void> {
+  if (nextAttempt > ZOHO_RETRY_BACKOFF_MINUTES.length) return;
+  const delayMs = ZOHO_RETRY_BACKOFF_MINUTES[nextAttempt - 1]! * 60_000;
+  await alertsQueue
+    .add('zoho-retry', { deliveryId, attempt: nextAttempt }, { delay: delayMs })
+    .catch((err) => {
+      console.warn(`[Zoho] failed to schedule delivery retry ${deliveryId}:`, (err as Error).message);
+    });
+}
+
+// Attempts the customer-record (Leads/Contacts) write-back: match by phone,
+// write the score fields, and (if there are breaches) create a task. Factored
+// out of pushScoredPayload so retryZohoDelivery can run exactly the same
+// logic against a stored payload, rather than a parallel copy that could
+// drift from what the original attempt did.
+async function attemptRecordWriteBack(
+  apiDomain: string,
+  accessToken: string,
+  conn: ZohoConnectionRow,
+  payload: ScoredPayload,
+  label: string
+): Promise<ZohoDeliveryOutcome> {
+  try {
+    const result = await findRecordByPhone(apiDomain, accessToken, conn.module, payload.customer_phone!);
+    if (result.kind === 'found') {
+      const match = result.match;
+      await updateRecordScore(apiDomain, accessToken, conn.module, conn.field_map, match.id, payload);
+
+      // Cache the resolved Zoho id so future calls from this number skip the search.
+      if (payload.customer_id) {
+        await query(
+          `UPDATE customers SET external_crm_id = $2
+             WHERE id = $1 AND (external_crm_id IS NULL OR external_crm_id = '')`,
+          [payload.customer_id, match.id]
+        ).catch(() => {});
+      }
+
+      if (payload.breaches.length > 0) {
+        await createBreachTask(apiDomain, accessToken, match, payload);
+      }
+      console.log(`[Zoho] wrote score for ${label} → ${conn.module} ${match.id}`);
+      return { status: 'delivered', target: `${conn.module}:${match.id}`, retryable: false };
+    }
+
+    if (result.kind === 'ambiguous') {
+      // Do NOT write back and do NOT pick one — see findRecordByPhone for why
+      // guessing is worse than doing nothing here. Recorded as 'skipped', not
+      // 'failed': there is nothing a retry could resolve on its own, this
+      // needs a person to sort out the duplicate/shared number in Zoho first.
+      console.warn(
+        `[Zoho] ${result.recordIds.length} ${conn.module} records matched ${payload.customer_phone} ` +
+          `for ${label}; skipping write-back rather than guessing which customer it is`
+      );
+      await notifyAmbiguousPhoneMatch(conn.organization_id, conn.module, payload.customer_phone!, result.recordIds, label);
+      return {
+        status: 'skipped',
+        target: `${conn.module} (ambiguous match: ${result.recordIds.length} records)`,
+        retryable: false,
+        errorMessage: `ambiguous phone match (${result.recordIds.length} ${conn.module} records) — skipped, needs manual resolution`,
+      };
+    }
+
+    console.log(`[Zoho] no ${conn.module} match for ${payload.customer_phone} (org ${conn.organization_id}); skipping customer-record write-back`);
+    return { status: 'skipped', target: `${conn.module} (no match for phone)`, retryable: false };
+  } catch (err) {
+    const message = (err as Error).message;
+    console.error(`[Zoho] customer-record write-back failed for ${label}:`, message);
+    return {
+      status: 'failed',
+      target: `${conn.module} (phone ${payload.customer_phone})`,
+      retryable: classifyZohoFailure(err).retryable,
+      errorMessage: message,
+    };
+  }
+}
+
+// Attempts the QA-module write-back. Thin wrapper around pushQARecord so
+// retryZohoDelivery can re-run it from a stored payload the same way
+// attemptRecordWriteBack does for the customer-record side.
+async function attemptQAWriteBack(
+  apiDomain: string,
+  accessToken: string,
+  conn: ZohoConnectionRow,
+  payload: ScoredPayload,
+  label: string
+): Promise<ZohoDeliveryOutcome> {
+  try {
+    await pushQARecord(apiDomain, accessToken, conn, payload);
+    return { status: 'delivered', target: conn.qa_module ?? 'qa', retryable: false };
+  } catch (err) {
+    const message = (err as Error).message;
+    console.error(`[Zoho] QA write-back failed for ${label}:`, message);
+    return {
+      status: 'failed',
+      target: conn.qa_module ?? 'qa',
+      retryable: classifyZohoFailure(err).retryable,
+      errorMessage: message,
+    };
+  }
+}
+
+function deliveryCallAndJourneyIds(payload: ScoredPayload): { callId: string | null; journeyId: string | null } {
+  return isJourneyPayload(payload)
+    ? { callId: null, journeyId: payload.journey_id }
+    : { callId: payload.call_id, journeyId: null };
+}
+
+/**
+ * Re-attempt a previously failed Zoho write-back, enqueued by
+ * scheduleZohoRetry with backoff. Reads the original payload straight off the
+ * delivery row rather than recomputing the score, so a retry writes exactly
+ * what the original attempt tried to. Never throws — a bad retry must not
+ * crash the alerts worker; it records the outcome and, if still retryable
+ * with attempts left in the schedule, queues the next one.
+ */
+export async function retryZohoDelivery(deliveryId: string, attempt: number): Promise<void> {
+  const row = await queryOne<{
+    id: string;
+    organization_id: string;
+    call_id: string | null;
+    journey_id: string | null;
+    kind: ZohoDeliveryKind;
+    status: string;
+    payload: ScoredPayload;
+  }>(
+    `SELECT id, organization_id, call_id, journey_id, kind, status, payload
+       FROM zoho_deliveries WHERE id = $1`,
+    [deliveryId]
+  );
+  if (!row) return;
+  // Already resolved — by this same retry racing a concurrent one, or by a
+  // fresh push for a rescored call/journey. Nothing to do.
+  if (row.status === 'delivered' || row.status === 'skipped') return;
+
+  const label = row.journey_id ? `journey ${row.journey_id}` : `call ${row.call_id}`;
+
+  const conn = await getConnectionRow(row.organization_id);
+  if (!conn || conn.status !== 'active') {
+    await finishZohoDelivery(deliveryId, {
+      status: 'failed',
+      retryable: false,
+      errorMessage: 'Zoho connection is no longer active',
+    });
+    return;
+  }
+
+  let accessToken: string;
+  let apiDomain: string;
+  try {
+    ({ accessToken, apiDomain } = await ensureAccessToken(conn));
+  } catch (err) {
+    const message = (err as Error).message;
+    console.error(`[Zoho] retry ${deliveryId}: token refresh failed for ${label}:`, message);
+    const { retryable } = classifyZohoFailure(err);
+    await finishZohoDelivery(deliveryId, { status: 'failed', retryable, errorMessage: message });
+    if (retryable) await scheduleZohoRetry(deliveryId, attempt + 1);
+    return;
+  }
+
+  const outcome =
+    row.kind === 'record'
+      ? await attemptRecordWriteBack(apiDomain, accessToken, conn, row.payload, label)
+      : await attemptQAWriteBack(apiDomain, accessToken, conn, row.payload, label);
+
+  await finishZohoDelivery(deliveryId, outcome);
+
+  if (outcome.status === 'failed' && outcome.retryable) {
+    await scheduleZohoRetry(deliveryId, attempt + 1);
+  }
+}
+
 /**
  * Push a scored call or journey into the org's Zoho CRM, if connected.
  * Best-effort: matches the customer by phone, writes the compliance fields
  * and a breach task on the matched Lead/Contact, and independently pushes a
  * QA module record (if configured) regardless of whether a match was found.
- * Records outcome on the connection row; never throws to the caller.
+ * Records outcome on the connection row (last_error — the connection's most
+ * recent problem) and, per target, on zoho_deliveries (every attempt, not
+ * just the latest — see the section above). Never throws to the caller.
  */
 async function pushScoredPayload(organizationId: string, payload: ScoredPayload): Promise<void> {
   const conn = await getConnectionRow(organizationId);
   if (!conn || conn.status !== 'active') return;
 
   const label = isJourneyPayload(payload) ? `journey ${payload.journey_id}` : `call ${payload.call_id}`;
+  const { callId, journeyId } = deliveryCallAndJourneyIds(payload);
 
   let accessToken: string;
   let apiDomain: string;
@@ -1022,41 +1364,44 @@ async function pushScoredPayload(organizationId: string, payload: ScoredPayload)
   // stop the QA record being written (or vice versa).
   const errors: string[] = [];
 
-  try {
-    if (payload.customer_phone) {
-      const match = await findRecordByPhone(apiDomain, accessToken, conn.module, payload.customer_phone);
-      if (match) {
-        await updateRecordScore(apiDomain, accessToken, conn.module, conn.field_map, match.id, payload);
+  if (payload.customer_phone) {
+    const deliveryId = await startZohoDelivery({
+      organizationId,
+      callId,
+      journeyId,
+      kind: 'record',
+      target: `${conn.module} (phone ${payload.customer_phone})`,
+      payload,
+    });
 
-        // Cache the resolved Zoho id so future calls from this number skip the search.
-        if (payload.customer_id) {
-          await query(
-            `UPDATE customers SET external_crm_id = $2
-               WHERE id = $1 AND (external_crm_id IS NULL OR external_crm_id = '')`,
-            [payload.customer_id, match.id]
-          ).catch(() => {});
-        }
-
-        if (payload.breaches.length > 0) {
-          await createBreachTask(apiDomain, accessToken, match, payload);
-        }
-        console.log(`[Zoho] wrote score for ${label} → ${conn.module} ${match.id}`);
-      } else {
-        console.log(`[Zoho] no ${conn.module} match for ${payload.customer_phone} (org ${organizationId}); skipping customer-record write-back`);
-      }
+    const outcome = await attemptRecordWriteBack(apiDomain, accessToken, conn, payload, label);
+    await finishZohoDelivery(deliveryId, outcome);
+    if (outcome.errorMessage) errors.push(`record: ${outcome.errorMessage}`);
+    if (outcome.status === 'failed' && outcome.retryable && deliveryId) {
+      await scheduleZohoRetry(deliveryId, 1);
     }
-  } catch (err) {
-    const message = (err as Error).message;
-    console.error(`[Zoho] customer-record write-back failed for ${label}:`, message);
-    errors.push(`record: ${message}`);
   }
 
-  try {
-    await pushQARecord(apiDomain, accessToken, conn, payload);
-  } catch (err) {
-    const message = (err as Error).message;
-    console.error(`[Zoho] QA write-back failed for ${label}:`, message);
-    errors.push(`qa: ${message}`);
+  // Same three preconditions pushQARecord checks itself — gated here too so a
+  // delivery row is only created for a write-back that was actually attempted
+  // (matches webhook_deliveries: no row when nothing was configured to send).
+  const qaZohoRecordId = isJourneyPayload(payload) ? payload.zoho_record_id : null;
+  if (conn.qa_module && qaZohoRecordId) {
+    const deliveryId = await startZohoDelivery({
+      organizationId,
+      callId,
+      journeyId,
+      kind: 'qa',
+      target: `${conn.qa_module} (customer ${qaZohoRecordId})`,
+      payload,
+    });
+
+    const outcome = await attemptQAWriteBack(apiDomain, accessToken, conn, payload, label);
+    await finishZohoDelivery(deliveryId, outcome);
+    if (outcome.errorMessage) errors.push(`qa: ${outcome.errorMessage}`);
+    if (outcome.status === 'failed' && outcome.retryable && deliveryId) {
+      await scheduleZohoRetry(deliveryId, 1);
+    }
   }
 
   if (errors.length > 0) {

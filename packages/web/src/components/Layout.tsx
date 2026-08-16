@@ -121,11 +121,11 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       // The section's overview sits at its head, the way the top-level Dashboard
       // does. Still gated on 'reconciliation' because every figure on it comes
-      // from Data Forms — without the module it would be a page of zeroes.
+      // from Reconciliation — without the module it would be a page of zeroes.
       { path: '/compliance', label: 'Dashboard', icon: 'M3 3v18h18M7 15l3.5-4 3 2.5L20 7', roles: ORG_VIEW, requiresFeature: 'reconciliation' },
       { path: '/compliance-docs', label: 'Compliance Docs', icon: 'M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8zM14 2v6h6M16 13H8M16 17H8M10 9H8', roles: ORG_VIEW },
       { path: '/data-capture', label: 'Data Capture', icon: 'M4 4h16v4H4zM4 10h16v4H4zM4 16h10v4H4zM18 18l2 2 4-4', roles: ORG_VIEW, requiresFeature: 'capture' },
-      { path: '/data-forms', label: 'Data Forms', icon: 'M14 3v4a1 1 0 0 0 1 1h4M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8l-5-5ZM9 14.5l2 2 4-4', roles: ORG_VIEW, requiresFeature: 'reconciliation' },
+      { path: '/reconciliation', label: 'Reconciliation', icon: 'M14 3v4a1 1 0 0 0 1 1h4M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8l-5-5ZM9 14.5l2 2 4-4', roles: ORG_VIEW, requiresFeature: 'reconciliation' },
       { path: '/audit-log', label: 'Audit Log', icon: 'M12 2v20M2 12h20M12 6l4 4M12 6l-4 4M12 18l4-4M12 18l-4-4', roles: ORG_VIEW },
     ],
   },

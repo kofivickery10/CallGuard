@@ -828,7 +828,7 @@ export default function TenantDetail() {
         <div className="bg-card rounded-card border border-border overflow-hidden">
           <div className="px-4 py-3 border-b border-border">
             <h2 className="text-sm font-semibold text-text-primary">Failed &amp; stuck calls ({failed.length})</h2>
-            <p className="text-xs text-text-muted mt-0.5">Calls that failed or have sat in a processing state over 15 minutes.</p>
+            <p className="text-xs text-text-muted mt-0.5">Calls that failed, or are still waiting 20+ minutes after being queued or 60+ minutes into transcribing/scoring.</p>
           </div>
           <table className="w-full text-sm">
             <thead className="bg-table-header border-b border-border">

@@ -76,6 +76,21 @@ const WINDOW_TERMINATORS = [
   'premiums?', 'cover', 'benefits?', 'monthly', 'per month',
 ].map((t) => new RegExp(String.raw`\b${t}\b`, 'i'));
 
+/**
+ * How far before the anchor phrase to look for a read-back.
+ *
+ * Shorter than WINDOW_CHARS on purpose, and deliberately so. The forward
+ * window has to stay open through pauses and self-corrections, because
+ * dictation follows the question ("what's the sort code?" ... digits ...
+ * digits ... digits). A read-back is the opposite shape: the customer states
+ * the number and then, a beat later, someone names what it was ("...that's
+ * the sort code, yes?"), so the true gap is naturally tight. Widening this to
+ * match WINDOW_CHARS would reach back across whole unrelated answers — a
+ * weight, an age, a units-per-week figure — and risk redacting exactly the
+ * health data this module exists to keep out of the blast radius.
+ */
+const BACK_WINDOW_CHARS = 120;
+
 interface Anchor {
   pattern: RegExp;
   tag: string;
@@ -150,6 +165,68 @@ interface Span {
  */
 const RUN_GLUE =
   /^(?:[\s,.\-–—?!]|Agent:|Customer:|\b(?:mhmm|mm|hmm|yeah|yep|yes|ok|okay|right|perfect|lovely|brilliant|great|thanks|thank|you|sorry|and|then|um|uh|er|so|is|it|it's|that's|got|sure|correct|read|back|to|repeat|confirm|just|gonna|i'm|i'll|that)\b)*$/i;
+
+/**
+ * What is allowed to sit between a digit run and an anchor phrase that comes
+ * AFTER it, for that run to count as attached to the anchor rather than
+ * merely nearby in the transcript.
+ *
+ * Built on RUN_GLUE's vocabulary — the same acknowledgements and speaker
+ * labels that glue fragments of one dictated number together also glue a
+ * finished number to the phrase that names it a moment later — plus the
+ * connectors read-backs actually use: "...that's THE sort code",
+ * "...that's MY account number", "...20 45 67 is the sort code WE HAVE ON
+ * FILE, correct?".
+ *
+ * Deliberately does NOT add substantive verbs like "can", "take", "give",
+ * "need" or "what". Those are exactly what separates a read-back from a
+ * request: "...that's the sort code" is the customer confirming a number they
+ * just said, but "...Now can I take your sort code?" is the agent asking for
+ * one that has not been said yet — any digits sitting before that sentence
+ * belong to whatever the customer was talking about before, not to the
+ * question. Loosening the glue to catch the former would also catch the
+ * latter, and start eating the weight, age and units answers that happen to
+ * precede an unrelated bank question.
+ */
+const BACK_GLUE =
+  /^(?:[\s,.\-–—?!]|Agent:|Customer:|\b(?:mhmm|mm|hmm|yeah|yep|yes|ok|okay|right|perfect|lovely|brilliant|great|thanks|thank|you|sorry|and|then|um|uh|er|so|is|it|it's|that's|got|sure|correct|read|back|to|repeat|confirm|just|gonna|i'm|i'll|that|the|my|your|our|a|of|for|on|be|are|were|this|those|all|fine|cheers|noted|ta)\b)*$/i;
+
+/**
+ * A read-back names what a number WAS with a copula — "that's the sort
+ * code", "is the sort code we have on file", "that's my account number".
+ * A request has no such link: it just names the field and asks for it.
+ *
+ * Required in addition to BACK_GLUE, not instead of it, because adversarial
+ * probing found two calls BACK_GLUE alone cannot tell apart from a
+ * read-back, and they are both reconciliation fields:
+ *
+ *   "Customer: My policy number is 12345678. Agent: Thanks. And your bank
+ *   account?" — "Thanks. And your " is pure acknowledgement glue, so
+ *   BACK_GLUE passes it, and the POLICY NUMBER gets masked as
+ *   [ACCOUNT_NUMBER].
+ *
+ *   "Customer: 14 06 1978. Agent: Great, thanks. And the sort code please?"
+ *   — same shape, and the DATE OF BIRTH gets masked as [SORT_CODE]. There is
+ *   no substantive verb here for BACK_GLUE's own comment to lean on either:
+ *   "And the sort code please?" is a bare noun-phrase request with no verb
+ *   at all.
+ *
+ * The two gates compose and both are load-bearing — neither alone catches
+ * both false positives. BACK_GLUE rejects "And what is the sort code?"
+ * (because "what" is not glue). BACK_REFERENTIAL rejects "And the sort code
+ * please?" (because no copula links the digits to the phrase). Only text
+ * that passes both reads as a genuine read-back.
+ *
+ * The trade-off this accepts: a read-back with no copula at all ("...20 45
+ * 67. Sort code confirmed.") is now missed by the backward pass. That is
+ * deliberate — the forward window catches the original dictation in almost
+ * every real call, so the backward pass only exists as a safety net for the
+ * case where the sole anchor follows the digits. Precision matters more
+ * than reach there: over-redacting silently destroys the very answers
+ * reconciliation exists to compare, which is worse than occasionally
+ * leaving a genuine read-back to the forward pass that already caught it.
+ */
+const BACK_REFERENTIAL = /\b(?:that's|thats|that\s+is|that\s+was|it's|its|is|was|were|are)\b/i;
 
 /**
  * Redaction placeholders already in the text, e.g. Deepgram's own
@@ -236,6 +313,66 @@ function windowEnd(text: string, anchorEnd: number): number {
 }
 
 /**
+ * Global-flagged copies of WINDOW_TERMINATORS, for windowStart's use only.
+ *
+ * windowEnd only ever needs the FIRST terminator ahead of the anchor, so a
+ * plain non-global .search() is enough there. windowStart needs the LAST
+ * terminator behind the anchor — the most recent subject change, nearest to
+ * the anchor — which means walking every match rather than stopping at the
+ * first. That needs a global regex to iterate with .exec(), and reusing the
+ * WINDOW_TERMINATORS objects for that would mean flipping their flags and
+ * leaving `lastIndex` state on regexes that windowEnd also calls .search()
+ * on elsewhere — a shared regex carrying `lastIndex` between unrelated calls
+ * is exactly the kind of bug that only shows up once two calls interleave, so
+ * these are separate objects instead.
+ */
+const WINDOW_TERMINATORS_G = WINDOW_TERMINATORS.map(
+  (term) => new RegExp(term.source, 'gi')
+);
+
+/** Where the window before an anchor should start. */
+function windowStart(text: string, anchorStart: number): number {
+  const hardStart = Math.max(0, anchorStart - BACK_WINDOW_CHARS);
+  const scope = text.slice(hardStart, anchorStart);
+  let start = hardStart;
+  for (const term of WINDOW_TERMINATORS_G) {
+    term.lastIndex = 0;
+    let match: RegExpExecArray | null;
+    let last: RegExpExecArray | null = null;
+    while ((match = term.exec(scope)) !== null) {
+      last = match;
+    }
+    if (last) start = Math.max(start, hardStart + last.index + last[0].length);
+  }
+  return start;
+}
+
+/**
+ * Digit count for a single span, independent of whatever else was in the
+ * window it came from.
+ *
+ * runsInWindow totals digits across the WHOLE window, which is exactly what
+ * makes the interleaved forward case work — but it is also why that total
+ * cannot be trusted once a backward window has been narrowed down to one
+ * retained span. A run that is nowhere near the anchor ("I have 2 accounts...
+ * anyway, I'm 62") could carry the window total over MIN_WINDOW_DIGITS while
+ * the span actually touching the anchor is a two-digit fragment on its own.
+ * This recounts just the retained span, using the same token rules, so the
+ * floor is applied to what is actually being redacted rather than to
+ * everything that happened to be nearby.
+ */
+function digitsInSpan(text: string, start: number, end: number): number {
+  const slice = text.slice(start, end);
+  RUN_TOKEN.lastIndex = 0;
+  let total = 0;
+  let match: RegExpExecArray | null;
+  while ((match = RUN_TOKEN.exec(slice)) !== null) {
+    total += digitCount(match[0]);
+  }
+  return total;
+}
+
+/**
  * Remove bank details from a transcript.
  *
  * Returns the text unchanged when no anchor phrase appears, which is the common
@@ -250,9 +387,34 @@ export function redactBankDetails(text: string): { text: string; redactions: num
     anchor.pattern.lastIndex = 0;
     let match: RegExpExecArray | null;
     while ((match = anchor.pattern.exec(text)) !== null) {
-      const anchorEnd = match.index + match[0].length;
+      const anchorStart = match.index;
+      const anchorEnd = anchorStart + match[0].length;
       for (const span of runsInWindow(text, anchorEnd, windowEnd(text, anchorEnd), placeholders)) {
         spans.push({ ...span, tag: anchor.tag });
+      }
+
+      // Read-back phrasing states the digits BEFORE the phrase that names
+      // them ("It's 20 45 67... Agent: that's the sort code, yes?"). Every
+      // pass above only looks forward from the anchor, so on its own it would
+      // let a full sort code sit in the clear whenever it comes out this way
+      // round — which real Trust Point calls do. Nearby is not enough on its
+      // own to redact backward, though: unlike a question, which all but
+      // guarantees whatever comes next is the answer, an anchor phrase can
+      // simply follow an unrelated number by coincidence. So a span only
+      // counts here if it is the one nearest the anchor, and only if the text
+      // between it and the anchor reads like a read-back rather than like two
+      // unrelated sentences sitting next to each other.
+      const backSpans = runsInWindow(text, windowStart(text, anchorStart), anchorStart, placeholders);
+      const nearest = backSpans[backSpans.length - 1];
+      if (nearest) {
+        const gap = text.slice(nearest.end, anchorStart);
+        if (
+          BACK_REFERENTIAL.test(gap) &&
+          BACK_GLUE.test(gap) &&
+          digitsInSpan(text, nearest.start, nearest.end) >= MIN_WINDOW_DIGITS
+        ) {
+          spans.push({ ...nearest, tag: anchor.tag });
+        }
       }
     }
   }

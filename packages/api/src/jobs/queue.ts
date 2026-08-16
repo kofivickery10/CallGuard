@@ -10,6 +10,7 @@ let _scoringQueue: Queue | null = null;
 let _ingestionQueue: Queue | null = null;
 let _alertsQueue: Queue | null = null;
 let _maintenanceQueue: Queue | null = null;
+let _stuckRepairQueue: Queue | null = null;
 
 export function getTranscriptionQueue(): Queue {
   if (!_transcriptionQueue) {
@@ -86,6 +87,26 @@ export function getMaintenanceQueue(): Queue {
   return _maintenanceQueue;
 }
 
+// 'stuck-repair' used to ride the 'maintenance' queue, but that queue also
+// carries the daily retention purge and other slow sweeps at concurrency 1 —
+// a long-running one delayed the repair sweep that exists specifically to
+// catch dropped compliance jobs (transcription/scoring rows committed with no
+// job ever queued). It gets its own queue so it is never stuck behind them.
+export function getStuckRepairQueue(): Queue {
+  if (!_stuckRepairQueue) {
+    _stuckRepairQueue = new Queue('stuck-repair', {
+      connection,
+      defaultJobOptions: {
+        attempts: 2,
+        backoff: { type: 'exponential', delay: 60_000 },
+        removeOnComplete: 30,
+        removeOnFail: 30,
+      },
+    });
+  }
+  return _stuckRepairQueue;
+}
+
 // Keep named exports for backward compat in worker.ts
 export const transcriptionQueue = { add: (...args: Parameters<Queue['add']>) => getTranscriptionQueue().add(...args) };
 export const scoringQueue = {
@@ -101,4 +122,8 @@ export const alertsQueue = { add: (...args: Parameters<Queue['add']>) => getAler
 export const maintenanceQueue = {
   add: (...args: Parameters<Queue['add']>) => getMaintenanceQueue().add(...args),
   getRepeatableJobs: () => getMaintenanceQueue().getRepeatableJobs(),
+};
+export const stuckRepairQueue = {
+  add: (...args: Parameters<Queue['add']>) => getStuckRepairQueue().add(...args),
+  getRepeatableJobs: () => getStuckRepairQueue().getRepeatableJobs(),
 };

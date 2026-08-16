@@ -1,4 +1,5 @@
 import { config } from '../config.js';
+import { queryOne } from '../db/client.js';
 import { readFile } from './storage.js';
 import { identifyAdviserCluster, type ClusterSpeech } from './speaker-integrity.js';
 import { redactBankDetails, redactBankDetailsInRaw } from './digit-redaction.js';
@@ -166,6 +167,75 @@ export function resolveRedactCategories(unredactedCategories: string[] = []): st
   return REDACTION_CATEGORIES.filter((c) => !permitted.has(c));
 }
 
+/**
+ * The one place that decides a tenant's redaction policy for what Deepgram is
+ * asked to redact. Loads organizations.pii_unredacted_categories, fails
+ * closed (redacts everything) if that load fails, and resolves the result
+ * into the actual Deepgram category list via resolveRedactCategories above.
+ *
+ * Both transcription paths call this instead of querying `organizations`
+ * themselves: the batch path (jobs/processors/transcribe.ts, which then
+ * passes the result into transcribeCall below) and the live path
+ * (stream-worker.ts, which configures Deepgram's *streaming* redaction
+ * directly and so never goes through transcribeCall at all). This drifted
+ * twice before — each path independently re-implementing "fetch the org row,
+ * decide what happens if that fails" — because there was nowhere that owned
+ * both halves of the decision. There is now exactly one.
+ *
+ * An unreadable config is not grounds to loosen redaction: the catch here
+ * redacts everything, the same as an empty permitted-categories list, not
+ * nothing.
+ */
+export async function resolveTenantRedactCategories(organizationId: string): Promise<string[]> {
+  try {
+    const orgRow = await queryOne<{ pii_unredacted_categories: string[] | null }>(
+      'SELECT pii_unredacted_categories FROM organizations WHERE id = $1',
+      [organizationId]
+    );
+    return resolveRedactCategories(orgRow?.pii_unredacted_categories ?? []);
+  } catch (err) {
+    console.error(
+      `[Transcription] Failed to load redaction settings for org ${organizationId}, redacting everything:`,
+      (err as Error).message
+    );
+    return resolveRedactCategories([]);
+  }
+}
+
+/**
+ * The other half of tenant redaction: CallGuard's in-house bank-detail pass
+ * (services/digit-redaction.ts — see the long comment there for why it
+ * exists alongside Deepgram's own redaction), applied to a transcript and,
+ * when supplied, its raw Deepgram payload together.
+ *
+ * This exists so a caller reaches for ONE function rather than remembering to
+ * call redactBankDetails AND redactBankDetailsInRaw itself — forgetting the
+ * raw-payload half was exactly the kind of drift Fix 1 is closing off. Both
+ * transcription paths call this at every point new transcript text becomes
+ * available: once, over the whole assembled transcript, in transcribeCall
+ * below; per finalised segment AND again over the joined whole at session end
+ * in stream-worker.ts (redacting text that's already clean a second time is
+ * inert, so the repeated calls there are safe, not wasteful).
+ *
+ * One function, not one call SHAPE: `raw` is optional rather than required,
+ * because the live path has no raw Deepgram payload to redact at all (it
+ * only ever has text) — passing `undefined` there is honest about that,
+ * rather than inventing a payload just to satisfy a required parameter.
+ */
+export function redactForTenant(
+  text: string,
+  raw?: unknown
+): { text: string; textRedactions: number; raw: unknown; rawRedactions: number } {
+  const textResult = redactBankDetails(text);
+  const rawResult = raw !== undefined ? redactBankDetailsInRaw(raw) : null;
+  return {
+    text: textResult.text,
+    textRedactions: textResult.redactions,
+    raw: rawResult ? rawResult.raw : raw,
+    rawRedactions: rawResult ? rawResult.redactions : 0,
+  };
+}
+
 export async function transcribeCall(
   fileKey: string,
   extraKeyterms: string[] = [],
@@ -174,14 +244,15 @@ export async function transcribeCall(
   transcriptionMode: TranscriptionMode = 'mono_diarize',
   deepgramRegion: DeepgramRegion = 'eu',
   monoFirstSpeaker: MonoFirstSpeaker = 'agent',
-  // organizations.pii_unredacted_categories (migration 079) — the explicit,
-  // superadmin-set, DPIA-backed list of redaction categories this tenant may
-  // keep in the clear, for Data Capture reconciliation that needs the
-  // customer's actual answers rather than just confirmation they were given.
-  // Empty (the default) redacts everything. 'pci' is filtered out here even if
-  // somehow present, so payment data is protected by code as well as by the
-  // schema CHECK — see resolveRedactCategories.
-  unredactedCategories: string[] = []
+  // The Deepgram categories to actually redact for this tenant — already
+  // resolved from organizations.pii_unredacted_categories (migration 079) by
+  // resolveTenantRedactCategories, the one place that decides tenant
+  // redaction policy (see its comment for why). Callers must resolve before
+  // calling in, not pass the tenant's raw permitted-in-the-clear list here:
+  // this parameter is what goes straight into the `redact:` option below.
+  // Defaults to redacting everything, the same default resolveRedactCategories
+  // produces for an empty permitted list.
+  redactCategories: string[] = [...REDACTION_CATEGORIES]
 ): Promise<TranscriptionResult> {
   if (!config.deepgram.apiKey) {
     throw new Error('DEEPGRAM_API_KEY is not set in .env - needed for transcription');
@@ -271,9 +342,10 @@ export async function transcribeCall(
       // regulator names (FCA, the firm) through to the scorer.
       //
       // Which of these a tenant may keep in the clear is per-organisation
-      // (migration 079) — see resolveRedactCategories below. `pci` is never
-      // droppable by any configuration.
-      redact: resolveRedactCategories(unredactedCategories),
+      // (migration 079), already resolved by the caller via
+      // resolveTenantRedactCategories — see resolveRedactCategories for the
+      // resolution rule and its `pci` floor.
+      redact: redactCategories,
       numerals: true,
       keyterm: keyterms,
     }
@@ -427,6 +499,46 @@ export async function transcribeCall(
 
   const duration = result.metadata?.duration || 0;
 
+  // What we hand back as the transcript text, in order of preference:
+  //  1. `assembled` — the word-level, speaker-labelled turns built above. The
+  //     normal case, and the only one with an Agent/Customer split.
+  //  2. Deepgram's raw per-channel transcript — reached only when NOTHING was
+  //     assembled (0 utterances, or every utterance came back with no
+  //     word-level speakers to key off). This text carries no speaker labels
+  //     at all, so every turn-based checkpoint on this call is flying blind
+  //     even though there may be real content to score. That used to happen
+  //     silently; it is now logged so a run of these is visible rather than
+  //     discovered later as an unexplained batch of speakerless transcripts.
+  //  3. '' — Deepgram returned no usable transcript at any level. Silence,
+  //     corrupted audio, or a call that was pure hold music/dead air. This
+  //     USED to fall through with no logging and no downstream signal, so an
+  //     empty transcript stored here flowed straight into scoring and read as
+  //     "every disclosure went unaddressed" rather than "there was nothing to
+  //     hear" — a false breach manufactured from silence. The caller (see
+  //     jobs/processors/transcribe.ts) is responsible for treating an empty
+  //     `text` here as a dedicated non-scoring outcome — the same 'skipped'
+  //     status jobs/processors/score.ts already uses for a transcript too
+  //     short to evaluate — rather than as an evidence-bearing transcript.
+  let preRedactionText: string;
+  if (assembled) {
+    preRedactionText = assembled;
+  } else {
+    const channelFallback = result.results?.channels?.[0]?.alternatives?.[0]?.transcript || '';
+    if (channelFallback) {
+      console.warn(
+        `[Transcription] No speaker-labelled turns were assembled (0 utterances, or none carried ` +
+          `word-level speakers) — falling back to Deepgram's unlabelled channel transcript ` +
+          `(${channelFallback.length} chars, no Agent/Customer split).`
+      );
+    } else {
+      console.warn(
+        `[Transcription] Deepgram returned no usable transcript at any level (no speaker turns, no ` +
+          `raw channel transcript) — audio is likely silent, corrupted, or entirely off-topic noise.`
+      );
+    }
+    preRedactionText = channelFallback;
+  }
+
   // Bank details out, here and nowhere later.
   //
   // This is the last point at which one function owns both the text and the raw
@@ -436,24 +548,21 @@ export async function transcribeCall(
   // cleanup call, which runs BEFORE storage, reading unredacted digits and
   // sending them to Anthropic.
   //
-  // Cheap and inert when nothing matches, so it runs unconditionally rather than
-  // only for tenants with `numbers` permitted: a config change must not be able
-  // to turn this off by accident, and when `numbers` IS redacted at source there
-  // are no digit runs left for it to find.
-  const textRedaction = redactBankDetails(
-    assembled || result.results?.channels?.[0]?.alternatives?.[0]?.transcript || ''
-  );
-  const rawRedaction = redactBankDetailsInRaw(result);
-  if (textRedaction.redactions > 0 || rawRedaction.redactions > 0) {
+  // Cheap and inert when nothing matches (including on an empty string), so it
+  // runs unconditionally rather than only for tenants with `numbers` permitted:
+  // a config change must not be able to turn this off by accident, and when
+  // `numbers` IS redacted at source there are no digit runs left for it to find.
+  const { text, textRedactions, raw, rawRedactions } = redactForTenant(preRedactionText, result);
+  if (textRedactions > 0 || rawRedactions > 0) {
     console.log(
-      `[Transcription] Redacted bank details: ${textRedaction.redactions} in the transcript, ` +
-        `${rawRedaction.redactions} in the raw payload`
+      `[Transcription] Redacted bank details: ${textRedactions} in the transcript, ` +
+        `${rawRedactions} in the raw payload`
     );
   }
 
   return {
-    raw: rawRedaction.raw,
-    text: textRedaction.text,
+    raw,
+    text,
     duration_seconds: duration,
     speaker_attribution_confidence: computeSpeakerAttributionConfidence(
       isMultichannel,

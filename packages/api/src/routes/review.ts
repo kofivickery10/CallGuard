@@ -290,6 +290,32 @@ async function resolveCallItem(
     } else {
       await tx.query('DELETE FROM breaches WHERE call_item_score_id = $1', [itemScoreId]);
     }
+
+    // Re-evaluate for auto-exemplar now this checkpoint is adjudicated (mirrors
+    // jobs/processors/score.ts's gate): a call withheld exemplar status only
+    // because a checkpoint was pending review can now earn it once every
+    // checkpoint on the score has a human-confirmed result — nothing here is
+    // scored blind, so nothing is lost by resolving into it rather than out of it.
+    const stillPending = await tx.query<{ id: string }>(
+      `SELECT cis.id
+         FROM call_item_scores cis
+         JOIN scorecard_items si ON si.id = cis.scorecard_item_id
+        WHERE cis.call_score_id = $1 AND cis.result = 'manual_review'
+          -- A retired checkpoint is never resolved (see the GET /review-items
+          -- queue filter above), so it must not block re-evaluation forever.
+          AND si.archived_at IS NULL`,
+      [row.call_score_id]
+    );
+    if (stillPending.length === 0 && failing.length === 0 && overall >= 95) {
+      await tx.query(
+        `UPDATE calls SET
+           is_exemplar = CASE WHEN is_exemplar = false THEN true ELSE is_exemplar END,
+           exemplar_reason = CASE WHEN is_exemplar = false THEN $2 ELSE exemplar_reason END,
+           updated_at = now()
+         WHERE id = $1`,
+        [row.call_id, 'Auto: 95%+ with zero breaches, confirmed on review']
+      );
+    }
   });
 
   return row.call_id;

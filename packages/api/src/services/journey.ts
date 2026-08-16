@@ -126,17 +126,69 @@ export async function assembleJourney(params: AssembleJourneyParams): Promise<st
   // capture model they are hydrated + transcribed on demand below. Excludes
   // only calls that already failed permanently. score-journey later scores
   // whichever ended up with a transcript.
+  //
+  // Sale scoping: a call already claimed by a DIFFERENT sale's journey is
+  // excluded, otherwise a second Zoho sale trigger for the same customer
+  // inside the window would re-pull the first sale's calls, mix both sales'
+  // evidence onto one record, and yank the calls out from under the (possibly
+  // already-scored) first journey when the reassignment below runs. This must
+  // stay narrow: re-running for the SAME sale (zohoRecordId unchanged) has to
+  // keep finding its own calls, or the idempotency below breaks. So the
+  // exclusion only fires when this trigger carries a sale id (zohoRecordId —
+  // the Zoho "Customers Sold" record, the only sale/deal identifier a journey
+  // is linked back to; see migration 054) and the call's journey belongs to a
+  // *different* one. A call with no journey yet, or one on this same sale's
+  // journey, is always eligible. Non-Zoho triggers (manual re-score,
+  // sale_flagged upload, backfill) carry no sale id at all, so this predicate
+  // is a no-op for them and they keep the pre-existing (customer + window)
+  // behaviour, unchanged.
+  //
+  // One conversation can legitimately cover two products sold as two sales.
+  // Under this scoping those calls stay with whichever sale claimed them
+  // first — they are not split or duplicated across both journeys. There is
+  // no existing mechanism in this file to flag that overlap for a human; it
+  // is simply silent (the second sale scores on whatever calls remain, or
+  // none — see the empty-set handling below).
   const calls = await query<Call>(
     `SELECT * FROM calls
        WHERE organization_id = $1
          AND customer_id = $2
          AND status <> 'failed'
          AND COALESCE(call_date::timestamptz, created_at) >= $3
+         AND (
+           $4::text IS NULL
+           OR journey_id IS NULL
+           OR journey_id IN (SELECT id FROM journeys WHERE organization_id = $1 AND zoho_record_id = $4)
+         )
        ORDER BY COALESCE(call_date::timestamptz, created_at) ASC`,
-    [organizationId, customerId, windowStart.toISOString()]
+    [organizationId, customerId, windowStart.toISOString(), zohoRecordId ?? null]
   );
 
   if (calls.length === 0) {
+    // Once scoped to this sale, a customer whose only calls in the window
+    // already belong to a different sale's journey legitimately has none of
+    // their own (the shared-call case above). Do not stand up a journey — and
+    // so never score a compliance verdict — on zero evidence; skip exactly as
+    // the "no calls at all" case below does, just with a reason that says so,
+    // for anyone triaging the worker log.
+    if (zohoRecordId) {
+      const claimedElsewhere = await queryOne<{ n: number }>(
+        `SELECT count(*)::int AS n FROM calls
+           WHERE organization_id = $1
+             AND customer_id = $2
+             AND status <> 'failed'
+             AND COALESCE(call_date::timestamptz, created_at) >= $3
+             AND journey_id IS NOT NULL`,
+        [organizationId, customerId, windowStart.toISOString()]
+      );
+      if (claimedElsewhere && Number(claimedElsewhere.n) > 0) {
+        console.warn(
+          `[Journey] Every call in the last ${windowDays}d for customer ${customerId} already belongs to a ` +
+            `different sale's journey — skipping (sale=${zohoRecordId})`
+        );
+        return null;
+      }
+    }
     console.warn(`[Journey] No calls in the last ${windowDays}d for customer ${customerId} — skipping`);
     return null;
   }

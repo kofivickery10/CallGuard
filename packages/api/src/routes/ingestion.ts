@@ -1022,6 +1022,109 @@ sftpRouter.post('/:id/poll-now', async (req, res, next) => {
   }
 });
 
+// ============================================================
+// SFTP file retry (admin JWT auth, org-scoped through the parent source).
+//
+// A file that errored during ingest is retried automatically on later polls
+// (see jobs/processors/sftp-poll.ts), up to MAX_FILE_ATTEMPTS — after which
+// it is marked 'abandoned' and left alone. These endpoints are the way back:
+// they reset a file's status to 'errored' and its attempt_count to 0, so the
+// next poll picks it up again as if it had just failed once. Every query is
+// scoped through `source_id` joined to `sftp_sources.organization_id`, so one
+// tenant can never see or reset another tenant's files.
+// ============================================================
+
+sftpRouter.get('/:id/files/failed', async (req, res, next) => {
+  try {
+    const source = await queryOne<{ id: string }>(
+      'SELECT id FROM sftp_sources WHERE id = $1 AND organization_id = $2',
+      [req.params.id, req.user!.organizationId]
+    );
+    if (!source) throw new AppError(404, 'SFTP source not found');
+
+    const files = await query<{
+      id: string;
+      remote_path: string;
+      status: string;
+      attempt_count: number;
+      error: string | null;
+      last_attempt_at: string;
+    }>(
+      `SELECT id, remote_path, status, attempt_count, error, last_attempt_at
+         FROM sftp_processed_files
+        WHERE source_id = $1 AND status IN ('errored', 'abandoned')
+        ORDER BY last_attempt_at DESC`,
+      [source.id]
+    );
+    res.json({ data: files });
+  } catch (err) {
+    next(err);
+  }
+});
+
+sftpRouter.post('/:id/files/:fileId/retry', async (req, res, next) => {
+  try {
+    const source = await queryOne<{ id: string }>(
+      'SELECT id FROM sftp_sources WHERE id = $1 AND organization_id = $2',
+      [req.params.id, req.user!.organizationId]
+    );
+    if (!source) throw new AppError(404, 'SFTP source not found');
+
+    const result = await queryOne<{ id: string; remote_path: string }>(
+      `UPDATE sftp_processed_files
+          SET status = 'errored', attempt_count = 0
+        WHERE id = $1 AND source_id = $2 AND status IN ('errored', 'abandoned')
+        RETURNING id, remote_path`,
+      [req.params.fileId, source.id]
+    );
+    if (!result) throw new AppError(404, 'Failed file not found for this source');
+
+    void recordAuditEvent({
+      organizationId: req.user!.organizationId,
+      userId: req.user!.userId,
+      actionType: 'sftp.file_retry',
+      entityType: 'sftp_source',
+      entityId: source.id,
+      summary: `Reset ${result.remote_path} for retry on next poll`,
+    });
+
+    res.json({ message: 'File will be retried on the next poll', id: result.id });
+  } catch (err) {
+    next(err);
+  }
+});
+
+sftpRouter.post('/:id/retry-failed', async (req, res, next) => {
+  try {
+    const source = await queryOne<{ id: string }>(
+      'SELECT id FROM sftp_sources WHERE id = $1 AND organization_id = $2',
+      [req.params.id, req.user!.organizationId]
+    );
+    if (!source) throw new AppError(404, 'SFTP source not found');
+
+    const rows = await query<{ id: string }>(
+      `UPDATE sftp_processed_files
+          SET status = 'errored', attempt_count = 0
+        WHERE source_id = $1 AND status IN ('errored', 'abandoned')
+        RETURNING id`,
+      [source.id]
+    );
+
+    void recordAuditEvent({
+      organizationId: req.user!.organizationId,
+      userId: req.user!.userId,
+      actionType: 'sftp.retry_failed',
+      entityType: 'sftp_source',
+      entityId: source.id,
+      summary: `Reset ${rows.length} failed file(s) for retry on next poll`,
+    });
+
+    res.json({ message: `${rows.length} file(s) will be retried on the next poll`, count: rows.length });
+  } catch (err) {
+    next(err);
+  }
+});
+
 sftpRouter.get('/:id/logs', async (req, res, next) => {
   try {
     const source = await queryOne<{ id: string }>(

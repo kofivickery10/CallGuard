@@ -1,4 +1,6 @@
 import dns from 'dns/promises';
+import type { LookupAddress } from 'dns';
+import type { LookupFunction } from 'net';
 import { AppError } from '../middleware/errors.js';
 
 // SSRF guard for server-side fetches of caller-supplied URLs (API ingest
@@ -47,13 +49,47 @@ function isPrivateAddress(ip: string): boolean {
   return ip.includes(':') ? isPrivateIPv6(ip) : isPrivateIPv4(ip);
 }
 
+export interface SafeRemoteUrl {
+  /**
+   * The original https:// URL. The hostname on this URL must still be used
+   * as the TLS SNI/servername and the HTTP Host header of the request that
+   * follows — swap it for the pinned IP below and certificate validation
+   * (and any name-based virtual hosting on the remote end) breaks.
+   */
+  url: URL;
+  /**
+   * A `dns.lookup`-compatible callback pinned to the single address that was
+   * just resolved and validated as public. Pass this as the `lookup` option
+   * of `http(s).request` (it's accepted directly by both) instead of letting
+   * the request resolve the hostname itself.
+   *
+   * This exists to close a DNS-rebinding hole: resolving the hostname here,
+   * checking the result, and then handing the *hostname* to a second,
+   * independent resolution (e.g. a plain `fetch(url)`) lets an attacker who
+   * controls the DNS answer return a public address to this check and a
+   * private one to the real request — walking straight past the validation
+   * above. Pinning forces exactly one resolution, this one, to be the
+   * address that ever gets connected to. If a future refactor "simplifies"
+   * the caller back to `fetch(url)` (or any client that resolves the
+   * hostname on its own instead of taking this `lookup`), it reopens this
+   * hole — don't do that.
+   */
+  lookup: LookupFunction;
+}
+
 /**
  * Validate a caller-supplied URL is safe to fetch server-side: https only,
  * and resolves to a public (non-private/loopback/link-local) address. Throws
- * an AppError(400) if not. Does not follow redirects — call this again on
- * each hop if you choose to follow one.
+ * an AppError(400) if not.
+ *
+ * Returns a DNS-pinned `lookup` alongside the URL (see `SafeRemoteUrl`) — the
+ * caller must use it for the connection rather than re-resolving the
+ * hostname, or this check can be defeated by DNS rebinding. Does not follow
+ * redirects itself; if a caller ever does follow one, it must call this
+ * again for the redirect target and use the fresh `lookup` it returns, not
+ * the one from this call.
  */
-export async function assertSafeRemoteUrl(rawUrl: string): Promise<URL> {
+export async function assertSafeRemoteUrl(rawUrl: string): Promise<SafeRemoteUrl> {
   let url: URL;
   try {
     url = new URL(rawUrl);
@@ -66,17 +102,25 @@ export async function assertSafeRemoteUrl(rawUrl: string): Promise<URL> {
   }
 
   const hostname = url.hostname;
-  let addresses: string[];
+  let addresses: LookupAddress[];
   try {
-    const results = await dns.lookup(hostname, { all: true });
-    addresses = results.map((r) => r.address);
+    addresses = await dns.lookup(hostname, { all: true });
   } catch {
     throw new AppError(400, `Could not resolve host: ${hostname}`);
   }
 
-  if (addresses.length === 0 || addresses.some(isPrivateAddress)) {
+  if (addresses.length === 0 || addresses.some((a) => isPrivateAddress(a.address))) {
     throw new AppError(400, 'URL resolves to a disallowed address');
   }
 
-  return url;
+  // Pin to the first validated address. Every one of them was already
+  // confirmed public above, so which one is picked doesn't affect safety —
+  // this just needs to be *an* address that was actually checked, not a
+  // fresh, unchecked resolution.
+  const pinned = addresses[0]!;
+  const lookup: LookupFunction = (_hostname, _options, callback) => {
+    callback(null, pinned.address, pinned.family);
+  };
+
+  return { url, lookup };
 }

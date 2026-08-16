@@ -47,6 +47,11 @@ export type AuditActionType =
   | 'sftp.create'
   | 'sftp.update'
   | 'sftp.delete'
+  // A file that errored on ingest (see jobs/processors/sftp-poll.ts) reset
+  // back to 'errored'/attempt_count 0 so it is retried on the next poll —
+  // either one file by id, or every failed file on a source at once.
+  | 'sftp.file_retry'
+  | 'sftp.retry_failed'
   | 'zoho.connect'
   | 'zoho.update'
   | 'zoho.disconnect'

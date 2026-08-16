@@ -299,6 +299,11 @@ export async function processScoreJourney(job: Job<ScoreJourneyJobData>) {
     // whichever sample happened to be drawn.
     const { items: consensusItems, coaching, usage, model, samples } = await scoreTranscriptConsensus(
       scoringSettings.scoringSamples,
+      // Vote against the same bar the pass/fail verdict below is computed on
+      // (line ~512) — a run's checkpoint-level "agreed" is meaningless if it
+      // was decided against a different threshold than the one that decides
+      // the outcome.
+      scoringSettings.passThreshold,
       combinedTranscript,
       aiItems.map((i) => ({
         id: i.id,
@@ -335,11 +340,19 @@ export async function processScoreJourney(job: Job<ScoreJourneyJobData>) {
       // adviser agreeing with himself as consent. Those gates do route to a
       // human, but the AI's suggested verdict is what the reviewer is shown
       // first, and since migration 077 their ruling is permanent.
+      //
+      // A NULL confidence must trip this too, not slide past it: NULL means
+      // attribution was never established at all, which is strictly LESS
+      // trustworthy than a measured low score, not more. Reading NULL as
+      // "fully confident" (`!== null` before the floor check) is what let
+      // live-streamed calls — no stereo pin, no mono heuristic run, so their
+      // confidence column was left NULL — auto-score their consent gates off
+      // labels nobody had verified.
       withTranscript.some(
         (c) =>
           c.speaker_integrity_flag !== null ||
-          (c.speaker_attribution_confidence !== null &&
-            Number(c.speaker_attribution_confidence) < CONSENT_SPEAKER_CONFIDENCE_FLOOR)
+          c.speaker_attribution_confidence === null ||
+          Number(c.speaker_attribution_confidence) < CONSENT_SPEAKER_CONFIDENCE_FLOOR
       )
     );
     const output: ScoringOutput = { items: consensusItems, coaching };

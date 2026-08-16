@@ -1,5 +1,22 @@
 import { describe, it, expect } from 'vitest';
-import { routesToReviewOnConfidence } from './checkpoint-classification.js';
+import { classifyItems, routesToReviewOnConfidence } from './checkpoint-classification.js';
+import type { ScorecardItem } from '@callguard/shared';
+
+function makeItem(overrides: Partial<ScorecardItem> = {}): ScorecardItem {
+  return {
+    id: 'item-1',
+    scorecard_id: 'scorecard-1',
+    label: 'Consent to proceed',
+    description: null,
+    score_type: 'binary',
+    weight: 1,
+    sort_order: 0,
+    created_at: new Date().toISOString(),
+    item_type: 'ai',
+    consent_gate: false,
+    ...overrides,
+  };
+}
 
 // The floor decides how much of a tenant's scorecard the AI is allowed to settle
 // on its own, so the off-by-default and the boundary behaviour both matter more
@@ -33,5 +50,43 @@ describe('routesToReviewOnConfidence', () => {
   // missing confidence keeps the pre-migration-082 behaviour: score it.
   it('does not route a missing confidence when the floor is off', () => {
     expect(routesToReviewOnConfidence(null, 0)).toBe(false);
+  });
+});
+
+describe('classifyItems', () => {
+  // The gate that actually decides manual review vs auto-scoring for consent
+  // items. NULL means speaker attribution was never established (no
+  // stereo-channel pin, mono heuristic never run — e.g. a live-streamed call)
+  // and must be treated as strictly worse than a measured low score, not as
+  // "fully confident". A regression here auto-scores a consent gate off a
+  // speaker split nobody ever checked.
+  it('routes a consent_gate item to provisional when speaker confidence is NULL', () => {
+    const item = makeItem({ consent_gate: true });
+    const result = classifyItems([item], null, null);
+    expect(result.provisional).toEqual([item]);
+    expect(result.scoreable).toEqual([]);
+  });
+
+  it('routes a consent_gate item to provisional when speaker confidence is below the floor', () => {
+    const item = makeItem({ consent_gate: true });
+    const result = classifyItems([item], null, 0.3);
+    expect(result.provisional).toEqual([item]);
+    expect(result.scoreable).toEqual([]);
+  });
+
+  it('auto-scores a consent_gate item when speaker confidence clears the floor', () => {
+    const item = makeItem({ consent_gate: true });
+    const result = classifyItems([item], null, 0.8);
+    expect(result.scoreable).toEqual([item]);
+    expect(result.provisional).toEqual([]);
+  });
+
+  // A NULL confidence is only a problem for consent gates — an ordinary AI
+  // item has nothing that depends on which speaker cluster is which.
+  it('does not route a non-consent-gate item to provisional on NULL confidence', () => {
+    const item = makeItem({ consent_gate: false });
+    const result = classifyItems([item], null, null);
+    expect(result.scoreable).toEqual([item]);
+    expect(result.provisional).toEqual([]);
   });
 });

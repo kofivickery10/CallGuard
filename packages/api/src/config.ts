@@ -36,6 +36,17 @@ export const config = {
     // PEM-encoded CA certificate for the managed Postgres provider, so TLS
     // connections can be verified instead of blindly trusted. See client.ts.
     caCert: process.env.DATABASE_CA_CERT || undefined,
+    // Pool ceilings differ by process: the API absorbs bursty concurrent HTTP
+    // requests, while the worker's demand is the sum of its BullMQ worker
+    // concurrency figures (jobs/worker.ts) plus headroom for the scheduler and
+    // heartbeat writes that run alongside them. Left at pg's default (10) with
+    // no timeout, exhaustion just queues connection requests forever instead
+    // of failing — see client.ts. Which default applies is decided by which
+    // process is running, not by an env var each deploy has to remember to set.
+    poolMaxApi: parseInt(optional('DB_POOL_MAX_API', '20'), 10),
+    poolMaxWorker: parseInt(optional('DB_POOL_MAX_WORKER', '15'), 10),
+    poolIdleTimeoutMs: parseInt(optional('DB_POOL_IDLE_TIMEOUT_MS', '30000'), 10),
+    poolConnectionTimeoutMs: parseInt(optional('DB_POOL_CONNECTION_TIMEOUT_MS', '5000'), 10),
   },
 
   redis: {

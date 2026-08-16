@@ -73,7 +73,12 @@ export type NotificationType =
   // being checked has stopped being checked. A format quietly confirming itself
   // and working is not news.
   | 'dataforms.needs_attention'
-  | 'dataforms.format_live';
+  | 'dataforms.format_live'
+  // A Zoho phone search matched more than one Lead/Contact — see
+  // findRecordByPhone in services/zoho.ts. Never auto-resolved: writing the
+  // wrong customer's compliance detail onto someone else's CRM record is
+  // worse than not writing at all.
+  | 'zoho.ambiguous_phone_match';
 
 export interface Notification {
   id: string;

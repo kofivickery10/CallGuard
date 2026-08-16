@@ -27,6 +27,7 @@ import {
   getIngestionQueue,
   getAlertsQueue,
   getMaintenanceQueue,
+  getStuckRepairQueue,
 } from '../jobs/queue.js';
 import { readWorkerHeartbeat } from '../services/redis.js';
 import {
@@ -1439,6 +1440,7 @@ const HEALTH_QUEUES = () => [
   { name: 'ingestion',     q: getIngestionQueue() },
   { name: 'alerts',        q: getAlertsQueue() },
   { name: 'maintenance',   q: getMaintenanceQueue() },
+  { name: 'stuck-repair',  q: getStuckRepairQueue() },
 ];
 
 // Failures older than this are history, not a live incident.
@@ -1683,10 +1685,11 @@ superadminRouter.delete('/queues/:name/failed', async (req, res, next) => {
 
 // Force the stuck-repair sweep instead of waiting up to 10 minutes for the
 // scheduled one. Runs through the queue so it executes on the worker, using the
-// same code path as the scheduled sweep.
+// same code path as the scheduled sweep. Targets the dedicated stuck-repair
+// queue (see jobs/queue.ts), not 'maintenance' — the two are separate queues.
 superadminRouter.post('/maintenance/stuck-repair', async (req, res, next) => {
   try {
-    const job = await getMaintenanceQueue().add(
+    const job = await getStuckRepairQueue().add(
       'stuck-repair',
       {},
       { jobId: `stuck-repair-manual-${Date.now()}` }
@@ -1697,7 +1700,7 @@ superadminRouter.post('/maintenance/stuck-repair', async (req, res, next) => {
       userId: req.user!.userId,
       actionType: 'platform.stuck_repair',
       entityType: 'queue',
-      entityId: 'maintenance',
+      entityId: 'stuck-repair',
       summary: 'Triggered a manual stuck-work repair sweep',
       req,
     });

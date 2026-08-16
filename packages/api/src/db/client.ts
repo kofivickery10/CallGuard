@@ -1,5 +1,6 @@
 import { Pool, type PoolConfig, type PoolClient } from 'pg';
 import { config } from '../config.js';
+import { stripSslModeParam } from './connection-url.js';
 
 // Managed Postgres providers (AWS Lightsail, RDS, Heroku, etc.) require SSL
 // but use internal CAs that aren't in the system trust store. We strip
@@ -9,13 +10,33 @@ const rawUrl = config.database.url;
 const wantsSsl = /sslmode=(require|prefer|verify-|no-verify|true)/i.test(rawUrl)
   || /^postgresql:\/\/.+@(?!localhost|127\.|::1)/.test(rawUrl);
 
-const cleanUrl = rawUrl
-  .replace(/[?&]sslmode=[^&]*/gi, '')
-  .replace(/\?&/, '?')
-  .replace(/[?&]$/, '');
+const cleanUrl = stripSslModeParam(rawUrl);
+
+// Which pool ceiling applies depends on which process this is: the worker's
+// entrypoint is jobs/worker.js (jobs/worker.ts in dev, via tsx) — everything
+// else importing this module is the API server. This process runs one or the
+// other, never both, so detecting it once at import time is enough.
+//
+// The worker default (config.database.poolMaxWorker) must stay above the sum
+// of every BullMQ Worker's `concurrency` in jobs/worker.ts — each concurrent
+// job can hold a connection — plus headroom for the scheduler refresh and the
+// 30s heartbeat write that run independently of job processing. At the time
+// of writing that sum is transcription(2) + scoring(2) + ingestion(2) +
+// alerts(4) + maintenance(1) + stuck-repair(1) = 12, so the default of 15
+// leaves 3 spare. If you raise any of those `concurrency` values, raise
+// DB_POOL_MAX_WORKER (or the default here) to match, or jobs will start
+// queueing for a connection instead of running.
+const isWorkerProcess = /worker\.(js|ts)$/.test(process.argv[1] ?? '');
+const poolMax = isWorkerProcess ? config.database.poolMaxWorker : config.database.poolMaxApi;
 
 const poolConfig: PoolConfig = {
   connectionString: cleanUrl,
+  max: poolMax,
+  idleTimeoutMillis: config.database.poolIdleTimeoutMs,
+  // Without this, a client that can't get a pooled connection waits
+  // indefinitely — pool exhaustion then surfaces as requests/jobs silently
+  // hanging rather than as a visible, retryable error.
+  connectionTimeoutMillis: config.database.poolConnectionTimeoutMs,
 };
 
 if (wantsSsl) {

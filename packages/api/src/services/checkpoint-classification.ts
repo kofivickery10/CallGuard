@@ -80,10 +80,18 @@ export function classifyItems(
       manualReview.push(item);
       continue;
     }
+    // NULL confidence must trip a consent gate, not slide past it: NULL means
+    // speaker attribution was never established at all (no stereo-channel pin
+    // and the mono heuristic never ran, e.g. live-streamed calls), which is
+    // strictly less trustworthy than a measured low score, not more. Reading
+    // NULL as "fully confident" (`!== null` before the floor check) is exactly
+    // how "we never established who was speaking" was auto-scored as if the
+    // customer's own voice had given consent — a false pass on consent is the
+    // worst output this product can produce, so an unknown speaker split
+    // routes to a human the same as a known-unreliable one.
     const unreliableSpeakerSplit =
       item.consent_gate &&
-      speakerAttributionConfidence !== null &&
-      speakerAttributionConfidence < confidenceFloor;
+      (speakerAttributionConfidence === null || speakerAttributionConfidence < confidenceFloor);
     if (unreliableSpeakerSplit) {
       provisional.push(item);
       continue;

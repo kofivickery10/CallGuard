@@ -27,7 +27,7 @@ import type {
 } from '@callguard/shared';
 
 // Mirrors the attention queue's labels so the two pages never describe the same
-// run differently. Kept in step with DataForms.tsx by hand — a run status is a
+// run differently. Kept in step with Reconciliation.tsx by hand — a run status is a
 // product decision, not a rendering detail.
 const RUN_STATUS: Record<ReconciliationRunStatus, { label: string; className: string }> = {
   completed: { label: 'Checked', className: 'bg-pass-bg text-pass' },
@@ -236,12 +236,12 @@ const TH = 'text-left px-5 py-2.5 text-table-header uppercase text-text-muted bg
 // ============================================================
 
 /**
- * The compliance section's dashboard. Today it is fed entirely by the Data
- * Forms reconciliation record; it is named for its place in the nav rather than
+ * The compliance section's dashboard. Today it is fed entirely by the
+ * Reconciliation record; it is named for its place in the nav rather than
  * its current source so Data Capture or breach content can join it later
  * without the page having to be renamed.
  *
- * The attention queue on /data-forms answers "what do I action next". This page
+ * The attention queue on /reconciliation answers "what do I action next". This page
  * answers the two questions a compliance lead has to answer to someone else —
  * is the checking actually running, and where are the findings concentrated.
  *
@@ -332,7 +332,7 @@ export function ComplianceDashboard() {
         <div>
           <h2 className="text-page-title text-text-primary">Compliance Dashboard</h2>
           <p className="text-page-sub text-text-subtle mt-1">
-            Data Forms: how the application checks are running across every sale, and where the
+            Reconciliation: how the application checks are running across every sale, and where the
             findings sit.
           </p>
         </div>
@@ -354,7 +354,7 @@ export function ComplianceDashboard() {
 
       {summaryQ.isError && (
         <div className="mb-5">
-          <ErrorBanner>Could not load the Data Forms figures.</ErrorBanner>
+          <ErrorBanner>Could not load the Reconciliation figures.</ErrorBanner>
         </div>
       )}
 
@@ -369,10 +369,10 @@ export function ComplianceDashboard() {
             anything is judged against it.
           </p>
           <Link
-            to="/data-forms"
+            to="/reconciliation"
             className="inline-block mt-4 px-[18px] py-[9px] rounded-btn text-table-cell font-semibold bg-primary text-white hover:bg-primary-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
           >
-            Go to Data Forms
+            Go to Reconciliation
           </Link>
         </div>
       ) : (
@@ -432,7 +432,7 @@ export function ComplianceDashboard() {
             <StatCard
               label="Findings"
               value={s?.findings ?? null}
-              to="/data-forms#attention"
+              to="/reconciliation#attention"
               tone={s && s.findings > 0 ? 'fail' : 'default'}
               note={
                 s && s.missing_from_application > 0
@@ -444,7 +444,7 @@ export function ComplianceDashboard() {
             <StatCard
               label="Sales with findings"
               value={s?.sales_with_findings ?? null}
-              to="/data-forms#attention"
+              to="/reconciliation#attention"
               tone={s && s.sales_with_findings > 0 ? 'fail' : 'default'}
               note={
                 s && s.sales_checked > 0
@@ -470,6 +470,7 @@ export function ComplianceDashboard() {
             <StatCard
               label="Failed or abandoned"
               value={s?.failed ?? null}
+              to="/reconciliation#attention"
               tone={s && s.failed > 0 ? 'fail' : 'default'}
               note="These never retry on their own"
               loading={loading}
@@ -477,7 +478,7 @@ export function ComplianceDashboard() {
             <StatCard
               label="Sets to confirm"
               value={s?.awaiting_confirmation ?? null}
-              to="/data-forms#awaiting"
+              to="/reconciliation#awaiting"
               tone={s && s.awaiting_confirmation > 0 ? 'review' : 'default'}
               note="Question sets awaiting a person"
               loading={loading}
@@ -581,7 +582,7 @@ export function ComplianceDashboard() {
                           <td className="px-5 py-3.5 text-table-cell text-text-primary font-medium">
                             {row.profile_id ? (
                               <Link
-                                to={`/data-forms/profiles/${row.profile_id}`}
+                                to={`/reconciliation/profiles/${row.profile_id}`}
                                 className="hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded-btn"
                               >
                                 {row.insurer}
@@ -809,7 +810,7 @@ export function ComplianceDashboard() {
             title="Recent checks"
             action={
               <Link
-                to="/data-forms"
+                to="/reconciliation"
                 className="text-table-cell text-primary font-medium hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded-btn"
               >
                 View all

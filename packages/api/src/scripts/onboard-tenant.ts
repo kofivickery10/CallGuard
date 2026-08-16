@@ -59,7 +59,10 @@ interface OnboardConfig {
   knowledge_base?: Array<{ section: string; file?: string; files?: string[] }>;
 }
 
-interface CsvItem {
+// Exported so other scripts that import scorecard CSVs (e.g.
+// score-prospect-calls.ts) parse the same full schema — including
+// severity and consent_gate — rather than carrying a second, narrower parser.
+export interface CsvItem {
   label: string;
   description: string;
   score_type: string;
@@ -75,7 +78,7 @@ interface CsvItem {
 
 const TRUTHY = ['true', 'yes', 'y', '1'];
 
-function parseCsvLine(line: string): string[] {
+export function parseCsvLine(line: string): string[] {
   const out: string[] = [];
   let cur = '';
   let inQ = false;
@@ -91,7 +94,7 @@ function parseCsvLine(line: string): string[] {
   return out;
 }
 
-function parseScorecardCsv(csvPath: string): CsvItem[] {
+export function parseScorecardCsv(csvPath: string): CsvItem[] {
   const text = fs.readFileSync(csvPath, 'utf-8').replace(/^﻿/, '').replace(/\r/g, '');
   const lines = text.split('\n').filter((l) => l.trim());
   const header = parseCsvLine(lines[0]!).map((h) => h.trim().toLowerCase());
@@ -122,7 +125,7 @@ function parseScorecardCsv(csvPath: string): CsvItem[] {
   return items;
 }
 
-function branchToAppliesWhen(branch: string): string | null {
+export function branchToAppliesWhen(branch: string): string | null {
   const parts = branch.split(',').map((b) => b.trim()).filter(Boolean);
   if (parts.length === 0) return null;
   return JSON.stringify({ branch: parts.length === 1 ? parts[0] : parts });
@@ -282,8 +285,13 @@ async function main() {
   await pool.end();
 }
 
-main().catch(async (err) => {
-  console.error('Onboarding failed:', err instanceof Error ? err.message : err);
-  await pool.end().catch(() => {});
-  process.exit(1);
-});
+// Only run main() when this file is executed directly (`tsx onboard-tenant.ts`),
+// not when another script (e.g. score-prospect-calls.ts) imports its exported
+// CSV parser — otherwise the import alone would kick off a live onboarding run.
+if (require.main === module) {
+  main().catch(async (err) => {
+    console.error('Onboarding failed:', err instanceof Error ? err.message : err);
+    await pool.end().catch(() => {});
+    process.exit(1);
+  });
+}
