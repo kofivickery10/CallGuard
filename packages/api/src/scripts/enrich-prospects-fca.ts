@@ -51,6 +51,31 @@
  * The CSV tolerates a header row and either a single column of names/FRNs, or
  * a `name,frn` shape (with or without a header naming those columns).
  *
+ * --discover mode BUILDS a prospect list from Register search terms, rather
+ * than enriching one you already have:
+ *   npx tsx src/scripts/enrich-prospects-fca.ts --discover "mortgage" "protection" --limit 100
+ *   npx tsx src/scripts/enrich-prospects-fca.ts --discover --terms-file terms.txt --yes
+ *
+ * PAGINATION (confirmed against the live Register — see fcaGet/searchFirmPage):
+ * a Search response's `ResultInfo` carries `total_count` (the true match
+ * count) and `per_page` (always "20" — not overridable; `&page=N` is
+ * silently ignored). More results ARE reachable via `&pgnp=N`, which
+ * `ResultInfo.Next` — present on every page but the last — already encodes.
+ * So 20 is a page size, not a hard cap. The real constraint is query
+ * breadth, not depth: a single very common word (e.g. "mortgage",
+ * "insurance", "advice", "financial") reliably fails outright — either an
+ * HTTP 500 Apex governor-limit error ("Too many query rows: 50001") or an
+ * HTTP 200 body `{Status:"413", Message:"Error: Request Entity Too Large"}`
+ * — even on page 1, before any pagination happens. Two-word phrases (e.g.
+ * "mortgage advice", "equity release", "life insurance") reliably work and
+ * still return hundreds of matches. --discover treats a failed search as a
+ * per-term failure to report and move past, never a reason to abort the run.
+ *
+ * --discover's filtering (dead/introducer status exclusion, named-individual
+ * skip, FRN dedupe, --limit truncation, unrecognised-status collection) is
+ * pure logic — see the "--discover pure logic" section below — exercised
+ * directly by enrich-prospects-fca.test.ts without hitting the live API.
+ *
  * Requires FCA_API_EMAIL and FCA_API_KEY in the environment (see
  * .env.example) — deliberately NOT read via src/config.ts, so the ordinary
  * API server and worker processes never carry this credential.
@@ -129,7 +154,23 @@ export interface FcaAddressData {
   [key: string]: unknown;
 }
 
-type FcaResult<T> = { ok: true; data: T } | { ok: false; message: string };
+// The Search endpoint's ResultInfo — present only on a Search response (Firm/
+// Permissions/Address never carry it). Confirmed live: `total_count` is the
+// true match count across all pages, `per_page` is always "20", and `Next`
+// is the follow-on URL (carrying `&pgnp=N+1`) present on every page except
+// the last — its absence is the pagination end signal. See the --discover
+// pagination investigation notes in this file's header comment.
+interface FcaResultInfo {
+  Next?: string;
+  Previous?: string;
+  page?: string;
+  per_page?: string;
+  total_count?: string;
+}
+
+type FcaResult<T> =
+  | { ok: true; data: T; resultInfo: FcaResultInfo | null }
+  | { ok: false; message: string };
 
 async function fcaGet<T>(
   rateLimiter: RateLimiter,
@@ -149,7 +190,7 @@ async function fcaGet<T>(
   } catch (err) {
     return { ok: false, message: `could not read response body: ${(err as Error).message}` };
   }
-  let body: { Status?: string; Message?: string; Data?: T } | null = null;
+  let body: { Status?: string; Message?: string; Data?: T; ResultInfo?: FcaResultInfo } | null = null;
   try {
     body = JSON.parse(text);
   } catch {
@@ -162,11 +203,17 @@ async function fcaGet<T>(
   // Every successful Register response we've seen starts its Message with
   // "Ok." (e.g. "Ok. Search successful", "Ok. Firm Found"). Anything else —
   // "Firm not found", "No search result found", a missing field entirely —
-  // is treated as a failed lookup, per the brief.
+  // is treated as a failed lookup, per the brief. This also covers two real
+  // failure modes hit while investigating --discover pagination: an overly
+  // broad single-word search term (e.g. "mortgage", "insurance") comes back
+  // as either an HTTP 500 Apex governor-limit error or an HTTP 200 body
+  // `{Status:"413", Message:"Error: Request Entity Too Large"}` — neither has
+  // an "Ok."-prefixed Message, so both land here as an ordinary failure a
+  // caller can log and move past, without needing special-case handling.
   if (!res.ok || !message || !/^ok\b/i.test(message)) {
     return { ok: false, message: message || `HTTP ${res.status}` };
   }
-  return { ok: true, data: body!.Data as T };
+  return { ok: true, data: body!.Data as T, resultInfo: body!.ResultInfo ?? null };
 }
 
 async function searchFirm(
@@ -175,6 +222,20 @@ async function searchFirm(
   name: string
 ): Promise<FcaResult<FcaSearchResultItem[]>> {
   return fcaGet(rl, headers, `/Search?q=${encodeURIComponent(name)}&type=firm`);
+}
+
+// Same Search endpoint as searchFirm, but requesting a specific page via
+// `pgnp` — the paging parameter the Register's own `ResultInfo.Next` URL
+// uses (confirmed live; `&page=N` is silently ignored). Used only by
+// --discover, which needs every match for a broad term, not just the first
+// 20 (`per_page` is fixed and not overridable).
+async function searchFirmPage(
+  rl: RateLimiter,
+  headers: Record<string, string>,
+  term: string,
+  page: number
+): Promise<FcaResult<FcaSearchResultItem[]>> {
+  return fcaGet(rl, headers, `/Search?q=${encodeURIComponent(term)}&type=firm&pgnp=${page}`);
 }
 
 async function getFirm(
@@ -238,6 +299,134 @@ export function isLikelyCompanyName(name: string): boolean {
   if (/&/.test(name)) return true;
   const lower = name.toLowerCase();
   return CORPORATE_MARKERS.some((marker) => new RegExp(`\\b${marker}\\b`, 'i').test(lower));
+}
+
+// ── --discover pure logic (status filtering, dedupe, --limit) ──────────────
+//
+// --discover has to decide, from a Search result's `Status` string alone,
+// whether a firm is worth enriching at all, before it ever spends the ~3
+// extra requests enrichment costs. Three buckets:
+//   - excluded: a dead firm or an introducer-only AR (see isDeadStatus /
+//     isIntroducerStatus below) — never written.
+//   - known-good: an active status we recognise — enriched normally.
+//   - unrecognised: neither of the above — still enriched (a false exclusion
+//     is worse than a false inclusion here, symmetric with the
+//     isLikelyCompanyName bias the other way), but surfaced separately so a
+//     human can confirm the Register isn't using some other live status this
+//     script doesn't know about.
+
+// Firm/AR registration that has lapsed, been cancelled, or otherwise ended —
+// there is no ongoing business to sell to. Real Register values seen live
+// include "No longer registered as an Appointed Representative", "No longer
+// authorised" and "No Longer Registered as a PSD Agent".
+//
+// "revoked", "lapsed" and "applied to cancel" were added after being caught
+// live by the unrecognised-statuses safety net and ruled on by a human (not
+// guessed at here): a firm whose FCA permission has been revoked, whose
+// authorisation has lapsed, or which has applied to cancel its permissions
+// (i.e. is winding down) cannot lawfully give regulated advice — so there is
+// no advice call for CallGuard to score. That's the same non-prospect
+// category as an introducer AR: excluded because the product cannot serve
+// them, not on any guess about their commercial appetite. "applied to
+// cancel" is listed as its own keyword, distinct from "cancelled" above,
+// since "Applied to Cancel" does not contain the substring "cancelled".
+const DEAD_STATUS_KEYWORDS = [
+  'no longer',
+  'deregistered',
+  'cancelled',
+  'expired',
+  'dissolved',
+  'revoked',
+  'lapsed',
+  'applied to cancel',
+];
+
+export function isDeadStatus(status: string | null | undefined): boolean {
+  if (!status) return false;
+  const lower = status.toLowerCase();
+  return DEAD_STATUS_KEYWORDS.some((kw) => lower.includes(kw));
+}
+
+// "Appointed representative - introducer" is a live, in-good-standing AR —
+// but an introducer-only AR passes leads to its principal and never itself
+// gives regulated advice or runs the sales call CallGuard scores. It can
+// never buy this product, regardless of how "active" its Register status
+// looks, so it's excluded alongside genuinely dead firms rather than merely
+// deprioritised.
+export function isIntroducerStatus(status: string | null | undefined): boolean {
+  if (!status) return false;
+  return status.toLowerCase().includes('introducer');
+}
+
+export function isExcludedStatus(status: string | null | undefined): boolean {
+  return isDeadStatus(status) || isIntroducerStatus(status);
+}
+
+/** Statuses this script explicitly recognises as "still an active firm
+ * worth enriching", beyond the two exact Register values in the brief
+ * ("Authorised", "Appointed representative"). Anything else that contains
+ * "authorised" after the dead/introducer exclusions above have already run
+ * is presumed to be a live variant we haven't catalogued by name (e.g. "EEA
+ * Authorised", seen live on the Register) rather than something genuinely
+ * unknown — "No longer authorised" never reaches this function, since
+ * isDeadStatus already caught it. */
+export function isKnownGoodStatus(status: string | null | undefined): boolean {
+  if (!status) return false;
+  const lower = status.toLowerCase().trim();
+  if (lower === 'authorised' || lower === 'appointed representative') return true;
+  return lower.includes('authorised');
+}
+
+export interface DiscoveryCandidate {
+  frn: string;
+  name: string;
+  status: string;
+}
+
+/** Turns raw Search results into discovery candidates: strips the postcode
+ * suffix from the name (see stripPostcodeSuffix) and drops the blank-FRN
+ * "clone of FCA authorised firm" scam-warning entries the Register
+ * sometimes returns — the same filter resolveFrn already applies for the
+ * single-firm lookup path. */
+export function toDiscoveryCandidates(items: FcaSearchResultItem[]): DiscoveryCandidate[] {
+  return items
+    .filter((i) => (i['Reference Number'] || '').trim() !== '')
+    .map((i) => ({
+      frn: i['Reference Number'],
+      name: stripPostcodeSuffix(i.Name),
+      status: i.Status,
+    }));
+}
+
+/** Drops candidates whose FRN has already been seen this run (across every
+ * search term), recording newly-seen FRNs into `seen` as a side effect so
+ * the same FRN surfacing again under a later term is also caught. */
+export function dedupeByFrn(candidates: DiscoveryCandidate[], seen: Set<string>): DiscoveryCandidate[] {
+  const out: DiscoveryCandidate[] = [];
+  for (const c of candidates) {
+    if (seen.has(c.frn)) continue;
+    seen.add(c.frn);
+    out.push(c);
+  }
+  return out;
+}
+
+export type LimitDecision = 'process-new' | 'process-existing' | 'skip-limit';
+
+/** Decides what to do with one already-deduped, non-excluded, non-individual
+ * discovery candidate, given whether its FRN is already in `prospects` and
+ * how many genuinely NEW firms this run has queued for insert so far.
+ * `--limit` only bounds new inserts (per the brief — "how many NEW firms get
+ * written"), so a firm already on file is always processed (to refresh its
+ * Register-derived fields) regardless of the running new-firm count; a
+ * not-yet-known firm is processed only while under the limit, and skipped
+ * (never silently dropped without being counted) once it's reached. Kept
+ * pure/synchronous so this truncation behaviour is unit-testable without a
+ * database. */
+export function decideLimitAction(alreadyKnown: boolean, newCountSoFar: number, limit: number): LimitDecision {
+  if (alreadyKnown) return 'process-existing';
+  if (newCountSoFar >= limit) return 'skip-limit';
+  return 'process-new';
 }
 
 /** The Permissions endpoint returns a dict keyed by permission name (values
@@ -601,6 +790,43 @@ export function parseArgs(argv: string[]): ParsedArgs {
   return { file, yes, dryRun, positional };
 }
 
+const DEFAULT_DISCOVER_LIMIT = 250;
+
+export interface DiscoverArgs {
+  terms: string[];
+  termsFile: string | null;
+  limit: number;
+  yes: boolean;
+  dryRun: boolean;
+}
+
+// Separate from parseArgs (rather than extending it) so the existing
+// ParsedArgs shape — and the tests asserting its exact fields — are
+// untouched; --discover is a distinct mode with its own flags (--terms-file,
+// --limit) that don't apply to the single-firm enrich path.
+export function parseDiscoverArgs(argv: string[]): DiscoverArgs {
+  let termsFile: string | null = null;
+  let limit = DEFAULT_DISCOVER_LIMIT;
+  let yes = false;
+  let dryRun = false;
+  const terms: string[] = [];
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i]!;
+    if (a === '--discover') continue;
+    if (a === '--terms-file') { termsFile = argv[++i] ?? null; continue; }
+    if (a === '--limit') {
+      const n = Number(argv[++i]);
+      if (Number.isFinite(n) && n > 0) limit = Math.floor(n);
+      continue;
+    }
+    if (a === '--yes') { yes = true; continue; }
+    if (a === '--dry-run') { dryRun = true; continue; }
+    if (a.startsWith('--')) continue;
+    terms.push(a);
+  }
+  return { terms, termsFile, limit, yes, dryRun };
+}
+
 // Host + database name only — never the credentials embedded in the URL.
 function dbTargetLabel(): string {
   try {
@@ -641,6 +867,225 @@ export function checkFcaCredentials(env: NodeJS.ProcessEnv): CredentialCheck {
   return { ok: true, email, key };
 }
 
+// ── --discover ───────────────────────────────────────────────────────────
+
+/** Whether an FRN is already in `prospects`, purely to decide (via
+ * decideLimitAction) whether this candidate is exempt from --limit. The
+ * ground truth for create-vs-update is still processEnriched's own
+ * findExisting call below — this is only ever used for the limit gate. */
+async function isFrnKnown(frn: string): Promise<boolean> {
+  const row = await queryOne<{ id: string }>(`SELECT id FROM prospects WHERE frn = $1`, [frn]);
+  return !!row;
+}
+
+function loadDiscoverTerms(args: DiscoverArgs): string[] {
+  let terms = [...args.terms];
+  if (args.termsFile) {
+    const resolved = path.resolve(process.cwd(), args.termsFile);
+    if (!fs.existsSync(resolved)) {
+      throw new Error(`No such file: ${resolved}`);
+    }
+    const content = fs.readFileSync(resolved, 'utf8');
+    const fileTerms = content
+      .split('\n')
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0 && !l.startsWith('#'));
+    terms = terms.concat(fileTerms);
+  }
+  return terms.map((t) => t.trim()).filter((t) => t.length > 0);
+}
+
+async function runDiscover(argv: string[], headers: Record<string, string>): Promise<void> {
+  const args = parseDiscoverArgs(argv);
+  const write = args.yes && !args.dryRun;
+
+  let terms: string[];
+  try {
+    terms = loadDiscoverTerms(args);
+  } catch (err) {
+    console.error((err as Error).message);
+    process.exitCode = 1;
+    return;
+  }
+
+  if (terms.length === 0) {
+    console.error(
+      'Usage: enrich-prospects-fca.ts --discover <term> [<term> ...] [--terms-file <path>] [--limit N] [--yes] [--dry-run]'
+    );
+    process.exitCode = 1;
+    return;
+  }
+
+  printDbBanner();
+  console.log(`\nDiscover mode: ${terms.length} search term(s), --limit ${args.limit} new firm(s).`);
+  console.log(write ? 'Mode: LIVE — writes will be made.' : 'Mode: PREVIEW (dry run) — nothing will be written.');
+
+  const rl = new RateLimiter();
+
+  const seenFrns = new Set<string>();
+  const unrecognisedStatuses = new Set<string>();
+  let rawResultsCount = 0;
+  let excludedDeadCount = 0;
+  let excludedIntroducerCount = 0;
+  let skippedIndividualCount = 0;
+  let blankFrnCount = 0;
+  let duplicateCount = 0;
+  let alreadyKnownCount = 0;
+  let newCount = 0;
+  let limitSkippedCount = 0;
+  let termsSearched = 0;
+  let limitReached = false;
+  const termFailures: string[] = [];
+  const failed: string[] = [];
+  const created: string[] = [];
+  const updated: string[] = [];
+
+  for (const term of terms) {
+    if (limitReached) break;
+    termsSearched++;
+    let page = 1;
+    for (;;) {
+      const pageResult = await searchFirmPage(rl, headers, term, page);
+      if (!pageResult.ok) {
+        termFailures.push(`  "${term}" (page ${page}) — ${pageResult.message}`);
+        console.log(`  [search-failed] "${term}" page ${page} — ${pageResult.message}`);
+        break;
+      }
+      const items = pageResult.data ?? [];
+      if (items.length === 0) break;
+      rawResultsCount += items.length;
+
+      const candidates = toDiscoveryCandidates(items);
+      // toDiscoveryCandidates drops the blank-FRN "clone of FCA authorised
+      // firm" scam-warning entries the Register sometimes mixes into Search
+      // results (see resolveFrn's identical filter) — counted separately so
+      // every one of `rawResultsCount` is accounted for somewhere below.
+      blankFrnCount += items.length - candidates.length;
+      const fresh = dedupeByFrn(candidates, seenFrns);
+      duplicateCount += candidates.length - fresh.length;
+
+      for (const c of fresh) {
+        if (isIntroducerStatus(c.status)) {
+          excludedIntroducerCount++;
+          continue;
+        }
+        if (isDeadStatus(c.status)) {
+          excludedDeadCount++;
+          continue;
+        }
+        if (!isKnownGoodStatus(c.status)) {
+          unrecognisedStatuses.add(c.status);
+        }
+        if (!isLikelyCompanyName(c.name)) {
+          skippedIndividualCount++;
+          continue;
+        }
+
+        const alreadyKnown = await isFrnKnown(c.frn);
+        const decision = decideLimitAction(alreadyKnown, newCount, args.limit);
+        if (decision === 'skip-limit') {
+          // Never silently drop the rest of an already-fetched page: keep
+          // classifying (introducer/dead/individual above already ran; this
+          // just stops enriching) every remaining candidate on this page so
+          // each is still accounted for in the summary, rather than only the
+          // one candidate that first tripped the limit. Once this page is
+          // done, the page/term loops below stop fetching anything further.
+          limitSkippedCount++;
+          limitReached = true;
+          continue;
+        }
+
+        const enrichOutcome = await enrichFirm(c.frn, c.status, rl, headers);
+        if (!enrichOutcome.ok) {
+          failed.push(`  "${c.name}" (FRN ${c.frn}) — ${enrichOutcome.reason}`);
+          console.log(`  [FAILED]    "${c.name}" (FRN ${c.frn}) — ${enrichOutcome.reason}`);
+          continue;
+        }
+        const firm = enrichOutcome.firm;
+        const noteSuffix = enrichOutcome.notes.length > 0 ? ` [note: ${enrichOutcome.notes.join('; ')}]` : '';
+
+        if (!isLikelyCompanyName(firm.firmName)) {
+          skippedIndividualCount++;
+          console.log(`  [skip-individual] "${firm.firmName}" (FRN ${firm.frn})`);
+          continue;
+        }
+
+        try {
+          const plan = await processEnriched(firm, write);
+          if (plan.action === 'create') {
+            newCount++;
+            created.push(`  "${firm.firmName}" (FRN ${firm.frn})${write ? '' : ' — would be created'}${noteSuffix}`);
+            console.log(`  [${write ? 'created' : 'would create'}] ${firm.firmName} (FRN ${firm.frn})${noteSuffix}`);
+          } else {
+            alreadyKnownCount++;
+            const changeNote = plan.diffs.length > 0 ? plan.diffs.join('; ') : 'no changes';
+            updated.push(`  "${firm.firmName}" (FRN ${firm.frn}) — ${changeNote}${noteSuffix}`);
+            console.log(
+              `  [${write ? 'updated' : 'would update'}] ${firm.firmName} (FRN ${firm.frn}) — ${changeNote}${noteSuffix}`
+            );
+          }
+        } catch (err) {
+          failed.push(`  "${firm.firmName}" (FRN ${firm.frn}) — ${(err as Error).message}`);
+          console.log(`  [FAILED]    ${firm.firmName} (FRN ${firm.frn}) — ${(err as Error).message}`);
+        }
+      }
+
+      if (limitReached || !pageResult.resultInfo?.Next) break;
+      page++;
+    }
+  }
+
+  console.log('\n=== Discovery Summary ===');
+  console.log(
+    `Terms searched:                    ${termsSearched} / ${terms.length}` +
+      (limitReached && termsSearched < terms.length ? ' (stopped early — --limit reached)' : '')
+  );
+  console.log(`Raw search results seen:           ${rawResultsCount}`);
+  console.log(`Excluded — dead firm:              ${excludedDeadCount}`);
+  console.log(`Excluded — introducer AR:          ${excludedIntroducerCount}`);
+  console.log(`Skipped — named individual:        ${skippedIndividualCount} (not written; needs an LIA)`);
+  console.log(`Dropped — blank-FRN scam clone:    ${blankFrnCount}`);
+  console.log(`Duplicate FRN (seen earlier term):  ${duplicateCount}`);
+  console.log(`Already known (refreshed):         ${alreadyKnownCount}`);
+  const newLabel = write ? 'Written (new)' : 'Would write (new)';
+  console.log(
+    `${newLabel}:${' '.repeat(Math.max(1, 36 - newLabel.length - 1))}${newCount}` +
+      (limitSkippedCount > 0
+        ? ` — --limit ${args.limit} reached, ${limitSkippedCount} further new candidate(s) NOT processed`
+        : '')
+  );
+  console.log(`Failed:                             ${failed.length}`);
+  failed.forEach((l) => console.log(l));
+
+  if (termFailures.length > 0) {
+    console.log(`\nSearch term failures (term skipped, e.g. an overly-broad single-word term):`);
+    termFailures.forEach((l) => console.log(l));
+  }
+
+  console.log(`\n${write ? 'Created' : 'Would create'} (${created.length}):`);
+  created.forEach((l) => console.log(l));
+
+  console.log(`\n${write ? 'Refreshed' : 'Would refresh'} — already known (${updated.length}):`);
+  updated.forEach((l) => console.log(l));
+
+  if (unrecognisedStatuses.size > 0) {
+    console.log('\n=== UNRECOGNISED STATUSES — included, please review ===');
+    [...unrecognisedStatuses].sort().forEach((s) => console.log(`  "${s}"`));
+  }
+
+  if (limitReached) {
+    console.log(
+      `\n--limit ${args.limit} reached — run stopped early ` +
+        `(${terms.length - termsSearched} term(s) not searched at all, plus any remaining pages of the term in progress). ` +
+        'Increase --limit or run again with the remaining terms to continue.'
+    );
+  }
+
+  if (!write) {
+    console.log('\nPREVIEW ONLY — nothing has been written. Re-run with --discover ... --yes to write the changes above.');
+  }
+}
+
 async function main(): Promise<void> {
   const cred = checkFcaCredentials(process.env);
   if (!cred.ok) {
@@ -654,7 +1099,13 @@ async function main(): Promise<void> {
     Accept: 'application/json',
   };
 
-  const { file, yes, dryRun, positional } = parseArgs(process.argv.slice(2));
+  const rawArgv = process.argv.slice(2);
+  if (rawArgv.includes('--discover')) {
+    await runDiscover(rawArgv, headers);
+    return;
+  }
+
+  const { file, yes, dryRun, positional } = parseArgs(rawArgv);
   const write = yes && !dryRun;
 
   let entries: InputEntry[] = [];
