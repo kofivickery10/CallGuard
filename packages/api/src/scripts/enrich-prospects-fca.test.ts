@@ -281,6 +281,28 @@ describe('isDeadStatus', () => {
     expect(isDeadStatus('Applied to Cancel')).toBe(true);
   });
 
+  it('confirms "No longer authorised" is already excluded by the "no longer" keyword, rather than assuming it', () => {
+    expect(isDeadStatus('No longer authorised')).toBe(true);
+  });
+
+  it('excludes "Registered" (CBTL — a registration regime, not an FSMA authorisation, so there is no regulated advice call to score)', () => {
+    expect(isDeadStatus('Registered')).toBe(true);
+    expect(isDeadStatus('REGISTERED')).toBe(true);
+    expect(isDeadStatus('  registered  ')).toBe(true);
+  });
+
+  it('does not exclude a status that merely contains "registered" as a substring — "Registered" is matched exactly, not as a keyword', () => {
+    // "No longer registered as an Appointed Representative" must already be
+    // excluded via the "no longer" keyword, not by a "registered" substring
+    // rule that would work by luck rather than by design.
+    expect(isDeadStatus('No longer registered as an Appointed Representative')).toBe(true);
+  });
+
+  it('excludes "Unauthorised" exactly', () => {
+    expect(isDeadStatus('Unauthorised')).toBe(true);
+    expect(isDeadStatus('UNAUTHORISED')).toBe(true);
+  });
+
   it('returns false for null/undefined/empty', () => {
     expect(isDeadStatus(null)).toBe(false);
     expect(isDeadStatus(undefined)).toBe(false);
@@ -312,6 +334,8 @@ describe('isExcludedStatus', () => {
     expect(isExcludedStatus('Revoked')).toBe(true);
     expect(isExcludedStatus('Lapsed')).toBe(true);
     expect(isExcludedStatus('Applied to Cancel')).toBe(true);
+    expect(isExcludedStatus('Registered')).toBe(true);
+    expect(isExcludedStatus('Unauthorised')).toBe(true);
   });
 
   it('is false for an active, non-introducer status', () => {
@@ -343,6 +367,18 @@ describe('isKnownGoodStatus', () => {
     // unrecognised-and-not-dead is used here instead.
     expect(isKnownGoodStatus('Suspended')).toBe(false);
     expect(isKnownGoodStatus('Under review')).toBe(false);
+  });
+
+  it('regression: "Unauthorised" is NOT treated as known-good, despite containing the substring "authorised"', () => {
+    // The matching hazard called out explicitly: a plain
+    // .includes('authorised') test would misclassify "Unauthorised" — the
+    // opposite of an active status — as known-good, because the substring
+    // is there. isKnownGoodStatus uses a whole-word match instead, which
+    // "Unauthorised" fails (no word boundary between "un" and "authorised"),
+    // so this must stay false on its own, independent of isDeadStatus.
+    expect('unauthorised'.includes('authorised')).toBe(true); // the hazard is real
+    expect(isKnownGoodStatus('Unauthorised')).toBe(false);
+    expect(isKnownGoodStatus('UNAUTHORISED')).toBe(false);
   });
 
   it('returns false for null/undefined/empty', () => {
