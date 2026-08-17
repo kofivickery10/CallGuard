@@ -26,9 +26,17 @@
  *   - Human-entered columns (`status`, `note`, `fit_score`,
  *     `last_contacted_at`, `ctps_screened_at`) are never touched on update —
  *     only the Register-derived columns (`firm_name`, `frn`, `fca_status`,
- *     `permissions`, `website`, `main_phone`, `registered_address`) plus
- *     `updated_at` are refreshed. `source` is set to 'directory' on rows this
- *     script creates and is left alone on rows it updates.
+ *     `permissions`, `website`, `main_phone`, `registered_address`,
+ *     `companies_house_number`, `authorised_since`) plus `updated_at` are
+ *     refreshed. `source` is set to 'directory' on rows this script creates
+ *     and is left alone on rows it updates. `former_ar`/`ar_ceased_on` are a
+ *     partial exception: they refresh only when this run finds positive
+ *     transition evidence (see TransitionEvidence) — with none found, they
+ *     carry the existing row's values through unchanged rather than being
+ *     reset, since a false former_ar is worse than a missed one (see the
+ *     "AR -> directly-authorised transition detection" section below).
+ *     `fit_score` is never set by this script even for a confirmed
+ *     transition — that stays a human judgement, not a generated number.
  *
  * This connects to whatever DATABASE_URL points at, which is usually
  * production, and writes real rows there. Nothing is written until --yes is
@@ -55,6 +63,13 @@
  * than enriching one you already have:
  *   npx tsx src/scripts/enrich-prospects-fca.ts --discover "mortgage" "protection" --limit 100
  *   npx tsx src/scripts/enrich-prospects-fca.ts --discover --terms-file terms.txt --yes
+ *
+ * --transitions-only (--discover flag) additionally filters what gets
+ * written down to firms that are `Authorised` AND either a confirmed former
+ * Appointed Representative or authorised within the last N months (default
+ * 24, override with --authorised-within-months N) — see the "AR ->
+ * directly-authorised transition detection" section below for why that
+ * combination is the signal worth surfacing.
  *
  * PAGINATION (confirmed against the live Register — see fcaGet/searchFirmPage):
  * a Search response's `ResultInfo` carries `total_count` (the true match
@@ -132,6 +147,10 @@ export interface FcaFirmData {
   Status: string;
   'Business Type'?: string;
   'Companies House Number'?: string;
+  // "dd/mm/yyyy" (e.g. "18/12/2025") when the current Status took effect —
+  // see parseFcaDate below for why this must never be parsed with `new
+  // Date(str)`.
+  'Status Effective Date'?: string;
   [key: string]: unknown;
 }
 
@@ -301,6 +320,224 @@ export function isLikelyCompanyName(name: string): boolean {
   return CORPORATE_MARKERS.some((marker) => new RegExp(`\\b${marker}\\b`, 'i').test(lower));
 }
 
+// The Register's "Status Effective Date" is "dd/mm/yyyy" (e.g. "18/12/2025"
+// for 18 December 2025) — NOT ISO 8601 and NOT US "mm/dd/yyyy". Feeding that
+// straight into `new Date(str)` is wrong on both counts: JS parses an
+// unrecognised slash-format as locale-dependent (commonly mm/dd/yyyy, so
+// "18/12/2025" — day 18 has no US month — becomes Invalid Date; a value like
+// "03/04/2025" would silently become 4 March instead of 3 April). This parser
+// only ever accepts the Register's actual dd/mm/yyyy shape and validates it
+// really is a calendar date (so "31/04/2025", which has no 31 April, is
+// rejected rather than silently rolling over into May), returning NULL — not
+// throwing, not Invalid Date — for anything malformed, empty, or absent, so
+// a bad value degrades to "we don't know" rather than a bogus stored date.
+const FCA_DATE_RE = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
+
+export function parseFcaDate(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const match = FCA_DATE_RE.exec(value.trim());
+  if (!match) return null;
+  const day = Number(match[1]);
+  const month = Number(match[2]);
+  const year = Number(match[3]);
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  const date = new Date(Date.UTC(year, month - 1, day));
+  // Catches calendar-invalid combinations (31 April, 29 Feb in a non-leap
+  // year, etc.) that the range checks above don't: Date.UTC normalises an
+  // out-of-range day into the following month rather than rejecting it, so
+  // rolling the parts back out and comparing is what actually detects it.
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) {
+    return null;
+  }
+  return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+// ── AR -> directly-authorised transition detection ──────────────────────
+//
+// Trust Point, CallGuard's existing client, is the pattern this exists to
+// find. On the live Register it shows up as two FRN records sharing one
+// Companies House number: FRN 1021037 was an Appointed Representative,
+// status now "No longer registered as an Appointed Representative" (eff.
+// 29/11/2024); FRN 1044052 is the same firm, now "Authorised" (eff.
+// 18/12/2025). The firm went from AR to directly authorised. That moment is
+// commercially decisive: as an AR, the principal firm supplies the
+// compliance scaffolding — file checks, call monitoring, QA — for free. On
+// authorisation the firm inherits all of that overnight with no compliance
+// function of its own. "Recently authorised, formerly an AR" is the signal
+// that a firm has just become worth selling this product to.
+//
+// former_ar is set ONLY on a Companies House number match between the two
+// FRN records (see isPersistableTransitionMatch) — a name-only match is
+// reported to the console as unconfirmed but never persisted. This costs
+// almost nothing: CH numbers are reliably present on recently-lapsed AR
+// records (Trust Point's, and M6 Mortgage Advice's, both are) and it's
+// exactly the recent cohort worth targeting — older lapses, where CH numbers
+// are often blank, aren't a lead worth chasing anyway. A firm authorised
+// within the recency window still qualifies for --transitions-only on that
+// basis alone, with no former-AR claim attached, when no CH match is found.
+
+// Firm names vary in punctuation, case and legal suffix between the
+// AR-era and authorised-era Register records for the same company (and
+// sometimes even between Search and Firm responses for one FRN) — this
+// strips that noise so two spellings of the same firm compare equal.
+// stripPostcodeSuffix has already removed the "(Postcode: ...)" suffix by
+// the time any name reaches this function.
+const NAME_SUFFIX_NOISE = /\b(limited|ltd|llp|plc|group|holdings|company|co)\b/g;
+
+export function normalizeFirmName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/&/g, ' and ')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(NAME_SUFFIX_NOISE, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// A lapsed Register record worth keeping as transition evidence — captured
+// while the discovery loop is otherwise discarding it as a dead/excluded
+// status (see isDeadStatus). Only ever built from Search results already
+// fetched for the current --discover run; never a separate lookup.
+export interface LapsedArCandidate {
+  frn: string;
+  name: string;
+  status: string;
+}
+
+// A narrower check than isDeadStatus: specifically "this FRN used to be an
+// Appointed Representative and no longer is" (e.g. "No longer registered as
+// an Appointed Representative"), as opposed to any other kind of lapse (e.g.
+// "No longer authorised", which is a firm that used to be directly
+// authorised — not an AR transition candidate at all). Only statuses this
+// matches are worth indexing as transition evidence.
+export function isLapsedArStatus(status: string | null | undefined): boolean {
+  if (!status) return false;
+  const lower = status.toLowerCase();
+  return lower.includes('no longer') && lower.includes('appointed representative');
+}
+
+/** Statuses this is willing to treat as "confirmed Authorised" for
+ * transition-detection purposes — deliberately the exact Register value
+ * only, not isKnownGoodStatus's broader "any authorised variant" (e.g. "EEA
+ * Authorised"), since the transition signal specifically means "directly
+ * authorised in its own right", not some other authorised-adjacent status. */
+export function isConfirmedAuthorisedStatus(status: string | null | undefined): boolean {
+  if (!status) return false;
+  return status.toLowerCase().trim() === 'authorised';
+}
+
+/** Narrows the full set of this run's lapsed-AR sightings down to the ones
+ * whose normalised name matches the given (already-authorised) firm's name —
+ * "plausible" matches worth spending the one extra Firm-record lookup on to
+ * compare Companies House numbers. Never called against every dead row, only
+ * this filtered, usually-empty-or-single-entry subset. */
+export function findPlausibleLapsedArMatches(
+  firmName: string,
+  lapsedCandidates: LapsedArCandidate[]
+): LapsedArCandidate[] {
+  const target = normalizeFirmName(firmName);
+  if (!target) return [];
+  return lapsedCandidates.filter((c) => normalizeFirmName(c.name) === target);
+}
+
+export type TransitionMatchKind = 'ch_number' | 'name' | 'none';
+
+/** Classifies an already name-matched lapsed AR record against the current
+ * firm's Companies House number. Companies House number is authoritative
+ * both ways when both sides have one on file: matching numbers confirm the
+ * match ('ch_number'), and known-but-different numbers veto it even though
+ * the names matched ('none'). When the CH number genuinely can't be compared
+ * (either side unknown) this reports 'name' — a name-only match, which
+ * isPersistableTransitionMatch (below) then refuses to persist. */
+export function decideTransitionMatch(
+  currentChNumber: string | null,
+  lapsedChNumber: string | null
+): TransitionMatchKind {
+  if (currentChNumber && lapsedChNumber) {
+    return currentChNumber === lapsedChNumber ? 'ch_number' : 'none';
+  }
+  return 'name';
+}
+
+/** The only match kind safe to write as former_ar = true. A name-only match
+ * is deliberately NOT enough on its own, even though decideTransitionMatch
+ * reports it as a "match": real Register data shows Companies House Number
+ * is reliably populated on recently-lapsed AR records but frequently blank
+ * on older ones, and a generic or franchise-style name (e.g. "Mortgage
+ * Advice Bureau") can normalise identically across many unrelated historic
+ * branch records — a real example caught live during testing, where a
+ * name-only accept picked an arbitrary 1986 branch lapse as "evidence" about
+ * a firm trading today. former_ar drives outreach messaging ("you inherited
+ * your network's compliance function"), so a false positive is worse than a
+ * missed one; a name-only match is reported to the console as unconfirmed
+ * (see findTransitionEvidence) but never reaches the database. */
+export function isPersistableTransitionMatch(matchKind: TransitionMatchKind): boolean {
+  return matchKind === 'ch_number';
+}
+
+/** Positive, CH-number-confirmed transition evidence only — there is no
+ * "confirmed not a former AR" state, just "no confirmed evidence found
+ * (yet)", so this is either the evidence or null, never a `formerAr: false`
+ * shape. That asymmetry is deliberate: it lets the upsert path (see
+ * processEnriched) treat "no evidence this run" as "leave whatever's already
+ * on the row alone" rather than clobbering a previously-confirmed transition
+ * back to false just because this particular search term's results didn't
+ * happen to include the lapsed record again. */
+export interface TransitionEvidence {
+  formerAr: true;
+  arCeasedOn: string | null;
+}
+
+const DEFAULT_AUTHORISED_WITHIN_MONTHS = 24;
+
+/** Whether `authorisedSince` falls within the last `months` months of `now`.
+ * Missing/malformed dates (already NULL by the time they reach here, per
+ * parseFcaDate) never count as "recent" — there is nothing to be recent
+ * about. */
+export function isAuthorisedWithinMonths(authorisedSince: string | null, months: number, now: Date): boolean {
+  if (!authorisedSince) return false;
+  const since = new Date(`${authorisedSince}T00:00:00Z`);
+  if (Number.isNaN(since.getTime())) return false;
+  const cutoff = new Date(now);
+  cutoff.setUTCMonth(cutoff.getUTCMonth() - months);
+  return since.getTime() >= cutoff.getTime();
+}
+
+/** --transitions-only's write filter: Authorised AND (a confirmed former AR
+ * OR authorised within the window). Facts only — this never touches
+ * fit_score, which stays a human judgement (see processEnriched). */
+export function qualifiesForTransitionsOnly(
+  fcaStatus: string | null,
+  formerAr: boolean,
+  authorisedSince: string | null,
+  months: number,
+  now: Date
+): boolean {
+  if (!isConfirmedAuthorisedStatus(fcaStatus)) return false;
+  return formerAr || isAuthorisedWithinMonths(authorisedSince, months, now);
+}
+
+export interface TransitionRankable {
+  formerAr: boolean;
+  authorisedSince: string | null;
+  firmName: string;
+}
+
+/** Most-promising-first ordering for --transitions-only's printed report:
+ * confirmed former ARs before merely-recent authorisations, then most
+ * recently authorised first, then name. authorisedSince is already an ISO
+ * "yyyy-mm-dd" string (see parseFcaDate) so plain string comparison sorts it
+ * correctly; a missing date sorts as the empty string, which is always
+ * "less than" a real date, so undated rows fall to the back rather than
+ * jumping the queue. */
+export function compareTransitionRank(a: TransitionRankable, b: TransitionRankable): number {
+  if (a.formerAr !== b.formerAr) return a.formerAr ? -1 : 1;
+  const aDate = a.authorisedSince ?? '';
+  const bDate = b.authorisedSince ?? '';
+  if (aDate !== bDate) return aDate > bDate ? -1 : 1;
+  return a.firmName.localeCompare(b.firmName);
+}
+
 // ── --discover pure logic (status filtering, dedupe, --limit) ──────────────
 //
 // --discover has to decide, from a Search result's `Status` string alone,
@@ -330,6 +567,13 @@ export function isLikelyCompanyName(name: string): boolean {
 // them, not on any guess about their commercial appetite. "applied to
 // cancel" is listed as its own keyword, distinct from "cancelled" above,
 // since "Applied to Cancel" does not contain the substring "cancelled".
+//
+// "run-off" was added the same way, catching both "Contractual run-off" and
+// "Supervised run-off" (and any other variant of the same family) seen live:
+// a firm in run-off has stopped writing new business and is only running
+// its existing book to expiry, so there is no new advice being given and no
+// advice call for CallGuard to score — again excluded because the product
+// cannot serve them, not on any guess about appetite.
 const DEAD_STATUS_KEYWORDS = [
   'no longer',
   'deregistered',
@@ -339,6 +583,7 @@ const DEAD_STATUS_KEYWORDS = [
   'revoked',
   'lapsed',
   'applied to cancel',
+  'run-off',
 ];
 
 // Statuses excluded on an EXACT match (after trimming/lowercasing) rather
@@ -655,6 +900,10 @@ interface EnrichedFirm {
   website: string | null;
   mainPhone: string | null;
   registeredAddress: string | null;
+  companiesHouseNumber: string | null;
+  // ISO "yyyy-mm-dd", parsed from the Firm record's "Status Effective Date"
+  // via parseFcaDate — null if absent or malformed.
+  authorisedSince: string | null;
 }
 
 type EnrichOutcome = { ok: true; firm: EnrichedFirm; notes: string[] } | { ok: false; reason: string };
@@ -704,13 +953,61 @@ async function enrichFirm(
       website: addr?.['Website Address']?.trim() || null,
       mainPhone: addr?.['Phone Number']?.trim() || null,
       registeredAddress: joinAddressLines(addr),
+      companiesHouseNumber: firmData['Companies House Number']?.trim() || null,
+      authorisedSince: parseFcaDate(firmData['Status Effective Date']),
     },
   };
 }
 
+/** The result of looking for transition evidence: `evidence` is the only
+ * part that ever reaches the database (via processEnriched), and only ever
+ * populated by a Companies House number match (see
+ * isPersistableTransitionMatch). `unconfirmedFrn` is a name-only match that
+ * could not be confirmed that way — surfaced in the console report so a
+ * human can look at it, but never written to former_ar/ar_ceased_on. */
+interface TransitionLookup {
+  evidence: TransitionEvidence | null;
+  unconfirmedFrn: string | null;
+}
+
+// Only spent on a "plausible" name match (see findPlausibleLapsedArMatches)
+// — one extra Firm-record lookup per plausible match, never per dead row —
+// to fetch the lapsed FRN's own Companies House number and the date its AR
+// status ended, then apply decideTransitionMatch's classification. Keeps
+// checking every plausible match even after finding a name-only one, in
+// case a later candidate is the one with the confirming CH number; a
+// CH-number match (via isPersistableTransitionMatch) returns immediately, a
+// CH-number mismatch ('none') vetoes that candidate outright, and a
+// name-only match is remembered (the first one seen) only for console
+// visibility.
+async function findTransitionEvidence(
+  firmName: string,
+  currentChNumber: string | null,
+  lapsedCandidates: LapsedArCandidate[],
+  rl: RateLimiter,
+  headers: Record<string, string>
+): Promise<TransitionLookup> {
+  const plausible = findPlausibleLapsedArMatches(firmName, lapsedCandidates);
+  let unconfirmedFrn: string | null = null;
+  for (const candidate of plausible) {
+    const lapsedFirmRes = await getFirm(rl, headers, candidate.frn);
+    const lapsedFirmData = lapsedFirmRes.ok ? (lapsedFirmRes.data ?? [])[0] ?? null : null;
+    const lapsedChNumber = lapsedFirmData?.['Companies House Number']?.trim() || null;
+    const matchKind = decideTransitionMatch(currentChNumber, lapsedChNumber);
+    if (isPersistableTransitionMatch(matchKind)) {
+      return {
+        evidence: { formerAr: true, arCeasedOn: parseFcaDate(lapsedFirmData?.['Status Effective Date']) },
+        unconfirmedFrn: null,
+      };
+    }
+    if (matchKind === 'name' && !unconfirmedFrn) unconfirmedFrn = candidate.frn;
+  }
+  return { evidence: null, unconfirmedFrn };
+}
+
 // ── Upsert ───────────────────────────────────────────────────────────────
 
-interface ExistingProspectRow {
+export interface ExistingProspectRow {
   id: string;
   firm_name: string;
   frn: string | null;
@@ -719,6 +1016,10 @@ interface ExistingProspectRow {
   website: string | null;
   main_phone: string | null;
   registered_address: string | null;
+  companies_house_number: string | null;
+  authorised_since: string | null;
+  former_ar: boolean;
+  ar_ceased_on: string | null;
 }
 
 async function findExisting(frn: string, firmName: string): Promise<ExistingProspectRow | 'ambiguous' | null> {
@@ -732,27 +1033,47 @@ async function findExisting(frn: string, firmName: string): Promise<ExistingPros
   return byName[0] ?? null;
 }
 
-function diffFields(existing: ExistingProspectRow, next: Record<string, unknown>): string[] {
+// node-postgres returns a DATE column (authorised_since, ar_ceased_on) as a
+// JS Date object, not the "yyyy-mm-dd" string this script writes and
+// compares against — left as-is, that mismatch would report a spurious
+// "change" on every single re-run even when the stored date is identical.
+// Normalise both sides to the same "yyyy-mm-dd" shape before comparing.
+function normalizeDiffValue(v: unknown): unknown {
+  if (v instanceof Date) return v.toISOString().slice(0, 10);
+  return v;
+}
+
+export function diffFields(existing: ExistingProspectRow, next: Record<string, unknown>): string[] {
   const diffs: string[] = [];
   for (const [k, v] of Object.entries(next)) {
-    const oldVal = (existing as unknown as Record<string, unknown>)[k];
-    const same = Array.isArray(v)
-      ? JSON.stringify([...v].sort()) === JSON.stringify([...(Array.isArray(oldVal) ? oldVal : [])].sort())
-      : (v ?? null) === (oldVal ?? null);
-    if (!same) diffs.push(`${k}: ${JSON.stringify(oldVal ?? null)} -> ${JSON.stringify(v ?? null)}`);
+    const oldVal = normalizeDiffValue((existing as unknown as Record<string, unknown>)[k]);
+    const newVal = normalizeDiffValue(v);
+    const same = Array.isArray(newVal)
+      ? JSON.stringify([...newVal].sort()) === JSON.stringify([...(Array.isArray(oldVal) ? oldVal : [])].sort())
+      : (newVal ?? null) === (oldVal ?? null);
+    if (!same) diffs.push(`${k}: ${JSON.stringify(oldVal ?? null)} -> ${JSON.stringify(newVal ?? null)}`);
   }
   return diffs;
 }
 
 async function processEnriched(
   firm: EnrichedFirm,
-  write: boolean
+  write: boolean,
+  transition: TransitionEvidence | null
 ): Promise<{ action: 'create' | 'update'; diffs: string[] }> {
   const existing = await findExisting(firm.frn, firm.firmName);
   if (existing === 'ambiguous') {
     throw new Error(`multiple existing prospects named "${firm.firmName}" with no FRN to disambiguate — resolve manually`);
   }
 
+  // former_ar/ar_ceased_on are never clobbered back to "no evidence": with
+  // no transition found this run (either because this call site never
+  // attempts detection — the single-firm enrich path below always passes
+  // null — or --discover ran the check and genuinely found nothing this
+  // time), the existing row's values are carried through unchanged rather
+  // than reset to false/null. Only positive evidence ever overwrites them.
+  // See TransitionEvidence's own comment for why that asymmetry is
+  // deliberate.
   const nextValues = {
     firm_name: firm.firmName,
     frn: firm.frn,
@@ -761,6 +1082,10 @@ async function processEnriched(
     website: firm.website,
     main_phone: firm.mainPhone,
     registered_address: firm.registeredAddress,
+    companies_house_number: firm.companiesHouseNumber,
+    authorised_since: firm.authorisedSince,
+    former_ar: transition ? true : existing ? existing.former_ar : false,
+    ar_ceased_on: transition ? transition.arCeasedOn : existing ? existing.ar_ceased_on : null,
   };
 
   if (existing) {
@@ -771,18 +1096,23 @@ async function processEnriched(
       // this SET clause — never written by this script.
       await query(
         `UPDATE prospects SET
-           firm_name           = $2,
-           frn                 = COALESCE($3, frn),
-           fca_status          = $4,
-           permissions         = $5,
-           website             = $6,
-           main_phone          = $7,
-           registered_address  = $8,
-           updated_at          = now()
+           firm_name               = $2,
+           frn                     = COALESCE($3, frn),
+           fca_status              = $4,
+           permissions             = $5,
+           website                 = $6,
+           main_phone              = $7,
+           registered_address      = $8,
+           companies_house_number  = $9,
+           authorised_since        = $10,
+           former_ar               = $11,
+           ar_ceased_on            = $12,
+           updated_at              = now()
          WHERE id = $1`,
         [
           existing.id, nextValues.firm_name, nextValues.frn, nextValues.fca_status,
           nextValues.permissions, nextValues.website, nextValues.main_phone, nextValues.registered_address,
+          nextValues.companies_house_number, nextValues.authorised_since, nextValues.former_ar, nextValues.ar_ceased_on,
         ]
       );
     }
@@ -791,11 +1121,15 @@ async function processEnriched(
 
   if (write) {
     await query(
-      `INSERT INTO prospects (firm_name, frn, fca_status, permissions, website, main_phone, registered_address, source)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,'directory')`,
+      `INSERT INTO prospects (
+         firm_name, frn, fca_status, permissions, website, main_phone, registered_address,
+         companies_house_number, authorised_since, former_ar, ar_ceased_on, source
+       )
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'directory')`,
       [
         nextValues.firm_name, nextValues.frn, nextValues.fca_status,
         nextValues.permissions, nextValues.website, nextValues.main_phone, nextValues.registered_address,
+        nextValues.companies_house_number, nextValues.authorised_since, nextValues.former_ar, nextValues.ar_ceased_on,
       ]
     );
   }
@@ -835,17 +1169,25 @@ export interface DiscoverArgs {
   limit: number;
   yes: boolean;
   dryRun: boolean;
+  // --transitions-only: write only firms that are Authorised AND (a
+  // confirmed former AR OR authorised within authorisedWithinMonths). See
+  // qualifiesForTransitionsOnly.
+  transitionsOnly: boolean;
+  authorisedWithinMonths: number;
 }
 
 // Separate from parseArgs (rather than extending it) so the existing
 // ParsedArgs shape — and the tests asserting its exact fields — are
 // untouched; --discover is a distinct mode with its own flags (--terms-file,
-// --limit) that don't apply to the single-firm enrich path.
+// --limit, --transitions-only, --authorised-within-months) that don't apply
+// to the single-firm enrich path.
 export function parseDiscoverArgs(argv: string[]): DiscoverArgs {
   let termsFile: string | null = null;
   let limit = DEFAULT_DISCOVER_LIMIT;
   let yes = false;
   let dryRun = false;
+  let transitionsOnly = false;
+  let authorisedWithinMonths = DEFAULT_AUTHORISED_WITHIN_MONTHS;
   const terms: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
@@ -858,10 +1200,16 @@ export function parseDiscoverArgs(argv: string[]): DiscoverArgs {
     }
     if (a === '--yes') { yes = true; continue; }
     if (a === '--dry-run') { dryRun = true; continue; }
+    if (a === '--transitions-only') { transitionsOnly = true; continue; }
+    if (a === '--authorised-within-months') {
+      const n = Number(argv[++i]);
+      if (Number.isFinite(n) && n > 0) authorisedWithinMonths = Math.floor(n);
+      continue;
+    }
     if (a.startsWith('--')) continue;
     terms.push(a);
   }
-  return { terms, termsFile, limit, yes, dryRun };
+  return { terms, termsFile, limit, yes, dryRun, transitionsOnly, authorisedWithinMonths };
 }
 
 // Host + database name only — never the credentials embedded in the URL.
@@ -947,7 +1295,8 @@ async function runDiscover(argv: string[], headers: Record<string, string>): Pro
 
   if (terms.length === 0) {
     console.error(
-      'Usage: enrich-prospects-fca.ts --discover <term> [<term> ...] [--terms-file <path>] [--limit N] [--yes] [--dry-run]'
+      'Usage: enrich-prospects-fca.ts --discover <term> [<term> ...] [--terms-file <path>] [--limit N] ' +
+        '[--transitions-only] [--authorised-within-months N] [--yes] [--dry-run]'
     );
     process.exitCode = 1;
     return;
@@ -956,11 +1305,22 @@ async function runDiscover(argv: string[], headers: Record<string, string>): Pro
   printDbBanner();
   console.log(`\nDiscover mode: ${terms.length} search term(s), --limit ${args.limit} new firm(s).`);
   console.log(write ? 'Mode: LIVE — writes will be made.' : 'Mode: PREVIEW (dry run) — nothing will be written.');
+  if (args.transitionsOnly) {
+    console.log(
+      `--transitions-only: writing only Authorised firms that are a confirmed former AR, or authorised within the last ${args.authorisedWithinMonths} month(s).`
+    );
+  }
 
   const rl = new RateLimiter();
 
   const seenFrns = new Set<string>();
   const unrecognisedStatuses = new Set<string>();
+  // Lapsed Appointed Representative sightings from this run's search
+  // results — the other half of the AR -> directly-authorised transition
+  // evidence (see isLapsedArStatus). Persists across every term/page, same
+  // as seenFrns, since the lapsed record and the live authorised one can
+  // easily surface under different search terms.
+  const lapsedArIndex: LapsedArCandidate[] = [];
   let rawResultsCount = 0;
   let excludedDeadCount = 0;
   let excludedIntroducerCount = 0;
@@ -970,12 +1330,14 @@ async function runDiscover(argv: string[], headers: Record<string, string>): Pro
   let alreadyKnownCount = 0;
   let newCount = 0;
   let limitSkippedCount = 0;
+  let excludedNotTransitionCount = 0;
   let termsSearched = 0;
   let limitReached = false;
   const termFailures: string[] = [];
   const failed: string[] = [];
   const created: string[] = [];
   const updated: string[] = [];
+  const transitionRows: { firmName: string; frn: string; formerAr: boolean; authorisedSince: string | null }[] = [];
 
   for (const term of terms) {
     if (limitReached) break;
@@ -1008,6 +1370,9 @@ async function runDiscover(argv: string[], headers: Record<string, string>): Pro
         }
         if (isDeadStatus(c.status)) {
           excludedDeadCount++;
+          if (isLapsedArStatus(c.status)) {
+            lapsedArIndex.push({ frn: c.frn, name: c.name, status: c.status });
+          }
           continue;
         }
         if (!isKnownGoodStatus(c.status)) {
@@ -1039,7 +1404,6 @@ async function runDiscover(argv: string[], headers: Record<string, string>): Pro
           continue;
         }
         const firm = enrichOutcome.firm;
-        const noteSuffix = enrichOutcome.notes.length > 0 ? ` [note: ${enrichOutcome.notes.join('; ')}]` : '';
 
         if (!isLikelyCompanyName(firm.firmName)) {
           skippedIndividualCount++;
@@ -1047,8 +1411,42 @@ async function runDiscover(argv: string[], headers: Record<string, string>): Pro
           continue;
         }
 
+        // Only worth checking once the firm is confirmed Authorised — an AR
+        // (or anything else) can't be the destination end of an AR ->
+        // directly-authorised transition. See findTransitionEvidence.
+        // `evidence` is the only part ever persisted; a name-only match
+        // that couldn't be confirmed by Companies House number surfaces
+        // below as an "unconfirmed" note, never as former_ar.
+        const transitionLookup = isConfirmedAuthorisedStatus(firm.fcaStatus)
+          ? await findTransitionEvidence(firm.firmName, firm.companiesHouseNumber, lapsedArIndex, rl, headers)
+          : { evidence: null, unconfirmedFrn: null };
+        const transition = transitionLookup.evidence;
+        const unconfirmedNote = transitionLookup.unconfirmedFrn
+          ? `possible former AR (FRN ${transitionLookup.unconfirmedFrn}) — name match only, not confirmed by Companies House number, NOT recorded`
+          : null;
+        const allNotes = [...enrichOutcome.notes, ...(unconfirmedNote ? [unconfirmedNote] : [])];
+        const noteSuffix = allNotes.length > 0 ? ` [note: ${allNotes.join('; ')}]` : '';
+
+        if (args.transitionsOnly) {
+          const qualifies = qualifiesForTransitionsOnly(
+            firm.fcaStatus,
+            !!transition,
+            firm.authorisedSince,
+            args.authorisedWithinMonths,
+            new Date()
+          );
+          if (!qualifies) {
+            excludedNotTransitionCount++;
+            console.log(
+              `  [not-transition] "${firm.firmName}" (FRN ${firm.frn}) — status "${firm.fcaStatus ?? 'unknown'}"` +
+                `${firm.authorisedSince ? `, authorised ${firm.authorisedSince}` : ''} — excluded by --transitions-only${noteSuffix}`
+            );
+            continue;
+          }
+        }
+
         try {
-          const plan = await processEnriched(firm, write);
+          const plan = await processEnriched(firm, write, transition);
           if (plan.action === 'create') {
             newCount++;
             created.push(`  "${firm.firmName}" (FRN ${firm.frn})${write ? '' : ' — would be created'}${noteSuffix}`);
@@ -1060,6 +1458,14 @@ async function runDiscover(argv: string[], headers: Record<string, string>): Pro
             console.log(
               `  [${write ? 'updated' : 'would update'}] ${firm.firmName} (FRN ${firm.frn}) — ${changeNote}${noteSuffix}`
             );
+          }
+          if (args.transitionsOnly) {
+            transitionRows.push({
+              firmName: firm.firmName,
+              frn: firm.frn,
+              formerAr: !!transition,
+              authorisedSince: firm.authorisedSince,
+            });
           }
         } catch (err) {
           failed.push(`  "${firm.firmName}" (FRN ${firm.frn}) — ${(err as Error).message}`);
@@ -1093,6 +1499,9 @@ async function runDiscover(argv: string[], headers: Record<string, string>): Pro
   );
   console.log(`Failed:                             ${failed.length}`);
   failed.forEach((l) => console.log(l));
+  if (args.transitionsOnly) {
+    console.log(`Excluded — not a transitions-only match: ${excludedNotTransitionCount}`);
+  }
 
   if (termFailures.length > 0) {
     console.log(`\nSearch term failures (term skipped, e.g. an overly-broad single-word term):`);
@@ -1108,6 +1517,19 @@ async function runDiscover(argv: string[], headers: Record<string, string>): Pro
   if (unrecognisedStatuses.size > 0) {
     console.log('\n=== UNRECOGNISED STATUSES — included, please review ===');
     [...unrecognisedStatuses].sort().forEach((s) => console.log(`  "${s}"`));
+  }
+
+  if (args.transitionsOnly) {
+    // Ranked, most-promising-first — readable straight off this run, no SQL
+    // query needed (see compareTransitionRank). fit_score is deliberately
+    // never set for this — this is a print-time ranking only.
+    console.log(`\n=== Transitions-only ranked list (${transitionRows.length}) — most promising first ===`);
+    [...transitionRows]
+      .sort((a, b) => compareTransitionRank(a, b))
+      .forEach((r) => {
+        const marker = r.formerAr ? ' [former AR]' : '';
+        console.log(`  ${r.authorisedSince ?? '(authorised date unknown)'}  ${r.firmName} (FRN ${r.frn})${marker}`);
+      });
   }
 
   if (limitReached) {
@@ -1212,7 +1634,11 @@ async function main(): Promise<void> {
     }
 
     try {
-      const plan = await processEnriched(firm, write);
+      // No lapsed-AR index to check here — that only exists within a single
+      // --discover run's search results (see runDiscover) — so this path
+      // never has fresh transition evidence to offer; processEnriched
+      // carries any existing former_ar/ar_ceased_on through unchanged.
+      const plan = await processEnriched(firm, write, null);
       if (plan.action === 'create') {
         created.push(`  "${firm.firmName}" (FRN ${firm.frn})${write ? '' : ' — would be created'}${noteSuffix}`);
         console.log(`  [${write ? 'created' : 'would create'}] ${firm.firmName} (FRN ${firm.frn})${noteSuffix}`);

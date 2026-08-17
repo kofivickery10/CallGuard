@@ -18,7 +18,20 @@ import {
   dedupeByFrn,
   decideLimitAction,
   parseDiscoverArgs,
+  parseFcaDate,
+  normalizeFirmName,
+  isLapsedArStatus,
+  isConfirmedAuthorisedStatus,
+  findPlausibleLapsedArMatches,
+  decideTransitionMatch,
+  isPersistableTransitionMatch,
+  isAuthorisedWithinMonths,
+  qualifiesForTransitionsOnly,
+  compareTransitionRank,
+  diffFields,
   type FcaSearchResultItem,
+  type LapsedArCandidate,
+  type ExistingProspectRow,
 } from './enrich-prospects-fca.js';
 
 describe('stripPostcodeSuffix', () => {
@@ -303,6 +316,12 @@ describe('isDeadStatus', () => {
     expect(isDeadStatus('UNAUTHORISED')).toBe(true);
   });
 
+  it('excludes "Contractual run-off" and "Supervised run-off" — a firm running its existing book to expiry has no new advice call to score', () => {
+    expect(isDeadStatus('Contractual run-off')).toBe(true);
+    expect(isDeadStatus('Supervised run-off')).toBe(true);
+    expect(isDeadStatus('CONTRACTUAL RUN-OFF')).toBe(true);
+  });
+
   it('returns false for null/undefined/empty', () => {
     expect(isDeadStatus(null)).toBe(false);
     expect(isDeadStatus(undefined)).toBe(false);
@@ -336,6 +355,8 @@ describe('isExcludedStatus', () => {
     expect(isExcludedStatus('Applied to Cancel')).toBe(true);
     expect(isExcludedStatus('Registered')).toBe(true);
     expect(isExcludedStatus('Unauthorised')).toBe(true);
+    expect(isExcludedStatus('Contractual run-off')).toBe(true);
+    expect(isExcludedStatus('Supervised run-off')).toBe(true);
   });
 
   it('is false for an active, non-introducer status', () => {
@@ -465,6 +486,8 @@ describe('parseDiscoverArgs', () => {
       limit: 100,
       yes: true,
       dryRun: false,
+      transitionsOnly: false,
+      authorisedWithinMonths: 24,
     });
   });
 
@@ -475,6 +498,8 @@ describe('parseDiscoverArgs', () => {
       limit: 250,
       yes: false,
       dryRun: true,
+      transitionsOnly: false,
+      authorisedWithinMonths: 24,
     });
   });
 
@@ -486,5 +511,319 @@ describe('parseDiscoverArgs', () => {
     expect(parseDiscoverArgs(['--discover', '--limit', 'abc']).limit).toBe(250);
     expect(parseDiscoverArgs(['--discover', '--limit', '0']).limit).toBe(250);
     expect(parseDiscoverArgs(['--discover', '--limit', '-5']).limit).toBe(250);
+  });
+
+  it('reads --transitions-only and --authorised-within-months', () => {
+    expect(
+      parseDiscoverArgs(['--discover', 'mortgage', '--transitions-only', '--authorised-within-months', '12'])
+    ).toEqual({
+      terms: ['mortgage'],
+      termsFile: null,
+      limit: 250,
+      yes: false,
+      dryRun: false,
+      transitionsOnly: true,
+      authorisedWithinMonths: 12,
+    });
+  });
+
+  it('defaults transitionsOnly to false and authorisedWithinMonths to 24 when not given', () => {
+    const args = parseDiscoverArgs(['--discover', 'mortgage']);
+    expect(args.transitionsOnly).toBe(false);
+    expect(args.authorisedWithinMonths).toBe(24);
+  });
+
+  it('ignores a non-numeric or non-positive --authorised-within-months and keeps the default', () => {
+    expect(parseDiscoverArgs(['--discover', '--authorised-within-months', 'abc']).authorisedWithinMonths).toBe(24);
+    expect(parseDiscoverArgs(['--discover', '--authorised-within-months', '0']).authorisedWithinMonths).toBe(24);
+    expect(parseDiscoverArgs(['--discover', '--authorised-within-months', '-3']).authorisedWithinMonths).toBe(24);
+  });
+});
+
+describe('parseFcaDate', () => {
+  it('parses the Register\'s dd/mm/yyyy format to ISO yyyy-mm-dd — 18/12/2025 is 18 December, not 12 June or any mm/dd reading', () => {
+    expect(parseFcaDate('18/12/2025')).toBe('2025-12-18');
+  });
+
+  it('parses the Trust Point acceptance-test dates', () => {
+    expect(parseFcaDate('29/11/2024')).toBe('2024-11-29');
+    expect(parseFcaDate('18/12/2025')).toBe('2025-12-18');
+  });
+
+  it('parses a date with single-digit day/month', () => {
+    expect(parseFcaDate('3/4/2025')).toBe('2025-04-03');
+  });
+
+  it('returns null for an empty or blank value', () => {
+    expect(parseFcaDate('')).toBeNull();
+    expect(parseFcaDate('   ')).toBeNull();
+  });
+
+  it('returns null for null/undefined', () => {
+    expect(parseFcaDate(null)).toBeNull();
+    expect(parseFcaDate(undefined)).toBeNull();
+  });
+
+  it('returns null for an ISO-formatted value rather than misreading it', () => {
+    expect(parseFcaDate('2025-12-18')).toBeNull();
+  });
+
+  it('returns null for a calendar-invalid date rather than rolling it over into the next month', () => {
+    expect(parseFcaDate('31/04/2025')).toBeNull(); // April has 30 days
+    expect(parseFcaDate('29/02/2025')).toBeNull(); // 2025 is not a leap year
+  });
+
+  it('returns null for garbage input rather than throwing', () => {
+    expect(parseFcaDate('not a date')).toBeNull();
+    expect(parseFcaDate('00/00/0000')).toBeNull();
+  });
+});
+
+describe('normalizeFirmName', () => {
+  it('folds case and strips legal-suffix noise', () => {
+    expect(normalizeFirmName('TRUST POINT MORTGAGE & PROTECTION SERVICES LIMITED')).toBe(
+      normalizeFirmName('Trust Point Mortgage and Protection Services Ltd')
+    );
+  });
+
+  it('treats "&" the same as "and"', () => {
+    expect(normalizeFirmName('Smith & Jones Ltd')).toBe(normalizeFirmName('Smith and Jones Limited'));
+  });
+
+  it('strips punctuation noise', () => {
+    expect(normalizeFirmName("Acme, Financial Services Ltd.")).toBe(normalizeFirmName('Acme Financial Services Ltd'));
+  });
+
+  it('produces the same value for the two Trust Point Register records', () => {
+    expect(normalizeFirmName('TRUST POINT MORTGAGE & PROTECTION SERVICES LIMITED')).toBe(
+      normalizeFirmName('TRUST POINT MORTGAGE & PROTECTION SERVICES LIMITED')
+    );
+  });
+});
+
+describe('isLapsedArStatus', () => {
+  it('recognises the lapsed-AR status', () => {
+    expect(isLapsedArStatus('No longer registered as an Appointed Representative')).toBe(true);
+  });
+
+  it('does not treat an unrelated lapse as a lapsed-AR status', () => {
+    expect(isLapsedArStatus('No longer authorised')).toBe(false);
+  });
+
+  it('does not treat a live AR as lapsed', () => {
+    expect(isLapsedArStatus('Appointed representative')).toBe(false);
+  });
+
+  it('returns false for null/undefined/empty', () => {
+    expect(isLapsedArStatus(null)).toBe(false);
+    expect(isLapsedArStatus(undefined)).toBe(false);
+    expect(isLapsedArStatus('')).toBe(false);
+  });
+});
+
+describe('isConfirmedAuthorisedStatus', () => {
+  it('is true only for the exact "Authorised" status, case-insensitively', () => {
+    expect(isConfirmedAuthorisedStatus('Authorised')).toBe(true);
+    expect(isConfirmedAuthorisedStatus('authorised')).toBe(true);
+    expect(isConfirmedAuthorisedStatus('  Authorised  ')).toBe(true);
+  });
+
+  it('is false for a broader authorised-adjacent variant', () => {
+    expect(isConfirmedAuthorisedStatus('EEA Authorised')).toBe(false);
+  });
+
+  it('is false for an Appointed Representative', () => {
+    expect(isConfirmedAuthorisedStatus('Appointed representative')).toBe(false);
+  });
+
+  it('returns false for null/undefined/empty', () => {
+    expect(isConfirmedAuthorisedStatus(null)).toBe(false);
+    expect(isConfirmedAuthorisedStatus(undefined)).toBe(false);
+    expect(isConfirmedAuthorisedStatus('')).toBe(false);
+  });
+});
+
+describe('findPlausibleLapsedArMatches', () => {
+  const lapsed: LapsedArCandidate[] = [
+    { frn: '1021037', name: 'TRUST POINT MORTGAGE & PROTECTION SERVICES LIMITED', status: 'No longer registered as an Appointed Representative' },
+    { frn: '999999', name: 'Some Unrelated Firm Ltd', status: 'No longer registered as an Appointed Representative' },
+  ];
+
+  it('matches on normalised name across case/punctuation/suffix differences', () => {
+    expect(findPlausibleLapsedArMatches('Trust Point Mortgage and Protection Services Ltd', lapsed)).toEqual([
+      lapsed[0],
+    ]);
+  });
+
+  it('returns an empty array when nothing matches', () => {
+    expect(findPlausibleLapsedArMatches('Totally Different Firm Ltd', lapsed)).toEqual([]);
+  });
+
+  it('returns an empty array for a blank firm name', () => {
+    expect(findPlausibleLapsedArMatches('', lapsed)).toEqual([]);
+  });
+});
+
+describe('decideTransitionMatch', () => {
+  it('confirms the match when both Companies House numbers are known and equal', () => {
+    expect(decideTransitionMatch('15993274', '15993274')).toBe('ch_number');
+  });
+
+  it('vetoes the match when both Companies House numbers are known and differ — false former_ar is worse than a missed one', () => {
+    expect(decideTransitionMatch('15993274', '00000001')).toBe('none');
+  });
+
+  it('falls back to the name match when the current CH number is unknown', () => {
+    expect(decideTransitionMatch(null, '15993274')).toBe('name');
+  });
+
+  it('falls back to the name match when the lapsed CH number is unknown', () => {
+    expect(decideTransitionMatch('15993274', null)).toBe('name');
+  });
+
+  it('falls back to the name match when neither CH number is known', () => {
+    expect(decideTransitionMatch(null, null)).toBe('name');
+  });
+});
+
+describe('isPersistableTransitionMatch', () => {
+  it('is true only for a confirmed Companies House number match', () => {
+    expect(isPersistableTransitionMatch('ch_number')).toBe(true);
+  });
+
+  it('is false for a name-only match — never persisted on name alone', () => {
+    expect(isPersistableTransitionMatch('name')).toBe(false);
+  });
+
+  it('is false for a vetoed match', () => {
+    expect(isPersistableTransitionMatch('none')).toBe(false);
+  });
+});
+
+describe('isAuthorisedWithinMonths', () => {
+  const now = new Date('2026-08-17T00:00:00Z');
+
+  it('is true for a date within the window', () => {
+    expect(isAuthorisedWithinMonths('2025-12-18', 24, now)).toBe(true);
+  });
+
+  it('is true exactly at the window boundary', () => {
+    expect(isAuthorisedWithinMonths('2024-08-17', 24, now)).toBe(true);
+  });
+
+  it('is false for a date outside the window', () => {
+    expect(isAuthorisedWithinMonths('2020-01-01', 24, now)).toBe(false);
+  });
+
+  it('is false when there is no date', () => {
+    expect(isAuthorisedWithinMonths(null, 24, now)).toBe(false);
+  });
+});
+
+describe('qualifiesForTransitionsOnly', () => {
+  const now = new Date('2026-08-17T00:00:00Z');
+
+  it('qualifies a confirmed former AR regardless of how long ago it was authorised', () => {
+    expect(qualifiesForTransitionsOnly('Authorised', true, '2015-01-01', 24, now)).toBe(true);
+  });
+
+  it('qualifies a recent authorisation with no former-AR evidence', () => {
+    expect(qualifiesForTransitionsOnly('Authorised', false, '2025-12-18', 24, now)).toBe(true);
+  });
+
+  it('does not qualify an old authorisation with no former-AR evidence', () => {
+    expect(qualifiesForTransitionsOnly('Authorised', false, '2020-01-01', 24, now)).toBe(false);
+  });
+
+  it('does not qualify a firm that is not Authorised, even if it is a former AR', () => {
+    expect(qualifiesForTransitionsOnly('Appointed representative', true, '2015-01-01', 24, now)).toBe(false);
+  });
+
+  it('respects the months window override', () => {
+    expect(qualifiesForTransitionsOnly('Authorised', false, '2025-01-01', 6, now)).toBe(false);
+    expect(qualifiesForTransitionsOnly('Authorised', false, '2026-06-01', 6, now)).toBe(true);
+  });
+});
+
+describe('compareTransitionRank', () => {
+  it('ranks a former AR ahead of a merely-recent authorisation', () => {
+    const formerAr = { formerAr: true, authorisedSince: '2020-01-01', firmName: 'Zeta Ltd' };
+    const recent = { formerAr: false, authorisedSince: '2026-01-01', firmName: 'Alpha Ltd' };
+    expect(compareTransitionRank(formerAr, recent)).toBeLessThan(0);
+  });
+
+  it('within the same formerAr bucket, ranks the most recently authorised first', () => {
+    const older = { formerAr: true, authorisedSince: '2020-01-01', firmName: 'A Ltd' };
+    const newer = { formerAr: true, authorisedSince: '2025-01-01', firmName: 'B Ltd' };
+    expect(compareTransitionRank(newer, older)).toBeLessThan(0);
+  });
+
+  it('falls back to name when dates are equal', () => {
+    const a = { formerAr: true, authorisedSince: '2020-01-01', firmName: 'Alpha Ltd' };
+    const b = { formerAr: true, authorisedSince: '2020-01-01', firmName: 'Beta Ltd' };
+    expect(compareTransitionRank(a, b)).toBeLessThan(0);
+  });
+
+  it('sorts a missing authorisedSince to the back within its formerAr bucket', () => {
+    const dated = { formerAr: false, authorisedSince: '2025-01-01', firmName: 'Alpha Ltd' };
+    const undated = { formerAr: false, authorisedSince: null, firmName: 'Zeta Ltd' };
+    expect(compareTransitionRank(dated, undated)).toBeLessThan(0);
+  });
+});
+
+describe('diffFields', () => {
+  const baseExisting: ExistingProspectRow = {
+    id: '11111111-1111-1111-1111-111111111111',
+    firm_name: 'Trust Point Mortgage & Protection Services Limited',
+    frn: '1044052',
+    fca_status: 'Authorised',
+    permissions: ['Advising on regulated mortgage contracts'],
+    website: null,
+    main_phone: null,
+    registered_address: null,
+    companies_house_number: '15993274',
+    authorised_since: '2025-12-18',
+    former_ar: true,
+    ar_ceased_on: '2024-11-29',
+  };
+
+  it('regression: a DATE column read back as a JS Date does not report a spurious diff against the same date as a "yyyy-mm-dd" string', () => {
+    // node-postgres returns DATE columns as JS Date objects, not the
+    // "yyyy-mm-dd" strings this script writes/compares — left unhandled,
+    // this compared not-equal on every single re-run of an unchanged row.
+    const existingFromDb: ExistingProspectRow = {
+      ...baseExisting,
+      authorised_since: new Date('2025-12-18T00:00:00.000Z') as unknown as string,
+      ar_ceased_on: new Date('2024-11-29T00:00:00.000Z') as unknown as string,
+    };
+    const diffs = diffFields(existingFromDb, {
+      authorised_since: '2025-12-18',
+      ar_ceased_on: '2024-11-29',
+    });
+    expect(diffs).toEqual([]);
+  });
+
+  it('still reports a genuine date change, Date-object side vs string side', () => {
+    const existingFromDb: ExistingProspectRow = {
+      ...baseExisting,
+      authorised_since: new Date('2019-05-16T00:00:00.000Z') as unknown as string,
+    };
+    const diffs = diffFields(existingFromDb, { authorised_since: '2019-05-17' });
+    expect(diffs).toEqual(['authorised_since: "2019-05-16" -> "2019-05-17"']);
+  });
+
+  it('reports no diff when nothing changed', () => {
+    expect(diffFields(baseExisting, { fca_status: 'Authorised', former_ar: true })).toEqual([]);
+  });
+
+  it('reports a diff for an ordinary changed field', () => {
+    expect(diffFields(baseExisting, { fca_status: 'Appointed representative' })).toEqual([
+      'fca_status: "Authorised" -> "Appointed representative"',
+    ]);
+  });
+
+  it('treats permissions as an unordered set, not order-sensitive', () => {
+    const existing: ExistingProspectRow = { ...baseExisting, permissions: ['A', 'B'] };
+    expect(diffFields(existing, { permissions: ['B', 'A'] })).toEqual([]);
   });
 });
