@@ -99,7 +99,13 @@ export type AuditActionType =
   // Platform-level queue operations, not scoped to any tenant.
   | 'platform.queue_retry'
   | 'platform.queue_clear'
-  | 'platform.stuck_repair';
+  | 'platform.stuck_repair'
+  // CallGuard's own sales pipeline tracker (routes/superadmin.ts), not scoped
+  // to any tenant — these are prospective clients, not customers.
+  | 'prospect.create'
+  | 'prospect.update'
+  | 'prospect.delete'
+  | 'prospect.import';
 
 export type AuditEntityType =
   | 'call'
@@ -120,7 +126,8 @@ export type AuditEntityType =
   | 'capture_document_profile'
   | 'journey'
   | 'product'
-  | 'queue';
+  | 'queue'
+  | 'prospect';
 
 interface AuditEvent {
   // NULL for platform-level events not scoped to a tenant (e.g. a superadmin

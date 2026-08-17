@@ -11,6 +11,7 @@ import TwoFactorEnroll from './pages/TwoFactorEnroll';
 import Dashboard from './pages/Dashboard';
 import TenantList from './pages/TenantList';
 import TenantDetail from './pages/TenantDetail';
+import Prospects from './pages/Prospects';
 import Billing from './pages/Billing';
 import Usage from './pages/Usage';
 import Audit from './pages/Audit';
@@ -107,6 +108,7 @@ function AppLayout() {
         <nav className="px-3 space-y-0.5 flex-1">
           <NavItem to="/" label="Dashboard" />
           <NavItem to="/tenants" label="Tenants" />
+          <NavItem to="/prospects" label="Prospects" />
           <NavItem to="/billing" label="Billing" />
           <NavItem to="/usage" label="Usage & costs" />
           <NavItem to="/audit" label="Audit log" />
@@ -133,6 +135,7 @@ function AppLayout() {
           <Route path="/"              element={<Dashboard />} />
           <Route path="/tenants"       element={<TenantList />} />
           <Route path="/tenants/:id"   element={<TenantDetail />} />
+          <Route path="/prospects"     element={<Prospects />} />
           <Route path="/billing"       element={<Billing />} />
           <Route path="/usage"         element={<Usage />} />
           <Route path="/audit"         element={<Audit />} />
