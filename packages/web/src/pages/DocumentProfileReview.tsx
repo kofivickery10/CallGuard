@@ -124,7 +124,7 @@ export function DocumentProfileReview() {
       queryClient.invalidateQueries({ queryKey: ['reconciliation-profiles'] });
       queryClient.invalidateQueries({ queryKey: ['reconciliation-runs'] });
       queryClient.invalidateQueries({ queryKey: ['reconciliation-profile', id] });
-      navigate('/data-forms');
+      navigate('/reconciliation');
     },
   });
 
@@ -136,7 +136,7 @@ export function DocumentProfileReview() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['reconciliation-profiles'] });
       queryClient.invalidateQueries({ queryKey: ['reconciliation-profile', id] });
-      navigate('/data-forms');
+      navigate('/reconciliation');
     },
   });
 
@@ -152,8 +152,8 @@ export function DocumentProfileReview() {
   if (isError || !data) {
     return (
       <div>
-        <Link to="/data-forms" className="text-table-cell text-primary hover:underline">
-          ← Data Forms
+        <Link to="/reconciliation" className="text-table-cell text-primary hover:underline">
+          ← Reconciliation
         </Link>
         <div className="bg-fail-bg text-fail px-3 py-2 rounded-btn text-table-cell mt-4 inline-block">
           Could not load this question set.
@@ -175,8 +175,8 @@ export function DocumentProfileReview() {
 
   return (
     <div>
-      <Link to="/data-forms" className="text-table-cell text-primary hover:underline">
-        ← Data Forms
+      <Link to="/reconciliation" className="text-table-cell text-primary hover:underline">
+        ← Reconciliation
       </Link>
 
       <div className="mt-3 mb-6 flex flex-wrap items-start justify-between gap-4">
@@ -464,7 +464,7 @@ export function DocumentProfileReview() {
                 {confirm.isPending ? 'Confirming…' : 'Confirm this question set'}
               </button>
               <Link
-                to="/data-forms"
+                to="/reconciliation"
                 className="px-4 py-2 rounded-btn text-table-cell font-semibold border border-border text-text-secondary hover:bg-table-header focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
               >
                 Not now

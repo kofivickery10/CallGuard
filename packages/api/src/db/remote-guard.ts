@@ -1,7 +1,7 @@
 import { config } from '../config.js';
 
 /**
- * Guard against a developer's worker processing production work.
+ * Guard against a developer's process (worker or API) mutating production data.
  *
  * A dev checkout usually points DATABASE_URL at the production database (it is
  * the only place with real calls to look at), while UPLOADS_DIR resolves to the
@@ -15,8 +15,13 @@ import { config } from '../config.js';
  * A local Redis is no protection: the sweep reads the production DB and
  * enqueues into whatever Redis this process is pointed at.
  *
- * Set ALLOW_REMOTE_DB=true to run a worker against a remote DB deliberately
- * (a maintenance box, a staging worker with NODE_ENV unset).
+ * The API server was originally left unguarded on the theory that it is
+ * "read-mostly" — but ingestion, review resolution, tenant settings, and admin
+ * actions all write, so a dev API against the production database is exactly
+ * the same hazard as a dev worker. Both entrypoints call the same guard below.
+ *
+ * Set ALLOW_REMOTE_DB=true to run a process against a remote DB deliberately
+ * (a maintenance box, a staging deploy with NODE_ENV unset).
  */
 
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]', 'host.docker.internal']);
@@ -36,15 +41,17 @@ export function isLocalDatabase(url: string): boolean {
 }
 
 /**
- * Throws unless it is safe for this worker to mutate what the DATABASE_URL
- * points at. Called at worker boot only — the API server is read-mostly, and
- * the one-off scripts in src/scripts/ are deliberately production tools.
+ * Throws unless it is safe for this process to mutate what the DATABASE_URL
+ * points at. Called at boot by both the worker and the API entrypoints — the
+ * one-off scripts in src/scripts/ are deliberately production tools and don't
+ * call this. `processName` is used only to label the log/error output so each
+ * caller identifies itself correctly (e.g. "worker", "api").
  */
-export function assertWorkerDatabaseIsSafe(): void {
+export function assertDatabaseIsSafe(processName: string): void {
   if (config.nodeEnv === 'production') return;
   if (process.env.ALLOW_REMOTE_DB === 'true') {
     console.warn(
-      `[worker] ALLOW_REMOTE_DB=true — running against remote database ` +
+      `[${processName}] ALLOW_REMOTE_DB=true — running against remote database ` +
       `${databaseHost(config.database.url) ?? 'unknown host'} with NODE_ENV=${config.nodeEnv}.`
     );
     return;
@@ -52,9 +59,9 @@ export function assertWorkerDatabaseIsSafe(): void {
   if (isLocalDatabase(config.database.url)) return;
 
   throw new Error(
-    `Refusing to start the worker: NODE_ENV=${config.nodeEnv} but DATABASE_URL points at ` +
-    `${databaseHost(config.database.url) ?? 'a remote host'}. A dev worker against the ` +
-    `production database claims real calls and fails them against a local uploads directory. ` +
+    `Refusing to start the ${processName}: NODE_ENV=${config.nodeEnv} but DATABASE_URL points at ` +
+    `${databaseHost(config.database.url) ?? 'a remote host'}. A dev ${processName} against the ` +
+    `production database claims/mutates real data and fails it against a local uploads directory. ` +
     `Point DATABASE_URL at a local database, or set ALLOW_REMOTE_DB=true if this is deliberate.`
   );
 }

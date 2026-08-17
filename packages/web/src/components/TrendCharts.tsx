@@ -105,14 +105,19 @@ function CallsPerDayChart({ agentFilter }: { agentFilter: string | null }) {
             <XAxis
               dataKey="date"
               tick={{ fontSize: 11, fill: tick }}
-              tickFormatter={(v) => new Date(v).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}
+              // `date` is a date-only 'YYYY-MM-DD' string the server already
+              // truncated in Europe/London (see routes/dashboard.ts). Rendering
+              // it without a fixed zone lets the browser parse it as UTC
+              // midnight and then re-render in the viewer's local time, which
+              // is a day off for anyone behind UTC.
+              tickFormatter={(v) => new Date(v).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', timeZone: 'Europe/London' })}
               interval={Math.ceil((data?.data.length || 0) / 10)}
             />
             <YAxis tick={{ fontSize: 11, fill: tick }} allowDecimals={false} />
             <Tooltip
               contentStyle={{ background: 'rgb(var(--cg-card))', border: '1px solid rgb(var(--cg-border))', borderRadius: 6, fontSize: 12 }}
               labelStyle={{ color: 'rgb(var(--cg-text-primary))' }}
-              labelFormatter={(v) => new Date(v).toLocaleDateString('en-GB')}
+              labelFormatter={(v) => new Date(v).toLocaleDateString('en-GB', { timeZone: 'Europe/London' })}
             />
             <Bar dataKey="scored" stackId="a" fill={primary} name="Scored" />
             <Bar dataKey="unscored" stackId="a" fill={neutral} name="Not yet scored" />
@@ -151,7 +156,11 @@ function ScoresOverTimeChart({ agentFilter }: { agentFilter: string | null }) {
             <XAxis
               dataKey="week_start"
               tick={{ fontSize: 11, fill: tick }}
-              tickFormatter={(v) => new Date(v).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}
+              // `week_start` is a date-only 'YYYY-MM-DD' string already
+              // truncated in Europe/London server-side (routes/dashboard.ts);
+              // pin the zone here too so it doesn't shift a day for viewers
+              // behind UTC.
+              tickFormatter={(v) => new Date(v).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', timeZone: 'Europe/London' })}
             />
             <YAxis
               tick={{ fontSize: 11, fill: tick }}
@@ -161,7 +170,7 @@ function ScoresOverTimeChart({ agentFilter }: { agentFilter: string | null }) {
             <Tooltip
               contentStyle={{ background: 'rgb(var(--cg-card))', border: '1px solid rgb(var(--cg-border))', borderRadius: 6, fontSize: 12 }}
               labelStyle={{ color: 'rgb(var(--cg-text-primary))' }}
-              labelFormatter={(v) => `Week of ${new Date(v).toLocaleDateString('en-GB')}`}
+              labelFormatter={(v) => `Week of ${new Date(v).toLocaleDateString('en-GB', { timeZone: 'Europe/London' })}`}
               formatter={(val) => `${Math.round(Number(val))}%`}
             />
             <Legend wrapperStyle={{ fontSize: 12 }} />
@@ -289,13 +298,17 @@ function BreachSeverityChart({ agentFilter }: { agentFilter: string | null }) {
             <XAxis
               dataKey="week_start"
               tick={{ fontSize: 11, fill: tick }}
-              tickFormatter={(v) => new Date(v).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}
+              // `week_start` is a date-only 'YYYY-MM-DD' string already
+              // truncated in Europe/London server-side (routes/dashboard.ts);
+              // pin the zone here too so it doesn't shift a day for viewers
+              // behind UTC.
+              tickFormatter={(v) => new Date(v).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', timeZone: 'Europe/London' })}
             />
             <YAxis tick={{ fontSize: 11, fill: tick }} allowDecimals={false} />
             <Tooltip
               contentStyle={{ background: 'rgb(var(--cg-card))', border: '1px solid rgb(var(--cg-border))', borderRadius: 6, fontSize: 12 }}
               labelStyle={{ color: 'rgb(var(--cg-text-primary))' }}
-              labelFormatter={(v) => `Week of ${new Date(v).toLocaleDateString('en-GB')}`}
+              labelFormatter={(v) => `Week of ${new Date(v).toLocaleDateString('en-GB', { timeZone: 'Europe/London' })}`}
             />
             <Legend wrapperStyle={{ fontSize: 12 }} />
             <Bar dataKey="critical" stackId="s" fill={fail} name="Critical" />

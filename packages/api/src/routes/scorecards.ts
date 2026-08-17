@@ -5,10 +5,33 @@ import { AppError } from '../middleware/errors.js';
 import { recordAuditEvent } from '../services/audit.js';
 import { isUuid } from '../services/uuid.js';
 import { mergeBranchConfig } from '../services/branch-config.js';
-import type { Scorecard, ScorecardItem, BranchConfig } from '@callguard/shared';
+import type { Scorecard, ScorecardItem, BranchConfig, ConsumerDutyOutcome } from '@callguard/shared';
 
 export const scorecardRouter = Router();
 scorecardRouter.use(authenticate);
+
+const CONSUMER_DUTY_OUTCOMES: ConsumerDutyOutcome[] = [
+  'products_and_services',
+  'price_and_value',
+  'consumer_understanding',
+  'consumer_support',
+];
+
+// Validates every item's consumer_duty_outcome against the taxonomy before it
+// reaches the DB — an unrecognised value would otherwise fail silently at the
+// CHECK constraint as an opaque 500 instead of a clean 400 naming the item.
+function assertValidConsumerDutyOutcomes(items: Array<{ label?: string; consumer_duty_outcome?: unknown }>): void {
+  for (const item of items) {
+    const outcome = item.consumer_duty_outcome;
+    if (outcome == null) continue;
+    if (!CONSUMER_DUTY_OUTCOMES.includes(outcome as ConsumerDutyOutcome)) {
+      throw new AppError(
+        400,
+        `Criterion "${item.label || 'untitled'}" has an invalid consumer_duty_outcome "${outcome}" — must be one of ${CONSUMER_DUTY_OUTCOMES.join(', ')}, or null for unmapped`
+      );
+    }
+  }
+}
 
 // Validates the shape of a caller-supplied branch_config before it ever
 // reaches the DB or the scoring prompt — a malformed config (e.g. a keyword
@@ -129,6 +152,7 @@ scorecardRouter.post('/', requireAdmin, async (req, res, next) => {
       throw new AppError(400, 'name and at least one item are required');
     }
     validateBranchConfig(branch_config);
+    assertValidConsumerDutyOutcomes(items);
     await assertItemProductsBelongToOrg(req.user!.organizationId, items);
 
     const rows = await query<Scorecard>(
@@ -152,8 +176,8 @@ scorecardRouter.post('/', requireAdmin, async (req, res, next) => {
         `INSERT INTO scorecard_items
            (scorecard_id, label, description, score_type, weight, sort_order,
             severity, section, item_type, applies_when, expectation, ai_check, consent_gate,
-            applies_to_products)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::uuid[]) RETURNING *`,
+            applies_to_products, consumer_duty_outcome, vulnerability_related)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::uuid[], $15, $16) RETURNING *`,
         [
           scorecard.id,
           item.label,
@@ -169,6 +193,8 @@ scorecardRouter.post('/', requireAdmin, async (req, res, next) => {
           item.ai_check || null,
           item.consent_gate ?? false,
           item.applies_to_products?.length ? item.applies_to_products : null,
+          item.consumer_duty_outcome || null,
+          item.vulnerability_related ?? false,
         ]
       );
       createdItems.push(itemRows[0]);
@@ -210,6 +236,7 @@ scorecardRouter.put('/:id', requireAdmin, async (req, res, next) => {
     const mergedBranchConfig = mergeBranchConfig(scorecard.branch_config, branch_config);
     validateBranchConfig(mergedBranchConfig);
     if (items && Array.isArray(items)) {
+      assertValidConsumerDutyOutcomes(items);
       await assertItemProductsBelongToOrg(req.user!.organizationId, items);
     }
 
@@ -269,7 +296,8 @@ scorecardRouter.put('/:id', requireAdmin, async (req, res, next) => {
                  label = $2, description = $3, score_type = $4, weight = $5,
                  sort_order = $6, severity = $7, section = $8, item_type = $9,
                  applies_when = $10, expectation = $11, ai_check = $12,
-                 consent_gate = $13, applies_to_products = $14::uuid[], archived_at = NULL
+                 consent_gate = $13, applies_to_products = $14::uuid[], archived_at = NULL,
+                 consumer_duty_outcome = $15, vulnerability_related = $16
                WHERE id = $1 RETURNING *`,
               [
                 existing.id,
@@ -286,6 +314,8 @@ scorecardRouter.put('/:id', requireAdmin, async (req, res, next) => {
                 item.ai_check || null,
                 item.consent_gate ?? false,
                 item.applies_to_products?.length ? item.applies_to_products : null,
+                item.consumer_duty_outcome || null,
+                item.vulnerability_related ?? false,
               ]
             );
             result.push(rows[0]!);
@@ -294,8 +324,8 @@ scorecardRouter.put('/:id', requireAdmin, async (req, res, next) => {
               `INSERT INTO scorecard_items
                  (scorecard_id, label, description, score_type, weight, sort_order,
                   severity, section, item_type, applies_when, expectation, ai_check, consent_gate,
-                  applies_to_products)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::uuid[]) RETURNING *`,
+                  applies_to_products, consumer_duty_outcome, vulnerability_related)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::uuid[], $15, $16) RETURNING *`,
               [
                 scorecard.id,
                 item.label,
@@ -311,6 +341,8 @@ scorecardRouter.put('/:id', requireAdmin, async (req, res, next) => {
                 item.ai_check || null,
                 item.consent_gate ?? false,
                 item.applies_to_products?.length ? item.applies_to_products : null,
+                item.consumer_duty_outcome || null,
+                item.vulnerability_related ?? false,
               ]
             );
             result.push(rows[0]!);

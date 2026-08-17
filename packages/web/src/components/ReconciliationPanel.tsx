@@ -41,7 +41,7 @@ const LEARN_FAILURES: Record<NonNullable<LearnOutcome['failure']>, string> = {
  * Teach CallGuard an insurer's document format from this sale's attachment.
  *
  * Admin-only and deliberately manual. Nothing it produces is used to judge a
- * sale until it is confirmed on the Data Forms screen.
+ * sale until it is confirmed on the Reconciliation screen.
  */
 function LearnProfileAction({ journeyId }: { journeyId: string }) {
   const navigate = useNavigate();
@@ -55,7 +55,7 @@ function LearnProfileAction({ journeyId }: { journeyId: string }) {
       setOutcome(result);
       if (result.profileId) {
         queryClient.invalidateQueries({ queryKey: ['reconciliation-profiles'] });
-        navigate(`/data-forms/profiles/${result.profileId}`);
+        navigate(`/reconciliation/profiles/${result.profileId}`);
       }
     },
   });
@@ -166,7 +166,7 @@ function PanelShell({ children, subtitle }: { children: React.ReactNode; subtitl
   return (
     <div className="bg-card border border-border rounded-card overflow-hidden mt-4">
       <div className="px-5 py-4 border-b border-border">
-        <h3 className="text-section-title text-text-primary">Data Forms</h3>
+        <h3 className="text-section-title text-text-primary">Reconciliation</h3>
         <p className="text-xs text-text-subtle mt-0.5">{subtitle}</p>
       </div>
       {children}
@@ -302,8 +302,8 @@ export function ReconciliationPanel({
             {isAdmin ? (
               <>
                 Read {unrecognised ? 'the document' : 'the new version'} below, then confirm it on{' '}
-                <Link to="/data-forms" className="text-primary hover:underline">
-                  Data Forms
+                <Link to="/reconciliation" className="text-primary hover:underline">
+                  Reconciliation
                 </Link>
                 . This sale is reconciled automatically once you do, and every future sale on
                 this format is read without asking again.

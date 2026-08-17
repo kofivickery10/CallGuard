@@ -44,6 +44,7 @@ import { reconciliationRouter } from './routes/reconciliation.js';
 import { feedbackRouter, publicFeedbackRouter } from './routes/journey-feedback.js';
 import { usersRouter } from './routes/users.js';
 import { productsRouter } from './routes/products.js';
+import { boardPackRouter } from './routes/board-pack.js';
 
 const app = express();
 
@@ -232,6 +233,7 @@ app.use('/api/support', supportRouter);
 app.use('/api/superadmin', superadminRouter);
 app.use('/api/customers', customersRouter);
 app.use('/api/journeys', journeysRouter);
+app.use('/api/board-pack', boardPackRouter);
 app.use('/api/capture', captureRouter);
 app.use('/api/reconciliation', reconciliationRouter);
 // publicFeedbackRouter MUST be mounted before the bare-`/api` feedbackRouter

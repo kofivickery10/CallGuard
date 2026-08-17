@@ -1,0 +1,23 @@
+{
+  "name": "callguard-aws-connect-bridge",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Lambda that bridges an Amazon Connect Kinesis Video Stream to CallGuard's live scoring WebSocket endpoint.",
+  "license": "UNLICENSED",
+  "main": "src/index.js",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "check": "node --check src/index.js && node --check src/kvs-consumer.js && node --check src/pcm-mixer.js && node --check src/callguard-client.js && node --check src/config.js",
+    "build": "rm -rf build bridge.zip && mkdir build && cp -R src package.json build/ && cd build && npm install --omit=dev --no-audit --no-fund && zip -r ../bridge.zip . -x '*.git*' && cd .. && rm -rf build"
+  },
+  "dependencies": {
+    "@aws-sdk/client-kinesis-video": "^3.700.0",
+    "@aws-sdk/client-kinesis-video-media": "^3.700.0",
+    "@aws-sdk/client-lambda": "^3.700.0",
+    "@aws-sdk/client-secrets-manager": "^3.700.0",
+    "ebml-stream": "1.0.3",
+    "ws": "^8.18.0"
+  }
+}

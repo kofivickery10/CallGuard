@@ -27,6 +27,7 @@ import {
   getIngestionQueue,
   getAlertsQueue,
   getMaintenanceQueue,
+  getStuckRepairQueue,
 } from '../jobs/queue.js';
 import { readWorkerHeartbeat } from '../services/redis.js';
 import {
@@ -1439,6 +1440,7 @@ const HEALTH_QUEUES = () => [
   { name: 'ingestion',     q: getIngestionQueue() },
   { name: 'alerts',        q: getAlertsQueue() },
   { name: 'maintenance',   q: getMaintenanceQueue() },
+  { name: 'stuck-repair',  q: getStuckRepairQueue() },
 ];
 
 // Failures older than this are history, not a live incident.
@@ -1683,10 +1685,11 @@ superadminRouter.delete('/queues/:name/failed', async (req, res, next) => {
 
 // Force the stuck-repair sweep instead of waiting up to 10 minutes for the
 // scheduled one. Runs through the queue so it executes on the worker, using the
-// same code path as the scheduled sweep.
+// same code path as the scheduled sweep. Targets the dedicated stuck-repair
+// queue (see jobs/queue.ts), not 'maintenance' — the two are separate queues.
 superadminRouter.post('/maintenance/stuck-repair', async (req, res, next) => {
   try {
-    const job = await getMaintenanceQueue().add(
+    const job = await getStuckRepairQueue().add(
       'stuck-repair',
       {},
       { jobId: `stuck-repair-manual-${Date.now()}` }
@@ -1697,7 +1700,7 @@ superadminRouter.post('/maintenance/stuck-repair', async (req, res, next) => {
       userId: req.user!.userId,
       actionType: 'platform.stuck_repair',
       entityType: 'queue',
-      entityId: 'maintenance',
+      entityId: 'stuck-repair',
       summary: 'Triggered a manual stuck-work repair sweep',
       req,
     });
@@ -1814,6 +1817,543 @@ superadminRouter.put('/announcements/:id', async (req, res, next) => {
     );
     if (!rows.length) throw new AppError(404, 'Announcement not found');
     res.json({ id: rows[0].id });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── Prospect tracker ──────────────────────────────────────────────────────────
+// CallGuard's own sales pipeline (migration 102): UK protection/mortgage
+// intermediaries shaped like the existing client. Platform-level (no
+// organization_id — these are prospective clients, not tenants), firm-level
+// data only, superadmin-only. Not a CRM: no activity timelines, no task
+// reminders, no email sequences, no multi-user assignment.
+
+const PROSPECT_STATUSES = ['new', 'qualified', 'contacted', 'engaged', 'won', 'lost'] as const;
+const PROSPECT_SOURCES = ['directory', 'vendor_case_study', 'referral', 'manual'] as const;
+
+interface Prospect {
+  id: string;
+  firm_name: string;
+  frn: string | null;
+  fca_status: string | null;
+  permissions: string[];
+  adviser_count_band: string | null;
+  source: string;
+  fit_score: number | null;
+  status: string;
+  note: string | null;
+  website: string | null;
+  main_phone: string | null;
+  registered_address: string | null;
+  last_contacted_at: string | null;
+  // See migration 102 and the admin-web Prospects page: NULL means this firm's
+  // main_phone has never been checked against the Corporate TPS, and the UI
+  // must not offer to call it (or show it as click-to-call) while this is null.
+  ctps_screened_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+interface ProspectInput {
+  firm_name?: string;
+  frn?: string | null;
+  fca_status?: string | null;
+  permissions?: string[];
+  adviser_count_band?: string | null;
+  source?: string;
+  fit_score?: number | null;
+  status?: string;
+  note?: string | null;
+  website?: string | null;
+  main_phone?: string | null;
+  registered_address?: string | null;
+  last_contacted_at?: string | null;
+  ctps_screened_at?: string | null;
+}
+
+function csvEscapeProspect(value: unknown): string {
+  if (value == null) return '';
+  const s = Array.isArray(value) ? value.join(';') : String(value);
+  if (/[",\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+  return s;
+}
+
+// Minimal RFC4180 parser (quoted fields, escaped "" quotes, quoted commas and
+// newlines) — good enough for the handful of hand-maintained/vendor-exported
+// prospect lists this import targets. Trailing blank lines are dropped by the
+// caller, not here.
+function parseCsvProspect(input: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = '';
+  let inQuotes = false;
+  const text = input.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    if (inQuotes) {
+      if (char === '"') {
+        if (text[i + 1] === '"') { field += '"'; i++; } else { inQuotes = false; }
+      } else {
+        field += char;
+      }
+      continue;
+    }
+    if (char === '"') { inQuotes = true; continue; }
+    if (char === ',') { row.push(field); field = ''; continue; }
+    if (char === '\n') { row.push(field); rows.push(row); row = []; field = ''; continue; }
+    field += char;
+  }
+  if (field.length > 0 || row.length > 0) { row.push(field); rows.push(row); }
+  return rows;
+}
+
+superadminRouter.get('/prospects', async (req, res, next) => {
+  try {
+    const status = req.query.status as string | undefined;
+    const q = ((req.query.q as string) || '').trim();
+    if (status && !PROSPECT_STATUSES.includes(status as (typeof PROSPECT_STATUSES)[number])) {
+      throw new AppError(400, `status must be one of: ${PROSPECT_STATUSES.join(', ')}`);
+    }
+
+    const conditions: string[] = [];
+    const params: unknown[] = [];
+    if (status) {
+      params.push(status);
+      conditions.push(`status = $${params.length}`);
+    }
+    if (q) {
+      params.push(`%${q}%`);
+      conditions.push(`(firm_name ILIKE $${params.length} OR frn ILIKE $${params.length} OR website ILIKE $${params.length})`);
+    }
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    const prospects = await query<Prospect>(
+      `SELECT id, firm_name, frn, fca_status, permissions, adviser_count_band, source,
+              fit_score, status, note, website, main_phone, registered_address,
+              last_contacted_at, ctps_screened_at, created_at, updated_at
+       FROM prospects
+       ${where}
+       ORDER BY created_at DESC`,
+      params
+    );
+    res.json({ prospects });
+  } catch (err) {
+    next(err);
+  }
+});
+
+superadminRouter.post('/prospects', async (req, res, next) => {
+  try {
+    const body = req.body as ProspectInput;
+    if (!body.firm_name || typeof body.firm_name !== 'string' || !body.firm_name.trim()) {
+      throw new AppError(400, 'firm_name is required');
+    }
+    const status = body.status ?? 'new';
+    if (!PROSPECT_STATUSES.includes(status as (typeof PROSPECT_STATUSES)[number])) {
+      throw new AppError(400, `status must be one of: ${PROSPECT_STATUSES.join(', ')}`);
+    }
+    const source = body.source ?? 'manual';
+    if (!PROSPECT_SOURCES.includes(source as (typeof PROSPECT_SOURCES)[number])) {
+      throw new AppError(400, `source must be one of: ${PROSPECT_SOURCES.join(', ')}`);
+    }
+    if (
+      body.fit_score !== undefined && body.fit_score !== null &&
+      (!Number.isInteger(body.fit_score) || body.fit_score < 0 || body.fit_score > 100)
+    ) {
+      throw new AppError(400, 'fit_score must be a whole number between 0 and 100');
+    }
+    if (body.permissions !== undefined && (!Array.isArray(body.permissions) || body.permissions.some((p) => typeof p !== 'string'))) {
+      throw new AppError(400, 'permissions must be an array of strings');
+    }
+
+    let row: Prospect | null;
+    try {
+      row = await queryOne<Prospect>(
+        `INSERT INTO prospects
+           (firm_name, frn, fca_status, permissions, adviser_count_band, source,
+            fit_score, status, note, website, main_phone, registered_address,
+            last_contacted_at, ctps_screened_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+         RETURNING *`,
+        [
+          body.firm_name.trim(),
+          body.frn?.trim() || null,
+          body.fca_status?.trim() || null,
+          body.permissions ?? [],
+          body.adviser_count_band?.trim() || null,
+          source,
+          body.fit_score ?? null,
+          status,
+          body.note?.trim() || null,
+          body.website?.trim() || null,
+          body.main_phone?.trim() || null,
+          body.registered_address?.trim() || null,
+          body.last_contacted_at || null,
+          body.ctps_screened_at || null,
+        ]
+      );
+    } catch (err) {
+      if ((err as { code?: string }).code === '23505') {
+        throw new AppError(409, 'A prospect with that FRN already exists');
+      }
+      throw err;
+    }
+
+    await recordAuditEvent({
+      organizationId: null,
+      userId: req.user!.userId,
+      actionType: 'prospect.create',
+      entityType: 'prospect',
+      entityId: row!.id,
+      summary: `Prospect "${row!.firm_name}" added to the pipeline`,
+      req,
+    });
+
+    res.status(201).json(row);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// CSV export — mirrors the import's column set 1:1 so a round trip works.
+superadminRouter.get('/prospects/export.csv', async (req, res, next) => {
+  try {
+    const status = req.query.status as string | undefined;
+    if (status && !PROSPECT_STATUSES.includes(status as (typeof PROSPECT_STATUSES)[number])) {
+      throw new AppError(400, `status must be one of: ${PROSPECT_STATUSES.join(', ')}`);
+    }
+    const params: unknown[] = [];
+    let where = '';
+    if (status) {
+      params.push(status);
+      where = 'WHERE status = $1';
+    }
+
+    const rows = await query<Prospect>(
+      `SELECT firm_name, frn, fca_status, permissions, adviser_count_band, source,
+              fit_score, status, note, website, main_phone, registered_address,
+              last_contacted_at, ctps_screened_at
+       FROM prospects
+       ${where}
+       ORDER BY firm_name`,
+      params
+    );
+
+    const header = [
+      'firm_name', 'frn', 'fca_status', 'permissions', 'adviser_count_band', 'source',
+      'fit_score', 'status', 'note', 'website', 'main_phone', 'registered_address',
+      'last_contacted_at', 'ctps_screened_at',
+    ];
+    const lines = [header.join(',')];
+    for (const r of rows) {
+      lines.push([
+        r.firm_name, r.frn, r.fca_status, r.permissions, r.adviser_count_band, r.source,
+        r.fit_score, r.status, r.note, r.website, r.main_phone, r.registered_address,
+        r.last_contacted_at, r.ctps_screened_at,
+      ].map(csvEscapeProspect).join(','));
+    }
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="callguard-prospects-${new Date().toISOString().slice(0, 10)}.csv"`);
+    res.send(lines.join('\n'));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// CSV import — bulk upsert keyed on FRN where the row has one, else an exact
+// (case-insensitive) firm-name match. Never throws away a bad row silently:
+// every skipped row is reported back with the reason, alongside the header
+// mismatch as a 400 (the whole file is malformed, not one row of it).
+superadminRouter.post('/prospects/import', async (req, res, next) => {
+  try {
+    const { csv } = req.body as { csv?: string };
+    if (!csv || typeof csv !== 'string' || !csv.trim()) {
+      throw new AppError(400, 'csv is required (the file contents as text)');
+    }
+
+    const allRows = parseCsvProspect(csv).filter((r) => r.some((c) => c.trim() !== ''));
+    if (allRows.length < 2) {
+      throw new AppError(400, 'csv must have a header row and at least one data row');
+    }
+
+    const header = allRows[0]!.map((h) => h.trim().toLowerCase());
+    const col = (name: string) => header.indexOf(name);
+    const idx = {
+      firm_name: col('firm_name'),
+      frn: col('frn'),
+      fca_status: col('fca_status'),
+      permissions: col('permissions'),
+      adviser_count_band: col('adviser_count_band'),
+      source: col('source'),
+      fit_score: col('fit_score'),
+      status: col('status'),
+      note: col('note'),
+      website: col('website'),
+      main_phone: col('main_phone'),
+      registered_address: col('registered_address'),
+      last_contacted_at: col('last_contacted_at'),
+      ctps_screened_at: col('ctps_screened_at'),
+    };
+    if (idx.firm_name === -1) {
+      throw new AppError(400, 'csv header must include a "firm_name" column');
+    }
+
+    let imported = 0;
+    let updated = 0;
+    const skipped: { row: number; reason: string }[] = [];
+
+    for (let r = 1; r < allRows.length; r++) {
+      const cells = allRows[r]!;
+      const get = (i: number) => (i === -1 ? '' : (cells[i] ?? '').trim());
+      // 1-indexed the way a spreadsheet shows it (row 1 = header).
+      const rowNum = r + 1;
+
+      const firmName = get(idx.firm_name);
+      if (!firmName) {
+        skipped.push({ row: rowNum, reason: 'missing firm_name' });
+        continue;
+      }
+      const frn = get(idx.frn) || null;
+
+      const sourceRaw = get(idx.source);
+      const source = sourceRaw || 'manual';
+      if (!PROSPECT_SOURCES.includes(source as (typeof PROSPECT_SOURCES)[number])) {
+        skipped.push({ row: rowNum, reason: `invalid source "${sourceRaw}" — must be one of ${PROSPECT_SOURCES.join(', ')}` });
+        continue;
+      }
+
+      const statusRaw = get(idx.status);
+      const status = statusRaw || 'new';
+      if (!PROSPECT_STATUSES.includes(status as (typeof PROSPECT_STATUSES)[number])) {
+        skipped.push({ row: rowNum, reason: `invalid status "${statusRaw}" — must be one of ${PROSPECT_STATUSES.join(', ')}` });
+        continue;
+      }
+
+      const fitScoreRaw = get(idx.fit_score);
+      let fitScore: number | null = null;
+      if (fitScoreRaw) {
+        fitScore = Number(fitScoreRaw);
+        if (!Number.isInteger(fitScore) || fitScore < 0 || fitScore > 100) {
+          skipped.push({ row: rowNum, reason: `invalid fit_score "${fitScoreRaw}" — must be a whole number 0-100` });
+          continue;
+        }
+      }
+
+      const parseDate = (raw: string, field: string): string | null => {
+        if (!raw) return null;
+        const d = new Date(raw);
+        if (Number.isNaN(d.getTime())) throw new Error(`invalid ${field} "${raw}"`);
+        return d.toISOString();
+      };
+      let lastContactedAt: string | null;
+      let ctpsScreenedAt: string | null;
+      try {
+        lastContactedAt = parseDate(get(idx.last_contacted_at), 'last_contacted_at');
+        ctpsScreenedAt = parseDate(get(idx.ctps_screened_at), 'ctps_screened_at');
+      } catch (e) {
+        skipped.push({ row: rowNum, reason: (e as Error).message });
+        continue;
+      }
+
+      const permissionsRaw = get(idx.permissions);
+      const permissions = permissionsRaw ? permissionsRaw.split(';').map((p) => p.trim()).filter(Boolean) : [];
+      const fcaStatus = get(idx.fca_status) || null;
+      const adviserBand = get(idx.adviser_count_band) || null;
+      const note = get(idx.note) || null;
+      const website = get(idx.website) || null;
+      const mainPhone = get(idx.main_phone) || null;
+      const registeredAddress = get(idx.registered_address) || null;
+
+      try {
+        let existing: { id: string } | null;
+        if (frn) {
+          existing = await queryOne<{ id: string }>('SELECT id FROM prospects WHERE frn = $1', [frn]);
+        } else {
+          const matches = await query<{ id: string }>(
+            'SELECT id FROM prospects WHERE lower(firm_name) = lower($1)',
+            [firmName]
+          );
+          if (matches.length > 1) {
+            skipped.push({ row: rowNum, reason: `multiple existing prospects named "${firmName}" — add an FRN to disambiguate` });
+            continue;
+          }
+          existing = matches[0] ?? null;
+        }
+
+        if (existing) {
+          await query(
+            `UPDATE prospects SET
+               firm_name           = $2,
+               frn                 = COALESCE($3, frn),
+               fca_status          = COALESCE($4, fca_status),
+               permissions         = CASE WHEN $5::boolean THEN $6 ELSE permissions END,
+               adviser_count_band  = COALESCE($7, adviser_count_band),
+               source              = COALESCE($8, source),
+               fit_score           = COALESCE($9, fit_score),
+               status              = COALESCE($10, status),
+               note                = COALESCE($11, note),
+               website             = COALESCE($12, website),
+               main_phone          = COALESCE($13, main_phone),
+               registered_address  = COALESCE($14, registered_address),
+               last_contacted_at   = COALESCE($15, last_contacted_at),
+               ctps_screened_at    = COALESCE($16, ctps_screened_at),
+               updated_at          = now()
+             WHERE id = $1`,
+            [
+              existing.id, firmName, frn, fcaStatus,
+              permissions.length > 0, permissions,
+              adviserBand, source, fitScore, status, note, website, mainPhone, registeredAddress,
+              lastContactedAt, ctpsScreenedAt,
+            ]
+          );
+          updated++;
+        } else {
+          await query(
+            `INSERT INTO prospects
+               (firm_name, frn, fca_status, permissions, adviser_count_band, source,
+                fit_score, status, note, website, main_phone, registered_address,
+                last_contacted_at, ctps_screened_at)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+            [
+              firmName, frn, fcaStatus, permissions, adviserBand, source,
+              fitScore, status, note, website, mainPhone, registeredAddress,
+              lastContactedAt, ctpsScreenedAt,
+            ]
+          );
+          imported++;
+        }
+      } catch (err) {
+        if ((err as { code?: string }).code === '23505') {
+          skipped.push({ row: rowNum, reason: `FRN "${frn}" already belongs to another prospect` });
+        } else {
+          skipped.push({ row: rowNum, reason: (err as Error).message || 'database error' });
+        }
+      }
+    }
+
+    await recordAuditEvent({
+      organizationId: null,
+      userId: req.user!.userId,
+      actionType: 'prospect.import',
+      entityType: 'prospect',
+      summary: `Imported prospects CSV: ${imported} created, ${updated} updated, ${skipped.length} skipped`,
+      metadata: { imported, updated, skipped_count: skipped.length },
+      req,
+    });
+
+    res.json({ imported, updated, skipped });
+  } catch (err) {
+    next(err);
+  }
+});
+
+superadminRouter.put('/prospects/:id', async (req, res, next) => {
+  try {
+    const body = req.body as ProspectInput;
+    if (body.firm_name !== undefined && (!body.firm_name || !body.firm_name.trim())) {
+      throw new AppError(400, 'firm_name cannot be empty');
+    }
+    if (body.status !== undefined && !PROSPECT_STATUSES.includes(body.status as (typeof PROSPECT_STATUSES)[number])) {
+      throw new AppError(400, `status must be one of: ${PROSPECT_STATUSES.join(', ')}`);
+    }
+    if (body.source !== undefined && !PROSPECT_SOURCES.includes(body.source as (typeof PROSPECT_SOURCES)[number])) {
+      throw new AppError(400, `source must be one of: ${PROSPECT_SOURCES.join(', ')}`);
+    }
+    if (
+      body.fit_score !== undefined && body.fit_score !== null &&
+      (!Number.isInteger(body.fit_score) || body.fit_score < 0 || body.fit_score > 100)
+    ) {
+      throw new AppError(400, 'fit_score must be a whole number between 0 and 100');
+    }
+    if (body.permissions !== undefined && (!Array.isArray(body.permissions) || body.permissions.some((p) => typeof p !== 'string'))) {
+      throw new AppError(400, 'permissions must be an array of strings');
+    }
+
+    let row: Prospect | null;
+    try {
+      row = await queryOne<Prospect>(
+        `UPDATE prospects SET
+           firm_name           = COALESCE($2, firm_name),
+           frn                 = CASE WHEN $3::boolean THEN $4 ELSE frn END,
+           fca_status          = CASE WHEN $5::boolean THEN $6 ELSE fca_status END,
+           permissions         = COALESCE($7, permissions),
+           adviser_count_band  = CASE WHEN $8::boolean THEN $9 ELSE adviser_count_band END,
+           source              = COALESCE($10, source),
+           fit_score           = CASE WHEN $11::boolean THEN $12 ELSE fit_score END,
+           status              = COALESCE($13, status),
+           note                = CASE WHEN $14::boolean THEN $15 ELSE note END,
+           website             = CASE WHEN $16::boolean THEN $17 ELSE website END,
+           main_phone          = CASE WHEN $18::boolean THEN $19 ELSE main_phone END,
+           registered_address  = CASE WHEN $20::boolean THEN $21 ELSE registered_address END,
+           last_contacted_at   = CASE WHEN $22::boolean THEN $23 ELSE last_contacted_at END,
+           ctps_screened_at    = CASE WHEN $24::boolean THEN $25 ELSE ctps_screened_at END,
+           updated_at          = now()
+         WHERE id = $1
+         RETURNING *`,
+        [
+          req.params.id,
+          body.firm_name?.trim() ?? null,
+          body.frn !== undefined, body.frn?.trim() || null,
+          body.fca_status !== undefined, body.fca_status?.trim() || null,
+          body.permissions ?? null,
+          body.adviser_count_band !== undefined, body.adviser_count_band?.trim() || null,
+          body.source ?? null,
+          body.fit_score !== undefined, body.fit_score ?? null,
+          body.status ?? null,
+          body.note !== undefined, body.note?.trim() || null,
+          body.website !== undefined, body.website?.trim() || null,
+          body.main_phone !== undefined, body.main_phone?.trim() || null,
+          body.registered_address !== undefined, body.registered_address?.trim() || null,
+          body.last_contacted_at !== undefined, body.last_contacted_at || null,
+          body.ctps_screened_at !== undefined, body.ctps_screened_at || null,
+        ]
+      );
+    } catch (err) {
+      if ((err as { code?: string }).code === '23505') {
+        throw new AppError(409, 'A prospect with that FRN already exists');
+      }
+      throw err;
+    }
+    if (!row) throw new AppError(404, 'Prospect not found');
+
+    await recordAuditEvent({
+      organizationId: null,
+      userId: req.user!.userId,
+      actionType: 'prospect.update',
+      entityType: 'prospect',
+      entityId: row.id,
+      summary: `Prospect "${row.firm_name}" updated`,
+      metadata: body as Record<string, unknown>,
+      req,
+    });
+
+    res.json(row);
+  } catch (err) {
+    next(err);
+  }
+});
+
+superadminRouter.delete('/prospects/:id', async (req, res, next) => {
+  try {
+    const row = await queryOne<{ id: string; firm_name: string }>(
+      'DELETE FROM prospects WHERE id = $1 RETURNING id, firm_name',
+      [req.params.id]
+    );
+    if (!row) throw new AppError(404, 'Prospect not found');
+
+    await recordAuditEvent({
+      organizationId: null,
+      userId: req.user!.userId,
+      actionType: 'prospect.delete',
+      entityType: 'prospect',
+      entityId: row.id,
+      summary: `Prospect "${row.firm_name}" removed from the pipeline`,
+      req,
+    });
+
+    res.json({ deleted: true, id: row.id });
   } catch (err) {
     next(err);
   }

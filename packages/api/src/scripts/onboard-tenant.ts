@@ -59,7 +59,10 @@ interface OnboardConfig {
   knowledge_base?: Array<{ section: string; file?: string; files?: string[] }>;
 }
 
-interface CsvItem {
+// Exported so other scripts that import scorecard CSVs (e.g.
+// score-prospect-calls.ts) parse the same full schema — including
+// severity and consent_gate — rather than carrying a second, narrower parser.
+export interface CsvItem {
   label: string;
   description: string;
   score_type: string;
@@ -71,11 +74,23 @@ interface CsvItem {
   expectation: string | null;
   ai_check: string | null;
   consent_gate: boolean;
+  // Both OPTIONAL columns (migration 101) — absent from a CSV, they parse to
+  // null/false, identical to a scorecard nobody has tagged for Consumer Duty
+  // yet. A CSV without these columns must import exactly as it did before.
+  consumer_duty_outcome: string | null;
+  vulnerability_related: boolean;
 }
+
+const CONSUMER_DUTY_OUTCOMES = [
+  'products_and_services',
+  'price_and_value',
+  'consumer_understanding',
+  'consumer_support',
+];
 
 const TRUTHY = ['true', 'yes', 'y', '1'];
 
-function parseCsvLine(line: string): string[] {
+export function parseCsvLine(line: string): string[] {
   const out: string[] = [];
   let cur = '';
   let inQ = false;
@@ -91,7 +106,7 @@ function parseCsvLine(line: string): string[] {
   return out;
 }
 
-function parseScorecardCsv(csvPath: string): CsvItem[] {
+export function parseScorecardCsv(csvPath: string): CsvItem[] {
   const text = fs.readFileSync(csvPath, 'utf-8').replace(/^﻿/, '').replace(/\r/g, '');
   const lines = text.split('\n').filter((l) => l.trim());
   const header = parseCsvLine(lines[0]!).map((h) => h.trim().toLowerCase());
@@ -117,12 +132,16 @@ function parseScorecardCsv(csvPath: string): CsvItem[] {
       expectation: pick('expectation') || null,
       ai_check: pick('ai_check') || null,
       consent_gate: TRUTHY.includes(pick('consent_gate').toLowerCase()),
+      consumer_duty_outcome: CONSUMER_DUTY_OUTCOMES.includes(pick('consumer_duty_outcome').toLowerCase())
+        ? pick('consumer_duty_outcome').toLowerCase()
+        : null,
+      vulnerability_related: TRUTHY.includes(pick('vulnerability_related').toLowerCase()),
     });
   }
   return items;
 }
 
-function branchToAppliesWhen(branch: string): string | null {
+export function branchToAppliesWhen(branch: string): string | null {
   const parts = branch.split(',').map((b) => b.trim()).filter(Boolean);
   if (parts.length === 0) return null;
   return JSON.stringify({ branch: parts.length === 1 ? parts[0] : parts });
@@ -241,12 +260,14 @@ async function main() {
           await tx.query(
             `INSERT INTO scorecard_items
                (scorecard_id, label, description, score_type, weight, sort_order,
-                severity, section, item_type, applies_when, expectation, ai_check, consent_gate)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+                severity, section, item_type, applies_when, expectation, ai_check, consent_gate,
+                consumer_duty_outcome, vulnerability_related)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
             [
               sc!.id, it.label, it.description || null, it.score_type, it.weight, i,
               it.severity, it.section, it.item_type, branchToAppliesWhen(it.branch),
               it.expectation, it.ai_check, it.consent_gate,
+              it.consumer_duty_outcome, it.vulnerability_related,
             ]
           );
         }
@@ -282,8 +303,13 @@ async function main() {
   await pool.end();
 }
 
-main().catch(async (err) => {
-  console.error('Onboarding failed:', err instanceof Error ? err.message : err);
-  await pool.end().catch(() => {});
-  process.exit(1);
-});
+// Only run main() when this file is executed directly (`tsx onboard-tenant.ts`),
+// not when another script (e.g. score-prospect-calls.ts) imports its exported
+// CSV parser — otherwise the import alone would kick off a live onboarding run.
+if (require.main === module) {
+  main().catch(async (err) => {
+    console.error('Onboarding failed:', err instanceof Error ? err.message : err);
+    await pool.end().catch(() => {});
+    process.exit(1);
+  });
+}

@@ -4,6 +4,13 @@ import { app } from './app.js';
 import { attachStreamServer } from './services/stream-server.js';
 import { pool } from './db/client.js';
 import { closeRedis } from './services/redis.js';
+import { assertDatabaseIsSafe } from './db/remote-guard.js';
+
+// Before the server binds: a dev API pointed at the production database can
+// ingest, resolve reviews, and change tenant settings against real data while
+// reading uploads from a local directory that doesn't have them. See
+// db/remote-guard.ts.
+assertDatabaseIsSafe('api');
 
 // An unhandled rejection is usually a stray async handler that threw instead of
 // calling next(err). Log and keep serving rather than take the API down for

@@ -86,7 +86,11 @@ export async function evaluateAlertsForCall(
     const match = evaluateRule(rule, status, call, callScore, itemScores);
     if (!match) continue;
 
-    await fanOutDeliveries(rule, call, match);
+    // Dedup key: the specific scoring pass when there is one (a rescore of a
+    // corrected call must be able to raise its own alert — see fanOutDeliveries),
+    // falling back to the call itself for a 'failed' evaluation, which has no
+    // call_scores row to key off.
+    await fanOutDeliveries(rule, call, match, callScore?.id ?? call.id);
   }
 }
 
@@ -176,7 +180,10 @@ export async function evaluateCaptureRunAlerts(runId: string): Promise<void> {
       action_url: run.journey_id ? `/journeys/${run.journey_id}` : `/calls/${anchor.id}`,
       action_label: run.journey_id ? 'View Sale' : 'View Call',
     };
-    await fanOutDeliveries(rule, anchor, payload);
+    // Dedup key: the run, not just its anchor call — a call can anchor more
+    // than one capture run over time, and each completed run is its own
+    // evaluation pass (see fanOutDeliveries).
+    await fanOutDeliveries(rule, anchor, payload, run.id);
   }
 }
 
@@ -243,7 +250,17 @@ function evaluateRule(
 async function fanOutDeliveries(
   rule: AlertRule,
   call: CallRow,
-  payload: AlertPayload
+  payload: AlertPayload,
+  // Identifies the specific evaluation pass this alert came from (a call
+  // score id, or a capture run id) — NOT just the call. BullMQ dedupes on
+  // jobId, so keying purely on call.id (the old behaviour) meant that once a
+  // rule had fired for a call, it could never fire again for that call: a
+  // rescore that fixes the underlying issue and produces a genuinely new,
+  // alert-worthy result would be silently swallowed instead of delivered.
+  // Keying on the pass instead means each pass gets its own delivery, while
+  // still deduping true repeats (the same rule re-matching within one pass,
+  // e.g. two evaluateAlertsForCall calls for the same call_score).
+  passId: string
 ): Promise<void> {
   const channels = rule.channels as AlertChannelsConfig;
 
@@ -258,7 +275,7 @@ async function fanOutDeliveries(
           target: recipient,
           payload,
         },
-        { jobId: `alert-${rule.id}-${call.id}-email-${recipient}` }
+        { jobId: `alert-${rule.id}-${passId}-email-${recipient}` }
       );
     }
   }
@@ -273,7 +290,7 @@ async function fanOutDeliveries(
         target: channels.slack.webhook_url,
         payload,
       },
-      { jobId: `alert-${rule.id}-${call.id}-slack` }
+      { jobId: `alert-${rule.id}-${passId}-slack` }
     );
   }
 
@@ -289,7 +306,7 @@ async function fanOutDeliveries(
           target: userId,
           payload,
         },
-        { jobId: `alert-${rule.id}-${call.id}-inapp-${userId}` }
+        { jobId: `alert-${rule.id}-${passId}-inapp-${userId}` }
       );
     }
   }

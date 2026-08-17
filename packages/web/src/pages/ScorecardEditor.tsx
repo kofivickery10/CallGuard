@@ -2,11 +2,23 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
-import type { Scorecard, ScoreType, ScorecardItemType, BranchConfig, AppliesWhen, Product } from '@callguard/shared';
+import type { Scorecard, ScoreType, ScorecardItemType, BranchConfig, AppliesWhen, Product, ConsumerDutyOutcome } from '@callguard/shared';
 
 const VALID_SCORE_TYPES: ScoreType[] = ['binary', 'scale_1_5', 'scale_1_10'];
 const VALID_SEVERITIES = ['critical', 'high', 'medium', 'low'];
 const TRUTHY = ['true', 'yes', 'y', '1'];
+const VALID_CONSUMER_DUTY_OUTCOMES: ConsumerDutyOutcome[] = [
+  'products_and_services',
+  'price_and_value',
+  'consumer_understanding',
+  'consumer_support',
+];
+const CONSUMER_DUTY_OUTCOME_LABELS: Record<ConsumerDutyOutcome, string> = {
+  products_and_services: 'Products & services',
+  price_and_value: 'Price & value',
+  consumer_understanding: 'Consumer understanding',
+  consumer_support: 'Consumer support',
+};
 
 function parseCSV(text: string): ItemForm[] {
   // Strip BOM and carriage returns
@@ -46,6 +58,10 @@ function parseStructuredCSV(lines: string[], header: string[]): ItemForm[] {
   const expectationIdx = idx('expectation');
   const aiCheckIdx = idx('ai_check');
   const consentIdx = idx('consent_gate');
+  // Both OPTIONAL — a CSV without them (every scorecard imported before this
+  // feature) must still import exactly as before, with every item unmapped.
+  const consumerDutyIdx = idx('consumer_duty_outcome');
+  const vulnerabilityIdx = idx('vulnerability_related');
 
   const items: ItemForm[] = [];
   for (let i = 1; i < lines.length; i++) {
@@ -59,6 +75,7 @@ function parseStructuredCSV(lines: string[], header: string[]): ItemForm[] {
       : 'binary';
     const rawSeverity = severityIdx >= 0 ? (cols[severityIdx]?.trim().toLowerCase() || '') : '';
     const rawItemType = itemTypeIdx >= 0 ? (cols[itemTypeIdx]?.trim().toLowerCase() || 'ai') : 'ai';
+    const rawConsumerDuty = consumerDutyIdx >= 0 ? (cols[consumerDutyIdx]?.trim().toLowerCase() || '') : '';
 
     items.push({
       label,
@@ -74,6 +91,10 @@ function parseStructuredCSV(lines: string[], header: string[]): ItemForm[] {
       ai_check: aiCheckIdx >= 0 ? cols[aiCheckIdx]?.trim() || '' : '',
       consent_gate: consentIdx >= 0 ? TRUTHY.includes(cols[consentIdx]?.trim().toLowerCase() || '') : false,
       applies_to_products: [],
+      consumer_duty_outcome: VALID_CONSUMER_DUTY_OUTCOMES.includes(rawConsumerDuty as ConsumerDutyOutcome)
+        ? (rawConsumerDuty as ConsumerDutyOutcome)
+        : '',
+      vulnerability_related: vulnerabilityIdx >= 0 ? TRUTHY.includes(cols[vulnerabilityIdx]?.trim().toLowerCase() || '') : false,
     });
   }
 
@@ -140,7 +161,7 @@ function parseFreeform(lines: string[]): ItemForm[] {
     }
   }
 
-  if (items.length === 0) throw new Error('Could not find any criteria in this file. Use a CSV with columns: label, description, score_type, weight, severity, section, item_type, branch, expectation, ai_check, consent_gate');
+  if (items.length === 0) throw new Error('Could not find any criteria in this file. Use a CSV with columns: label, description, score_type, weight, severity, section, item_type, branch, expectation, ai_check, consent_gate, consumer_duty_outcome, vulnerability_related');
   return items;
 }
 
@@ -181,6 +202,11 @@ interface ItemForm {
   // Product ids this criterion is required for. Empty = applies to every
   // product (the default).
   applies_to_products: string[];
+  // '' = unmapped — the honest default until a person tags this checkpoint
+  // against a Consumer Duty outcome. Not folded into vulnerability_related:
+  // vulnerability is a cross-cutting consideration, not a fifth outcome.
+  consumer_duty_outcome: ConsumerDutyOutcome | '';
+  vulnerability_related: boolean;
 }
 
 function emptyItem(sortOrder: number): ItemForm {
@@ -198,6 +224,8 @@ function emptyItem(sortOrder: number): ItemForm {
     ai_check: '',
     consent_gate: false,
     applies_to_products: [],
+    consumer_duty_outcome: '',
+    vulnerability_related: false,
   };
 }
 
@@ -336,6 +364,8 @@ export function ScorecardEditor() {
             ai_check: item.ai_check || '',
             consent_gate: !!item.consent_gate,
             applies_to_products: item.applies_to_products ?? [],
+            consumer_duty_outcome: (item.consumer_duty_outcome as ItemForm['consumer_duty_outcome']) || '',
+            vulnerability_related: !!item.vulnerability_related,
           }))
         );
       }
@@ -459,6 +489,8 @@ export function ScorecardEditor() {
           ai_check: item.ai_check || null,
           consent_gate: item.consent_gate,
           applies_to_products: item.applies_to_products.length ? item.applies_to_products : null,
+          consumer_duty_outcome: item.consumer_duty_outcome || null,
+          vulnerability_related: item.vulnerability_related,
         })),
       };
 
@@ -744,6 +776,32 @@ export function ScorecardEditor() {
                         <label className="flex items-center gap-2 text-table-cell text-text-secondary cursor-pointer">
                           <input type="checkbox" checked={item.consent_gate} onChange={(e) => updateItem(index, 'consent_gate', e.target.checked)} className="accent-primary" disabled={item.item_type === 'manual'} />
                           Consent gate
+                        </label>
+                      </div>
+                      <div>
+                        <label className={labelClass}>Consumer Duty outcome</label>
+                        <select
+                          value={item.consumer_duty_outcome}
+                          onChange={(e) => updateItem(index, 'consumer_duty_outcome', e.target.value)}
+                          className={selectClass}
+                          aria-label="Consumer Duty outcome"
+                        >
+                          <option value="">Unmapped</option>
+                          {VALID_CONSUMER_DUTY_OUTCOMES.map((o) => (
+                            <option key={o} value={o}>{CONSUMER_DUTY_OUTCOME_LABELS[o]}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="flex items-end pb-1.5">
+                        <label className="flex items-center gap-2 text-table-cell text-text-secondary cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={item.vulnerability_related}
+                            onChange={(e) => updateItem(index, 'vulnerability_related', e.target.checked)}
+                            className="accent-primary"
+                            aria-label="Vulnerability-related"
+                          />
+                          Vulnerability-related
                         </label>
                       </div>
                     </div>

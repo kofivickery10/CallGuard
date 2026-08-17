@@ -25,6 +25,13 @@ docs/trustpoint/*.xlsx
 docs/trustpoint/samples/
 
 
+# Prospect lists fed to / produced by the FCA enrichment and discovery scripts.
+# Working sales data, not source: it changes constantly, is regenerable from the
+# FCA Register, and belongs in the prospects table rather than in git history.
+# Named FCA_API_* output too, since a discovery run's output is the same data.
+prospects*.csv
+fca-prospects*.csv
+
 # Local direnv / Claude tooling config (machine-specific)
 .envrc
 

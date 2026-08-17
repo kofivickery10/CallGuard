@@ -1,4 +1,5 @@
 import { config } from '../config.js';
+import { queryOne } from '../db/client.js';
 import { readFile } from './storage.js';
 import { identifyAdviserCluster, type ClusterSpeech } from './speaker-integrity.js';
 import { redactBankDetails, redactBankDetailsInRaw } from './digit-redaction.js';
@@ -166,6 +167,278 @@ export function resolveRedactCategories(unredactedCategories: string[] = []): st
   return REDACTION_CATEGORIES.filter((c) => !permitted.has(c));
 }
 
+/**
+ * The one place that decides a tenant's redaction policy for what Deepgram is
+ * asked to redact. Loads organizations.pii_unredacted_categories, fails
+ * closed (redacts everything) if that load fails, and resolves the result
+ * into the actual Deepgram category list via resolveRedactCategories above.
+ *
+ * Both transcription paths call this instead of querying `organizations`
+ * themselves: the batch path (jobs/processors/transcribe.ts, which then
+ * passes the result into transcribeCall below) and the live path
+ * (stream-worker.ts, which configures Deepgram's *streaming* redaction
+ * directly and so never goes through transcribeCall at all). This drifted
+ * twice before — each path independently re-implementing "fetch the org row,
+ * decide what happens if that fails" — because there was nowhere that owned
+ * both halves of the decision. There is now exactly one.
+ *
+ * An unreadable config is not grounds to loosen redaction: the catch here
+ * redacts everything, the same as an empty permitted-categories list, not
+ * nothing.
+ */
+export async function resolveTenantRedactCategories(organizationId: string): Promise<string[]> {
+  try {
+    const orgRow = await queryOne<{ pii_unredacted_categories: string[] | null }>(
+      'SELECT pii_unredacted_categories FROM organizations WHERE id = $1',
+      [organizationId]
+    );
+    return resolveRedactCategories(orgRow?.pii_unredacted_categories ?? []);
+  } catch (err) {
+    console.error(
+      `[Transcription] Failed to load redaction settings for org ${organizationId}, redacting everything:`,
+      (err as Error).message
+    );
+    return resolveRedactCategories([]);
+  }
+}
+
+/**
+ * The other half of tenant redaction: CallGuard's in-house bank-detail pass
+ * (services/digit-redaction.ts — see the long comment there for why it
+ * exists alongside Deepgram's own redaction), applied to a transcript and,
+ * when supplied, its raw Deepgram payload together.
+ *
+ * This exists so a caller reaches for ONE function rather than remembering to
+ * call redactBankDetails AND redactBankDetailsInRaw itself — forgetting the
+ * raw-payload half was exactly the kind of drift Fix 1 is closing off. Both
+ * transcription paths call this at every point new transcript text becomes
+ * available: once, over the whole assembled transcript, in transcribeCall
+ * below; per finalised segment AND again over the joined whole at session end
+ * in stream-worker.ts (redacting text that's already clean a second time is
+ * inert, so the repeated calls there are safe, not wasteful).
+ *
+ * One function, not one call SHAPE: `raw` is optional rather than required,
+ * because the live path has no raw Deepgram payload to redact at all (it
+ * only ever has text) — passing `undefined` there is honest about that,
+ * rather than inventing a payload just to satisfy a required parameter.
+ */
+export function redactForTenant(
+  text: string,
+  raw?: unknown
+): { text: string; textRedactions: number; raw: unknown; rawRedactions: number } {
+  const textResult = redactBankDetails(text);
+  const rawResult = raw !== undefined ? redactBankDetailsInRaw(raw) : null;
+  return {
+    text: textResult.text,
+    textRedactions: textResult.redactions,
+    raw: rawResult ? rawResult.raw : raw,
+    rawRedactions: rawResult ? rawResult.redactions : 0,
+  };
+}
+
+// Deepgram's utterance/word shape, as consumed by assembleTranscript below.
+// Kept minimal and structural (not the SDK's own types) so the pure function
+// can be unit-tested against hand-built fixtures without pulling in Deepgram.
+export type TranscriptWord = { word: string; punctuated_word?: string; speaker?: number };
+export type TranscriptUtterance = {
+  transcript: string;
+  speaker?: number;
+  channel?: number;
+  start?: number;
+  words?: TranscriptWord[];
+};
+
+export interface AssembleTranscriptInput {
+  utterances: TranscriptUtterance[];
+  // True when BOTH this tenant is configured for split-stereo AND this file
+  // actually came back with more than one channel — transcribeCall folds
+  // both conditions together before calling in (a 'mono_diarize' tenant's
+  // unexpectedly-stereo file still takes the mono path here).
+  isMultichannel: boolean;
+  // Which channel is the adviser on a stereo file: the per-tenant pin (or the
+  // ADVISER_CHANNEL env fallback), resolved by the caller. Null falls back to
+  // whichever channel's first utterance comes first.
+  pinnedAdviserChannel: number | null;
+  // Direction of the positional mono heuristic ("who spoke first") when
+  // content identification abstains.
+  monoFirstSpeaker: MonoFirstSpeaker;
+  // Deepgram's raw, unlabelled per-channel transcript (channel 0) — the last
+  // resort when nothing could be assembled from utterances at all.
+  channelFallbackText: string;
+}
+
+export type AssembleTranscriptOutcome = 'assembled' | 'channel_fallback' | 'empty';
+
+export interface AssembleTranscriptResult {
+  text: string;
+  speaker_attribution_confidence: number;
+  adviser_identified_by_content: boolean;
+  // Which of the three text sources ended up in `text` — see the fallback-
+  // chain comment below. The caller (transcribeCall) logs on this instead of
+  // this function performing I/O itself, which is what keeps it pure and
+  // unit-testable without capturing console output.
+  outcome: AssembleTranscriptOutcome;
+  speakerCount: number;
+  // The cluster content identification picked, or null if it abstained — the
+  // caller logs the override (or the fallback to the positional guess) from
+  // this and positionalAgentKey below.
+  contentPick: { key: number; detail: string } | null;
+  positionalAgentKey: number;
+  agentKey: number;
+}
+
+/**
+ * Turn Deepgram's utterances into a single labelled Agent/Customer
+ * transcript. Pure: no I/O, no logging — see AssembleTranscriptResult's
+ * `outcome` and `contentPick` fields for what the caller needs to reproduce
+ * the same log lines transcribeCall always emitted.
+ *
+ * Split-stereo recordings come back with utterances tagged by channel — when
+ * `isMultichannel`, attribute by channel (exact, no guessing) using
+ * `pinnedAdviserChannel`. Otherwise (mono) the adviser cluster has to be
+ * worked out.
+ *
+ * The positional heuristic ("who speaks first", flipped by monoFirstSpeaker)
+ * rests entirely on ONE utterance, which makes it as fragile as that
+ * utterance's diarisation. Observed failure: on an outbound call Deepgram put
+ * the customer's opening "Hello?" (at 2s) into the ADVISER's cluster. That
+ * made the adviser look like the first speaker, monoFirstSpeaker='customer'
+ * concluded the adviser must be the OTHER cluster, and the whole call came out
+ * inverted — a critical "adviser led the customer" breach was then raised on
+ * the customer's own words. Measured over three real calls the positional
+ * rule got 1 of 3 right.
+ *
+ * So content is tried first: score each cluster's whole speech for
+ * adviser-specific behaviour (reading scripts, compliance wording, quoting
+ * prices) via identifyAdviserCluster — dozens of signals across the call
+ * rather than one word at 2 seconds, and got 3 of 3 on the same calls. It
+ * abstains rather than guess when no single cluster is clearly the adviser,
+ * and only then does the positional rule run.
+ *
+ * Turns are built from WORD-level speakers, not utterance-level: Deepgram's
+ * utterance segmentation regularly runs across a speaker change (measured on
+ * one tenant's corpus, 18.1% of utterances contain words from more than one
+ * speaker), which misattributes one party's words to the other under a single
+ * label. The boundary that fixes it does not exist at utterance level — it
+ * DOES exist at word level, where Deepgram labels each word and gets it
+ * right. Multichannel is untouched: a stereo pin is exact, and channel is
+ * carried on the utterance rather than the word.
+ *
+ * The text returned follows a fallback chain, reported via `outcome`:
+ *  1. 'assembled' — the word-level, speaker-labelled turns built here. The
+ *     normal case, and the only one with an Agent/Customer split.
+ *  2. 'channel_fallback' — reached only when NOTHING was assembled (0
+ *     utterances, or every utterance came back with no word-level speakers
+ *     to key off). Carries no speaker labels, so every turn-based checkpoint
+ *     on the call is flying blind even though there may be real content.
+ *  3. 'empty' — Deepgram returned no usable transcript at any level: silence,
+ *     corrupted audio, or pure hold music/dead air. The caller
+ *     (jobs/processors/transcribe.ts) treats this as a dedicated non-scoring
+ *     'skipped' outcome rather than an evidence-bearing transcript — an empty
+ *     transcript fed to scoring reads as "every disclosure went unaddressed"
+ *     rather than "there was nothing to hear", a false breach manufactured
+ *     from silence.
+ */
+export function assembleTranscript({
+  utterances,
+  isMultichannel,
+  pinnedAdviserChannel,
+  monoFirstSpeaker,
+  channelFallbackText,
+}: AssembleTranscriptInput): AssembleTranscriptResult {
+  const speakerCount = new Set(utterances.map((u) => u.speaker ?? 0)).size;
+
+  // Order by time so interleaved channels read as one conversation.
+  const ordered = [...utterances].sort((a, b) => (a.start ?? 0) - (b.start ?? 0));
+
+  const speechByKey = new Map<number, string[]>();
+  for (const u of ordered) {
+    const words = u.words?.filter((w) => w.speaker !== undefined) ?? [];
+    if (words.length === 0) {
+      const k = u.speaker ?? 0;
+      (speechByKey.get(k) ?? speechByKey.set(k, []).get(k)!).push(u.transcript);
+      continue;
+    }
+    for (const w of words) {
+      const k = w.speaker!;
+      (speechByKey.get(k) ?? speechByKey.set(k, []).get(k)!).push(w.punctuated_word ?? w.word);
+    }
+  }
+  const clusterSpeech: ClusterSpeech[] = [...speechByKey.entries()].map(([key, parts]) => ({
+    key,
+    text: parts.join(' '),
+  }));
+  const contentPick = isMultichannel ? null : identifyAdviserCluster(clusterSpeech);
+
+  const firstSpeakerKey = ordered[0]?.speaker ?? 0;
+  const positionalAgentKey =
+    monoFirstSpeaker === 'customer'
+      ? ordered.find((u) => (u.speaker ?? 0) !== firstSpeakerKey)?.speaker ?? firstSpeakerKey
+      : firstSpeakerKey;
+
+  const agentKey = isMultichannel
+    ? pinnedAdviserChannel ?? (ordered[0]?.channel ?? 0)
+    : contentPick?.key ?? positionalAgentKey;
+
+  const merged: { speaker: string; text: string }[] = [];
+  const pushWord = (key: number, text: string) => {
+    const speaker = key === agentKey ? 'Agent' : 'Customer';
+    const last = merged[merged.length - 1];
+    if (last && last.speaker === speaker) last.text += ' ' + text;
+    else merged.push({ speaker, text });
+  };
+
+  for (const u of ordered) {
+    if (isMultichannel) {
+      pushWord(u.channel ?? 0, u.transcript);
+      continue;
+    }
+    // Fall back to the utterance label when word-level speakers are absent
+    // (an older stored payload, or a provider that does not emit them).
+    const words = u.words?.filter((w) => w.speaker !== undefined) ?? [];
+    if (words.length === 0) {
+      pushWord(u.speaker ?? 0, u.transcript);
+      continue;
+    }
+    for (const w of words) pushWord(w.speaker!, w.punctuated_word ?? w.word);
+  }
+
+  const assembled = merged
+    .map((m) => `${m.speaker}: ${m.text}`)
+    .join('\n\n');
+
+  let text: string;
+  let outcome: AssembleTranscriptOutcome;
+  if (assembled) {
+    text = assembled;
+    outcome = 'assembled';
+  } else if (channelFallbackText) {
+    text = channelFallbackText;
+    outcome = 'channel_fallback';
+  } else {
+    text = '';
+    outcome = 'empty';
+  }
+
+  return {
+    text,
+    speaker_attribution_confidence: computeSpeakerAttributionConfidence(
+      isMultichannel,
+      isMultichannel ? pinnedAdviserChannel : null,
+      speakerCount,
+      contentPick !== null
+    ),
+    // A stereo pin is a stronger form of the same thing: the adviser is known
+    // from the channel, not guessed.
+    adviser_identified_by_content: contentPick !== null || (isMultichannel && pinnedAdviserChannel !== null),
+    outcome,
+    speakerCount,
+    contentPick,
+    positionalAgentKey,
+    agentKey,
+  };
+}
+
 export async function transcribeCall(
   fileKey: string,
   extraKeyterms: string[] = [],
@@ -174,14 +447,15 @@ export async function transcribeCall(
   transcriptionMode: TranscriptionMode = 'mono_diarize',
   deepgramRegion: DeepgramRegion = 'eu',
   monoFirstSpeaker: MonoFirstSpeaker = 'agent',
-  // organizations.pii_unredacted_categories (migration 079) — the explicit,
-  // superadmin-set, DPIA-backed list of redaction categories this tenant may
-  // keep in the clear, for Data Capture reconciliation that needs the
-  // customer's actual answers rather than just confirmation they were given.
-  // Empty (the default) redacts everything. 'pci' is filtered out here even if
-  // somehow present, so payment data is protected by code as well as by the
-  // schema CHECK — see resolveRedactCategories.
-  unredactedCategories: string[] = []
+  // The Deepgram categories to actually redact for this tenant — already
+  // resolved from organizations.pii_unredacted_categories (migration 079) by
+  // resolveTenantRedactCategories, the one place that decides tenant
+  // redaction policy (see its comment for why). Callers must resolve before
+  // calling in, not pass the tenant's raw permitted-in-the-clear list here:
+  // this parameter is what goes straight into the `redact:` option below.
+  // Defaults to redacting everything, the same default resolveRedactCategories
+  // produces for an empty permitted list.
+  redactCategories: string[] = [...REDACTION_CATEGORIES]
 ): Promise<TranscriptionResult> {
   if (!config.deepgram.apiKey) {
     throw new Error('DEEPGRAM_API_KEY is not set in .env - needed for transcription');
@@ -271,9 +545,10 @@ export async function transcribeCall(
       // regulator names (FCA, the firm) through to the scorer.
       //
       // Which of these a tenant may keep in the clear is per-organisation
-      // (migration 079) — see resolveRedactCategories below. `pci` is never
-      // droppable by any configuration.
-      redact: resolveRedactCategories(unredactedCategories),
+      // (migration 079), already resolved by the caller via
+      // resolveTenantRedactCategories — see resolveRedactCategories for the
+      // resolution rule and its `pci` floor.
+      redact: redactCategories,
       numerals: true,
       keyterm: keyterms,
     }
@@ -289,9 +564,7 @@ export async function transcribeCall(
   }
 
   const utterances = result.results?.utterances || [];
-  type Word = { word: string; punctuated_word?: string; speaker?: number };
-  type Utt = { transcript: string; speaker?: number; channel?: number; start?: number; words?: Word[] };
-  const utts = utterances as unknown as Utt[];
+  const utts = utterances as unknown as TranscriptUtterance[];
 
   // Split-stereo recordings come back with utterances tagged by channel. When
   // more than one channel is present, attribute by channel (exact, no guessing).
@@ -299,10 +572,6 @@ export async function transcribeCall(
   // useMultichannel too, in case a 'mono_diarize' tenant's file is
   // unexpectedly stereo — the per-tenant setting still governs the branch.
   const isMultichannel = useMultichannel && new Set(utts.map((u) => u.channel ?? 0)).size > 1;
-  const speakerCount = new Set(utts.map((u) => u.speaker ?? 0)).size;
-
-  // Order by time so interleaved channels read as one conversation.
-  const ordered = [...utts].sort((a, b) => (a.start ?? 0) - (b.start ?? 0));
 
   // Which party is the adviser. For split-stereo the adviser is consistently on
   // one channel, so we pin it deterministically (no guessing). Precedence:
@@ -314,117 +583,52 @@ export async function transcribeCall(
       : null;
   const pinnedAdviserChannel = adviserChannel === 0 || adviserChannel === 1 ? adviserChannel : envChannel;
 
-  // Mono has no channel to pin, so the adviser has to be worked out.
-  //
-  // The positional heuristic below ("who speaks first", flipped by the org's
-  // monoFirstSpeaker) rests entirely on ONE utterance, which makes it as
-  // fragile as that utterance's diarisation. Observed failure: on an outbound
-  // call Deepgram put the customer's opening "Hello?" (at 2s) into the
-  // ADVISER's cluster. That made the adviser look like the first speaker, the
-  // org's monoFirstSpeaker='customer' rule concluded the adviser must be the
-  // OTHER cluster, and all 33 minutes came out inverted — a critical
-  // "adviser led the customer" breach was then raised on the customer's own
-  // words. Measured over three real calls the positional rule got 1 of 3 right.
-  //
-  // So try content first: score each cluster's whole speech for adviser-specific
-  // behaviour (reading scripts, compliance wording, quoting prices). That rests
-  // on dozens of signals across the call rather than one word at 2 seconds, and
-  // got 3 of 3 on the same calls. It abstains rather than guess when no single
-  // cluster is clearly the adviser, and only then does the positional rule run.
-  // Built from word-level speakers for the same reason the turns below are: an
-  // utterance spanning a speaker change would otherwise contribute the other
-  // party's words to this cluster's score, which is exactly the signal
-  // identifyAdviserCluster depends on being clean.
-  const speechByKey = new Map<number, string[]>();
-  for (const u of ordered) {
-    const words = u.words?.filter((w) => w.speaker !== undefined) ?? [];
-    if (words.length === 0) {
-      const k = u.speaker ?? 0;
-      (speechByKey.get(k) ?? speechByKey.set(k, []).get(k)!).push(u.transcript);
-      continue;
-    }
-    for (const w of words) {
-      const k = w.speaker!;
-      (speechByKey.get(k) ?? speechByKey.set(k, []).get(k)!).push(w.punctuated_word ?? w.word);
-    }
-  }
-  const clusterSpeech: ClusterSpeech[] = [...speechByKey.entries()].map(([key, parts]) => ({
-    key,
-    text: parts.join(' '),
-  }));
-  const contentPick = isMultichannel ? null : identifyAdviserCluster(clusterSpeech);
+  const channelFallbackText = result.results?.channels?.[0]?.alternatives?.[0]?.transcript || '';
 
-  const firstSpeakerKey = ordered[0]?.speaker ?? 0;
-  const positionalAgentKey =
-    monoFirstSpeaker === 'customer'
-      ? ordered.find((u) => (u.speaker ?? 0) !== firstSpeakerKey)?.speaker ?? firstSpeakerKey
-      : firstSpeakerKey;
+  // The actual speaker-cluster-to-Agent/Customer assembly (stereo pin, mono
+  // content-vs-positional heuristic, word-level turn merging, confidence
+  // calculation and the text fallback chain) lives in the pure
+  // assembleTranscript above — see its doc comment for the rationale. Kept
+  // pure and I/O-free so it's unit-testable against hand-built fixtures;
+  // logging on its result below reproduces exactly what this function always
+  // logged.
+  const assembly = assembleTranscript({
+    utterances: utts,
+    isMultichannel,
+    pinnedAdviserChannel,
+    monoFirstSpeaker,
+    channelFallbackText,
+  });
 
-  const agentKey = isMultichannel
-    ? pinnedAdviserChannel ?? (ordered[0]?.channel ?? 0)
-    : contentPick?.key ?? positionalAgentKey;
-
-  if (contentPick) {
-    if (contentPick.key !== positionalAgentKey) {
+  if (assembly.contentPick) {
+    if (assembly.contentPick.key !== assembly.positionalAgentKey) {
       // Worth its own line: this is the inversion the old code shipped silently.
       console.warn(
-        `[Transcription] Adviser identified by content as cluster ${contentPick.key}, ` +
-          `overriding the positional guess of ${positionalAgentKey} — ${contentPick.detail}`
+        `[Transcription] Adviser identified by content as cluster ${assembly.contentPick.key}, ` +
+          `overriding the positional guess of ${assembly.positionalAgentKey} — ${assembly.contentPick.detail}`
       );
     }
   } else {
     console.log(
       `[Transcription] No cluster clearly identifiable as the adviser; falling back to the ` +
-        `positional heuristic (cluster ${positionalAgentKey}, monoFirstSpeaker=${monoFirstSpeaker})`
+        `positional heuristic (cluster ${assembly.positionalAgentKey}, monoFirstSpeaker=${monoFirstSpeaker})`
     );
   }
 
-  // Build turns from WORD-level speakers, not utterance-level.
-  //
-  // Deepgram's utterance segmentation regularly runs across a speaker change:
-  // measured on this tenant's corpus, 1,196 of 6,619 utterances (18.1%) contain
-  // words from more than one speaker. One such utterance carried the customer's
-  // "a doctor, but no. Not as far as I'm aware." and the adviser's "To your
-  // knowledge." under a single label — so the reviewer saw the adviser's own
-  // compliance script attributed to the customer, and any checkpoint turning on
-  // who spoke was judged on fiction.
-  //
-  // The boundary that would fix it does not exist at utterance level, so no
-  // amount of merge tuning recovers it. It DOES exist at word level, where
-  // Deepgram labels each word and gets it right. We were discarding that.
-  //
-  // Measured over 13 calls, misplaced adviser markers fell from 32 to 4 (-87%),
-  // with the two worst calls going to zero.
-  //
-  // Multichannel is untouched: a stereo pin is exact, and channel is carried on
-  // the utterance rather than the word.
-  const merged: { speaker: string; text: string }[] = [];
-  const pushWord = (key: number, text: string) => {
-    const speaker = key === agentKey ? 'Agent' : 'Customer';
-    const last = merged[merged.length - 1];
-    if (last && last.speaker === speaker) last.text += ' ' + text;
-    else merged.push({ speaker, text });
-  };
-
-  for (const u of ordered) {
-    if (isMultichannel) {
-      pushWord(u.channel ?? 0, u.transcript);
-      continue;
-    }
-    // Fall back to the utterance label when word-level speakers are absent
-    // (an older stored payload, or a provider that does not emit them).
-    const words = u.words?.filter((w) => w.speaker !== undefined) ?? [];
-    if (words.length === 0) {
-      pushWord(u.speaker ?? 0, u.transcript);
-      continue;
-    }
-    for (const w of words) pushWord(w.speaker!, w.punctuated_word ?? w.word);
+  if (assembly.outcome === 'channel_fallback') {
+    console.warn(
+      `[Transcription] No speaker-labelled turns were assembled (0 utterances, or none carried ` +
+        `word-level speakers) — falling back to Deepgram's unlabelled channel transcript ` +
+        `(${channelFallbackText.length} chars, no Agent/Customer split).`
+    );
+  } else if (assembly.outcome === 'empty') {
+    console.warn(
+      `[Transcription] Deepgram returned no usable transcript at any level (no speaker turns, no ` +
+        `raw channel transcript) — audio is likely silent, corrupted, or entirely off-topic noise.`
+    );
   }
 
-  const assembled = merged
-    .map((m) => `${m.speaker}: ${m.text}`)
-    .join('\n\n');
-
+  const preRedactionText = assembly.text;
   const duration = result.metadata?.duration || 0;
 
   // Bank details out, here and nowhere later.
@@ -436,33 +640,23 @@ export async function transcribeCall(
   // cleanup call, which runs BEFORE storage, reading unredacted digits and
   // sending them to Anthropic.
   //
-  // Cheap and inert when nothing matches, so it runs unconditionally rather than
-  // only for tenants with `numbers` permitted: a config change must not be able
-  // to turn this off by accident, and when `numbers` IS redacted at source there
-  // are no digit runs left for it to find.
-  const textRedaction = redactBankDetails(
-    assembled || result.results?.channels?.[0]?.alternatives?.[0]?.transcript || ''
-  );
-  const rawRedaction = redactBankDetailsInRaw(result);
-  if (textRedaction.redactions > 0 || rawRedaction.redactions > 0) {
+  // Cheap and inert when nothing matches (including on an empty string), so it
+  // runs unconditionally rather than only for tenants with `numbers` permitted:
+  // a config change must not be able to turn this off by accident, and when
+  // `numbers` IS redacted at source there are no digit runs left for it to find.
+  const { text, textRedactions, raw, rawRedactions } = redactForTenant(preRedactionText, result);
+  if (textRedactions > 0 || rawRedactions > 0) {
     console.log(
-      `[Transcription] Redacted bank details: ${textRedaction.redactions} in the transcript, ` +
-        `${rawRedaction.redactions} in the raw payload`
+      `[Transcription] Redacted bank details: ${textRedactions} in the transcript, ` +
+        `${rawRedactions} in the raw payload`
     );
   }
 
   return {
-    raw: rawRedaction.raw,
-    text: textRedaction.text,
+    raw,
+    text,
     duration_seconds: duration,
-    speaker_attribution_confidence: computeSpeakerAttributionConfidence(
-      isMultichannel,
-      isMultichannel ? pinnedAdviserChannel : null,
-      speakerCount,
-      contentPick !== null
-    ),
-    // A stereo pin is a stronger form of the same thing: the adviser is known
-    // from the channel, not guessed.
-    adviser_identified_by_content: contentPick !== null || (isMultichannel && pinnedAdviserChannel !== null),
+    speaker_attribution_confidence: assembly.speaker_attribution_confidence,
+    adviser_identified_by_content: assembly.adviser_identified_by_content,
   };
 }

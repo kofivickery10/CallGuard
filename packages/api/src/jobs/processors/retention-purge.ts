@@ -4,15 +4,14 @@ import { deleteFile } from '../../services/storage.js';
 
 const ARCHIVE_AFTER_DAYS = 730; // 2yr live in the portal (spec §15)
 const TERMINATION_PURGE_AFTER_DAYS = 30; // return/delete within 30 days of termination
-// Never-converted 'captured' calls (metadata only, no audio) are personal data
-// that should not sit for the full retention window. Once a capture is older
-// than any journey window could reach back (default 30d + generous margin) and
-// still hasn't been pulled into a journey, it will never be — purge it.
-const CAPTURED_PURGE_AFTER_DAYS = 90;
+// Fallback only — see captured_retention_days below for why this can't just
+// be applied to every org.
+const CAPTURED_PURGE_AFTER_DAYS_DEFAULT = 90;
 
 interface OrgRetentionRow {
   id: string;
   retention_days: number;
+  captured_retention_days: number | null;
 }
 
 interface PurgeableCall {
@@ -33,7 +32,7 @@ interface PurgeableCall {
  */
 export async function processRetentionPurge(_job: Job): Promise<void> {
   const orgs = await query<OrgRetentionRow>(
-    `SELECT id, retention_days FROM organizations WHERE status != 'cancelled'`
+    `SELECT id, retention_days, captured_retention_days FROM organizations WHERE status != 'cancelled'`
   );
 
   let archivedTotal = 0;
@@ -58,15 +57,25 @@ export async function processRetentionPurge(_job: Job): Promise<void> {
     );
 
     // Never-converted captured metadata: purge well before the full retention
-    // window. Scoped to captures not attached to any journey (journey_id NULL)
-    // so a call being hydrated into a journey is never yanked out from under it.
+    // window, using the org's own captured_retention_days (096) — a firm
+    // running a long journey (e.g. a 120-day mortgage) needs its earlier calls
+    // to survive until the journey completes, so one global horizon can't
+    // safely serve every tenant. NULL or <= 0 is treated as "not configured"
+    // rather than "purge immediately" — a footgun a misconfigured/blank value
+    // must not trigger — and falls back to the prior global default.
+    // Scoped to captures not attached to any journey (journey_id NULL) so a
+    // call being hydrated into a journey is never yanked out from under it.
+    const capturedPurgeAfterDays =
+      org.captured_retention_days && org.captured_retention_days > 0
+        ? org.captured_retention_days
+        : CAPTURED_PURGE_AFTER_DAYS_DEFAULT;
     purgedTotal += await purgeCalls(
       `SELECT id, file_key FROM calls
          WHERE organization_id = $1
            AND status = 'captured'
            AND journey_id IS NULL
            AND created_at < now() - interval '1 day' * $2`,
-      [org.id, CAPTURED_PURGE_AFTER_DAYS]
+      [org.id, capturedPurgeAfterDays]
     );
 
     // Customers left with no calls and no journeys are orphaned personal data

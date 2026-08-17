@@ -1,7 +1,10 @@
 import { v4 as uuid } from 'uuid';
 import path from 'path';
+import https from 'https';
+import type { IncomingMessage } from 'http';
+import type { LookupFunction } from 'net';
 import { query, queryOne } from '../db/client.js';
-import { uploadFile } from './storage.js';
+import { uploadFile, deleteFile } from './storage.js';
 import { transcriptionQueue } from '../jobs/queue.js';
 import { AppError } from '../middleware/errors.js';
 import { assertSafeRemoteUrl } from './url-safety.js';
@@ -385,6 +388,23 @@ export async function ingestCall(params: IngestCallParams): Promise<IngestedCall
       ]
     );
   } catch (err) {
+    // Whatever went wrong, the row that would reference `fileKey` was never
+    // created (or, on the 23505 race below, was created by the *other*
+    // request under its own callId/fileKey — not this one). Either way the
+    // object this call just uploaded is unreferenced by any row, and
+    // retention purge only ever works from DB rows, so it would never be
+    // found and would sit past the retention window forever. Delete it
+    // before rethrowing so a failed ingest never leaks audio. Do this first,
+    // before deciding whether the error itself is recoverable, so it happens
+    // on every exit from this catch.
+    try {
+      await deleteFile(fileKey);
+    } catch (cleanupErr) {
+      // Don't let a cleanup failure mask the original error — log and
+      // continue to the original throw/return below.
+      console.warn(`[Ingestion] Failed to clean up orphaned upload ${fileKey}:`, cleanupErr);
+    }
+
     // Two concurrent deliveries of the same webhook both pass the
     // idempotency SELECT above before either INSERTs (TOCTOU) — the second
     // hits idx_calls_org_external_id (or idx_calls_org_dialer_call_id) instead
@@ -520,47 +540,93 @@ export function inferMimeType(fileName: string): string {
   }
 }
 
-// Read a fetch Response body, aborting once it exceeds maxBytes. A
-// Content-Length check alone isn't enough — it can be absent or lie; this
-// enforces the cap against the actual bytes received.
-async function readWithLimit(res: Response, maxBytes: number): Promise<Buffer> {
+// Read a response body, aborting once it exceeds maxBytes. A Content-Length
+// check alone isn't enough — it can be absent or lie; this enforces the cap
+// against the actual bytes received.
+async function readWithLimit(
+  res: IncomingMessage,
+  contentLengthHeader: string | undefined,
+  maxBytes: number
+): Promise<Buffer> {
   // Reported in MB derived from the cap actually applied — a video container is
   // allowed a larger one than a plain audio file (see fetchRemoteAudio).
   const limitMb = Math.round(maxBytes / 1024 / 1024);
-  const contentLength = Number(res.headers.get('content-length') ?? '0');
+  const contentLength = Number(contentLengthHeader ?? '0');
   if (contentLength > maxBytes) {
+    res.destroy();
     throw new AppError(400, `Remote file exceeds the ${limitMb}MB limit`);
   }
-  if (!res.body) {
-    const buf = Buffer.from(await res.arrayBuffer());
-    if (buf.length > maxBytes) {
-      throw new AppError(400, `Remote file exceeds the ${limitMb}MB limit`);
-    }
-    return buf;
-  }
-  const reader = res.body.getReader();
-  const chunks: Uint8Array[] = [];
+  const chunks: Buffer[] = [];
   let total = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    total += value.byteLength;
+  for await (const chunk of res) {
+    const buf = chunk as Buffer;
+    total += buf.length;
     if (total > maxBytes) {
-      await reader.cancel().catch(() => {});
+      res.destroy();
       throw new AppError(400, `Remote file exceeds the ${limitMb}MB limit`);
     }
-    chunks.push(value);
+    chunks.push(buf);
   }
   return Buffer.concat(chunks);
 }
 
+// Matches the default per-phase (headers/body) timeout of Node's global
+// fetch (undici) — the plain https.request used below for DNS pinning has no
+// built-in timeout of its own, so this keeps "hangs forever" out of the
+// behaviour change.
+const REMOTE_FETCH_TIMEOUT_MS = 300_000;
+
+/**
+ * GET a URL already validated + DNS-pinned by assertSafeRemoteUrl, connecting
+ * to the exact address it resolved rather than resolving the hostname again.
+ *
+ * This deliberately uses `https.request` instead of the global `fetch`:
+ * `fetch` has no supported way to hand it a pre-resolved address short of a
+ * custom undici Agent/dispatcher (not a dependency here), and re-resolving
+ * the hostname here is exactly the DNS-rebinding hole assertSafeRemoteUrl's
+ * pinned `lookup` exists to close — see the comment on `SafeRemoteUrl`.
+ * `hostname`/`servername` stay set to the original hostname so TLS SNI and
+ * the Host header are unaffected; only the socket's actual destination is
+ * pinned via `lookup`.
+ *
+ * Redirects are never followed — a 3xx is rejected outright by the caller,
+ * same as before. Since no second request is ever made here, there's no
+ * second hostname resolution (and so no rebinding opportunity) on a redirect
+ * hop either.
+ */
+function requestPinned(
+  url: URL,
+  lookup: LookupFunction,
+  headers: Record<string, string>
+): Promise<IncomingMessage> {
+  return new Promise((resolve, reject) => {
+    const req = https.request(
+      {
+        hostname: url.hostname,
+        servername: url.hostname,
+        port: url.port || 443,
+        path: `${url.pathname}${url.search}`,
+        method: 'GET',
+        headers,
+        lookup,
+        timeout: REMOTE_FETCH_TIMEOUT_MS,
+      },
+      resolve
+    );
+    req.on('timeout', () => req.destroy(new AppError(400, 'Timed out downloading remote audio')));
+    req.on('error', (err) => reject(err instanceof AppError ? err : new AppError(400, `Failed to download audio from URL: ${err.message}`)));
+    req.end();
+  });
+}
+
 /**
  * Fetch a caller-supplied recording URL (API ingest, bulk-import, CloudTalk
- * recording_url, a Teams/Zoom download link) safely: HTTPS + public-address only
- * (see url-safety.ts), no redirect-following (an attacker-controlled 3xx could
- * otherwise point at an internal address after the check already passed), and a
- * hard size cap enforced against the actual stream, not just a trusted
- * Content-Length.
+ * recording_url, a Teams/Zoom download link) safely: HTTPS + public-address
+ * only, DNS-pinned to the address that was actually validated (see
+ * url-safety.ts and requestPinned above), no redirect-following (an
+ * attacker-controlled 3xx could otherwise point at an internal address after
+ * the check already passed), and a hard size cap enforced against the actual
+ * stream, not just a trusted Content-Length.
  *
  * A video container is reduced to audio before it is returned, so every caller
  * gets audio regardless of what the URL served.
@@ -569,32 +635,37 @@ export async function fetchRemoteAudio(
   rawUrl: string,
   headers: Record<string, string> = {}
 ): Promise<{ buffer: Buffer; fileName: string; mimeType: string }> {
-  const url = await assertSafeRemoteUrl(rawUrl);
+  const { url, lookup } = await assertSafeRemoteUrl(rawUrl);
 
-  const res = await fetch(url, {
-    ...(Object.keys(headers).length ? { headers } : {}),
-    redirect: 'manual',
-  });
+  const res = await requestPinned(url, lookup, headers);
+  const status = res.statusCode ?? 0;
 
-  if (res.status >= 300 && res.status < 400) {
+  if (status >= 300 && status < 400) {
+    res.resume(); // drain so the socket is freed even though we don't want the body
     throw new AppError(400, 'Redirects are not followed for remote audio URLs');
   }
-  if (!res.ok) {
-    throw new AppError(400, `Failed to download audio from URL: ${res.status} ${res.statusText}`);
+  if (status < 200 || status >= 300) {
+    res.resume();
+    throw new AppError(400, `Failed to download audio from URL: ${status} ${res.statusMessage ?? ''}`.trim());
   }
 
   const pathParts = url.pathname.split('/');
   const lastPart = pathParts[pathParts.length - 1] || 'call.mp3';
   let fileName = lastPart.includes('.') ? lastPart : `${lastPart}.mp3`;
-  let mimeType = res.headers.get('content-type')?.split(';')[0]?.trim() || inferMimeType(fileName);
+  const contentTypeHeader = res.headers['content-type'];
+  let mimeType =
+    (Array.isArray(contentTypeHeader) ? contentTypeHeader[0] : contentTypeHeader)?.split(';')[0]?.trim() ||
+    inferMimeType(fileName);
 
   // Pick the size cap before reading a byte: a meeting recording is legitimately
   // several times the size of a call recording, and the audio we keep from it is
   // well inside the audio cap. Judged on the declared type and the URL's
   // extension — all we know at this point.
   const looksLikeVideo = isVideoMedia(mimeType, fileName);
+  const contentLengthHeader = res.headers['content-length'];
   const buffer = await readWithLimit(
     res,
+    Array.isArray(contentLengthHeader) ? contentLengthHeader[0] : contentLengthHeader,
     looksLikeVideo ? MAX_VIDEO_FILE_SIZE_BYTES : MAX_FILE_SIZE_BYTES
   );
 

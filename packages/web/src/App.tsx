@@ -1,5 +1,5 @@
 import { Suspense } from 'react';
-import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import { Layout } from './components/Layout';
 import { ChunkErrorBoundary } from './components/ChunkErrorBoundary';
@@ -22,7 +22,7 @@ const ScorecardEditor = lazyWithRetry(() => import('./pages/ScorecardEditor').th
 const DataCaptureForms = lazyWithRetry(() => import('./pages/DataCaptureForms').then((m) => ({ default: m.DataCaptureForms })));
 const DataCaptureFormEditor = lazyWithRetry(() => import('./pages/DataCaptureFormEditor').then((m) => ({ default: m.DataCaptureFormEditor })));
 const DataCapture = lazyWithRetry(() => import('./pages/DataCapture').then((m) => ({ default: m.DataCapture })));
-const DataForms = lazyWithRetry(() => import('./pages/DataForms').then((m) => ({ default: m.DataForms })));
+const Reconciliation = lazyWithRetry(() => import('./pages/Reconciliation').then((m) => ({ default: m.Reconciliation })));
 const ComplianceDashboard = lazyWithRetry(() => import('./pages/ComplianceDashboard').then((m) => ({ default: m.ComplianceDashboard })));
 const DocumentProfileReview = lazyWithRetry(() => import('./pages/DocumentProfileReview').then((m) => ({ default: m.DocumentProfileReview })));
 const Team = lazyWithRetry(() => import('./pages/Team').then((m) => ({ default: m.Team })));
@@ -47,6 +47,8 @@ const Account = lazyWithRetry(() => import('./pages/Account'));
 const BillingOverview = lazyWithRetry(() => import('./pages/BillingOverview'));
 const Settings = lazyWithRetry(() => import('./pages/Settings'));
 const Products = lazyWithRetry(() => import('./pages/Products'));
+const BoardPack = lazyWithRetry(() => import('./pages/BoardPack').then((m) => ({ default: m.BoardPack })));
+const ClaimsDefence = lazyWithRetry(() => import('./pages/ClaimsDefence').then((m) => ({ default: m.ClaimsDefence })));
 
 function PageLoader() {
   return (
@@ -72,6 +74,14 @@ function EnrolRoute({ children }: { children: React.ReactNode }) {
   if (loading) return <div className="flex items-center justify-center h-screen">Loading...</div>;
   if (!user) return <Navigate to="/login" />;
   return <>{children}</>;
+}
+
+// /data-forms was renamed to /reconciliation. Old bookmarks and links already
+// sent in notification emails must keep resolving, so both paths stay live —
+// this one just redirects to the profile under its new URL.
+function ReconciliationProfileRedirect() {
+  const { id } = useParams();
+  return <Navigate to={`/reconciliation/profiles/${id}`} replace />;
 }
 
 export function App() {
@@ -106,12 +116,15 @@ export function App() {
                     <Route path="/capture-forms/new" element={<DataCaptureFormEditor />} />
                     <Route path="/capture-forms/:id/edit" element={<DataCaptureFormEditor />} />
                     <Route path="/data-capture" element={<DataCapture />} />
-                    <Route path="/data-forms" element={<DataForms />} />
+                    <Route path="/reconciliation" element={<Reconciliation />} />
+                    <Route path="/data-forms" element={<Navigate to="/reconciliation" replace />} />
                     <Route path="/compliance" element={<ComplianceDashboard />} />
+                    <Route path="/compliance/board-pack" element={<BoardPack />} />
                     <Route
-                      path="/data-forms/profiles/:id"
+                      path="/reconciliation/profiles/:id"
                       element={<DocumentProfileReview />}
                     />
+                    <Route path="/data-forms/profiles/:id" element={<ReconciliationProfileRedirect />} />
                     <Route path="/team" element={<Team />} />
                     <Route path="/knowledge-base" element={<KnowledgeBase />} />
                     <Route path="/integrations" element={<Integrations />} />
@@ -131,6 +144,7 @@ export function App() {
                     <Route path="/customers/:id" element={<CustomerProfile />} />
                     <Route path="/journeys" element={<Journeys />} />
                     <Route path="/journeys/:id" element={<JourneyDetail />} />
+                    <Route path="/journeys/:id/claims-defence" element={<ClaimsDefence />} />
                     <Route path="/account" element={<Account />} />
                     <Route path="/billing" element={<BillingOverview />} />
                   </Routes>

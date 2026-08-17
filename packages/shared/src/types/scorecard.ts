@@ -3,6 +3,17 @@ export type ScorecardItemType = 'ai' | 'manual';
 export type ItemResult = 'pass' | 'fail' | 'na' | 'manual_review';
 export type ScorecardScoringMode = 'per_call' | 'journey';
 
+// The FCA Consumer Duty's four outcomes. Vulnerability is deliberately NOT a
+// member of this type — it is a cross-cutting consideration that runs through
+// all four outcomes, not a fifth outcome, so it is modelled separately as
+// ScorecardItem.vulnerability_related. Collapsing the two into one enum would
+// misrepresent the regulation.
+export type ConsumerDutyOutcome =
+  | 'products_and_services'
+  | 'price_and_value'
+  | 'consumer_understanding'
+  | 'consumer_support';
+
 // Branch condition on a scorecard item — which branch(es) it applies to.
 // Absent/null on the item = applies to every branch.
 export interface AppliesWhen {
@@ -86,6 +97,14 @@ export interface ScorecardItem {
   // excluded from the weighted denominator — same gate as `applies_when` on
   // the branch axis. See services/checkpoint-classification.ts.
   applies_to_products?: string[] | null;
+  // Which Consumer Duty outcome this checkpoint evidences. Null = unmapped —
+  // the honest default for every scorecard until a person tags it; never
+  // silently bucketed into an outcome it was not assigned.
+  consumer_duty_outcome?: ConsumerDutyOutcome | null;
+  // Whether this checkpoint is about identifying or adapting to customer
+  // vulnerability. Orthogonal to consumer_duty_outcome — vulnerability is a
+  // cross-cutting consideration, not a fifth outcome.
+  vulnerability_related?: boolean;
 }
 
 export interface Scorecard {
@@ -118,6 +137,8 @@ export interface ScorecardItemInput {
   ai_check?: string | null;
   consent_gate?: boolean;
   applies_to_products?: string[] | null;
+  consumer_duty_outcome?: ConsumerDutyOutcome | null;
+  vulnerability_related?: boolean;
 }
 
 export interface CreateScorecardInput {

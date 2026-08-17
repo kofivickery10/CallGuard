@@ -36,7 +36,9 @@ interface BreachFilters {
 // earliest call flagged `wrap_up`, else the latest call in the set — which is
 // how journeys are attributed everywhere else (adviser scores, Zoho
 // write-back). Joined only when there's no call, so per-call breaches skip it.
-const JOURNEY_AGENT_JOIN = `
+// Exported so other org-wide reports (e.g. routes/board-pack.ts) resolve a
+// journey breach's agent the same way rather than re-deriving it.
+export const JOURNEY_AGENT_JOIN = `
         LEFT JOIN LATERAL (
           SELECT jac.agent_name, jac.agent_id
             FROM journey_calls jajc

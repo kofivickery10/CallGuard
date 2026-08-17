@@ -48,6 +48,18 @@ insightsRouter.post('/generate', requireActioner, async (req, res, next) => {
 // Calibration health: how often reviewers override the AI, the trend over time
 // (lower = better aligned), and which scorecard items are least aligned + which
 // way (AI too harsh vs too lenient). Computed from real human corrections.
+//
+// Spans both scoring modes. `score_corrections` already carries both pathways
+// — call_id for per-call overrides, journey_id for sale-side ones (a manual-
+// review resolution AND an explicit override of a confident verdict; migrations
+// 068, 077) — so the corrections/top-items queries below need no WHERE change
+// to include sales. What DID need fixing is the denominator: a `sales_only`
+// tenant (the default scoring_scope) never produces a call_scores row, so
+// dividing their entirely-journey-scoped overrides by a calls-only count of
+// scored units silently divided by zero and reported nothing. The fix mirrors
+// board-pack.ts's / dashboard.ts's "scored unit" rule (latest call score UNION
+// each scored journey) rather than inventing a third definition — see
+// scoredJourneysByMonth below.
 // ============================================================
 insightsRouter.get('/calibration', async (req, res, next) => {
   try {
@@ -62,12 +74,27 @@ insightsRouter.get('/calibration', async (req, res, next) => {
       [orgId]
     );
 
-    const scoredByMonth = await query<{ month: string; scored_calls: string }>(
+    // Scored units, calls side — unchanged from before this fix.
+    const scoredCallsByMonth = await query<{ month: string; scored_calls: string }>(
       `SELECT to_char(date_trunc('month', cs.scored_at AT TIME ZONE 'Europe/London'), 'YYYY-MM') AS month,
               COUNT(*)::text AS scored_calls
          FROM call_scores cs
          JOIN calls c ON c.id = cs.call_id
         WHERE c.organization_id = $1 AND cs.scored_at >= date_trunc('month', now()) - interval '5 months'
+        GROUP BY 1`,
+      [orgId]
+    );
+
+    // Scored units, journeys side — the half this endpoint was missing. One
+    // row per journey (not a history table like call_scores), so no DISTINCT
+    // ON is needed to land on the current scored state, same as
+    // board-pack.ts's scoredUnitsSQL.
+    const scoredJourneysByMonth = await query<{ month: string; scored_journeys: string }>(
+      `SELECT to_char(date_trunc('month', j.scored_at AT TIME ZONE 'Europe/London'), 'YYYY-MM') AS month,
+              COUNT(*)::text AS scored_journeys
+         FROM journeys j
+        WHERE j.organization_id = $1 AND j.status = 'scored'
+          AND j.scored_at >= date_trunc('month', now()) - interval '5 months'
         GROUP BY 1`,
       [orgId]
     );
@@ -81,6 +108,14 @@ insightsRouter.get('/calibration', async (req, res, next) => {
     }
     // True agreement: over calls a reviewer marked reviewed, the item scores they
     // did NOT correct are agreements. agreement = (reviewed items - corrections) / reviewed items.
+    //
+    // Calls only. Journeys have no equivalent of calls.reviewed_at — nothing
+    // marks "a supervisor looked at this sale and found nothing to correct".
+    // journey_feedback (migration 087) records that an adviser was TOLD about a
+    // sale's findings, not that a reviewer signed off on it with no changes, so
+    // it cannot stand in. Rather than fabricate a marker or silently blend a
+    // real call-side rate with an assumed journey-side one, agreement stays
+    // calls-only and the response says so explicitly (agreement_scope / note).
     const reviewedByMonth = await query<{ month: string; reviewed_items: string; disagreements: string }>(
       `SELECT to_char(date_trunc('month', c.reviewed_at AT TIME ZONE 'Europe/London'), 'YYYY-MM') AS month,
               COUNT(cis.id)::text AS reviewed_items,
@@ -97,19 +132,25 @@ insightsRouter.get('/calibration', async (req, res, next) => {
     );
 
     const corr = (m: string) => parseInt(correctionsByMonth.find((r) => r.month === m)?.corrections || '0', 10);
-    const scored = (m: string) => parseInt(scoredByMonth.find((r) => r.month === m)?.scored_calls || '0', 10);
+    const scoredCalls = (m: string) => parseInt(scoredCallsByMonth.find((r) => r.month === m)?.scored_calls || '0', 10);
+    const scoredJourneys = (m: string) =>
+      parseInt(scoredJourneysByMonth.find((r) => r.month === m)?.scored_journeys || '0', 10);
     const reviewedItems = (m: string) => parseInt(reviewedByMonth.find((r) => r.month === m)?.reviewed_items || '0', 10);
     const disagreements = (m: string) => parseInt(reviewedByMonth.find((r) => r.month === m)?.disagreements || '0', 10);
     const trend = months.map((m) => {
       const c = corr(m);
-      const s = scored(m);
+      const sc = scoredCalls(m);
+      const sj = scoredJourneys(m);
+      const units = sc + sj;
       const ri = reviewedItems(m);
       const dis = disagreements(m);
       return {
         month: m,
-        scored_calls: s,
+        scored_calls: sc,
+        scored_journeys: sj,
+        scored_units: units,
         corrections: c,
-        overrides_per_100_calls: s > 0 ? Math.round((c / s) * 1000) / 10 : null,
+        overrides_per_100_scored: units > 0 ? Math.round((c / units) * 1000) / 10 : null,
         reviewed_items: ri,
         agreement_pct: ri > 0 ? Math.round(((ri - dis) / ri) * 1000) / 10 : null,
       };
@@ -148,8 +189,15 @@ insightsRouter.get('/calibration', async (req, res, next) => {
       total_reviewed_items: totalReviewedItems,
       current_agreement_pct: withAgreement[0]?.agreement_pct ?? null,
       previous_agreement_pct: withAgreement[1]?.agreement_pct ?? null,
-      current_override_rate: current?.overrides_per_100_calls ?? null,
-      previous_override_rate: previous?.overrides_per_100_calls ?? null,
+      // See the reviewedByMonth comment above: there is no journey-side
+      // equivalent of calls.reviewed_at, so agreement is, and can only be,
+      // calls-only. Stated explicitly rather than left for the reader to
+      // assume it covers everything the override rate does.
+      agreement_scope: 'calls_only',
+      agreement_note:
+        "Reviewer agreement is measured on calls only. Sales (journeys) have no equivalent of a call's reviewed_at marker — nothing records a supervisor looking at a sale and finding nothing to correct — so an agreement rate cannot be computed for sales. The override rate and item breakdown below do cover both calls and sales.",
+      current_override_rate: current?.overrides_per_100_scored ?? null,
+      previous_override_rate: previous?.overrides_per_100_scored ?? null,
       trend,
       top_items: topItems.map((t) => ({
         label: t.label,

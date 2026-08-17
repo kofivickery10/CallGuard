@@ -101,6 +101,42 @@ describe('redactBankDetails — what must be removed', () => {
     expect(r('sortcode 204567')).toContain(SORT_CODE_TAG);
     expect(r('Account No. 87654321')).toContain(ACCOUNT_NUMBER_TAG);
   });
+
+  it('catches digits stated before a referential anchor', () => {
+    // Read-back phrasing: the customer states the number, then someone names
+    // what it was a moment later. Every anchor above only looks forward, so
+    // this is the shape that leaked a full sort code before the backward
+    // window existed.
+    const out = r("Customer: It's 20 45 67. Agent: Lovely, and that's the sort code, yes?");
+    expect(out).not.toMatch(/\d/);
+    expect(out).toContain(SORT_CODE_TAG);
+  });
+
+  it('catches spoken-word digits stated before the anchor', () => {
+    const out = r('Customer: two zero, four five, six seven — that\'s the sort code.');
+    expect(out).not.toMatch(/two zero|four five|six seven/);
+    expect(out).toContain(SORT_CODE_TAG);
+  });
+
+  it('catches an account number read back before the anchor', () => {
+    const out = r("Customer: 8 7 6 5 4 3 2 1, that's my account number.");
+    expect(out).not.toMatch(/\d/);
+    expect(out).toContain(ACCOUNT_NUMBER_TAG);
+  });
+
+  it('catches a read-back interleaved with acknowledgements before the anchor', () => {
+    const out = r(
+      "Customer: It's 20 45\n\nAgent: Mhmm.\n\nCustomer: 67 89\n\nAgent: Yeah, that's the sort code."
+    );
+    expect(out).not.toMatch(/\d/);
+    expect(out).toContain(SORT_CODE_TAG);
+  });
+
+  it("catches the agent stating the number before naming it", () => {
+    const out = r('Agent: 20 45 67 is the sort code we have on file, correct?');
+    expect(out).not.toMatch(/\d/);
+    expect(out).toContain(SORT_CODE_TAG);
+  });
 });
 
 describe('redactBankDetails — what must survive', () => {
@@ -182,9 +218,55 @@ describe('redactBankDetails — what must survive', () => {
     expect(r(once)).toBe(once);
   });
 
+  it('leaves health answers before an unrelated later bank question alone', () => {
+    // The "units" terminator earning its keep on the backward window too: the
+    // digits here are the answer to a health question, not a read-back, and
+    // the sentence after them is a fresh request rather than a confirmation.
+    const s =
+      'Customer: five foot eleven, I am 62, and about 14 units a week. Agent: Great. Now can I take your sort code?';
+    expect(r(s)).toBe(s);
+  });
+
+  it('leaves a blood pressure reading before an unrelated sort code question alone', () => {
+    const s = 'Customer: it was 140 over 90 last time they checked. Agent: OK. And the sort code?';
+    expect(r(s)).toBe(s);
+  });
+
+  it('leaves a cover amount before an unrelated sort code question alone', () => {
+    const s =
+      'Agent: so that is £32.50 a month for £150,000 of cover over 25 years. And the sort code?';
+    expect(r(s)).toBe(s);
+  });
+
+  it('leaves a short age answer before the anchor alone, under the digit floor', () => {
+    const s = 'Customer: I am 62. Agent: Right, sort code please?';
+    expect(r(s)).toBe(s);
+  });
+
   it('handles empty and whitespace input without throwing', () => {
     expect(r('')).toBe('');
     expect(r('   ')).toBe('   ');
+  });
+
+  it('leaves a policy number alone when a bank question follows with only acknowledgement glue between', () => {
+    // BACK_GLUE alone cannot tell this apart from a read-back: "Thanks. And
+    // your " is pure acknowledgement glue. But there is no copula linking the
+    // digits to "bank account" — this is a fresh request, not a confirmation
+    // of what was just said — and a policy number is itself a reconciliation
+    // field, so masking it as [ACCOUNT_NUMBER] would be a direct loss.
+    const s =
+      'Customer: My policy number is 12345678. Agent: Thanks. And your bank account?';
+    expect(r(s)).toBe(s);
+  });
+
+  it('leaves a date of birth alone when a sort code question follows with only acknowledgement glue between', () => {
+    // Same shape as the policy-number case, and "And the sort code please?"
+    // has no verb at all for a substantive-verb test to catch — it is a bare
+    // noun-phrase request. A date of birth is a core application field, so
+    // masking it as [SORT_CODE] would destroy exactly the answer
+    // reconciliation exists to compare.
+    const s = 'Customer: 14 06 1978. Agent: Great, thanks. And the sort code please?';
+    expect(r(s)).toBe(s);
   });
 });
 

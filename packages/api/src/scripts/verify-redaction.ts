@@ -11,7 +11,7 @@
  * Usage: npx tsx src/scripts/verify-redaction.ts <callId>
  */
 import { pool, queryOne, query } from '../db/client.js';
-import { transcribeCall } from '../services/transcription.js';
+import { transcribeCall, resolveRedactCategories } from '../services/transcription.js';
 import { getScoringSettings } from '../services/tenant-settings.js';
 import type { Call } from '@callguard/shared';
 
@@ -89,7 +89,10 @@ async function main() {
     s.transcriptionMode,
     s.deepgramRegion,
     monoFirst as 'agent' | 'customer',
-    unredactedCategories
+    // transcribeCall now takes the already-resolved Deepgram category list
+    // (see resolveTenantRedactCategories in services/transcription.ts), not
+    // the tenant's raw permitted-in-the-clear list, so resolve it here first.
+    resolveRedactCategories(unredactedCategories)
   );
 
   const oldTags = tagTypes(call.transcript_text ?? '');

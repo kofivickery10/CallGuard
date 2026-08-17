@@ -47,6 +47,11 @@ export type AuditActionType =
   | 'sftp.create'
   | 'sftp.update'
   | 'sftp.delete'
+  // A file that errored on ingest (see jobs/processors/sftp-poll.ts) reset
+  // back to 'errored'/attempt_count 0 so it is retried on the next poll —
+  // either one file by id, or every failed file on a source at once.
+  | 'sftp.file_retry'
+  | 'sftp.retry_failed'
   | 'zoho.connect'
   | 'zoho.update'
   | 'zoho.disconnect'
@@ -94,7 +99,13 @@ export type AuditActionType =
   // Platform-level queue operations, not scoped to any tenant.
   | 'platform.queue_retry'
   | 'platform.queue_clear'
-  | 'platform.stuck_repair';
+  | 'platform.stuck_repair'
+  // CallGuard's own sales pipeline tracker (routes/superadmin.ts), not scoped
+  // to any tenant — these are prospective clients, not customers.
+  | 'prospect.create'
+  | 'prospect.update'
+  | 'prospect.delete'
+  | 'prospect.import';
 
 export type AuditEntityType =
   | 'call'
@@ -115,7 +126,8 @@ export type AuditEntityType =
   | 'capture_document_profile'
   | 'journey'
   | 'product'
-  | 'queue';
+  | 'queue'
+  | 'prospect';
 
 interface AuditEvent {
   // NULL for platform-level events not scoped to a tenant (e.g. a superadmin

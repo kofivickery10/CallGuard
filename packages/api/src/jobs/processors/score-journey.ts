@@ -12,13 +12,14 @@ import { pushJourneyScored, fetchSaleProducts } from '../../services/zoho.js';
 import { maybeStartJourneyCapture } from '../../services/capture-runs.js';
 import { maybeStartReconciliation } from '../../services/reconciliation-runs.js';
 import { buildCombinedTranscript, resolveSourceCallIndex } from '../../services/journey-transcript.js';
+import { assessJourneyCoverage, computeStructuralCorroboration, resolveCoverage } from '../../services/journey.js';
 import { detectProductsFromTranscript } from '../../services/product-resolution.js';
 import { isItemPass, deriveSeverity, callPasses, resolveBranchWithSource, isNoScoreCrmStage } from '@callguard/shared';
 import {
   CONSENT_SPEAKER_CONFIDENCE_FLOOR,
   routesToReviewOnConfidence,
 } from '../../services/checkpoint-classification.js';
-import type { Scorecard, ScorecardItem, WebhookJourneyScoredPayload, ProductSource } from '@callguard/shared';
+import type { Scorecard, ScorecardItem, WebhookJourneyScoredPayload, ProductSource, JourneyCoverage } from '@callguard/shared';
 
 interface JourneyRow {
   id: string;
@@ -297,8 +298,13 @@ export async function processScoreJourney(job: Job<ScoreJourneyJobData>) {
     // historical behaviour; above 1 the runs vote, and checkpoints they
     // disagree on are routed to manual review below rather than settled by
     // whichever sample happened to be drawn.
-    const { items: consensusItems, coaching, usage, model, samples } = await scoreTranscriptConsensus(
+    const { items: consensusItems, coaching, coverage: consensusCoverage, usage, model, samples } = await scoreTranscriptConsensus(
       scoringSettings.scoringSamples,
+      // Vote against the same bar the pass/fail verdict below is computed on
+      // (line ~512) — a run's checkpoint-level "agreed" is meaningless if it
+      // was decided against a different threshold than the one that decides
+      // the outcome.
+      scoringSettings.passThreshold,
       combinedTranscript,
       aiItems.map((i) => ({
         id: i.id,
@@ -335,11 +341,19 @@ export async function processScoreJourney(job: Job<ScoreJourneyJobData>) {
       // adviser agreeing with himself as consent. Those gates do route to a
       // human, but the AI's suggested verdict is what the reviewer is shown
       // first, and since migration 077 their ruling is permanent.
+      //
+      // A NULL confidence must trip this too, not slide past it: NULL means
+      // attribution was never established at all, which is strictly LESS
+      // trustworthy than a measured low score, not more. Reading NULL as
+      // "fully confident" (`!== null` before the floor check) is what let
+      // live-streamed calls — no stereo pin, no mono heuristic run, so their
+      // confidence column was left NULL — auto-score their consent gates off
+      // labels nobody had verified.
       withTranscript.some(
         (c) =>
           c.speaker_integrity_flag !== null ||
-          (c.speaker_attribution_confidence !== null &&
-            Number(c.speaker_attribution_confidence) < CONSENT_SPEAKER_CONFIDENCE_FLOOR)
+          c.speaker_attribution_confidence === null ||
+          Number(c.speaker_attribution_confidence) < CONSENT_SPEAKER_CONFIDENCE_FLOOR
       )
     );
     const output: ScoringOutput = { items: consensusItems, coaching };
@@ -511,6 +525,54 @@ export async function processScoreJourney(job: Job<ScoreJourneyJobData>) {
       }));
     const pass = callPasses(overallScore, failures.map((f) => f.severity), scoringSettings.passThreshold);
 
+    // Partial-journey coverage (docs/partial-journey-detection.md, Phase 1):
+    // does this journey's evidence look like the complete sale, or does it
+    // read as a continuation of an earlier, uncaptured call? Detect and
+    // persist only — nothing downstream reacts to this yet (see the
+    // journey.ts comment above these functions for why). The signal rides the
+    // scoring pass above (consensusCoverage) rather than a second call — see
+    // scoreTranscriptConsensus's ConsensusCoverage. Skipped when nothing was
+    // auto-scored (no score on screen yet for a coverage judgement to
+    // qualify) or when the pass returned no coverage signal at all, and
+    // best-effort regardless: a coverage failure must never fail the scoring
+    // run itself.
+    let coverage: JourneyCoverage | null = null;
+    let coverageMissingStages: string[] = [];
+    let coverageRationale: string | null = null;
+    if (!nothingAutoScored && consensusCoverage) {
+      try {
+        if (consensusCoverage.disputed) {
+          console.log(
+            `[ScoreJourney] ${journeyId}: coverage runs disagreed on starts_mid_conversation ` +
+              `(agreement ${consensusCoverage.agreement.toFixed(2)}) — took the majority verdict`
+          );
+        }
+        const coverageSignal = assessJourneyCoverage(consensusCoverage.raw);
+        const structural = await computeStructuralCorroboration({
+          organizationId: journey.organization_id,
+          journeyId,
+          customerId: journey.customer_id,
+          earliestCallCreatedAt: withTranscript[0]!.created_at,
+          callCount: withTranscript.length,
+          itemResults: itemWrites.map(({ item, normalized }) => ({
+            sortOrder: item.sort_order,
+            pass: isItemPass(normalized, scoringSettings.passThreshold),
+          })),
+        });
+        const resolved = resolveCoverage(coverageSignal, structural);
+        coverage = resolved.coverage;
+        coverageMissingStages = coverageSignal.missingStages;
+        coverageRationale = resolved.rationale;
+        if (coverage !== 'complete') {
+          console.log(
+            `[ScoreJourney] ${journeyId}: coverage=${coverage} (structural: ${structural.agrees ? structural.reasons.join(',') : 'no corroboration'})`
+          );
+        }
+      } catch (err) {
+        console.warn(`[ScoreJourney] ${journeyId}: coverage assessment failed (non-fatal):`, (err as Error).message);
+      }
+    }
+
     // Why a breach raised from this run might not be settled (migration 078).
     //
     // A compliance register must never assert more than its evidence supports,
@@ -659,11 +721,13 @@ export async function processScoreJourney(job: Job<ScoreJourneyJobData>) {
       await tx.query(
         `UPDATE journeys SET
            status = 'scored', branch = $2, branch_source = $3, overall_score = $4, pass = $5,
-           model_id = $6, coaching = $7, scored_at = now(), updated_at = now()
+           model_id = $6, coaching = $7, coverage = $8, coverage_missing_stages = $9,
+           coverage_rationale = $10, scored_at = now(), updated_at = now()
          WHERE id = $1`,
         [journeyId, branch, branchSource,
          nothingAutoScored ? null : overallScore, nothingAutoScored ? null : pass, model,
-         output.coaching ? JSON.stringify(output.coaching) : null]
+         output.coaching ? JSON.stringify(output.coaching) : null,
+         coverage, coverageMissingStages, coverageRationale]
       );
 
       // Append this run to the sale's score history (migration 074). Inside the

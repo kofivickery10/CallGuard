@@ -1,6 +1,7 @@
 import { Job } from 'bullmq';
 import { query, queryOne, withTransaction } from '../../db/client.js';
-import { scoreTranscript, normalizeScore } from '../../services/scoring.js';
+import { scoreTranscript, scoreTranscriptConsensus, normalizeScore } from '../../services/scoring.js';
+import type { ScoringOutput } from '../../services/scoring.js';
 import { getKBContext } from '../../services/kb.js';
 import { evaluateAlertsForCall } from '../../services/alert-evaluator.js';
 import { getLearningContext } from '../../services/learning-context.js';
@@ -156,7 +157,7 @@ export async function processScoring(job: Job<{ callId: string }>) {
         )
       : undefined;
 
-    const { output, usage, model } = await scoreTranscript(
+    const scoringArgs: Parameters<typeof scoreTranscript> = [
       call.transcript_text,
       aiItems.map((i) => ({
         id: i.id,
@@ -177,12 +178,61 @@ export async function processScoring(job: Job<{ callId: string }>) {
       // Judge who spoke from content, not the label, whenever the labels are
       // not trustworthy — either actively contradicted (integrity flag) or
       // never established (attribution abstained, leaving a positional guess
-      // measured at 1 in 3). Mirrors score-journey.ts; the per-call path had
-      // the same gap.
+      // measured at 1 in 3, or never even attempted). Mirrors score-journey.ts;
+      // the per-call path had the same gap.
+      //
+      // A NULL confidence must trip this, not slide past it: NULL means we
+      // never established who was speaking at all, which is strictly LESS
+      // trustworthy than a measured low score, not more. Reading NULL as
+      // "fully confident" (`!== null` before the floor check) is what let
+      // live-streamed calls — which have no stereo-channel pin and never run
+      // the mono heuristic, so their confidence column was left NULL — sail
+      // through with their consent gates auto-scored off unverified labels.
       call.speaker_integrity_flag !== null ||
-        (call.speaker_attribution_confidence !== null &&
-          Number(call.speaker_attribution_confidence) < CONSENT_SPEAKER_CONFIDENCE_FLOOR)
-    );
+        call.speaker_attribution_confidence === null ||
+        Number(call.speaker_attribution_confidence) < CONSENT_SPEAKER_CONFIDENCE_FLOOR,
+    ];
+
+    // Per-call consensus scoring, extended here from journeys (migration 076's
+    // organizations.scoring_samples — read above via scoringSettings, same
+    // path as passThreshold) to individual calls. scoringSamples defaults to 1
+    // for every org, and 1 sample is exactly the single scoreTranscript() call
+    // below — today's cost and today's output, byte-for-byte.
+    //
+    // Above 1, an org pays N× the Anthropic spend on every call it scores this
+    // way, in exchange for a score that stops moving between re-runs (see
+    // scoreTranscriptConsensus's doc comment for the measured spread). That
+    // trade is the tenant's to make, not the default: it stays opt-in, keyed
+    // off the same org row a tenant already opts journeys into consensus with.
+    let output: ScoringOutput;
+    let usage: { input_tokens: number; output_tokens: number; cache_creation_input_tokens: number; cache_read_input_tokens: number };
+    let model: string;
+    let consensusSamples = 1;
+    // Checkpoints the independent runs disagreed on — genuinely ambiguous, so
+    // routed to manual review below rather than auto-scored off whichever
+    // sample happened to be drawn. Mirrors score-journey.ts's disputedIds.
+    let disputedIds = new Set<string>();
+
+    if (scoringSettings.scoringSamples > 1) {
+      const consensus = await scoreTranscriptConsensus(
+        scoringSettings.scoringSamples,
+        // Vote against the same bar the pass/fail verdict below is computed
+        // on, not the shared default — see scoreTranscriptConsensus's
+        // passThreshold param doc for why a mismatched bar defeats the point.
+        scoringSettings.passThreshold,
+        ...scoringArgs
+      );
+      output = { items: consensus.items, coaching: consensus.coaching };
+      usage = consensus.usage;
+      model = consensus.model;
+      consensusSamples = consensus.samples;
+      disputedIds = new Set(consensus.items.filter((i) => i.disputed).map((i) => i.scorecard_item_id));
+    } else {
+      const single = await scoreTranscript(...scoringArgs);
+      output = single.output;
+      usage = single.usage;
+      model = single.model;
+    }
 
     // Record the scoring call's usage (Haiku first pass, incl. prompt-cache tokens).
     await recordUsage({
@@ -247,7 +297,11 @@ export async function processScoring(job: Job<{ callId: string }>) {
         itemScore.confidence,
         scoringSettings.reviewConfidenceFloor
       );
-      if (provisionalIds.has(item.id) || lowConfidence) {
+      // A checkpoint the consensus runs could not agree on is routed the same
+      // way as the two cases above — held out of the weighted score and sent
+      // to a human with the majority verdict attached, same as
+      // score-journey.ts. Only reachable when scoringSamples > 1.
+      if (provisionalIds.has(item.id) || lowConfidence || disputedIds.has(item.id)) {
         provisionalWrites.push({ item, itemScore, normalized });
         if (lowConfidence) lowConfidenceCount++;
         continue;
@@ -281,7 +335,22 @@ export async function processScoring(job: Job<{ callId: string }>) {
 
     const pass = callPasses(overallScore, failures.map((f) => f.severity), scoringSettings.passThreshold);
     // An unscored call is not an exemplar, however empty its breach list is.
-    const shouldAutoExemplar = !nothingAutoScored && overallScore >= 95 && failures.length === 0;
+    // Nor is a call with any checkpoint still awaiting a human: manual items
+    // and provisional consent gates (manualReview/provisional) are unconfirmed
+    // evidence, and an exemplar isn't just displayed — it's fed back into the
+    // model's learning context as "what good looks like" on future calls. Award
+    // it on an unadjudicated checkpoint and the model gets calibrated on a
+    // verdict no human ever signed off, which is the same failure mode as
+    // auto-scoring a consent gate off a NULL speaker split. Once the reviewer
+    // clears the queue, resolveCallItem in routes/review.ts re-evaluates the
+    // same gate so a call that only missed exemplar status for a pending
+    // checkpoint isn't lost for good.
+    const shouldAutoExemplar =
+      !nothingAutoScored &&
+      overallScore >= 95 &&
+      failures.length === 0 &&
+      manualReview.length === 0 &&
+      provisional.length === 0;
     const priorCoachingCount = learning?.priorCoaching?.length ?? 0;
 
     // Write everything in one transaction. Re-scoring the same call against
@@ -388,6 +457,7 @@ export async function processScoring(job: Job<{ callId: string }>) {
         : `scored: ${overallScore.toFixed(1)} (${pass ? 'PASS' : 'FAIL'})`) +
       `${branch ? ` [branch: ${branch}]` : ''}${manualReview.length ? ` [${manualReview.length} manual_review]` : ''}` +
       `${lowConfidenceCount ? ` [${lowConfidenceCount} to review under confidence floor ${scoringSettings.reviewConfidenceFloor}]` : ''}` +
+      `${consensusSamples > 1 ? ` [${consensusSamples} scoring runs, ${disputedIds.size} disputed -> manual review]` : ''}` +
       `${shouldAutoExemplar ? ' [auto-exemplar]' : ''}`
     );
 

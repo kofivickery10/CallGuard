@@ -15,6 +15,18 @@ module.exports = {
       // exceed the drain timeout in index.ts (25s).
       kill_timeout: 30000,
       max_memory_restart: '600M',
+      // A crash loop (bad deploy, missing env var, etc.) should not retry
+      // forever — that just hammers the DB/Redis connection pools and the
+      // ops inbox with the same failure. PM2 counts restarts since the last
+      // time the process stayed up for min_uptime; below that it counts
+      // toward max_restarts and then PM2 stops trying and leaves it 'errored'
+      // (visible via `pm2 status` / `pm2 jlist`) rather than looping silently.
+      min_uptime: 10000,
+      max_restarts: 10,
+      // Back off between crash-loop restarts instead of hammering the process
+      // straight back up (which is also what would exhaust the DB pool fastest
+      // — see db/client.ts). Caps at 15s so a single blip still recovers fast.
+      exp_backoff_restart_delay: 200,
       env: {
         NODE_ENV: 'production',
       },
@@ -28,6 +40,14 @@ module.exports = {
       // latency (and exceed the worker's own 110s drain timeout) before SIGKILL.
       kill_timeout: 120000,
       max_memory_restart: '700M',
+      // Same crash-loop protection as the API (see above), but a slightly
+      // longer min_uptime: the worker does more at boot (DB/Redis connect,
+      // remote-guard check, SFTP + retention schedule registration) before it
+      // is genuinely healthy, so a restart that dies during that window
+      // shouldn't be judged on the API's shorter window.
+      min_uptime: 15000,
+      max_restarts: 10,
+      exp_backoff_restart_delay: 200,
       env: {
         NODE_ENV: 'production',
       },
