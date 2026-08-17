@@ -341,9 +341,34 @@ const DEAD_STATUS_KEYWORDS = [
   'applied to cancel',
 ];
 
+// Statuses excluded on an EXACT match (after trimming/lowercasing) rather
+// than a substring test, because a substring rule here would either be
+// wrong or only work by luck:
+//   - "Registered": investigated live (FRN 1049760, "Your Mortgage Advice
+//     Limited") — its Firm record carries `Business Type: CBTL` (Consumer
+//     Buy-to-Let) with no Permissions on file. CBTL is a *registration*
+//     regime under the Mortgage Credit Directive Order, not an FSMA
+//     authorisation — CBTL business isn't a regulated activity, so MCOB
+//     doesn't apply to it and there's no regulated advice call for
+//     CallGuard to score. A genuine mortgage/protection adviser always
+//     shows as "Authorised" or "Appointed representative", never
+//     "Registered", so excluding this status can't cost a real prospect. A
+//     plain substring rule would be the wrong tool here too: "No longer
+//     registered as an Appointed Representative" contains "registered" and
+//     is already excluded by the "no longer" keyword above, so a substring
+//     match would happen to work rather than being the actual reason.
+//   - "Unauthorised": a firm not authorised cannot lawfully carry on
+//     regulated activity — some appear on the Register precisely because
+//     the FCA is warning about them. This one is an EXACT match rather than
+//     a keyword deliberately, because "Unauthorised" contains the substring
+//     "authorised" — see isKnownGoodStatus below, which is the function
+//     that substring check would otherwise corrupt.
+const EXACT_DEAD_STATUSES = ['registered', 'unauthorised'];
+
 export function isDeadStatus(status: string | null | undefined): boolean {
   if (!status) return false;
-  const lower = status.toLowerCase();
+  const lower = status.toLowerCase().trim();
+  if (EXACT_DEAD_STATUSES.includes(lower)) return true;
   return DEAD_STATUS_KEYWORDS.some((kw) => lower.includes(kw));
 }
 
@@ -364,17 +389,29 @@ export function isExcludedStatus(status: string | null | undefined): boolean {
 
 /** Statuses this script explicitly recognises as "still an active firm
  * worth enriching", beyond the two exact Register values in the brief
- * ("Authorised", "Appointed representative"). Anything else that contains
- * "authorised" after the dead/introducer exclusions above have already run
- * is presumed to be a live variant we haven't catalogued by name (e.g. "EEA
- * Authorised", seen live on the Register) rather than something genuinely
- * unknown — "No longer authorised" never reaches this function, since
- * isDeadStatus already caught it. */
+ * ("Authorised", "Appointed representative"). Anything else that is a
+ * whole-word match for "authorised" after the dead/introducer exclusions
+ * above have already run is presumed to be a live variant we haven't
+ * catalogued by name (e.g. "EEA Authorised", seen live on the Register)
+ * rather than something genuinely unknown — "No longer authorised" never
+ * reaches this function, since isDeadStatus already caught it.
+ *
+ * MATCHING HAZARD, handled deliberately: "Unauthorised" contains the
+ * substring "authorised", so a plain `.includes('authorised')` test would
+ * misclassify an unauthorised firm — the opposite of an active one — as
+ * known-good. `\bauthorised\b` is a whole-word match instead: there's a
+ * word boundary before "Authorised" in "EEA Authorised" (space, then
+ * letters) so that still matches, but there's no boundary between "un" and
+ * "authorised" in "Unauthorised" (both are letters, same word), so it
+ * doesn't. isDeadStatus's exact "unauthorised" check (above) is what
+ * actually excludes it before this function is ever reached in the real
+ * pipeline, but this function is also exported and tested standalone, so it
+ * needs to be correct on its own rather than merely lucky about call order. */
 export function isKnownGoodStatus(status: string | null | undefined): boolean {
   if (!status) return false;
   const lower = status.toLowerCase().trim();
   if (lower === 'authorised' || lower === 'appointed representative') return true;
-  return lower.includes('authorised');
+  return /\bauthorised\b/.test(lower);
 }
 
 export interface DiscoveryCandidate {
