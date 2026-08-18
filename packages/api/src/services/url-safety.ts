@@ -113,13 +113,45 @@ export async function assertSafeRemoteUrl(rawUrl: string): Promise<SafeRemoteUrl
     throw new AppError(400, 'URL resolves to a disallowed address');
   }
 
-  // Pin to the first validated address. Every one of them was already
-  // confirmed public above, so which one is picked doesn't affect safety —
-  // this just needs to be *an* address that was actually checked, not a
-  // fresh, unchecked resolution.
-  const pinned = addresses[0]!;
-  const lookup: LookupFunction = (_hostname, _options, callback) => {
-    callback(null, pinned.address, pinned.family);
+  // Pin to the addresses just validated. Every one of them was confirmed
+  // public above, so which one the client ends up connecting to doesn't affect
+  // safety — this just needs to hand back addresses that were actually
+  // checked, not a fresh, unchecked resolution.
+  //
+  // The callback shape is not ours to choose: `dns.lookup` has two of them and
+  // the *caller* picks via `options.all`. With `all: true` it must be called
+  // as `(err, [{ address, family }, ...])`; otherwise as `(err, address,
+  // family)`. Node's `net` sets `all: true` whenever autoSelectFamily is on —
+  // which is the default since Node 20 — so the array form is the one real
+  // requests take. Answering that with the single-address form makes Node
+  // index into a string and reject the connection with the memorably useless
+  // "Invalid IP address: undefined". Both forms are implemented below; a test
+  // covers each, because a test that only exercises the `all: false` branch
+  // passes happily while every real download fails.
+  const lookup: LookupFunction = (_hostname, options, callback) => {
+    // `family` is honoured only when the caller asks for one (Node omits it
+    // under autoSelectFamily). Handing back a v4 address to a request that
+    // asked for v6 would fail the connection in another confusing way.
+    const wanted = typeof options === 'object' && options !== null ? options.family : undefined;
+    const matching =
+      wanted === 4 || wanted === 6 ? addresses.filter((a) => a.family === wanted) : addresses;
+
+    if (matching.length === 0) {
+      const err: NodeJS.ErrnoException = new Error(
+        `No IPv${wanted} address for ${hostname}`
+      );
+      err.code = 'ENOTFOUND';
+      callback(err, '', 0);
+      return;
+    }
+
+    if (typeof options === 'object' && options !== null && options.all) {
+      callback(null, matching.map((a) => ({ address: a.address, family: a.family })));
+      return;
+    }
+
+    const first = matching[0]!;
+    callback(null, first.address, first.family);
   };
 
   return { url, lookup };
