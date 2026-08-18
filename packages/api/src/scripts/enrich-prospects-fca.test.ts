@@ -1,4 +1,17 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+import { query, queryOne } from '../db/client.js';
+
+// processEnriched is the one export in this suite that touches the database
+// (via findExisting/query, both imported from db/client.js) — mocked here
+// rather than run against a live Postgres, the same pattern
+// services/journey.test.ts uses for its own DB-bound logic. Every other test
+// in this file exercises pure functions and never touches these mocks.
+vi.mock('../db/client.js', () => ({
+  pool: { end: vi.fn() },
+  query: vi.fn(),
+  queryOne: vi.fn(),
+}));
+
 import {
   stripPostcodeSuffix,
   isLikelyCompanyName,
@@ -40,10 +53,20 @@ import {
   assignTargetTier,
   buildSweepDigest,
   parseSweepArgs,
+  isRoleBasedEmail,
+  compareOutreachRank,
+  selectOutreachCandidates,
+  parseExportOutreachArgs,
+  processEnriched,
+  extractRoleBasedEmail,
+  normalizeWebsiteToHttpsOrigin,
+  parseHarvestEmailsArgs,
   type FcaSearchResultItem,
   type LapsedArCandidate,
   type ExistingProspectRow,
   type SweepDigestFirm,
+  type OutreachCandidate,
+  type EnrichedFirm,
 } from './enrich-prospects-fca.js';
 
 describe('stripPostcodeSuffix', () => {
@@ -1237,5 +1260,333 @@ describe('a limit-skipped status change is re-detected on the following run (the
     const storedBeforeRun2 = null;
     const run2Diff = diffObservation(storedBeforeRun2, 'Authorised');
     expect(run2Diff.event).toBe('new');
+  });
+});
+
+describe('isRoleBasedEmail', () => {
+  const ALLOWLISTED_PREFIXES = [
+    'info', 'enquiries', 'enquiry', 'hello', 'contact', 'admin', 'office',
+    'mail', 'team', 'support', 'sales', 'reception',
+  ];
+
+  it('accepts every allowlisted local part, matching migration 106\'s CHECK constraint', () => {
+    for (const prefix of ALLOWLISTED_PREFIXES) {
+      expect(isRoleBasedEmail(`${prefix}@example.co.uk`)).toBe(true);
+    }
+  });
+
+  it('is case-insensitive, same as the CHECK constraint (~*)', () => {
+    expect(isRoleBasedEmail('INFO@Example.COM')).toBe(true);
+    expect(isRoleBasedEmail('Enquiries@firm.co.uk')).toBe(true);
+  });
+
+  it('rejects a name-shaped address, even a plausible-looking one', () => {
+    expect(isRoleBasedEmail('john.smith@example.co.uk')).toBe(false);
+    expect(isRoleBasedEmail('jsmith@example.co.uk')).toBe(false);
+    expect(isRoleBasedEmail('anna.woodvine@firm.com')).toBe(false);
+  });
+
+  it('rejects a role-shaped prefix that is not on the allowlist', () => {
+    expect(isRoleBasedEmail('accounts@example.co.uk')).toBe(false);
+    expect(isRoleBasedEmail('careers@example.co.uk')).toBe(false);
+  });
+
+  it('rejects a local part that merely starts with an allowlisted word', () => {
+    // "information@" contains "info" but is not "info@" — the CHECK
+    // constraint's anchored regex only matches when @ immediately follows
+    // the allowlisted word, and this must agree with it exactly.
+    expect(isRoleBasedEmail('information@example.co.uk')).toBe(false);
+    expect(isRoleBasedEmail('salesforce@example.co.uk')).toBe(false);
+  });
+
+  it('rejects malformed input', () => {
+    expect(isRoleBasedEmail('')).toBe(false);
+    expect(isRoleBasedEmail('info')).toBe(false);
+    expect(isRoleBasedEmail('info@')).toBe(false);
+    expect(isRoleBasedEmail('@example.com')).toBe(false);
+    expect(isRoleBasedEmail('info@@example.com')).toBe(false);
+    expect(isRoleBasedEmail('info@example')).toBe(false);
+    expect(isRoleBasedEmail('info @example.com')).toBe(false);
+    expect(isRoleBasedEmail('not-an-email-at-all')).toBe(false);
+  });
+
+  it('tolerates copy-pasted surrounding whitespace', () => {
+    expect(isRoleBasedEmail('  info@example.co.uk  ')).toBe(true);
+  });
+});
+
+function makeOutreachCandidate(overrides: Partial<OutreachCandidate> = {}): OutreachCandidate {
+  return {
+    firmName: 'Acme Financial Ltd',
+    frn: '123456',
+    generalEmail: 'info@acme.co.uk',
+    website: 'https://acme.co.uk',
+    fcaStatus: 'Authorised',
+    targetTier: 'established_da',
+    formerAr: false,
+    authorisedSince: '2020-01-01',
+    registeredAddress: '1 Acme Street, London',
+    optedOutAt: null,
+    ...overrides,
+  };
+}
+
+describe('compareOutreachRank', () => {
+  it('ranks transition ahead of established_da, appointed_rep and startup', () => {
+    const transition = makeOutreachCandidate({ firmName: 'A', targetTier: 'transition' });
+    const established = makeOutreachCandidate({ firmName: 'B', targetTier: 'established_da' });
+    const appointedRep = makeOutreachCandidate({ firmName: 'C', targetTier: 'appointed_rep' });
+    const startup = makeOutreachCandidate({ firmName: 'D', targetTier: 'startup' });
+    const shuffled = [startup, appointedRep, established, transition];
+    expect([...shuffled].sort(compareOutreachRank)).toEqual([transition, established, appointedRep, startup]);
+  });
+
+  it('sorts an untiered (null target_tier) firm to the back, alongside unknown', () => {
+    const startup = makeOutreachCandidate({ firmName: 'A', targetTier: 'startup' });
+    const untiered = makeOutreachCandidate({ firmName: 'B', targetTier: null });
+    const unknown = makeOutreachCandidate({ firmName: 'C', targetTier: 'unknown' });
+    const result = [unknown, startup, untiered].sort(compareOutreachRank);
+    expect(result[0]).toBe(startup);
+    // untiered and unknown rank equally — order between them falls back to
+    // name, not tier.
+    expect(new Set(result.slice(1).map((r) => r.firmName))).toEqual(new Set(['B', 'C']));
+  });
+
+  it('within a tier, orders most recently authorised first', () => {
+    const older = makeOutreachCandidate({ firmName: 'Older Ltd', targetTier: 'established_da', authorisedSince: '2015-06-01' });
+    const newer = makeOutreachCandidate({ firmName: 'Newer Ltd', targetTier: 'established_da', authorisedSince: '2022-03-01' });
+    expect([older, newer].sort(compareOutreachRank)).toEqual([newer, older]);
+  });
+
+  it('falls back to firm name when tier and date are equal', () => {
+    const a = makeOutreachCandidate({ firmName: 'Beta Ltd' });
+    const b = makeOutreachCandidate({ firmName: 'Alpha Ltd' });
+    expect([a, b].sort(compareOutreachRank)).toEqual([b, a]);
+  });
+
+  it('sorts an undated firm within its tier to the back of that tier', () => {
+    const dated = makeOutreachCandidate({ firmName: 'Dated Ltd', targetTier: 'startup', authorisedSince: '2024-01-01' });
+    const undated = makeOutreachCandidate({ firmName: 'Undated Ltd', targetTier: 'startup', authorisedSince: null });
+    expect([undated, dated].sort(compareOutreachRank)).toEqual([dated, undated]);
+  });
+});
+
+describe('selectOutreachCandidates', () => {
+  it('excludes a firm with a PECR opt-out on record — the filter that must never be forgotten', () => {
+    const optedOut = makeOutreachCandidate({ firmName: 'Opted Out Ltd', optedOutAt: '2026-01-01T00:00:00.000Z' });
+    const active = makeOutreachCandidate({ firmName: 'Active Ltd', optedOutAt: null });
+    const result = selectOutreachCandidates([optedOut, active]);
+    expect(result).toEqual([active]);
+  });
+
+  it('excludes an opted-out firm even when a Date object (as node-postgres would return) is used', () => {
+    const optedOut = makeOutreachCandidate({ firmName: 'Opted Out Ltd', optedOutAt: new Date('2026-01-01') });
+    expect(selectOutreachCandidates([optedOut])).toEqual([]);
+  });
+
+  it('excludes a firm whose fca_status shows it has left the market, reusing isDeadStatus', () => {
+    const dead = makeOutreachCandidate({ firmName: 'Dead Ltd', fcaStatus: 'No longer authorised' });
+    const alive = makeOutreachCandidate({ firmName: 'Alive Ltd', fcaStatus: 'Authorised' });
+    const result = selectOutreachCandidates([dead, alive]);
+    expect(result).toEqual([alive]);
+  });
+
+  it('applies the opt-out filter even to a firm that would otherwise rank first', () => {
+    const optedOutTransition = makeOutreachCandidate({
+      firmName: 'Opted Out Transition Ltd',
+      targetTier: 'transition',
+      optedOutAt: '2026-01-01T00:00:00.000Z',
+    });
+    const startup = makeOutreachCandidate({ firmName: 'Startup Ltd', targetTier: 'startup', optedOutAt: null });
+    expect(selectOutreachCandidates([optedOutTransition, startup])).toEqual([startup]);
+  });
+
+  it('orders the surviving candidates by tier rank', () => {
+    const startup = makeOutreachCandidate({ firmName: 'Startup Ltd', targetTier: 'startup' });
+    const transition = makeOutreachCandidate({ firmName: 'Transition Ltd', targetTier: 'transition' });
+    expect(selectOutreachCandidates([startup, transition])).toEqual([transition, startup]);
+  });
+});
+
+describe('parseExportOutreachArgs', () => {
+  it('reads the path following --export-outreach', () => {
+    expect(parseExportOutreachArgs(['--export-outreach', '/tmp/out.csv'])).toEqual({ outputPath: '/tmp/out.csv' });
+  });
+
+  it('reports a missing path as null rather than throwing', () => {
+    expect(parseExportOutreachArgs(['--export-outreach'])).toEqual({ outputPath: null });
+  });
+
+  it('reports no path at all when the flag is absent', () => {
+    expect(parseExportOutreachArgs(['--yes'])).toEqual({ outputPath: null });
+  });
+});
+
+describe('processEnriched — protects human/harvest-entered outreach columns', () => {
+  const existingRow: ExistingProspectRow = {
+    id: 'p-1',
+    firm_name: 'Acme Financial Ltd',
+    frn: '123456',
+    fca_status: 'Authorised',
+    permissions: [],
+    website: null,
+    main_phone: null,
+    registered_address: null,
+    companies_house_number: null,
+    authorised_since: null,
+    former_ar: false,
+    ar_ceased_on: null,
+    target_tier: null,
+  };
+
+  const firm: EnrichedFirm = {
+    frn: '123456',
+    firmName: 'Acme Financial Ltd',
+    fcaStatus: 'Authorised',
+    permissions: [],
+    website: 'https://acme.co.uk',
+    mainPhone: null,
+    registeredAddress: '1 Acme Street',
+    companiesHouseNumber: null,
+    authorisedSince: null,
+  };
+
+  it('never references general_email, general_email_source_url or opted_out_at in the UPDATE it issues — a re-run can never clobber them', async () => {
+    vi.mocked(queryOne).mockReset();
+    vi.mocked(query).mockReset();
+    // findExisting resolves via the FRN lookup — this stands in for a row
+    // that, in the real database, also carries a human-set opted_out_at and
+    // general_email (both omitted from ExistingProspectRow, same as every
+    // other human-entered column — see that interface's own comment). The
+    // point of this test is that the UPDATE below never mentions those
+    // columns at all, so whatever value they hold on the real row survives
+    // regardless of what this mock returns.
+    vi.mocked(queryOne).mockResolvedValueOnce(existingRow as never);
+    vi.mocked(query).mockResolvedValueOnce([] as never);
+
+    await processEnriched(firm, true, null);
+
+    expect(query).toHaveBeenCalledTimes(1);
+    const [sql, params] = vi.mocked(query).mock.calls[0]!;
+    expect(sql).toMatch(/UPDATE prospects SET/);
+    expect(sql).not.toMatch(/general_email/);
+    expect(sql).not.toMatch(/opted_out_at/);
+    // Exactly the 13 Register-derived params documented at the call site —
+    // id + 12 SET values — proving nothing extra was smuggled in either.
+    expect(params).toHaveLength(13);
+  });
+
+  it('never references the outreach columns on the INSERT path either', async () => {
+    vi.mocked(queryOne).mockReset();
+    vi.mocked(query).mockReset();
+    vi.mocked(queryOne).mockResolvedValueOnce(null as never);
+    vi.mocked(query).mockResolvedValueOnce([] as never); // the byName fallback SELECT
+    vi.mocked(query).mockResolvedValueOnce([] as never); // the INSERT itself
+
+    await processEnriched(firm, true, null);
+
+    const insertCall = vi.mocked(query).mock.calls.find(([sql]) => /INSERT INTO prospects/.test(sql as string));
+    expect(insertCall).toBeDefined();
+    const [sql] = insertCall!;
+    expect(sql).not.toMatch(/general_email/);
+    expect(sql).not.toMatch(/opted_out_at/);
+  });
+});
+
+describe('extractRoleBasedEmail', () => {
+  it('extracts a role-based address from a mailto: link', () => {
+    const html = `
+      <html><body>
+        <p>Get in touch: <a href="mailto:info@example.co.uk">Email us</a></p>
+      </body></html>
+    `;
+    expect(extractRoleBasedEmail(html)).toBe('info@example.co.uk');
+  });
+
+  it('extracts a role-based address written as plain text', () => {
+    const html = `<html><body><p>Email us at hello@example.com for more info.</p></body></html>`;
+    expect(extractRoleBasedEmail(html)).toBe('hello@example.com');
+  });
+
+  it('prefers the most generic role-based address when a page has several', () => {
+    const html = `
+      <html><body>
+        <a href="mailto:sales@example.co.uk">Sales</a>
+        <a href="mailto:info@example.co.uk">General enquiries</a>
+        <a href="mailto:support@example.co.uk">Support</a>
+      </body></html>
+    `;
+    expect(extractRoleBasedEmail(html)).toBe('info@example.co.uk');
+  });
+
+  it('NEVER returns a personal address, even when it is the only address on the page', () => {
+    const html = `
+      <html><body>
+        <p>Contact our adviser Jane Smith directly: <a href="mailto:jane.smith@example.co.uk">jane.smith@example.co.uk</a></p>
+      </body></html>
+    `;
+    expect(extractRoleBasedEmail(html)).toBeNull();
+  });
+
+  it('ignores a personal address and returns the role-based one when a page has both', () => {
+    const html = `
+      <html><body>
+        <p>Speak to Jane Smith: jane.smith@example.co.uk</p>
+        <p>Or use our general inbox: enquiries@example.co.uk</p>
+      </body></html>
+    `;
+    expect(extractRoleBasedEmail(html)).toBe('enquiries@example.co.uk');
+  });
+
+  it('returns null for a page with no email address at all', () => {
+    const html = `<html><body><p>Welcome to our site. Call us on 01234 567890.</p></body></html>`;
+    expect(extractRoleBasedEmail(html)).toBeNull();
+  });
+
+  it('returns null for a page whose only address is role-shaped but not on the allowlist', () => {
+    const html = `<html><body><p>Careers: careers@example.co.uk</p></body></html>`;
+    expect(extractRoleBasedEmail(html)).toBeNull();
+  });
+
+  it('is case-insensitive and normalises to lower case', () => {
+    const html = `<a href="mailto:INFO@Example.CO.UK">Email</a>`;
+    expect(extractRoleBasedEmail(html)).toBe('info@example.co.uk');
+  });
+});
+
+describe('normalizeWebsiteToHttpsOrigin', () => {
+  it('adds a https scheme to a bare domain', () => {
+    expect(normalizeWebsiteToHttpsOrigin('www.eatonmortgages.co.uk')).toBe('https://www.eatonmortgages.co.uk');
+  });
+
+  it('upgrades a http URL to https', () => {
+    expect(normalizeWebsiteToHttpsOrigin('http://pifinancial.co.uk/')).toBe('https://pifinancial.co.uk');
+  });
+
+  it('strips a path/query from an already-https URL, keeping only the origin', () => {
+    expect(normalizeWebsiteToHttpsOrigin('https://example.co.uk/some/path?x=1')).toBe('https://example.co.uk');
+  });
+
+  it('returns null for unparseable input', () => {
+    expect(normalizeWebsiteToHttpsOrigin('not a url at all')).toBeNull();
+  });
+
+  it('returns null for an empty string', () => {
+    expect(normalizeWebsiteToHttpsOrigin('')).toBeNull();
+    expect(normalizeWebsiteToHttpsOrigin('   ')).toBeNull();
+  });
+});
+
+describe('parseHarvestEmailsArgs', () => {
+  it('defaults to dry-run (yes: false)', () => {
+    expect(parseHarvestEmailsArgs(['--harvest-emails'])).toEqual({ yes: false, dryRun: false });
+  });
+
+  it('recognises --yes', () => {
+    expect(parseHarvestEmailsArgs(['--harvest-emails', '--yes'])).toEqual({ yes: true, dryRun: false });
+  });
+
+  it('--dry-run forces preview even alongside --yes, matching the rest of the script', () => {
+    expect(parseHarvestEmailsArgs(['--harvest-emails', '--yes', '--dry-run'])).toEqual({ yes: true, dryRun: true });
   });
 });

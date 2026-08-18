@@ -23,20 +23,27 @@
  *     manual action recording that a CTPS screen actually happened — this
  *     script has no such action to record, so it never appears in any INSERT
  *     or UPDATE below.
- *   - Human-entered columns (`status`, `note`, `fit_score`,
- *     `last_contacted_at`, `ctps_screened_at`) are never touched on update —
- *     only the Register-derived columns (`firm_name`, `frn`, `fca_status`,
- *     `permissions`, `website`, `main_phone`, `registered_address`,
- *     `companies_house_number`, `authorised_since`) plus `updated_at` are
- *     refreshed. `source` is set to 'directory' on rows this script creates
- *     and is left alone on rows it updates. `former_ar`/`ar_ceased_on` are a
- *     partial exception: they refresh only when this run finds positive
- *     transition evidence (see TransitionEvidence) — with none found, they
- *     carry the existing row's values through unchanged rather than being
- *     reset, since a false former_ar is worse than a missed one (see the
- *     "AR -> directly-authorised transition detection" section below).
- *     `fit_score` is never set by this script even for a confirmed
- *     transition — that stays a human judgement, not a generated number.
+ *   - Human/harvest-entered columns (`status`, `note`, `fit_score`,
+ *     `last_contacted_at`, `ctps_screened_at`, `general_email`,
+ *     `general_email_source_url`, `opted_out_at`) are never touched on
+ *     update — only the Register-derived columns (`firm_name`, `frn`,
+ *     `fca_status`, `permissions`, `website`, `main_phone`,
+ *     `registered_address`, `companies_house_number`, `authorised_since`)
+ *     plus `updated_at` are refreshed. `source` is set to 'directory' on
+ *     rows this script creates and is left alone on rows it updates.
+ *     `former_ar`/`ar_ceased_on` are a partial exception: they refresh only
+ *     when this run finds positive transition evidence (see
+ *     TransitionEvidence) — with none found, they carry the existing row's
+ *     values through unchanged rather than being reset, since a false
+ *     former_ar is worse than a missed one (see the "AR -> directly-
+ *     authorised transition detection" section below). `fit_score` is never
+ *     set by this script even for a confirmed transition — that stays a
+ *     human judgement, not a generated number. `general_email`/
+ *     `general_email_source_url` are written only by `--harvest-emails` (see
+ *     that section below), and `opted_out_at` is never written by this
+ *     script at all — it is a PECR opt-out, and once set it must survive
+ *     every future enrichment refresh or harvest re-run permanently, the
+ *     same non-negotiable guarantee `ctps_screened_at` gets above.
  *   - This script never writes a firm that is one of CallGuard's own
  *     existing tenants (`organizations`) as a prospect — see the
  *     "Existing-client guard" section below (findMatchingExistingClient). A
@@ -123,8 +130,12 @@
 
 import fs from 'fs';
 import path from 'path';
+import https from 'https';
+import type { IncomingHttpHeaders } from 'http';
+import type { LookupFunction } from 'net';
 import { pool, query, queryOne } from '../db/client.js';
 import { config } from '../config.js';
+import { assertSafeRemoteUrl } from '../services/url-safety.js';
 
 // ── FCA Register client ─────────────────────────────────────────────────
 
@@ -343,6 +354,126 @@ export function isLikelyCompanyName(name: string): boolean {
   if (/&/.test(name)) return true;
   const lower = name.toLowerCase();
   return CORPORATE_MARKERS.some((marker) => new RegExp(`\\b${marker}\\b`, 'i').test(lower));
+}
+
+// ── Outreach: role-based email only (migration 106) ─────────────────────
+//
+// `general_email` may only ever hold a role-based inbox (info@, sales@,
+// etc.), never a named individual's address — the same firm-level-only rule
+// as `main_phone` being a switchboard number, and for the same two reasons:
+// there is no legitimate-interests assessment on file for holding a named
+// contact, and under PECR a sole trader or partnership is an INDIVIDUAL
+// subscriber, not a corporate one, so a personal address needs a different
+// (and here, unavailable) lawful basis to email at all. Migration 106's
+// CHECK constraint enforces this in the schema, but this function exists so
+// every write path — this script's own --harvest-emails (below), and any
+// future one — rejects a bad address in code, before ever reaching the
+// database, rather than leaning on the CHECK to catch a mistake after the
+// fact. Keep this allowlist and the migration's CHECK regex in sync:
+// extending one without the other lets code and schema quietly disagree
+// about what's allowed.
+const ROLE_BASED_EMAIL_LOCAL_PARTS = [
+  'info', 'enquiries', 'enquiry', 'hello', 'contact', 'admin', 'office',
+  'mail', 'team', 'support', 'sales', 'reception',
+];
+
+// Unlike migration 106's CHECK (which only needs to guard the local part —
+// Postgres has no interest in the domain shape), this also requires a
+// plausible domain (something, a dot, a letters-only TLD) so a malformed
+// string that happens to start "info@" — "info@", "info@nowhere",
+// "info@@x.com" — is rejected here in code rather than only failing later at
+// the database. `name.trim()` tolerates copy-pasted whitespace from a
+// scraped page; the match itself is case-insensitive since email local
+// parts conventionally are.
+const ROLE_BASED_EMAIL_RE = new RegExp(
+  `^(${ROLE_BASED_EMAIL_LOCAL_PARTS.join('|')})@[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*\\.[a-z]{2,}$`,
+  'i'
+);
+
+export function isRoleBasedEmail(email: string): boolean {
+  return ROLE_BASED_EMAIL_RE.test(email.trim());
+}
+
+// ── --harvest-emails: pure extraction (Phase 4) ──────────────────────────
+//
+// The one part of --harvest-emails that is unit tested — see
+// enrich-prospects-fca.test.ts's HTML fixtures — kept deliberately free of
+// any network code so it never needs a live HTTP call to exercise.
+
+/** Most generic first — "prefer info@ over sales@", per the brief — using
+ * migration 106's own allowlist order as the tie-break when a page offers
+ * more than one qualifying address. Anything not on the allowlist can't
+ * reach this (isRoleBasedEmail has already excluded it), so indexOf's -1
+ * case never actually happens in practice; it's handled anyway so this
+ * degrades to "sorts last" instead of throwing if that ever changes. */
+const EMAIL_GENERICITY_ORDER = [
+  'info', 'enquiries', 'enquiry', 'hello', 'contact', 'reception',
+  'office', 'admin', 'mail', 'team', 'support', 'sales',
+];
+
+function emailGenericityRank(email: string): number {
+  const localPart = email.split('@')[0]?.toLowerCase() ?? '';
+  const idx = EMAIL_GENERICITY_ORDER.indexOf(localPart);
+  return idx === -1 ? EMAIL_GENERICITY_ORDER.length : idx;
+}
+
+// Deliberately permissive at the extraction stage — this only has to find
+// candidate strings that LOOK like an email address; isRoleBasedEmail (the
+// same function migration 106's CHECK constraint mirrors) is what actually
+// decides what's safe to keep. A mailto: link is the stronger signal (a
+// human deliberately marked it as the contact address), but plain text in
+// the page body is worth catching too — many contact pages just print the
+// address rather than linking it.
+const MAILTO_RE = /mailto:([^"'?\s>]+)/gi;
+const PLAIN_EMAIL_RE = /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi;
+
+/** Finds every candidate address on a page (mailto: links and plain text),
+ * keeps only the ones isRoleBasedEmail accepts, and returns the most
+ * generic surviving one — or null if the page has no role-based address at
+ * all. This is the ONLY place a personal address is discarded rather than
+ * stored: even a page whose one and only address is a named individual's
+ * (e.g. "Contact Jane Smith: jane.smith@firm.co.uk") returns null here,
+ * never that address — matching the brief's "never store a name-shaped
+ * address, even if it is the only one on the page" exactly. */
+export function extractRoleBasedEmail(html: string): string | null {
+  const candidates = new Set<string>();
+
+  let m: RegExpExecArray | null;
+  MAILTO_RE.lastIndex = 0;
+  while ((m = MAILTO_RE.exec(html))) {
+    candidates.add(m[1]!.trim().toLowerCase());
+  }
+  PLAIN_EMAIL_RE.lastIndex = 0;
+  while ((m = PLAIN_EMAIL_RE.exec(html))) {
+    candidates.add(m[0]!.trim().toLowerCase());
+  }
+
+  const roleBased = [...candidates].filter((c) => isRoleBasedEmail(c));
+  if (roleBased.length === 0) return null;
+  return [...roleBased].sort((a, b) => emailGenericityRank(a) - emailGenericityRank(b) || a.localeCompare(b))[0]!;
+}
+
+/** Turns whatever CallGuard has on file for a prospect's `website` (often
+ * scheme-less, e.g. the Register Address endpoint's raw "Website Address"
+ * value — see EnrichedFirm.website — or a bare domain typed in by hand) into
+ * a single https:// origin to try fetching, stripping any path/query/hash
+ * the stored value happened to include (--harvest-emails builds its own
+ * candidate paths against this origin — see HARVEST_PATHS). https is
+ * enforced unconditionally, matching assertSafeRemoteUrl's own restriction
+ * (see url-safety.ts) — an http-only site simply can't be harvested; that is
+ * a missed firm, not a reason to weaken the SSRF check. Returns null for
+ * anything that doesn't parse as a URL at all once a scheme is assumed. */
+export function normalizeWebsiteToHttpsOrigin(website: string): string | null {
+  const trimmed = website.trim();
+  if (!trimmed) return null;
+  const withScheme = /^https?:\/\//i.test(trimmed) ? trimmed.replace(/^http:\/\//i, 'https://') : `https://${trimmed}`;
+  try {
+    const url = new URL(withScheme);
+    if (url.protocol !== 'https:' || !url.hostname) return null;
+    return `https://${url.host}`;
+  } catch {
+    return null;
+  }
 }
 
 // The Register's "Status Effective Date" is "dd/mm/yyyy" (e.g. "18/12/2025"
@@ -1022,6 +1153,90 @@ export function buildSweepDigest(firms: SweepDigestFirm[]): SweepDigest {
   return { transitions, departures, newByTier };
 }
 
+// ── --export-outreach (Phase 3) ─────────────────────────────────────────
+//
+// Builds the B2B email outreach list: firms with a role-based inbox on file,
+// no PECR opt-out, and not out of the market. See migration
+// 106_prospect_outreach.sql for why email (not phone) is the first-contact
+// channel, and the CallGuard-standard reasoning (repeated for every column
+// on this table) for why general_email can only ever be a role inbox.
+
+export interface OutreachCandidate {
+  firmName: string;
+  frn: string | null;
+  generalEmail: string;
+  website: string | null;
+  fcaStatus: string | null;
+  targetTier: TargetTier | null;
+  formerAr: boolean;
+  // ISO "yyyy-mm-dd", same shape as everywhere else this column is handled
+  // (see EnrichedFirm.authorisedSince).
+  authorisedSince: string | null;
+  registeredAddress: string | null;
+  // null means never opted out. Anything else (a Date or an ISO string —
+  // node-postgres hands back a Date for a TIMESTAMPTZ column, a test fixture
+  // may just use a string) means opted out — the exact value never matters
+  // to this filter, only whether a PECR opt-out was ever recorded at all.
+  optedOutAt: string | Date | null;
+}
+
+// Ranking order, most-promising-first, matching migration 105's own tier
+// ordering (see assignTargetTier/ALL_TARGET_TIERS above): transition >
+// established_da > appointed_rep > startup. A firm with no tier at all
+// (target_tier IS NULL — never enriched since migration 105 shipped) is
+// grouped with 'unknown' at the back: both mean "this run's data can't rank
+// this firm", so there is no reason to sort one ahead of the other.
+const OUTREACH_TIER_RANK: Partial<Record<TargetTier, number>> = {
+  transition: 0,
+  established_da: 1,
+  appointed_rep: 2,
+  startup: 3,
+};
+const UNTIERED_OUTREACH_RANK = 4;
+
+function outreachTierRank(tier: TargetTier | null): number {
+  if (tier && tier in OUTREACH_TIER_RANK) return OUTREACH_TIER_RANK[tier]!;
+  return UNTIERED_OUTREACH_RANK;
+}
+
+/** most-promising-first ordering for the outreach export: tier rank first
+ * (see outreachTierRank), then most recently authorised first within a tier,
+ * then firm name — same shape as compareTransitionRank above, and for the
+ * same reason (authorisedSince is already an ISO "yyyy-mm-dd" string, so
+ * plain string comparison sorts it correctly; a missing date sorts as the
+ * empty string, always "less than" a real one, so undated rows fall to the
+ * back of their tier rather than jumping the queue). */
+export function compareOutreachRank(a: OutreachCandidate, b: OutreachCandidate): number {
+  const rankDiff = outreachTierRank(a.targetTier) - outreachTierRank(b.targetTier);
+  if (rankDiff !== 0) return rankDiff;
+  const aDate = a.authorisedSince ?? '';
+  const bDate = b.authorisedSince ?? '';
+  if (aDate !== bDate) return aDate > bDate ? -1 : 1;
+  return a.firmName.localeCompare(b.firmName);
+}
+
+/** The entire filter+order pipeline for the outreach export, kept pure and
+ * exported so it's unit-testable without a database (see
+ * enrich-prospects-fca.test.ts). Takes every prospect that already has a
+ * `general_email` on file (that much is left to the SQL WHERE clause — see
+ * runExportOutreach) and narrows it down to the ones actually safe to email:
+ *   - never a firm with a PECR opt-out on record. This is deliberately
+ *     checked here, in code, rather than trusted to the caller's SQL alone
+ *     — the brief is explicit that this is the one filter that must never
+ *     be forgotten, so it is enforced at both the query and this pure
+ *     function, not either alone.
+ *   - never a firm whose `fca_status` shows it has left the market —
+ *     reuses isDeadStatus (the same predicate --discover/--sweep already
+ *     use to decide a firm isn't a prospect at all) rather than
+ *     re-implementing "has this firm left the market" a second way.
+ */
+export function selectOutreachCandidates(candidates: OutreachCandidate[]): OutreachCandidate[] {
+  return candidates
+    .filter((c) => c.optedOutAt === null)
+    .filter((c) => !isDeadStatus(c.fcaStatus))
+    .sort(compareOutreachRank);
+}
+
 /** The Permissions endpoint returns a dict keyed by permission name (values
  * are arrays of limitation objects we don't need) — the permission list IS
  * Object.keys(Data). */
@@ -1091,6 +1306,16 @@ export function parseSimpleCsv(input: string): string[][] {
   }
   if (field.length > 0 || row.length > 0) { row.push(field); rows.push(row); }
   return rows;
+}
+
+/** Mirrors csvEscapeProspect in routes/superadmin.ts (RFC4180 quoting: only
+ * quote a field that needs it, double up embedded quotes) — used by
+ * --export-outreach's CSV writer, below. */
+function csvEscapeField(value: unknown): string {
+  if (value == null) return '';
+  const s = String(value);
+  if (/[",\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+  return s;
 }
 
 export interface InputEntry {
@@ -1203,7 +1428,7 @@ async function resolveFrn(
   return { kind: 'resolved', frn: only['Reference Number'], searchStatus: only.Status, query: name };
 }
 
-interface EnrichedFirm {
+export interface EnrichedFirm {
   frn: string;
   firmName: string;
   fcaStatus: string | null;
@@ -1368,7 +1593,14 @@ export function diffFields(existing: ExistingProspectRow, next: Record<string, u
   return diffs;
 }
 
-async function processEnriched(
+// Exported (rather than kept file-private, like every other DB-touching
+// function here) purely so enrich-prospects-fca.test.ts can prove — against
+// a mocked db client, per the repo's existing pattern for DB-bound logic
+// (see services/journey.test.ts) — that a re-run never clobbers
+// opted_out_at/general_email/general_email_source_url. Nothing else outside
+// this file should call it directly; main()/runDiscover()/runSweep() remain
+// the only real callers.
+export async function processEnriched(
   firm: EnrichedFirm,
   write: boolean,
   transition: TransitionEvidence | null
@@ -1414,8 +1646,11 @@ async function processEnriched(
     const diffs = diffFields(existing, nextValues);
     if (write) {
       // Only Register-derived columns + updated_at. status, note, fit_score,
-      // last_contacted_at and ctps_screened_at are deliberately absent from
-      // this SET clause — never written by this script.
+      // last_contacted_at, ctps_screened_at, general_email,
+      // general_email_source_url and opted_out_at are deliberately absent
+      // from this SET clause — never written by this script, so an
+      // enrichment refresh can never wipe a harvested email or, critically,
+      // a PECR opt-out (see the file header comment and migration 106).
       await query(
         `UPDATE prospects SET
            firm_name               = $2,
@@ -2365,7 +2600,390 @@ async function runSweep(
   }
 }
 
+// ── --export-outreach (Phase 3, DB-touching runner) ─────────────────────
+
+export interface ExportOutreachArgs {
+  outputPath: string | null;
+}
+
+export function parseExportOutreachArgs(argv: string[]): ExportOutreachArgs {
+  let outputPath: string | null = null;
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i]!;
+    if (a === '--export-outreach') { outputPath = argv[++i] ?? null; continue; }
+  }
+  return { outputPath };
+}
+
+interface OutreachDbRow {
+  firm_name: string;
+  frn: string | null;
+  general_email: string;
+  website: string | null;
+  fca_status: string | null;
+  target_tier: TargetTier | null;
+  former_ar: boolean;
+  authorised_since: string | Date | null;
+  registered_address: string | null;
+  opted_out_at: string | Date | null;
+}
+
+const OUTREACH_CSV_HEADER = [
+  'firm_name', 'frn', 'general_email', 'website', 'fca_status', 'target_tier',
+  'former_ar', 'authorised_since', 'registered_address',
+];
+
+/** No phone column, deliberately: this is the email list. A firm's
+ * main_phone has never been CTPS-screened (see migration 102), so including
+ * a number here would invite exactly the mistake this whole outreach
+ * design exists to prevent — cold-calling before that screen has happened. */
+async function runExportOutreach(argv: string[]): Promise<void> {
+  const { outputPath } = parseExportOutreachArgs(argv);
+  if (!outputPath) {
+    console.error('Usage: enrich-prospects-fca.ts --export-outreach <path>');
+    process.exitCode = 1;
+    return;
+  }
+
+  // The email-presence filter is left to the WHERE clause here — there's no
+  // outreach candidate at all without one, so there's nothing for the pure
+  // selectOutreachCandidates pipeline to filter. Everything else that
+  // decides whether a firm with an email is actually safe to mail (opt-out,
+  // dead status) happens in that pure function instead, so it's covered by
+  // a database-free unit test.
+  const rows = await query<OutreachDbRow>(
+    `SELECT firm_name, frn, general_email, website, fca_status, target_tier, former_ar,
+            authorised_since, registered_address, opted_out_at
+     FROM prospects
+     WHERE general_email IS NOT NULL`
+  );
+  const noEmailRow = await queryOne<{ count: string }>(
+    `SELECT count(*)::text AS count FROM prospects WHERE general_email IS NULL`
+  );
+  const noEmailCount = Number(noEmailRow?.count ?? '0');
+
+  const candidates: OutreachCandidate[] = rows.map((r) => ({
+    firmName: r.firm_name,
+    frn: r.frn,
+    generalEmail: r.general_email,
+    website: r.website,
+    fcaStatus: r.fca_status,
+    targetTier: r.target_tier,
+    formerAr: r.former_ar,
+    authorisedSince: normalizeDiffValue(r.authorised_since) as string | null,
+    registeredAddress: r.registered_address,
+    optedOutAt: r.opted_out_at,
+  }));
+
+  const selected = selectOutreachCandidates(candidates);
+  const excludedOptedOutCount = candidates.filter((c) => c.optedOutAt !== null).length;
+  const excludedDeadCount = candidates.filter((c) => c.optedOutAt === null && isDeadStatus(c.fcaStatus)).length;
+
+  const lines = [OUTREACH_CSV_HEADER.join(',')];
+  for (const c of selected) {
+    lines.push(
+      [
+        c.firmName, c.frn, c.generalEmail, c.website, c.fcaStatus, c.targetTier,
+        c.formerAr, c.authorisedSince, c.registeredAddress,
+      ]
+        .map(csvEscapeField)
+        .join(',')
+    );
+  }
+
+  const resolved = path.resolve(process.cwd(), outputPath);
+  fs.writeFileSync(resolved, lines.join('\n') + '\n');
+
+  console.log(`Outreach export: ${selected.length} emailable firm(s) written to ${resolved}`);
+  console.log(`Excluded — opted out:                ${excludedOptedOutCount}`);
+  console.log(`Excluded — left the market:           ${excludedDeadCount}`);
+  console.log(`Excluded — no email on file:          ${noEmailCount}`);
+}
+
+// ── --harvest-emails (Phase 4, network-touching runner) ──────────────────
+//
+// Finds a role-based inbox on a prospect's OWN website, since the FCA
+// Register publishes no email address at all. Every fetch goes through
+// assertSafeRemoteUrl (services/url-safety.ts) — the same SSRF guard that
+// already protects every other caller-supplied URL this codebase fetches
+// (API ingest audio_url, bulk-import rows, CloudTalk recording_url) — so a
+// prospect's `website` column can never be used to make this server request
+// an internal address. See that file's own comments for the DNS-rebinding
+// hazard its pinned `lookup` closes; the same requirement applies here:
+// every request (including the one-hop redirect this allows, below) must
+// connect using the `lookup` assertSafeRemoteUrl just returned, never a
+// fresh resolution of the hostname.
+
+// A small, fixed set of paths most business sites use for a contact/about
+// page — never any URL supplied by a prospect record itself beyond the
+// origin. Tried in this order; --harvest-emails stops at the first one that
+// yields a role-based address.
+const HARVEST_PATHS = ['/', '/contact', '/contact-us', '/about'];
+
+const HARVEST_TIMEOUT_MS = 10_000;
+
+// Enough for any real contact/about page (the largest ordinary marketing
+// page is a small fraction of this); not remotely enough for anyone to use
+// this as a way to make CallGuard download something large from a
+// prospect's site.
+const MAX_HARVEST_HTML_BYTES = 2 * 1024 * 1024;
+
+// "Roughly one request per second" per the brief — these are other
+// people's servers, not the FCA Register's rate-limited API. A single
+// shared timestamp is enough (--harvest-emails processes one firm, one path
+// at a time; there is no concurrency to coordinate).
+const HARVEST_MIN_INTERVAL_MS = 1_000;
+let lastHarvestRequestAt = 0;
+async function throttleHarvestRequest(): Promise<void> {
+  const wait = lastHarvestRequestAt + HARVEST_MIN_INTERVAL_MS - Date.now();
+  if (wait > 0) await sleep(wait);
+  lastHarvestRequestAt = Date.now();
+}
+
+interface PinnedResponse {
+  status: number;
+  headers: IncomingHttpHeaders;
+  body: Buffer;
+}
+
+// GET a single DNS-pinned URL, same shape and same reasoning as
+// services/ingestion.ts's requestPinned/fetchRemoteAudio: `https.request`
+// rather than the global `fetch`, because `fetch` has no supported way to
+// take a pre-resolved address short of a custom undici dispatcher, and
+// re-resolving the hostname here would reopen the DNS-rebinding hole
+// assertSafeRemoteUrl's pinned `lookup` exists to close. Reads the body
+// itself (rather than handing back the stream) so the size cap below is
+// enforced against bytes actually received, not a trusted Content-Length.
+function fetchPinnedOnce(url: URL, lookup: LookupFunction): Promise<PinnedResponse> {
+  return new Promise((resolve, reject) => {
+    const req = https.request(
+      {
+        hostname: url.hostname,
+        servername: url.hostname,
+        port: url.port || 443,
+        path: `${url.pathname}${url.search}`,
+        method: 'GET',
+        headers: {
+          'User-Agent': 'CallGuardOutreachHarvester/1.0 (prospect research; see docs/prospect-sweep.md)',
+          Accept: 'text/html',
+        },
+        lookup,
+        timeout: HARVEST_TIMEOUT_MS,
+      },
+      (res) => {
+        const chunks: Buffer[] = [];
+        let total = 0;
+        res.on('data', (chunk: Buffer) => {
+          total += chunk.length;
+          if (total > MAX_HARVEST_HTML_BYTES) {
+            res.destroy();
+            reject(new Error(`response exceeded the ${MAX_HARVEST_HTML_BYTES} byte cap`));
+            return;
+          }
+          chunks.push(chunk);
+        });
+        res.on('end', () => resolve({ status: res.statusCode ?? 0, headers: res.headers, body: Buffer.concat(chunks) }));
+        res.on('error', reject);
+      }
+    );
+    req.on('timeout', () => req.destroy(new Error('timed out')));
+    req.on('error', reject);
+    req.end();
+  });
+}
+
+type HarvestFetchOutcome = { ok: true; html: string } | { ok: false; reason: string };
+
+/** Fetches one candidate URL, safely: SSRF-checked (and re-checked on the
+ * redirect target — see below), at most one redirect and only when it stays
+ * on the SAME host, a hard timeout, a hard size cap, and a content-type
+ * check that skips anything that isn't HTML (a PDF brochure or a JSON API
+ * response is never worth running the email regexes over). */
+async function fetchHtmlSameHost(rawUrl: string): Promise<HarvestFetchOutcome> {
+  let pinned;
+  try {
+    pinned = await assertSafeRemoteUrl(rawUrl);
+  } catch (err) {
+    return { ok: false, reason: (err as Error).message };
+  }
+  let { url, lookup } = pinned;
+  let redirected = false;
+
+  for (;;) {
+    await throttleHarvestRequest();
+    let res: PinnedResponse;
+    try {
+      res = await fetchPinnedOnce(url, lookup);
+    } catch (err) {
+      return { ok: false, reason: (err as Error).message };
+    }
+
+    if (res.status >= 300 && res.status < 400) {
+      if (redirected) return { ok: false, reason: 'more than one redirect — not followed' };
+      const location = res.headers.location;
+      if (!location) return { ok: false, reason: `redirect (${res.status}) with no Location header` };
+      let redirectUrl: URL;
+      try {
+        redirectUrl = new URL(location, url);
+      } catch {
+        return { ok: false, reason: `redirect to an unparseable URL: ${location}` };
+      }
+      if (redirectUrl.hostname !== url.hostname) {
+        return { ok: false, reason: `redirect left ${url.hostname} for ${redirectUrl.hostname} — not followed (same-host only)` };
+      }
+      // Re-validate the redirect target from scratch — a fresh
+      // assertSafeRemoteUrl call, and the fresh `lookup` it returns, exactly
+      // as that function's own comment requires for any caller that follows
+      // a redirect at all.
+      try {
+        pinned = await assertSafeRemoteUrl(redirectUrl.toString());
+      } catch (err) {
+        return { ok: false, reason: `redirect target failed the SSRF check: ${(err as Error).message}` };
+      }
+      url = pinned.url;
+      lookup = pinned.lookup;
+      redirected = true;
+      continue;
+    }
+
+    if (res.status < 200 || res.status >= 300) {
+      return { ok: false, reason: `HTTP ${res.status}` };
+    }
+
+    const contentTypeHeader = res.headers['content-type'];
+    const contentType = Array.isArray(contentTypeHeader) ? contentTypeHeader[0] : contentTypeHeader;
+    if (contentType && !/text\/html/i.test(contentType)) {
+      return { ok: false, reason: `non-HTML content-type (${contentType})` };
+    }
+
+    return { ok: true, html: res.body.toString('utf8') };
+  }
+}
+
+export interface HarvestEmailsArgs {
+  yes: boolean;
+  dryRun: boolean;
+}
+
+export function parseHarvestEmailsArgs(argv: string[]): HarvestEmailsArgs {
+  let yes = false;
+  let dryRun = false;
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i]!;
+    if (a === '--harvest-emails') continue;
+    if (a === '--yes') { yes = true; continue; }
+    if (a === '--dry-run') { dryRun = true; continue; }
+  }
+  return { yes, dryRun };
+}
+
+interface HarvestCandidateRow {
+  id: string;
+  firm_name: string;
+  website: string;
+}
+
+async function runHarvestEmails(argv: string[]): Promise<void> {
+  const { yes, dryRun } = parseHarvestEmailsArgs(argv);
+  const write = yes && !dryRun;
+
+  const rows = await query<HarvestCandidateRow>(
+    `SELECT id, firm_name, website FROM prospects WHERE website IS NOT NULL AND general_email IS NULL ORDER BY firm_name`
+  );
+
+  printDbBanner();
+  console.log(`\n--harvest-emails: ${rows.length} prospect(s) with a website and no email on file yet.`);
+  console.log(write ? 'Mode: LIVE — writes will be made.' : 'Mode: PREVIEW (dry run) — nothing will be written.');
+
+  let foundCount = 0;
+  let noneFoundCount = 0;
+  let fetchFailedCount = 0;
+  const found: string[] = [];
+  const noneFound: string[] = [];
+  const fetchFailed: string[] = [];
+
+  for (const row of rows) {
+    const origin = normalizeWebsiteToHttpsOrigin(row.website);
+    if (!origin) {
+      fetchFailedCount++;
+      const line = `  [fetch-failed] "${row.firm_name}" — "${row.website}" is not a usable https URL`;
+      fetchFailed.push(line);
+      console.log(line);
+      continue;
+    }
+
+    let anyFetchSucceeded = false;
+    let match: { email: string; sourceUrl: string } | null = null;
+    const pathFailures: string[] = [];
+
+    for (const p of HARVEST_PATHS) {
+      const candidateUrl = `${origin}${p}`;
+      const outcome = await fetchHtmlSameHost(candidateUrl);
+      if (!outcome.ok) {
+        pathFailures.push(`${p} (${outcome.reason})`);
+        continue;
+      }
+      anyFetchSucceeded = true;
+      const email = extractRoleBasedEmail(outcome.html);
+      if (email) {
+        match = { email, sourceUrl: candidateUrl };
+        break;
+      }
+    }
+
+    if (match) {
+      foundCount++;
+      const line = `  [${write ? 'found' : 'would set'}] "${row.firm_name}" — ${match.email} (${match.sourceUrl})`;
+      found.push(line);
+      console.log(line);
+      if (write) {
+        await query(
+          `UPDATE prospects SET general_email = $2, general_email_source_url = $3, updated_at = now() WHERE id = $1`,
+          [row.id, match.email, match.sourceUrl]
+        );
+      }
+      continue;
+    }
+
+    if (anyFetchSucceeded) {
+      noneFoundCount++;
+      const line = `  [none-found] "${row.firm_name}" — ${origin} — no role-based address found on ${HARVEST_PATHS.join(', ')}`;
+      noneFound.push(line);
+      console.log(line);
+    } else {
+      fetchFailedCount++;
+      const line = `  [fetch-failed] "${row.firm_name}" — ${origin} — ${pathFailures.join('; ')}`;
+      fetchFailed.push(line);
+      console.log(line);
+    }
+  }
+
+  console.log('\n=== Harvest Summary ===');
+  console.log(`Found:         ${foundCount}`);
+  console.log(`None found:    ${noneFoundCount}`);
+  console.log(`Fetch failed:  ${fetchFailedCount}`);
+
+  if (!write) {
+    console.log('\nPREVIEW ONLY — nothing has been written. Re-run with --harvest-emails --yes to write the addresses above.');
+  }
+}
+
 async function main(): Promise<void> {
+  const rawArgv = process.argv.slice(2);
+
+  // --export-outreach and --harvest-emails never call the FCA Register, so
+  // neither needs FCA_API_EMAIL/FCA_API_KEY — dispatched before
+  // checkFcaCredentials below so an operator running only one of these
+  // doesn't need Register credentials configured at all.
+  if (rawArgv.includes('--export-outreach')) {
+    await runExportOutreach(rawArgv);
+    return;
+  }
+  if (rawArgv.includes('--harvest-emails')) {
+    await runHarvestEmails(rawArgv);
+    return;
+  }
+
   const cred = checkFcaCredentials(process.env);
   if (!cred.ok) {
     console.error(cred.message);
@@ -2382,7 +3000,6 @@ async function main(): Promise<void> {
   // findMatchingExistingClient) — never queried per candidate.
   const existingClientNames = await loadExistingClientNames();
 
-  const rawArgv = process.argv.slice(2);
   if (rawArgv.includes('--discover')) {
     await runDiscover(rawArgv, headers, existingClientNames);
     return;
