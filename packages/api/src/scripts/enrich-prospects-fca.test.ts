@@ -61,6 +61,11 @@ import {
   extractRoleBasedEmail,
   normalizeWebsiteToHttpsOrigin,
   parseHarvestEmailsArgs,
+  extractDistinctiveNameTokens,
+  domainLabel,
+  isPlausibleFirmDomain,
+  emailDomain,
+  wouldBeSharedDomain,
   type FcaSearchResultItem,
   type LapsedArCandidate,
   type ExistingProspectRow,
@@ -1588,5 +1593,103 @@ describe('parseHarvestEmailsArgs', () => {
 
   it('--dry-run forces preview even alongside --yes, matching the rest of the script', () => {
     expect(parseHarvestEmailsArgs(['--harvest-emails', '--yes', '--dry-run'])).toEqual({ yes: true, dryRun: true });
+  });
+});
+
+describe('extractDistinctiveNameTokens', () => {
+  it('drops the generic corporate/sector words, keeping the distinctive one', () => {
+    expect(extractDistinctiveNameTokens('HCB Mortgages Ltd')).toEqual(['hcb']);
+    expect(extractDistinctiveNameTokens('Antcliff Mortgages & Protection Ltd')).toEqual(['antcliff']);
+  });
+
+  it('a name built entirely from generic words produces no tokens at all', () => {
+    expect(extractDistinctiveNameTokens('Mortgages Ltd')).toEqual([]);
+    expect(extractDistinctiveNameTokens('Financial Services Group Limited')).toEqual([]);
+  });
+
+  it('keeps more than one distinctive token when a name has them', () => {
+    expect(extractDistinctiveNameTokens('Acme Wealth Management Ltd')).toEqual(['acme', 'wealth', 'management']);
+  });
+
+  it('strips the bare conjunction "and" — real firms in this exact dataset would otherwise keep it as a "distinctive" token', () => {
+    expect(extractDistinctiveNameTokens('Carnegie Mortgage and Protection Ltd')).toEqual(['carnegie']);
+    expect(extractDistinctiveNameTokens('Eaton Mortgages and Protection Ltd')).toEqual(['eaton']);
+  });
+
+  it('strips punctuation and is case-insensitive, and drops single-character remnants', () => {
+    expect(extractDistinctiveNameTokens("O'Brien & Co Financial Services")).toEqual(['brien', 'co']);
+  });
+});
+
+describe('domainLabel', () => {
+  it('takes the first label of the domain', () => {
+    expect(domainLabel('hcbmortgages.co.uk')).toBe('hcbmortgages');
+    expect(domainLabel('quilterinvest.com')).toBe('quilterinvest');
+  });
+
+  it('is case-insensitive', () => {
+    expect(domainLabel('HCBMortgages.CO.UK')).toBe('hcbmortgages');
+  });
+});
+
+describe('isPlausibleFirmDomain', () => {
+  it('accepts a domain that plausibly belongs to the firm — the real HCB case', () => {
+    expect(isPlausibleFirmDomain('HCB Mortgages Ltd', 'hcbmortgages.co.uk')).toBe(true);
+  });
+
+  it('rejects a domain that does not plausibly belong to the firm — the real Quilter/Lighthouse case', () => {
+    // Lighthouse Advisory Services Limited is an Appointed Representative
+    // trading under Quilter's infrastructure; its `website` column on the
+    // Register is literally Quilter's own domain. "Antcliff Mortgages &
+    // Protection Ltd" stands in for any AR in the same position: its
+    // distinctive token ("antcliff") shares nothing with "quilterinvest".
+    expect(isPlausibleFirmDomain('Antcliff Mortgages & Protection Ltd', 'quilterinvest.com')).toBe(false);
+  });
+
+  it('a firm name that is only generic words is never a match — the suffix-stripping case', () => {
+    // "Mortgages Ltd" alone strips down to no distinctive tokens at all, so
+    // there is nothing left to compare against ANY domain, including one
+    // that happens to contain the word "mortgages" itself.
+    expect(isPlausibleFirmDomain('Mortgages Ltd', 'mortgages.co.uk')).toBe(false);
+    expect(isPlausibleFirmDomain('Mortgages Ltd', 'hcbmortgages.co.uk')).toBe(false);
+  });
+
+  it('rejects a coincidental short-substring match below the 3-character floor', () => {
+    // "Go Financial Services Ltd" strips to the 2-character token "go",
+    // which must not be treated as a meaningful match against an unrelated
+    // domain that happens to contain "go" as a substring.
+    expect(isPlausibleFirmDomain('Go Financial Services Ltd', 'algorithmicwealth.com')).toBe(false);
+  });
+
+  it('accepts when the domain contains more than one word of a multi-token firm name', () => {
+    expect(isPlausibleFirmDomain('Acme Wealth Management Ltd', 'acmewealth.co.uk')).toBe(true);
+  });
+
+  it('does not let the bare conjunction "and" manufacture a false match', () => {
+    // Without stripping "and", this domain would falsely look plausible —
+    // "and" is a literal substring of "brandfinancial".
+    expect(isPlausibleFirmDomain('Carnegie Mortgage and Protection Ltd', 'brandfinancial.co.uk')).toBe(false);
+  });
+});
+
+describe('emailDomain', () => {
+  it('extracts and lower-cases the domain half of an address', () => {
+    expect(emailDomain('Info@HCBMortgages.co.uk')).toBe('hcbmortgages.co.uk');
+  });
+});
+
+describe('wouldBeSharedDomain', () => {
+  it('is false for a domain never seen before', () => {
+    expect(wouldBeSharedDomain('hcbmortgages.co.uk', new Map())).toBe(false);
+  });
+
+  it('is true once a domain already has one prospect against it — the second occurrence is refused', () => {
+    const counts = new Map([['quilterinvest.com', 1]]);
+    expect(wouldBeSharedDomain('quilterinvest.com', counts)).toBe(true);
+  });
+
+  it('is unaffected by an unrelated domain being present in the map', () => {
+    const counts = new Map([['hcbmortgages.co.uk', 1]]);
+    expect(wouldBeSharedDomain('quilterinvest.com', counts)).toBe(false);
   });
 });

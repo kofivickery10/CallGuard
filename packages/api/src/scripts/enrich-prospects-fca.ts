@@ -476,6 +476,107 @@ export function normalizeWebsiteToHttpsOrigin(website: string): string | null {
   }
 }
 
+// ── --harvest-emails: refuse an address that is not plausibly the firm's own ──
+//
+// The Register's `website` field is frequently the AR's PRINCIPAL's site,
+// not its own — an Appointed Representative trades under its principal's
+// infrastructure, and that shows up here as the principal's own domain
+// sitting in the AR's website column. The real case that caught this:
+// "Lighthouse Advisory Services Limited" (an AR under Quilter) has `website`
+// = "www.quilter.com", so --harvest-emails dutifully fetched Quilter's own
+// contact page and found "support@quilterinvest.com" — Quilter's investor
+// support desk, not a real contact for the AR at all. Storing that would be
+// worse than useless: with roughly 80% of this list being ARs, the same
+// principal's domain recurs across dozens of unrelated prospects, and
+// emailing one large network repeatedly about compliance software — once
+// per AR under it — is a reputational own goal aimed at exactly the kind of
+// firm CallGuard would eventually want as a channel partner, not a lead.
+//
+// Two independent checks, both run before ANY write; either one failing is
+// enough to refuse the address. Same bias as everywhere else in this
+// script: a false rejection costs a manual look, a false store sends mail
+// to the wrong company (see isLikelyCompanyName's own comment for the same
+// reasoning applied to a different mistake).
+
+// Almost every firm in this list contains one or more of these words, so
+// they carry no identifying signal for the name-plausibility check below —
+// left in, they'd make nearly any domain look like a match. The brief's own
+// list (mortgage, mortgages, protection, financial, services, ltd, limited,
+// group, advice), plus 'and' — a real gap the brief's list didn't cover:
+// three real firms in this exact dataset ("Carnegie Mortgage AND Protection
+// Ltd", "Eaton Mortgages AND Protection Ltd", "Spectrum Mortgages AND
+// Protection Ltd") would otherwise keep the bare conjunction "and" as a
+// "distinctive" token, and "and" is a three-letter substring of enough real
+// domains (brand, sandford, andrews...) to manufacture a false plausible
+// match — exactly the failure mode this whole check exists to prevent.
+// Extending this list further is a deliberate decision, not something to
+// grow casually.
+const GENERIC_FIRM_NAME_WORDS = new Set([
+  'mortgage', 'mortgages', 'protection', 'financial', 'services', 'ltd', 'limited', 'group', 'advice', 'and',
+]);
+
+/** The distinctive tokens left in a firm name once its generic/corporate
+ * words are stripped (see GENERIC_FIRM_NAME_WORDS). A firm name built
+ * ENTIRELY from generic words (e.g. "Mortgages Ltd") deliberately produces
+ * no tokens at all, not a false one — isPlausibleFirmDomain then has
+ * nothing to match against and correctly refuses, rather than matching
+ * everything. */
+export function extractDistinctiveNameTokens(firmName: string): string[] {
+  return firmName
+    .toLowerCase()
+    .replace(/&/g, ' ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .split(' ')
+    .map((w) => w.trim())
+    .filter((w) => w.length > 1 && !GENERIC_FIRM_NAME_WORDS.has(w));
+}
+
+/** The domain's own distinguishing label — "hcbmortgages" out of
+ * "hcbmortgages.co.uk", "quilterinvest" out of "quilterinvest.com" — the
+ * part of the domain most likely to encode which company registered it. */
+export function domainLabel(domain: string): string {
+  return domain.toLowerCase().split('.')[0] ?? '';
+}
+
+/** Whether a harvested email's domain plausibly belongs to `firmName` at
+ * all: does the domain's own label share at least one distinctive token
+ * with the firm name once corporate/generic words are stripped from the
+ * name (see extractDistinctiveNameTokens)? "HCB Mortgages Ltd" -> token
+ * "hcb" -> "hcbmortgages.co.uk" contains it: plausible. "Antcliff Mortgages
+ * & Protection Ltd" -> token "antcliff" -> "quilterinvest.com" does not
+ * contain it: not plausible — the real case that prompted this check.
+ * Tokens shorter than 3 characters are never accepted as a match on their
+ * own (below the point where a shared substring means anything — two
+ * unrelated names can trivially share "co" or "ltd" remnants). */
+export function isPlausibleFirmDomain(firmName: string, domain: string): boolean {
+  const tokens = extractDistinctiveNameTokens(firmName);
+  const label = domainLabel(domain);
+  if (tokens.length === 0 || !label) return false;
+  return tokens.some((t) => t.length >= 3 && label.includes(t));
+}
+
+/** The domain half of a harvested email address, lower-cased — the key used
+ * by wouldBeSharedDomain, below. */
+export function emailDomain(email: string): string {
+  return email.toLowerCase().split('@')[1] ?? '';
+}
+
+/** Whether storing `domain` against a new prospect would make it the SECOND
+ * prospect using that domain — the shared-domain signal that this is a
+ * principal's (or website builder's) domain, not one firm's own. Same-domain
+ * firms are vanishingly rare otherwise: two genuinely independent FCA firms
+ * do not normally share a website.
+ *
+ * `domainCounts` is seeded from every general_email already on file (see
+ * runHarvestEmails) and updated as this run stores its own addresses, so a
+ * domain first seen earlier in the SAME run is caught just as reliably as
+ * one already sitting in the database — the Quilter domain does not need to
+ * have been stored on a PREVIOUS run for the second AR under it, in the
+ * same run, to be refused. */
+export function wouldBeSharedDomain(domain: string, domainCounts: ReadonlyMap<string, number>): boolean {
+  return (domainCounts.get(domain) ?? 0) > 0;
+}
+
 // The Register's "Status Effective Date" is "dd/mm/yyyy" (e.g. "18/12/2025"
 // for 18 December 2025) — NOT ISO 8601 and NOT US "mm/dd/yyyy". Feeding that
 // straight into `new Date(str)` is wrong on both counts: JS parses an
@@ -2891,6 +2992,19 @@ async function runHarvestEmails(argv: string[]): Promise<void> {
     `SELECT id, firm_name, website FROM prospects WHERE website IS NOT NULL AND general_email IS NULL ORDER BY firm_name`
   );
 
+  // Seeded from every general_email already on file, then updated as this
+  // run stores its own — see wouldBeSharedDomain's own comment for why a
+  // domain first seen earlier in THIS run must be caught too, not just one
+  // already in the database.
+  const existingEmailRows = await query<{ general_email: string }>(
+    `SELECT general_email FROM prospects WHERE general_email IS NOT NULL`
+  );
+  const domainCounts = new Map<string, number>();
+  for (const r of existingEmailRows) {
+    const d = emailDomain(r.general_email);
+    domainCounts.set(d, (domainCounts.get(d) ?? 0) + 1);
+  }
+
   printDbBanner();
   console.log(`\n--harvest-emails: ${rows.length} prospect(s) with a website and no email on file yet.`);
   console.log(write ? 'Mode: LIVE — writes will be made.' : 'Mode: PREVIEW (dry run) — nothing will be written.');
@@ -2898,9 +3012,11 @@ async function runHarvestEmails(argv: string[]): Promise<void> {
   let foundCount = 0;
   let noneFoundCount = 0;
   let fetchFailedCount = 0;
+  let rejectedNotOwnCount = 0;
   const found: string[] = [];
   const noneFound: string[] = [];
   const fetchFailed: string[] = [];
+  const rejectedNotOwn: string[] = [];
 
   for (const row of rows) {
     const origin = normalizeWebsiteToHttpsOrigin(row.website);
@@ -2932,7 +3048,31 @@ async function runHarvestEmails(argv: string[]): Promise<void> {
     }
 
     if (match) {
+      // Two independent checks — either failing refuses the address
+      // outright, before any write. Neither is about whether the address is
+      // role-based (extractRoleBasedEmail already guaranteed that); both are
+      // about whether it is plausibly THIS firm's own, not its principal's
+      // or a website builder's — see the section comment above
+      // isPlausibleFirmDomain for the real Quilter case that prompted this.
+      const domain = emailDomain(match.email);
+      const ownershipFailures: string[] = [];
+      if (wouldBeSharedDomain(domain, domainCounts)) {
+        ownershipFailures.push('shared domain — already used by another prospect, likely a principal\'s or platform\'s domain');
+      }
+      if (!isPlausibleFirmDomain(row.firm_name, domain)) {
+        ownershipFailures.push('domain does not plausibly match the firm name');
+      }
+
+      if (ownershipFailures.length > 0) {
+        rejectedNotOwnCount++;
+        const line = `  [needs-review] "${row.firm_name}" — ${match.email} (domain: ${domain}) — ${ownershipFailures.join('; ')} — NOT stored`;
+        rejectedNotOwn.push(line);
+        console.log(line);
+        continue;
+      }
+
       foundCount++;
+      domainCounts.set(domain, (domainCounts.get(domain) ?? 0) + 1);
       const line = `  [${write ? 'found' : 'would set'}] "${row.firm_name}" — ${match.email} (${match.sourceUrl})`;
       found.push(line);
       console.log(line);
@@ -2959,9 +3099,10 @@ async function runHarvestEmails(argv: string[]): Promise<void> {
   }
 
   console.log('\n=== Harvest Summary ===');
-  console.log(`Found:         ${foundCount}`);
-  console.log(`None found:    ${noneFoundCount}`);
-  console.log(`Fetch failed:  ${fetchFailedCount}`);
+  console.log(`Found:                    ${foundCount}`);
+  console.log(`None found:               ${noneFoundCount}`);
+  console.log(`Fetch failed:             ${fetchFailedCount}`);
+  console.log(`Rejected — not the firm's own (needs a human look): ${rejectedNotOwnCount}`);
 
   if (!write) {
     console.log('\nPREVIEW ONLY — nothing has been written. Re-run with --harvest-emails --yes to write the addresses above.');
