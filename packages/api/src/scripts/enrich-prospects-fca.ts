@@ -37,6 +37,13 @@
  *     "AR -> directly-authorised transition detection" section below).
  *     `fit_score` is never set by this script even for a confirmed
  *     transition — that stays a human judgement, not a generated number.
+ *   - This script never writes a firm that is one of CallGuard's own
+ *     existing tenants (`organizations`) as a prospect — see the
+ *     "Existing-client guard" section below (findMatchingExistingClient). A
+ *     match is reported under "[skip-existing-client]"/"SKIPPED — matches an
+ *     existing CallGuard tenant" instead of being written. --include-clients
+ *     disables this (off by default) for the rare case someone genuinely
+ *     wants tenants included.
  *
  * This connects to whatever DATABASE_URL points at, which is usually
  * production, and writes real rows there. Nothing is written until --yes is
@@ -69,7 +76,11 @@
  * Appointed Representative or authorised within the last N months (default
  * 24, override with --authorised-within-months N) — see the "AR ->
  * directly-authorised transition detection" section below for why that
- * combination is the signal worth surfacing.
+ * combination is the signal worth surfacing. It also suppresses the per-firm
+ * "[not-transition]" line for everything it excludes by default (a broad run
+ * can otherwise print hundreds of routine exclusions to convey a handful of
+ * results) — pass --verbose to restore them; the excluded count is always in
+ * the summary either way.
  *
  * PAGINATION (confirmed against the live Register — see fcaGet/searchFirmPage):
  * a Search response's `ResultInfo` carries `total_count` (the true match
@@ -352,6 +363,25 @@ export function parseFcaDate(value: string | null | undefined): string | null {
   return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
+/** Formats a Register "Status Effective Date" for print, choosing the right
+ * verb for what that date actually means. For an Appointed Representative,
+ * Status Effective Date is when the firm BECAME an AR — not when it (or
+ * anyone) was authorised; the firm may never have held its own
+ * authorisation at all. Labelling that "authorised" is simply wrong and
+ * could mislead outreach copy built off this script's output, so this only
+ * ever says "authorised <date>" for a status that isn't an Appointed
+ * Representative, and "AR since <date>" for one that is. Returns null when
+ * there is no date to print (parseFcaDate already turns anything malformed
+ * or absent into null before it reaches here). */
+export function formatStatusEffectiveDateLabel(
+  status: string | null | undefined,
+  effectiveDate: string | null
+): string | null {
+  if (!effectiveDate) return null;
+  const isAppointedRepresentative = (status ?? '').toLowerCase().trim() === 'appointed representative';
+  return isAppointedRepresentative ? `AR since ${effectiveDate}` : `authorised ${effectiveDate}`;
+}
+
 // ── AR -> directly-authorised transition detection ──────────────────────
 //
 // Trust Point, CallGuard's existing client, is the pattern this exists to
@@ -536,6 +566,71 @@ export function compareTransitionRank(a: TransitionRankable, b: TransitionRankab
   const bDate = b.authorisedSince ?? '';
   if (aDate !== bDate) return aDate > bDate ? -1 : 1;
   return a.firmName.localeCompare(b.firmName);
+}
+
+// ── Existing-client guard ────────────────────────────────────────────────
+//
+// A production run once wrote CallGuard's own paying client ("TRUST POINT
+// MORTGAGE & PROTECTION SERVICES LIMITED", FRN 1044052) into `prospects` as
+// a fresh lead — a client sitting in the sales pipeline is how somebody cold
+// -pitches an account CallGuard already has. Tenants live in
+// `organizations`, which has no FRN (see its schema — just id/name/
+// created_at/updated_at), so the only thing to match on is name, and the
+// tenant's `organizations.name` is typically much shorter than the Register's
+// registered name (e.g. "Trust Point" vs "TRUST POINT MORTGAGE & PROTECTION
+// SERVICES LIMITED"). An exact normalised comparison alone would therefore
+// miss it; findMatchingExistingClient also accepts a normalised PREFIX match,
+// guarded by isEligibleForPrefixMatch so a short/generic tenant name can't
+// prefix-match half the register.
+//
+// This is deliberately biased toward over-matching, the opposite bias from
+// isLikelyCompanyName above: a false skip here costs one manual re-add and is
+// visible in the printed [skip-existing-client] line; a false WRITE puts an
+// existing paying client back into the sales pipeline as a fresh lead, which
+// is the incident this guard exists to prevent. --include-clients is the
+// deliberate escape hatch for the rare case someone genuinely wants
+// tenants included; it defaults to off.
+
+/** Guards findMatchingExistingClient's prefix rule. Only a normalised
+ * organisation name of at least 2 tokens AND at least 8 characters is
+ * eligible to match as a prefix of a longer FCA-registered name — a
+ * one-word or very short tenant name (e.g. "Acme") must never prefix-match
+ * half the register. An exact normalised match (checked separately, in
+ * findMatchingExistingClient) is never subject to this guard. */
+export function isEligibleForPrefixMatch(orgNormalized: string): boolean {
+  if (orgNormalized.length < 8) return false;
+  return orgNormalized.split(' ').filter(Boolean).length >= 2;
+}
+
+/** Whether `candidateName` (a name resolved off the FCA Register) is one of
+ * CallGuard's own existing tenants, checked by name only against every
+ * `organizations.name` loaded once at startup (see loadExistingClientNames)
+ * — never a per-candidate query. A match is either the two normalised names
+ * being equal, or the candidate's normalised name starting with the
+ * organisation's normalised name (guarded by isEligibleForPrefixMatch).
+ * Returns the matched `organizations.name` (for the printed message) or
+ * null. */
+export function findMatchingExistingClient(candidateName: string, orgNames: string[]): string | null {
+  const candidateNormalized = normalizeFirmName(candidateName);
+  if (!candidateNormalized) return null;
+  for (const orgName of orgNames) {
+    const orgNormalized = normalizeFirmName(orgName);
+    if (!orgNormalized) continue;
+    if (candidateNormalized === orgNormalized) return orgName;
+    // Prefix match must land on a word boundary. A bare startsWith() would also
+    // match an unrelated firm whose name merely begins with the same letters --
+    // a tenant "Trust Point" would skip "Trust Pointer Financial Services". That
+    // is only a false skip, so it fails safe, but it is avoidable: require the
+    // next character to be a space, so "trust point mortgage ..." matches and
+    // "trust pointer ..." does not.
+    if (
+      isEligibleForPrefixMatch(orgNormalized) &&
+      candidateNormalized.startsWith(`${orgNormalized} `)
+    ) {
+      return orgName;
+    }
+  }
+  return null;
 }
 
 // ── --discover pure logic (status filtering, dedupe, --limit) ──────────────
@@ -1142,6 +1237,10 @@ export interface ParsedArgs {
   file: string | null;
   yes: boolean;
   dryRun: boolean;
+  // --include-clients: the rare escape hatch to disable the existing-client
+  // guard (see findMatchingExistingClient) and write a match like any other
+  // firm. Defaults to off — the guard is conservative by design.
+  includeClients: boolean;
   positional: string[];
 }
 
@@ -1149,16 +1248,18 @@ export function parseArgs(argv: string[]): ParsedArgs {
   let file: string | null = null;
   let yes = false;
   let dryRun = false;
+  let includeClients = false;
   const positional: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
     if (a === '--file') { file = argv[++i] ?? null; continue; }
     if (a === '--yes') { yes = true; continue; }
     if (a === '--dry-run') { dryRun = true; continue; }
+    if (a === '--include-clients') { includeClients = true; continue; }
     if (a.startsWith('--')) { continue; }
     positional.push(a);
   }
-  return { file, yes, dryRun, positional };
+  return { file, yes, dryRun, includeClients, positional };
 }
 
 const DEFAULT_DISCOVER_LIMIT = 250;
@@ -1174,13 +1275,21 @@ export interface DiscoverArgs {
   // qualifiesForTransitionsOnly.
   transitionsOnly: boolean;
   authorisedWithinMonths: number;
+  // --include-clients: see ParsedArgs's field of the same name — the
+  // discover path has its own copy since DiscoverArgs is a distinct shape.
+  includeClients: boolean;
+  // --verbose: restores the per-firm [not-transition] line that
+  // --transitions-only otherwise suppresses (see runDiscover) — off by
+  // default so a broad discovery run doesn't print hundreds of routine
+  // exclusion lines to convey a handful of results.
+  verbose: boolean;
 }
 
 // Separate from parseArgs (rather than extending it) so the existing
 // ParsedArgs shape — and the tests asserting its exact fields — are
 // untouched; --discover is a distinct mode with its own flags (--terms-file,
-// --limit, --transitions-only, --authorised-within-months) that don't apply
-// to the single-firm enrich path.
+// --limit, --transitions-only, --authorised-within-months, --include-clients,
+// --verbose) that don't apply to the single-firm enrich path.
 export function parseDiscoverArgs(argv: string[]): DiscoverArgs {
   let termsFile: string | null = null;
   let limit = DEFAULT_DISCOVER_LIMIT;
@@ -1188,6 +1297,8 @@ export function parseDiscoverArgs(argv: string[]): DiscoverArgs {
   let dryRun = false;
   let transitionsOnly = false;
   let authorisedWithinMonths = DEFAULT_AUTHORISED_WITHIN_MONTHS;
+  let includeClients = false;
+  let verbose = false;
   const terms: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
@@ -1206,10 +1317,12 @@ export function parseDiscoverArgs(argv: string[]): DiscoverArgs {
       if (Number.isFinite(n) && n > 0) authorisedWithinMonths = Math.floor(n);
       continue;
     }
+    if (a === '--include-clients') { includeClients = true; continue; }
+    if (a === '--verbose') { verbose = true; continue; }
     if (a.startsWith('--')) continue;
     terms.push(a);
   }
-  return { terms, termsFile, limit, yes, dryRun, transitionsOnly, authorisedWithinMonths };
+  return { terms, termsFile, limit, yes, dryRun, transitionsOnly, authorisedWithinMonths, includeClients, verbose };
 }
 
 // Host + database name only — never the credentials embedded in the URL.
@@ -1252,6 +1365,16 @@ export function checkFcaCredentials(env: NodeJS.ProcessEnv): CredentialCheck {
   return { ok: true, email, key };
 }
 
+/** Loads every tenant name once at startup — a single query, never one per
+ * candidate — for the existing-client guard (see findMatchingExistingClient).
+ * Called unconditionally by main() even when --include-clients is set, since
+ * the query itself is cheap and the flag only decides whether the result is
+ * actually applied. */
+async function loadExistingClientNames(): Promise<string[]> {
+  const rows = await query<{ name: string }>(`SELECT name FROM organizations`);
+  return rows.map((r) => r.name);
+}
+
 // ── --discover ───────────────────────────────────────────────────────────
 
 /** Whether an FRN is already in `prospects`, purely to decide (via
@@ -1280,7 +1403,11 @@ function loadDiscoverTerms(args: DiscoverArgs): string[] {
   return terms.map((t) => t.trim()).filter((t) => t.length > 0);
 }
 
-async function runDiscover(argv: string[], headers: Record<string, string>): Promise<void> {
+async function runDiscover(
+  argv: string[],
+  headers: Record<string, string>,
+  existingClientNames: string[]
+): Promise<void> {
   const args = parseDiscoverArgs(argv);
   const write = args.yes && !args.dryRun;
 
@@ -1296,7 +1423,7 @@ async function runDiscover(argv: string[], headers: Record<string, string>): Pro
   if (terms.length === 0) {
     console.error(
       'Usage: enrich-prospects-fca.ts --discover <term> [<term> ...] [--terms-file <path>] [--limit N] ' +
-        '[--transitions-only] [--authorised-within-months N] [--yes] [--dry-run]'
+        '[--transitions-only] [--authorised-within-months N] [--include-clients] [--verbose] [--yes] [--dry-run]'
     );
     process.exitCode = 1;
     return;
@@ -1309,6 +1436,9 @@ async function runDiscover(argv: string[], headers: Record<string, string>): Pro
     console.log(
       `--transitions-only: writing only Authorised firms that are a confirmed former AR, or authorised within the last ${args.authorisedWithinMonths} month(s).`
     );
+  }
+  if (args.includeClients) {
+    console.log('--include-clients: the existing-client guard is DISABLED — a matching tenant will be written like any other firm.');
   }
 
   const rl = new RateLimiter();
@@ -1331,12 +1461,14 @@ async function runDiscover(argv: string[], headers: Record<string, string>): Pro
   let newCount = 0;
   let limitSkippedCount = 0;
   let excludedNotTransitionCount = 0;
+  let skippedExistingClientCount = 0;
   let termsSearched = 0;
   let limitReached = false;
   const termFailures: string[] = [];
   const failed: string[] = [];
   const created: string[] = [];
   const updated: string[] = [];
+  const skippedExistingClient: string[] = [];
   const transitionRows: { firmName: string; frn: string; formerAr: boolean; authorisedSince: string | null }[] = [];
 
   for (const term of terms) {
@@ -1411,6 +1543,17 @@ async function runDiscover(argv: string[], headers: Record<string, string>): Pro
           continue;
         }
 
+        if (!args.includeClients) {
+          const matchedOrg = findMatchingExistingClient(firm.firmName, existingClientNames);
+          if (matchedOrg) {
+            skippedExistingClientCount++;
+            const line = `  [skip-existing-client] "${firm.firmName}" (FRN ${firm.frn}) — matches existing tenant "${matchedOrg}"`;
+            skippedExistingClient.push(line);
+            console.log(line);
+            continue;
+          }
+        }
+
         // Only worth checking once the firm is confirmed Authorised — an AR
         // (or anything else) can't be the destination end of an AR ->
         // directly-authorised transition. See findTransitionEvidence.
@@ -1437,10 +1580,17 @@ async function runDiscover(argv: string[], headers: Record<string, string>): Pro
           );
           if (!qualifies) {
             excludedNotTransitionCount++;
-            console.log(
-              `  [not-transition] "${firm.firmName}" (FRN ${firm.frn}) — status "${firm.fcaStatus ?? 'unknown'}"` +
-                `${firm.authorisedSince ? `, authorised ${firm.authorisedSince}` : ''} — excluded by --transitions-only${noteSuffix}`
-            );
+            // Suppressed by default — a broad discovery run can hit
+            // hundreds of routine exclusions to convey a handful of real
+            // results (see excludedNotTransitionCount in the summary
+            // below). --verbose restores the per-firm line.
+            if (args.verbose) {
+              const dateLabel = formatStatusEffectiveDateLabel(firm.fcaStatus, firm.authorisedSince);
+              console.log(
+                `  [not-transition] "${firm.firmName}" (FRN ${firm.frn}) — status "${firm.fcaStatus ?? 'unknown'}"` +
+                  `${dateLabel ? `, ${dateLabel}` : ''} — excluded by --transitions-only${noteSuffix}`
+              );
+            }
             continue;
           }
         }
@@ -1487,6 +1637,7 @@ async function runDiscover(argv: string[], headers: Record<string, string>): Pro
   console.log(`Excluded — dead firm:              ${excludedDeadCount}`);
   console.log(`Excluded — introducer AR:          ${excludedIntroducerCount}`);
   console.log(`Skipped — named individual:        ${skippedIndividualCount} (not written; needs an LIA)`);
+  console.log(`Skipped — existing client:         ${skippedExistingClientCount} (not written; matches a CallGuard tenant)`);
   console.log(`Dropped — blank-FRN scam clone:    ${blankFrnCount}`);
   console.log(`Duplicate FRN (seen earlier term):  ${duplicateCount}`);
   console.log(`Already known (refreshed):         ${alreadyKnownCount}`);
@@ -1558,13 +1709,17 @@ async function main(): Promise<void> {
     Accept: 'application/json',
   };
 
+  // Loaded once, up front, for the existing-client guard (see
+  // findMatchingExistingClient) — never queried per candidate.
+  const existingClientNames = await loadExistingClientNames();
+
   const rawArgv = process.argv.slice(2);
   if (rawArgv.includes('--discover')) {
-    await runDiscover(rawArgv, headers);
+    await runDiscover(rawArgv, headers, existingClientNames);
     return;
   }
 
-  const { file, yes, dryRun, positional } = parseArgs(rawArgv);
+  const { file, yes, dryRun, includeClients, positional } = parseArgs(rawArgv);
   const write = yes && !dryRun;
 
   let entries: InputEntry[] = [];
@@ -1582,7 +1737,7 @@ async function main(): Promise<void> {
 
   if (entries.length === 0) {
     console.error(
-      'Usage: enrich-prospects-fca.ts (--file <path-to-csv> | <name-or-frn> [<name-or-frn> ...]) [--yes] [--dry-run]'
+      'Usage: enrich-prospects-fca.ts (--file <path-to-csv> | <name-or-frn> [<name-or-frn> ...]) [--include-clients] [--yes] [--dry-run]'
     );
     process.exitCode = 1;
     return;
@@ -1591,12 +1746,16 @@ async function main(): Promise<void> {
   printDbBanner();
   console.log(`\n${entries.length} input row(s) to process.`);
   console.log(write ? 'Mode: LIVE — writes will be made.' : 'Mode: PREVIEW (dry run) — nothing will be written.');
+  if (includeClients) {
+    console.log('--include-clients: the existing-client guard is DISABLED — a matching tenant will be written like any other firm.');
+  }
 
   const rl = new RateLimiter();
 
   const created: string[] = [];
   const updated: string[] = [];
   const skippedIndividual: string[] = [];
+  const skippedExistingClient: string[] = [];
   const ambiguous: string[] = [];
   const failed: string[] = [];
 
@@ -1633,6 +1792,16 @@ async function main(): Promise<void> {
       continue;
     }
 
+    if (!includeClients) {
+      const matchedOrg = findMatchingExistingClient(firm.firmName, existingClientNames);
+      if (matchedOrg) {
+        const line = `  [skip-existing-client] "${firm.firmName}" (FRN ${firm.frn}) — matches existing tenant "${matchedOrg}"`;
+        skippedExistingClient.push(line);
+        console.log(line);
+        continue;
+      }
+    }
+
     try {
       // No lapsed-AR index to check here — that only exists within a single
       // --discover run's search results (see runDiscover) — so this path
@@ -1660,6 +1829,8 @@ async function main(): Promise<void> {
   updated.forEach((l) => console.log(l));
   console.log(`SKIPPED — looks like a named individual (not written; needs an LIA): ${skippedIndividual.length}`);
   skippedIndividual.forEach((l) => console.log(l));
+  console.log(`SKIPPED — matches an existing CallGuard tenant (not written): ${skippedExistingClient.length}`);
+  skippedExistingClient.forEach((l) => console.log(l));
   console.log(`Ambiguous (multiple Register matches, skipped): ${ambiguous.length}`);
   ambiguous.forEach((l) => console.log(l));
   console.log(`Failed:    ${failed.length}`);

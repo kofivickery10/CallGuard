@@ -29,6 +29,9 @@ import {
   qualifiesForTransitionsOnly,
   compareTransitionRank,
   diffFields,
+  isEligibleForPrefixMatch,
+  findMatchingExistingClient,
+  formatStatusEffectiveDateLabel,
   type FcaSearchResultItem,
   type LapsedArCandidate,
   type ExistingProspectRow,
@@ -214,6 +217,7 @@ describe('parseArgs', () => {
       file: 'prospects.csv',
       yes: true,
       dryRun: false,
+      includeClients: false,
       positional: ['Acme Ltd', '122702'],
     });
   });
@@ -223,12 +227,17 @@ describe('parseArgs', () => {
       file: null,
       yes: false,
       dryRun: true,
+      includeClients: false,
       positional: ['Acme Ltd'],
     });
   });
 
   it('defaults to no file and no positional args', () => {
-    expect(parseArgs([])).toEqual({ file: null, yes: false, dryRun: false, positional: [] });
+    expect(parseArgs([])).toEqual({ file: null, yes: false, dryRun: false, includeClients: false, positional: [] });
+  });
+
+  it('recognises --include-clients', () => {
+    expect(parseArgs(['--include-clients', 'Acme Ltd']).includeClients).toBe(true);
   });
 });
 
@@ -488,6 +497,8 @@ describe('parseDiscoverArgs', () => {
       dryRun: false,
       transitionsOnly: false,
       authorisedWithinMonths: 24,
+      includeClients: false,
+      verbose: false,
     });
   });
 
@@ -500,6 +511,8 @@ describe('parseDiscoverArgs', () => {
       dryRun: true,
       transitionsOnly: false,
       authorisedWithinMonths: 24,
+      includeClients: false,
+      verbose: false,
     });
   });
 
@@ -524,6 +537,8 @@ describe('parseDiscoverArgs', () => {
       dryRun: false,
       transitionsOnly: true,
       authorisedWithinMonths: 12,
+      includeClients: false,
+      verbose: false,
     });
   });
 
@@ -537,6 +552,18 @@ describe('parseDiscoverArgs', () => {
     expect(parseDiscoverArgs(['--discover', '--authorised-within-months', 'abc']).authorisedWithinMonths).toBe(24);
     expect(parseDiscoverArgs(['--discover', '--authorised-within-months', '0']).authorisedWithinMonths).toBe(24);
     expect(parseDiscoverArgs(['--discover', '--authorised-within-months', '-3']).authorisedWithinMonths).toBe(24);
+  });
+
+  it('reads --include-clients and --verbose', () => {
+    const args = parseDiscoverArgs(['--discover', 'mortgage', '--include-clients', '--verbose']);
+    expect(args.includeClients).toBe(true);
+    expect(args.verbose).toBe(true);
+  });
+
+  it('defaults --include-clients and --verbose to false when not given', () => {
+    const args = parseDiscoverArgs(['--discover', 'mortgage']);
+    expect(args.includeClients).toBe(false);
+    expect(args.verbose).toBe(false);
   });
 });
 
@@ -825,5 +852,101 @@ describe('diffFields', () => {
   it('treats permissions as an unordered set, not order-sensitive', () => {
     const existing: ExistingProspectRow = { ...baseExisting, permissions: ['A', 'B'] };
     expect(diffFields(existing, { permissions: ['B', 'A'] })).toEqual([]);
+  });
+});
+
+describe('isEligibleForPrefixMatch', () => {
+  it('is eligible for a normalised name with 2+ tokens and 8+ characters', () => {
+    expect(isEligibleForPrefixMatch('trust point')).toBe(true);
+  });
+
+  it('rejects a single-token name, however long', () => {
+    expect(isEligibleForPrefixMatch('switcheroo')).toBe(false);
+  });
+
+  it('rejects a name under 8 characters, even with 2 tokens', () => {
+    expect(isEligibleForPrefixMatch('a b')).toBe(false);
+  });
+
+  it('accepts a name at exactly the 8-character boundary', () => {
+    expect('ab cdefg'.length).toBe(8);
+    expect(isEligibleForPrefixMatch('ab cdefg')).toBe(true);
+  });
+
+  it('rejects a name one character under the 8-character boundary', () => {
+    expect('ab cdef'.length).toBe(7);
+    expect(isEligibleForPrefixMatch('ab cdef')).toBe(false);
+  });
+});
+
+describe('findMatchingExistingClient', () => {
+  it('matches on an exact normalised name', () => {
+    expect(findMatchingExistingClient('Trust Point', ['Some Other Org', 'Trust Point'])).toBe('Trust Point');
+  });
+
+  it('matches by prefix — a short tenant name against the FCA Register\'s longer registered name', () => {
+    expect(
+      findMatchingExistingClient('TRUST POINT MORTGAGE & PROTECTION SERVICES LIMITED', ['Trust Point'])
+    ).toBe('Trust Point');
+  });
+
+  it('does not prefix-match a 1-token organisation name', () => {
+    expect(findMatchingExistingClient('Switcheroo Financial Services Ltd', ['Switcheroo'])).toBeNull();
+  });
+
+  it('does not prefix-match an organisation name under 8 characters', () => {
+    expect(findMatchingExistingClient('AB Financial Services Ltd', ['A B'])).toBeNull();
+  });
+
+  it('does not match an unrelated firm', () => {
+    expect(
+      findMatchingExistingClient('Clever Financial Solutions Limited', ['Trust Point'])
+    ).toBeNull();
+  });
+
+  it('returns null when the org list is empty', () => {
+    expect(findMatchingExistingClient('Trust Point', [])).toBeNull();
+  });
+});
+
+describe('formatStatusEffectiveDateLabel', () => {
+  it('labels an Appointed Representative\'s date as "AR since", not "authorised"', () => {
+    expect(formatStatusEffectiveDateLabel('Appointed representative', '2017-12-11')).toBe('AR since 2017-12-11');
+  });
+
+  it('is case-insensitive on the "Appointed representative" status', () => {
+    expect(formatStatusEffectiveDateLabel('APPOINTED REPRESENTATIVE', '2017-12-11')).toBe('AR since 2017-12-11');
+  });
+
+  it('labels a genuinely Authorised firm\'s date as "authorised"', () => {
+    expect(formatStatusEffectiveDateLabel('Authorised', '2025-12-18')).toBe('authorised 2025-12-18');
+  });
+
+  it('labels an authorised-adjacent variant as "authorised" too', () => {
+    expect(formatStatusEffectiveDateLabel('EEA Authorised', '2025-12-18')).toBe('authorised 2025-12-18');
+  });
+
+  it('returns null when there is no date to print', () => {
+    expect(formatStatusEffectiveDateLabel('Appointed representative', null)).toBeNull();
+    expect(formatStatusEffectiveDateLabel('Authorised', null)).toBeNull();
+  });
+});
+
+describe('findMatchingExistingClient — word-boundary prefix', () => {
+  it('matches the real Trust Point pair', () => {
+    expect(
+      findMatchingExistingClient(
+        'TRUST POINT MORTGAGE & PROTECTION SERVICES LIMITED',
+        ['Trust Point']
+      )
+    ).toBe('Trust Point');
+  });
+
+  it('does NOT match an unrelated firm that merely starts with the same letters', () => {
+    // "trust pointer financial services" literally starts with "trust point",
+    // so a bare startsWith() would wrongly skip it as an existing client.
+    expect(
+      findMatchingExistingClient('Trust Pointer Financial Services Ltd', ['Trust Point'])
+    ).toBeNull();
   });
 });
