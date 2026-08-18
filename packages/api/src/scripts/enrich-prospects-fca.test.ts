@@ -32,9 +32,18 @@ import {
   isEligibleForPrefixMatch,
   findMatchingExistingClient,
   formatStatusEffectiveDateLabel,
+  diffObservation,
+  isAppointedRepresentativeStatus,
+  classifyObservationChange,
+  decideSweepEnrichAction,
+  shouldAdvanceObservation,
+  assignTargetTier,
+  buildSweepDigest,
+  parseSweepArgs,
   type FcaSearchResultItem,
   type LapsedArCandidate,
   type ExistingProspectRow,
+  type SweepDigestFirm,
 } from './enrich-prospects-fca.js';
 
 describe('stripPostcodeSuffix', () => {
@@ -948,5 +957,285 @@ describe('findMatchingExistingClient — word-boundary prefix', () => {
     expect(
       findMatchingExistingClient('Trust Pointer Financial Services Ltd', ['Trust Point'])
     ).toBeNull();
+  });
+});
+
+describe('diffObservation', () => {
+  it('reports "new" when this FRN has never been seen before', () => {
+    expect(diffObservation(null, 'Authorised')).toEqual({ event: 'new', previousStatus: null });
+  });
+
+  it('reports "unchanged" when the stored status matches this run\'s status', () => {
+    expect(diffObservation('Authorised', 'Authorised')).toEqual({ event: 'unchanged', previousStatus: null });
+  });
+
+  it('reports "status-changed" with the OLD value when the status differs', () => {
+    expect(diffObservation('Appointed representative', 'Authorised')).toEqual({
+      event: 'status-changed',
+      previousStatus: 'Appointed representative',
+    });
+  });
+});
+
+describe('isAppointedRepresentativeStatus', () => {
+  it('matches the exact Register value, case-insensitively', () => {
+    expect(isAppointedRepresentativeStatus('Appointed representative')).toBe(true);
+    expect(isAppointedRepresentativeStatus('APPOINTED REPRESENTATIVE')).toBe(true);
+  });
+
+  it('does not match an introducer or lapsed AR variant', () => {
+    expect(isAppointedRepresentativeStatus('Appointed representative - introducer')).toBe(false);
+    expect(isAppointedRepresentativeStatus('No longer registered as an Appointed Representative')).toBe(false);
+  });
+
+  it('returns false for null/undefined/empty', () => {
+    expect(isAppointedRepresentativeStatus(null)).toBe(false);
+    expect(isAppointedRepresentativeStatus(undefined)).toBe(false);
+    expect(isAppointedRepresentativeStatus('')).toBe(false);
+  });
+});
+
+describe('classifyObservationChange', () => {
+  it('passes "new" and "unchanged" straight through', () => {
+    expect(classifyObservationChange({ event: 'new', previousStatus: null }, 'Authorised')).toBe('new');
+    expect(classifyObservationChange({ event: 'unchanged', previousStatus: null }, 'Authorised')).toBe('unchanged');
+  });
+
+  it('classifies AR -> Authorised as a transition', () => {
+    expect(
+      classifyObservationChange({ event: 'status-changed', previousStatus: 'Appointed representative' }, 'Authorised')
+    ).toBe('transition');
+  });
+
+  it('classifies Authorised -> run-off as a departure', () => {
+    expect(
+      classifyObservationChange({ event: 'status-changed', previousStatus: 'Authorised' }, 'Supervised run-off')
+    ).toBe('departure');
+  });
+
+  it('classifies Authorised -> Appointed representative (the reverse) as neither', () => {
+    expect(
+      classifyObservationChange({ event: 'status-changed', previousStatus: 'Authorised' }, 'Appointed representative')
+    ).toBe('other-status-change');
+  });
+
+  it('does not classify a firm already dead moving to another dead status as a fresh departure', () => {
+    expect(
+      classifyObservationChange({ event: 'status-changed', previousStatus: 'Cancelled' }, 'No longer authorised')
+    ).toBe('other-status-change');
+  });
+
+  it('does not classify an introducer AR moving to Authorised as a transition (not the exact AR status)', () => {
+    expect(
+      classifyObservationChange(
+        { event: 'status-changed', previousStatus: 'Appointed representative - introducer' },
+        'Authorised'
+      )
+    ).toBe('other-status-change');
+  });
+});
+
+describe('decideSweepEnrichAction', () => {
+  it('never enriches an unchanged observation, regardless of the limit', () => {
+    expect(decideSweepEnrichAction('unchanged', 0, 5)).toBe('skip-unchanged');
+  });
+
+  it('enriches a new or changed firm while under the limit', () => {
+    expect(decideSweepEnrichAction('new', 0, 5)).toBe('enrich');
+    expect(decideSweepEnrichAction('status-changed', 4, 5)).toBe('enrich');
+  });
+
+  it('skips (but does not silently drop) once the limit is reached', () => {
+    expect(decideSweepEnrichAction('new', 5, 5)).toBe('skip-limit');
+    expect(decideSweepEnrichAction('status-changed', 6, 5)).toBe('skip-limit');
+  });
+});
+
+describe('assignTargetTier', () => {
+  const now = new Date('2026-08-17T00:00:00Z');
+
+  it('ranks a confirmed former AR now Authorised as "transition", regardless of how long ago it was authorised', () => {
+    expect(assignTargetTier('Authorised', true, '2020-01-01', 24, now)).toBe('transition');
+    expect(assignTargetTier('Authorised', true, null, 24, now)).toBe('transition');
+  });
+
+  it('ranks an Authorised firm with no former-AR evidence, authorised long ago, as "established_da"', () => {
+    expect(assignTargetTier('Authorised', false, '2020-01-01', 24, now)).toBe('established_da');
+  });
+
+  it('ranks a currently-Authorised firm within the recency window, with no former-AR evidence, as "startup"', () => {
+    expect(assignTargetTier('Authorised', false, '2026-06-01', 24, now)).toBe('startup');
+  });
+
+  it('ranks a currently-live Appointed Representative as "appointed_rep"', () => {
+    expect(assignTargetTier('Appointed representative', false, null, 24, now)).toBe('appointed_rep');
+  });
+
+  it('is "unknown", not "startup", when Authorised with no former-AR evidence and no authorised-since date on file', () => {
+    // "no prior AR record found" (startup) is a fact about the firm; here we
+    // simply don't have the date needed to tell startup from established_da
+    // apart — that is a fact about what this run's data could establish, so
+    // it must not be reported as if it were the more specific "startup".
+    expect(assignTargetTier('Authorised', false, null, 24, now)).toBe('unknown');
+  });
+
+  it('is "unknown" for a status that is neither Authorised nor Appointed representative', () => {
+    expect(assignTargetTier('EEA Authorised', false, '2020-01-01', 24, now)).toBe('unknown');
+    expect(assignTargetTier(null, false, null, 24, now)).toBe('unknown');
+  });
+});
+
+describe('buildSweepDigest', () => {
+  function firm(overrides: Partial<SweepDigestFirm>): SweepDigestFirm {
+    return {
+      frn: '000000',
+      firmName: 'Placeholder Ltd',
+      category: 'new',
+      previousStatus: null,
+      newStatus: 'Authorised',
+      tier: null,
+      ...overrides,
+    };
+  }
+
+  it('groups transitions and departures separately from new firms', () => {
+    const digest = buildSweepDigest([
+      firm({ frn: '1', firmName: 'Transitioned Ltd', category: 'transition', previousStatus: 'Appointed representative', newStatus: 'Authorised' }),
+      firm({ frn: '2', firmName: 'Departed Ltd', category: 'departure', previousStatus: 'Authorised', newStatus: 'Cancelled' }),
+      firm({ frn: '3', firmName: 'New Startup Ltd', category: 'new', tier: 'startup' }),
+    ]);
+    expect(digest.transitions.map((f) => f.firmName)).toEqual(['Transitioned Ltd']);
+    expect(digest.departures.map((f) => f.firmName)).toEqual(['Departed Ltd']);
+    expect(digest.newByTier.startup.map((f) => f.firmName)).toEqual(['New Startup Ltd']);
+  });
+
+  it('groups new firms by every tier, with an empty array for a tier nobody landed in', () => {
+    const digest = buildSweepDigest([
+      firm({ frn: '1', category: 'new', tier: 'transition' }),
+      firm({ frn: '2', category: 'new', tier: 'transition' }),
+      firm({ frn: '3', category: 'new', tier: 'appointed_rep' }),
+    ]);
+    expect(digest.newByTier.transition).toHaveLength(2);
+    expect(digest.newByTier.appointed_rep).toHaveLength(1);
+    expect(digest.newByTier.established_da).toHaveLength(0);
+    expect(digest.newByTier.startup).toHaveLength(0);
+    expect(digest.newByTier.unknown).toHaveLength(0);
+  });
+
+  it('excludes a "new" firm from newByTier when it never reached enrichment (tier still null)', () => {
+    const digest = buildSweepDigest([firm({ frn: '1', category: 'new', tier: null })]);
+    expect(Object.values(digest.newByTier).every((firms) => firms.length === 0)).toBe(true);
+  });
+
+  it('ignores "unchanged" and "other-status-change" firms entirely — nothing to action', () => {
+    const digest = buildSweepDigest([
+      firm({ frn: '1', category: 'unchanged' }),
+      firm({ frn: '2', category: 'other-status-change' }),
+    ]);
+    expect(digest.transitions).toHaveLength(0);
+    expect(digest.departures).toHaveLength(0);
+    expect(Object.values(digest.newByTier).every((firms) => firms.length === 0)).toBe(true);
+  });
+});
+
+describe('parseSweepArgs', () => {
+  it('collects positional terms and defaults limit to unlimited', () => {
+    const args = parseSweepArgs(['--sweep', 'mortgage advice', 'life insurance']);
+    expect(args.terms).toEqual(['mortgage advice', 'life insurance']);
+    expect(args.limit).toBe(Infinity);
+    expect(args.yes).toBe(false);
+    expect(args.dryRun).toBe(false);
+    expect(args.includeClients).toBe(false);
+    expect(args.verbose).toBe(false);
+  });
+
+  it('parses --limit, --yes, --dry-run, --include-clients, --verbose and --terms-file', () => {
+    const args = parseSweepArgs([
+      '--sweep',
+      '--terms-file',
+      'terms.txt',
+      '--limit',
+      '10',
+      '--yes',
+      '--dry-run',
+      '--include-clients',
+      '--verbose',
+    ]);
+    expect(args.termsFile).toBe('terms.txt');
+    expect(args.limit).toBe(10);
+    expect(args.yes).toBe(true);
+    expect(args.dryRun).toBe(true);
+    expect(args.includeClients).toBe(true);
+    expect(args.verbose).toBe(true);
+  });
+
+  it('ignores a non-numeric or non-positive --limit and keeps the unlimited default', () => {
+    expect(parseSweepArgs(['--sweep', '--limit', 'abc']).limit).toBe(Infinity);
+    expect(parseSweepArgs(['--sweep', '--limit', '-5']).limit).toBe(Infinity);
+  });
+});
+
+describe('shouldAdvanceObservation', () => {
+  it('does NOT advance a firm skipped purely because the enrichment budget ran out', () => {
+    expect(shouldAdvanceObservation('skip-limit')).toBe(false);
+  });
+
+  it('advances a firm that was actually enriched (regardless of whether the lookup itself succeeded)', () => {
+    expect(shouldAdvanceObservation('enrichment-attempted')).toBe(true);
+  });
+
+  it('advances a firm deliberately excluded by a targeting rule (e.g. dead/introducer status)', () => {
+    expect(shouldAdvanceObservation('excluded-by-rule')).toBe(true);
+  });
+});
+
+describe('a limit-skipped status change is re-detected on the following run (the --limit bug fix)', () => {
+  it('re-detects the same status change next run when the observation was NOT advanced', () => {
+    // Run 1: the firm's stored status is still the OLD one — nothing has
+    // advanced it yet.
+    const storedBeforeRun1 = 'Appointed representative';
+    const run1Diff = diffObservation(storedBeforeRun1, 'Authorised');
+    expect(run1Diff).toEqual({ event: 'status-changed', previousStatus: 'Appointed representative' });
+
+    // The sweep decides this firm is skipped purely for budget reasons —
+    // shouldAdvanceObservation says don't advance, so runSweep leaves
+    // fca_status exactly as it was (only last_seen_at/firm_name are bumped;
+    // see touchObservationSeen). The stored status reaching run 2 is
+    // therefore UNCHANGED from before run 1.
+    expect(shouldAdvanceObservation('skip-limit')).toBe(false);
+    const storedBeforeRun2 = storedBeforeRun1;
+
+    // Run 2, same Register status as before (nothing new happened, budget
+    // now allows it to be processed): the diff is IDENTICAL to run 1's — the
+    // change is still there to catch, not lost.
+    const run2Diff = diffObservation(storedBeforeRun2, 'Authorised');
+    expect(run2Diff).toEqual({ event: 'status-changed', previousStatus: 'Appointed representative' });
+  });
+
+  it('demonstrates the bug this guards against: advancing on skip-limit would have hidden the change forever', () => {
+    // What the OLD (buggy) behaviour did: write the new status down even
+    // though the firm was never actually enriched.
+    const storedIfWronglyAdvanced = 'Authorised';
+    const run2Diff = diffObservation(storedIfWronglyAdvanced, 'Authorised');
+    // The very next run then sees "unchanged" and never enriches it — the
+    // change is silently lost for good, exactly the fault being fixed.
+    expect(run2Diff.event).toBe('unchanged');
+  });
+
+  it('a brand-new FRN skipped for budget reasons gets no row at all, so it is still "new" next run', () => {
+    // No stored row exists yet for this FRN either before or after a
+    // skip-limited run — see runSweep: touchObservationSeen only ever
+    // updates a row that already exists, and advanceObservation (which
+    // would create it) is never called on a 'skip-limit' decision.
+    const storedBeforeRun1 = null;
+    const run1Diff = diffObservation(storedBeforeRun1, 'Authorised');
+    expect(run1Diff.event).toBe('new');
+    expect(shouldAdvanceObservation('skip-limit')).toBe(false);
+
+    // Run 2: still no row for this FRN, so it is reported as 'new' again —
+    // another chance, not a silent loss.
+    const storedBeforeRun2 = null;
+    const run2Diff = diffObservation(storedBeforeRun2, 'Authorised');
+    expect(run2Diff.event).toBe('new');
   });
 });

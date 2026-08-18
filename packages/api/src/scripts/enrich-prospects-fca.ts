@@ -102,6 +102,20 @@
  * pure logic — see the "--discover pure logic" section below — exercised
  * directly by enrich-prospects-fca.test.ts without hitting the live API.
  *
+ * --sweep mode is --discover's recurring sibling — see docs/prospect-sweep.md
+ * and migration 104_fca_register_observations.sql for the full design:
+ *   npx tsx src/scripts/enrich-prospects-fca.ts --sweep "mortgage and protection" --yes
+ *   npx tsx src/scripts/enrich-prospects-fca.ts --sweep --terms-file terms.txt --limit 50 --yes
+ * Every search result is recorded to fca_register_observations, including
+ * ones excluded from `prospects` entirely — that's what lets a later run
+ * detect a status CHANGE rather than only ever seeing the current snapshot.
+ * Only a firm that's new to that table, or whose stored status disagrees
+ * with what this run found, is worth the enrichment cost; an unchanged firm
+ * just gets its last_seen_at bumped. Ends with a digest ordered by what
+ * needs action: confirmed AR -> Authorised transitions, new firms grouped by
+ * target_tier (migration 105_prospect_tier.sql), then firms that have left
+ * the market — see the "--sweep pure logic" section below for the mechanics.
+ *
  * Requires FCA_API_EMAIL and FCA_API_KEY in the environment (see
  * .env.example) — deliberately NOT read via src/config.ts, so the ordinary
  * API server and worker processes never carry this credential.
@@ -806,6 +820,208 @@ export function decideLimitAction(alreadyKnown: boolean, newCountSoFar: number, 
   return 'process-new';
 }
 
+// ── --sweep pure logic (observation diffing, transition/departure
+// classification, target tiering, digest grouping) ─────────────────────────
+//
+// --sweep is what turns a one-off list-builder into a recurring monitor —
+// see migration 104_fca_register_observations.sql for the full "why". The
+// short version: --discover (above) only ever decides "is this firm worth a
+// prospect row", using whatever the Register says RIGHT NOW. --sweep adds a
+// second axis — "did this firm's status change since the last time we
+// looked" — by recording every search result (not just the ones worth
+// targeting) to fca_register_observations, and diffing against what was
+// already stored there.
+
+export type ObservationEvent = 'new' | 'unchanged' | 'status-changed';
+
+/** The result of comparing what fca_register_observations already held for
+ * one FRN (`existingStatus`, null when this is the very first sighting)
+ * against what this sweep's search result reports (`newStatus`). This is
+ * the entire "detect a change" mechanism — deliberately just a string
+ * comparison, no dates or heuristics, because the Register's own status
+ * text is the ground truth being tracked. */
+export interface ObservationDiff {
+  event: ObservationEvent;
+  // Only set when event is 'status-changed' — what fca_status held
+  // immediately before this sighting, about to be moved sideways into
+  // previous_status.
+  previousStatus: string | null;
+}
+
+export function diffObservation(existingStatus: string | null, newStatus: string): ObservationDiff {
+  if (existingStatus === null) return { event: 'new', previousStatus: null };
+  if (existingStatus === newStatus) return { event: 'unchanged', previousStatus: null };
+  return { event: 'status-changed', previousStatus: existingStatus };
+}
+
+/** Exact match only, same reasoning as isConfirmedAuthorisedStatus: this
+ * needs the Register's literal live-AR status, not an introducer or lapsed
+ * variant of it (isExcludedStatus already routes those away well before a
+ * status pair reaches classifyObservationChange, below). */
+export function isAppointedRepresentativeStatus(status: string | null | undefined): boolean {
+  if (!status) return false;
+  return status.toLowerCase().trim() === 'appointed representative';
+}
+
+export type ObservationDigestCategory = 'new' | 'unchanged' | 'transition' | 'departure' | 'other-status-change';
+
+/** What a status change actually MEANS, for the end-of-sweep digest (see
+ * runSweep). 'new' and 'unchanged' pass straight through — there's nothing
+ * to classify about them. For 'status-changed':
+ *   - previously the Register's exact "Appointed representative", now
+ *     confirmed "Authorised" — the money case this feature exists to catch.
+ *     NOTE, and this matters: in real Register data this same-FRN path is
+ *     rare. The FCA typically issues a brand NEW FRN when a firm goes
+ *     directly authorised (see migration 103's own Trust Point/M6 examples —
+ *     the AR-era and Authorised-era records are two entirely different
+ *     FRNs). That real-world case shows up here as a brand-new FRN (event
+ *     'new') carrying target_tier 'transition' via the existing
+ *     Companies-House matching (findTransitionEvidence), grouped under "new
+ *     firms by tier" in the digest — not this same-FRN path. This function
+ *     still needs to exist and be correct, because it's the mechanism that
+ *     WOULD catch a same-FRN transition if the Register ever behaves that
+ *     way for a given firm, but it should not be relied on as the primary
+ *     way a real transition gets caught.
+ *   - was not already a dead/excluded status and now is one (isDeadStatus)
+ *     — the firm has left the market: run-off, revoked, cancelled, etc.
+ *   - anything else that changed (e.g. Authorised -> Appointed
+ *     representative) is neither of the above — still worth enriching, just
+ *     not one of the two headline digest sections.
+ */
+export function classifyObservationChange(
+  diff: ObservationDiff,
+  newStatus: string
+): ObservationDigestCategory {
+  if (diff.event !== 'status-changed') return diff.event;
+  if (isAppointedRepresentativeStatus(diff.previousStatus) && isConfirmedAuthorisedStatus(newStatus)) {
+    return 'transition';
+  }
+  if (!isDeadStatus(diff.previousStatus) && isDeadStatus(newStatus)) {
+    return 'departure';
+  }
+  return 'other-status-change';
+}
+
+export type SweepEnrichDecision = 'enrich' | 'skip-unchanged' | 'skip-limit';
+
+/** Whether a sweep-observed firm is worth spending the enrichment cost on
+ * (Firm/Permissions/Address — up to 3 more requests per firm). An
+ * 'unchanged' observation never is — that saving is the entire point of
+ * recording observations at all (see migration 104's header comment). A new
+ * or changed firm is enriched up to --limit of them per run; beyond that
+ * it's counted (never silently dropped) and left for a future run. */
+export function decideSweepEnrichAction(
+  event: ObservationEvent,
+  enrichedCountSoFar: number,
+  limit: number
+): SweepEnrichDecision {
+  if (event === 'unchanged') return 'skip-unchanged';
+  if (enrichedCountSoFar >= limit) return 'skip-limit';
+  return 'enrich';
+}
+
+export type ObservationCommitReason = 'excluded-by-rule' | 'enrichment-attempted' | 'skip-limit';
+
+/** Whether a firm's fca_register_observations row should actually advance to
+ * this run's fca_status (and stamp previous_status/status_changed_at), or be
+ * left exactly as it already was so the SAME change is detected and retried
+ * on a future run — see runSweep's --limit handling and migration 104's
+ * header comment.
+ *
+ * This exists because of a real bug: recording the observation and deciding
+ * whether to enrich used to happen as one step, so a firm whose status had
+ * genuinely changed but which was skipped purely because --limit was reached
+ * still had its new status written down. The next run then compared the
+ * (already-updated) stored status against the Register's still-current
+ * status, saw no difference, and silently never enriched it — the change
+ * was lost for good, with nothing in the output saying so.
+ *
+ * The fix: only a genuine decision about this firm THIS run — enrichment was
+ * actually attempted (regardless of whether it succeeded), or it was
+ * deliberately excluded by a targeting rule (dead/introducer status, or
+ * post-enrichment individual/existing-client) — earns the advance. Being
+ * skipped merely because the enrichment budget ran out does not; last_seen_at
+ * and firm_name still get bumped either way (see runSweep), but fca_status/
+ * previous_status/status_changed_at are left stale on purpose. */
+export function shouldAdvanceObservation(reason: ObservationCommitReason): boolean {
+  return reason !== 'skip-limit';
+}
+
+// ── Target tiering (migration 105_prospect_tier.sql) ────────────────────
+
+export type TargetTier = 'transition' | 'established_da' | 'appointed_rep' | 'startup' | 'unknown';
+
+const ALL_TARGET_TIERS: TargetTier[] = ['transition', 'established_da', 'appointed_rep', 'startup', 'unknown'];
+
+/** Ranks a prospect by buying intent, computed entirely from data an
+ * enrichment run already fetched — no new API calls. Ranking order, most
+ * promising first: transition > established_da > appointed_rep > startup;
+ * unknown isn't ranked, it just means this run's data couldn't place the
+ * firm in any of the other four (see migration 105 for the full reasoning
+ * behind each tier, including why 'startup' and 'unknown' are deliberately
+ * distinct rather than collapsed). This is a snapshot recomputed on every
+ * enrichment refresh, not a live derivation — it can go stale between runs
+ * exactly like every other Register-derived column on `prospects`. */
+export function assignTargetTier(
+  fcaStatus: string | null,
+  formerAr: boolean,
+  authorisedSince: string | null,
+  months: number,
+  now: Date
+): TargetTier {
+  if (isConfirmedAuthorisedStatus(fcaStatus)) {
+    if (formerAr) return 'transition';
+    if (isAuthorisedWithinMonths(authorisedSince, months, now)) return 'startup';
+    if (authorisedSince) return 'established_da';
+    return 'unknown';
+  }
+  if (isAppointedRepresentativeStatus(fcaStatus)) return 'appointed_rep';
+  return 'unknown';
+}
+
+// ── Digest grouping (Phase 4) ────────────────────────────────────────────
+
+export interface SweepDigestFirm {
+  frn: string;
+  firmName: string;
+  category: ObservationDigestCategory;
+  previousStatus: string | null;
+  newStatus: string;
+  // null for a firm that never reached enrichment this run (e.g. excluded
+  // as dead/introducer before ever being enriched, or a departure — which
+  // is detected from the observation alone and is never enriched at all).
+  tier: TargetTier | null;
+  // When this run observed the change, so the digest says WHEN a firm moved and
+  // not merely that it did. Triaging a weekly digest needs that: the window in
+  // which a newly independent firm is actually in the market is short, so a
+  // change seen this week reads very differently from one seen months ago.
+  observedOn: string;
+}
+
+export interface SweepDigest {
+  transitions: SweepDigestFirm[];
+  departures: SweepDigestFirm[];
+  newByTier: Record<TargetTier, SweepDigestFirm[]>;
+}
+
+/** Pure grouping for the end-of-sweep digest — ordered, in runSweep's actual
+ * print order, by what needs action first: confirmed transitions, then new
+ * firms grouped by tier, then departures. Kept as a standalone pure function
+ * (rather than inline in runSweep) purely so this grouping logic is
+ * unit-testable without a database or a live Register call. */
+export function buildSweepDigest(firms: SweepDigestFirm[]): SweepDigest {
+  const transitions = firms.filter((f) => f.category === 'transition');
+  const departures = firms.filter((f) => f.category === 'departure');
+  const newByTier = ALL_TARGET_TIERS.reduce((acc, tier) => {
+    acc[tier] = [];
+    return acc;
+  }, {} as Record<TargetTier, SweepDigestFirm[]>);
+  for (const f of firms) {
+    if (f.category === 'new' && f.tier) newByTier[f.tier].push(f);
+  }
+  return { transitions, departures, newByTier };
+}
+
 /** The Permissions endpoint returns a dict keyed by permission name (values
  * are arrays of limitation objects we don't need) — the permission list IS
  * Object.keys(Data). */
@@ -1115,6 +1331,7 @@ export interface ExistingProspectRow {
   authorised_since: string | null;
   former_ar: boolean;
   ar_ceased_on: string | null;
+  target_tier: TargetTier | null;
 }
 
 async function findExisting(frn: string, firmName: string): Promise<ExistingProspectRow | 'ambiguous' | null> {
@@ -1155,7 +1372,7 @@ async function processEnriched(
   firm: EnrichedFirm,
   write: boolean,
   transition: TransitionEvidence | null
-): Promise<{ action: 'create' | 'update'; diffs: string[] }> {
+): Promise<{ action: 'create' | 'update'; diffs: string[]; tier: TargetTier }> {
   const existing = await findExisting(firm.frn, firm.firmName);
   if (existing === 'ambiguous') {
     throw new Error(`multiple existing prospects named "${firm.firmName}" with no FRN to disambiguate — resolve manually`);
@@ -1169,6 +1386,15 @@ async function processEnriched(
   // than reset to false/null. Only positive evidence ever overwrites them.
   // See TransitionEvidence's own comment for why that asymmetry is
   // deliberate.
+  const formerAr = transition ? true : existing ? existing.former_ar : false;
+  const arCeasedOn = transition ? transition.arCeasedOn : existing ? existing.ar_ceased_on : null;
+  // target_tier is recomputed on every enrichment refresh (migration 105's
+  // own comment) — a snapshot, not a live derivation — from data this
+  // function already has in hand: the freshly-resolved fcaStatus/
+  // authorisedSince plus formerAr, which is itself either fresh transition
+  // evidence or the row's own carried-through value (see assignTargetTier).
+  const tier = assignTargetTier(firm.fcaStatus, formerAr, firm.authorisedSince, DEFAULT_AUTHORISED_WITHIN_MONTHS, new Date());
+
   const nextValues = {
     firm_name: firm.firmName,
     frn: firm.frn,
@@ -1179,8 +1405,9 @@ async function processEnriched(
     registered_address: firm.registeredAddress,
     companies_house_number: firm.companiesHouseNumber,
     authorised_since: firm.authorisedSince,
-    former_ar: transition ? true : existing ? existing.former_ar : false,
-    ar_ceased_on: transition ? transition.arCeasedOn : existing ? existing.ar_ceased_on : null,
+    former_ar: formerAr,
+    ar_ceased_on: arCeasedOn,
+    target_tier: tier,
   };
 
   if (existing) {
@@ -1202,33 +1429,36 @@ async function processEnriched(
            authorised_since        = $10,
            former_ar               = $11,
            ar_ceased_on            = $12,
+           target_tier             = $13,
            updated_at              = now()
          WHERE id = $1`,
         [
           existing.id, nextValues.firm_name, nextValues.frn, nextValues.fca_status,
           nextValues.permissions, nextValues.website, nextValues.main_phone, nextValues.registered_address,
           nextValues.companies_house_number, nextValues.authorised_since, nextValues.former_ar, nextValues.ar_ceased_on,
+          nextValues.target_tier,
         ]
       );
     }
-    return { action: 'update', diffs };
+    return { action: 'update', diffs, tier };
   }
 
   if (write) {
     await query(
       `INSERT INTO prospects (
          firm_name, frn, fca_status, permissions, website, main_phone, registered_address,
-         companies_house_number, authorised_since, former_ar, ar_ceased_on, source
+         companies_house_number, authorised_since, former_ar, ar_ceased_on, target_tier, source
        )
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'directory')`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'directory')`,
       [
         nextValues.firm_name, nextValues.frn, nextValues.fca_status,
         nextValues.permissions, nextValues.website, nextValues.main_phone, nextValues.registered_address,
         nextValues.companies_house_number, nextValues.authorised_since, nextValues.former_ar, nextValues.ar_ceased_on,
+        nextValues.target_tier,
       ]
     );
   }
-  return { action: 'create', diffs: [] };
+  return { action: 'create', diffs: [], tier };
 }
 
 // ── CLI plumbing ─────────────────────────────────────────────────────────
@@ -1386,7 +1616,10 @@ async function isFrnKnown(frn: string): Promise<boolean> {
   return !!row;
 }
 
-function loadDiscoverTerms(args: DiscoverArgs): string[] {
+// Shared by --discover and --sweep (both DiscoverArgs and SweepArgs carry
+// `terms`/`termsFile`) — kept as one function rather than duplicated per the
+// brief's "do not duplicate" instruction.
+function loadDiscoverTerms(args: { terms: string[]; termsFile: string | null }): string[] {
   let terms = [...args.terms];
   if (args.termsFile) {
     const resolved = path.resolve(process.cwd(), args.termsFile);
@@ -1696,6 +1929,442 @@ async function runDiscover(
   }
 }
 
+// ── --sweep ──────────────────────────────────────────────────────────────
+//
+// Turns this script from a one-off list-builder into a recurring monitor —
+// see migration 104_fca_register_observations.sql and docs/prospect-sweep.md
+// for the full design. Reuses everything --discover already has: the FCA
+// client, RateLimiter, exclusion predicates (isDeadStatus/isIntroducerStatus/
+// isLikelyCompanyName), findMatchingExistingClient, enrichFirm,
+// findTransitionEvidence and processEnriched. The only genuinely new thing
+// --sweep does is decide, per firm, whether any of that is worth doing at
+// all this run — see diffObservation/decideSweepEnrichAction above.
+
+export interface SweepArgs {
+  terms: string[];
+  termsFile: string | null;
+  // Bounds how many new-or-changed firms get enriched (Firm/Permissions/
+  // Address — the expensive calls) this run — see decideSweepEnrichAction.
+  // Unlike --discover's --limit, this never stops a term's paging early:
+  // every search result is still observed (see runSweep) regardless of
+  // whether it happens to fall past this limit, since recording the
+  // observation costs nothing extra. Defaults to unlimited — a real
+  // scheduled sweep is meant to enrich every change it finds; --limit exists
+  // mainly so a manual/test run can bound how many expensive calls it makes.
+  limit: number;
+  yes: boolean;
+  dryRun: boolean;
+  includeClients: boolean;
+  verbose: boolean;
+}
+
+export function parseSweepArgs(argv: string[]): SweepArgs {
+  let termsFile: string | null = null;
+  let limit = Infinity;
+  let yes = false;
+  let dryRun = false;
+  let includeClients = false;
+  let verbose = false;
+  const terms: string[] = [];
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i]!;
+    if (a === '--sweep') continue;
+    if (a === '--terms-file') { termsFile = argv[++i] ?? null; continue; }
+    if (a === '--limit') {
+      const n = Number(argv[++i]);
+      if (Number.isFinite(n) && n > 0) limit = Math.floor(n);
+      continue;
+    }
+    if (a === '--yes') { yes = true; continue; }
+    if (a === '--dry-run') { dryRun = true; continue; }
+    if (a === '--include-clients') { includeClients = true; continue; }
+    if (a === '--verbose') { verbose = true; continue; }
+    if (a.startsWith('--')) continue;
+    terms.push(a);
+  }
+  return { terms, termsFile, limit, yes, dryRun, includeClients, verbose };
+}
+
+/** Reads the stored status for one FRN from fca_register_observations, or
+ * null if it's never been seen. Read unconditionally, even in preview mode —
+ * the diff it produces (see diffObservation) is what the rest of the sweep
+ * uses to decide whether to bother enriching this firm at all; only the
+ * actual write is gated behind `write`, same convention as every other DB
+ * touch in this script. */
+async function readObservationStatus(frn: string): Promise<string | null> {
+  const row = await queryOne<{ fca_status: string }>(
+    `SELECT fca_status FROM fca_register_observations WHERE frn = $1`,
+    [frn]
+  );
+  return row?.fca_status ?? null;
+}
+
+/** Bumps last_seen_at (and refreshes firm_name) on an EXISTING observation
+ * row WITHOUT touching fca_status/previous_status/status_changed_at — used
+ * both for a genuinely unchanged sighting and for a changed one that is
+ * being deliberately deferred (see shouldAdvanceObservation and runSweep's
+ * --limit handling). Only ever called on a row diffObservation has already
+ * confirmed exists — a 'new' event has no row yet to touch (see runSweep:
+ * a brand-new FRN deferred for budget reasons gets no row written at all
+ * this run, so the next run still sees it as 'new'). */
+async function touchObservationSeen(frn: string, firmName: string): Promise<void> {
+  await query(
+    `UPDATE fca_register_observations SET firm_name = $2, last_seen_at = now() WHERE frn = $1`,
+    [frn, firmName]
+  );
+}
+
+/** Commits this run's observed status as the firm's new stored truth — only
+ * ever called once runSweep has actually decided this firm's fate this run
+ * (enrichment attempted, or excluded by a deliberate targeting rule), never
+ * when it was merely skipped for budget reasons (see shouldAdvanceObservation
+ * and the ObservationCommitReason it takes). Handles both a first sighting
+ * (INSERT) and a genuine status change (UPDATE, moving the old value into
+ * previous_status) — 'unchanged' never reaches this function; see
+ * touchObservationSeen for that case. */
+async function advanceObservation(frn: string, firmName: string, status: string, diff: ObservationDiff): Promise<void> {
+  if (diff.event === 'new') {
+    await query(
+      `INSERT INTO fca_register_observations (frn, firm_name, fca_status)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (frn) DO NOTHING`,
+      [frn, firmName, status]
+    );
+    return;
+  }
+  await query(
+    `UPDATE fca_register_observations
+       SET firm_name = $2, previous_status = fca_status, fca_status = $3,
+           status_changed_at = now(), last_seen_at = now()
+     WHERE frn = $1`,
+    [frn, firmName, status]
+  );
+}
+
+async function runSweep(
+  argv: string[],
+  headers: Record<string, string>,
+  existingClientNames: string[]
+): Promise<void> {
+  const args = parseSweepArgs(argv);
+  const write = args.yes && !args.dryRun;
+  // Stamped once so every firm in one sweep reports the same observation date,
+  // rather than drifting across a run that can take a long while at 50 requests
+  // per 10 seconds.
+  const sweepStartedOn = new Date().toISOString().slice(0, 10);
+
+  let terms: string[];
+  try {
+    terms = loadDiscoverTerms(args);
+  } catch (err) {
+    console.error((err as Error).message);
+    process.exitCode = 1;
+    return;
+  }
+
+  if (terms.length === 0) {
+    console.error(
+      'Usage: enrich-prospects-fca.ts --sweep <term> [<term> ...] [--terms-file <path>] [--limit N] ' +
+        '[--include-clients] [--verbose] [--yes] [--dry-run]'
+    );
+    process.exitCode = 1;
+    return;
+  }
+
+  printDbBanner();
+  console.log(
+    `\nSweep mode: ${terms.length} search term(s)` +
+      (Number.isFinite(args.limit) ? `, --limit ${args.limit} enrichment(s)` : ', no --limit (enriches every change found)') +
+      '.'
+  );
+  console.log(write ? 'Mode: LIVE — writes will be made.' : 'Mode: PREVIEW (dry run) — nothing will be written.');
+  if (args.includeClients) {
+    console.log('--include-clients: the existing-client guard is DISABLED — a matching tenant will be written like any other firm.');
+  }
+
+  const rl = new RateLimiter();
+  const seenFrns = new Set<string>();
+  // Same purpose as --discover's lapsedArIndex — lapsed-AR sightings from
+  // this run's own search results, spent on the one extra Firm lookup a
+  // plausible name match costs (see findTransitionEvidence). Built from
+  // every non-individual candidate seen this run, regardless of whether its
+  // own observation turned out to be new/unchanged/changed.
+  const lapsedArIndex: LapsedArCandidate[] = [];
+
+  let termsSearched = 0;
+  let rawResultsCount = 0;
+  let blankFrnCount = 0;
+  let duplicateCount = 0;
+  let skippedIndividualCount = 0;
+  let observedCount = 0;
+  let unchangedSkippedCount = 0;
+  let otherStatusChangedCount = 0;
+  let excludedDeadCount = 0;
+  let excludedIntroducerCount = 0;
+  let skippedExistingClientCount = 0;
+  let enrichedCount = 0;
+  // Changed (or brand-new) firms this run detected but did NOT enrich purely
+  // because --limit was reached — self-healing (see shouldAdvanceObservation
+  // and the [skip-limit] branch below): each of these will be detected again
+  // and retried on the next run, never silently dropped.
+  let enrichBudgetDeferredCount = 0;
+  let createdCount = 0;
+  let updatedCount = 0;
+  const failed: string[] = [];
+  const digestFirms: SweepDigestFirm[] = [];
+
+  for (const term of terms) {
+    termsSearched++;
+    let page = 1;
+    for (;;) {
+      const pageResult = await searchFirmPage(rl, headers, term, page);
+      if (!pageResult.ok) {
+        console.log(`  [search-failed] "${term}" page ${page} — ${pageResult.message}`);
+        break;
+      }
+      const items = pageResult.data ?? [];
+      if (items.length === 0) break;
+      rawResultsCount += items.length;
+
+      const candidates = toDiscoveryCandidates(items);
+      blankFrnCount += items.length - candidates.length;
+      const fresh = dedupeByFrn(candidates, seenFrns);
+      duplicateCount += candidates.length - fresh.length;
+
+      for (const c of fresh) {
+        // Step 1 (see migration 104's header comment): a named individual is
+        // never recorded here at all — no observation, no prospect. This is
+        // checked BEFORE the observation read/diff, which is why it happens
+        // earlier in this loop than --discover's equivalent check.
+        if (!isLikelyCompanyName(c.name)) {
+          skippedIndividualCount++;
+          if (args.verbose) console.log(`  [skip-individual] "${c.name}" (FRN ${c.frn}) — not observed, needs an LIA`);
+          continue;
+        }
+
+        // Step 2: diff against what was already stored — read-only. Nothing
+        // is written yet: whether (and how) this run actually commits that
+        // to fca_register_observations depends on what happens to this firm
+        // below (see shouldAdvanceObservation's own comment for why).
+        const existingStatus = await readObservationStatus(c.frn);
+        const diff = diffObservation(existingStatus, c.status);
+        observedCount++;
+
+        if (isDeadStatus(c.status) && isLapsedArStatus(c.status)) {
+          lapsedArIndex.push({ frn: c.frn, name: c.name, status: c.status });
+        }
+
+        // Step 3: classify what the diff means. This is pure comparison
+        // logic against the Register's own reported status, so it's valid
+        // (and worth reporting) regardless of what this run ends up
+        // committing to the database below.
+        const category = classifyObservationChange(diff, c.status);
+
+        if (diff.event === 'unchanged') {
+          // The whole saving a repeat sweep exists to realise: bump
+          // last_seen_at/firm_name only, nothing else to do.
+          if (write) await touchObservationSeen(c.frn, c.name);
+          unchangedSkippedCount++;
+          continue;
+        }
+
+        if (category === 'transition' || category === 'departure') {
+          digestFirms.push({
+            frn: c.frn,
+            firmName: c.name,
+            category,
+            previousStatus: diff.previousStatus,
+            newStatus: c.status,
+            tier: null,
+            observedOn: sweepStartedOn,
+          });
+          console.log(
+            `  [${category}] "${c.name}" (FRN ${c.frn}) — ${diff.previousStatus ?? '(unknown)'} -> ${c.status}`
+          );
+        } else if (category === 'other-status-change') {
+          otherStatusChangedCount++;
+        }
+
+        // Apply --discover's existing exclusions to the PROSPECT write only.
+        // A dead/introducer status is a deliberate targeting-rule decision —
+        // this firm's fate this run is settled regardless of the enrichment
+        // budget, so its observation is fully advanced now (see
+        // shouldAdvanceObservation).
+        if (isIntroducerStatus(c.status)) {
+          excludedIntroducerCount++;
+          if (write) await advanceObservation(c.frn, c.name, c.status, diff);
+          continue;
+        }
+        if (isDeadStatus(c.status)) {
+          excludedDeadCount++;
+          if (write) await advanceObservation(c.frn, c.name, c.status, diff);
+          continue;
+        }
+
+        const decision = decideSweepEnrichAction(diff.event, enrichedCount, args.limit);
+        if (decision === 'skip-limit') {
+          enrichBudgetDeferredCount++;
+          // THE FIX: a firm skipped purely because the enrichment budget ran
+          // out must NOT have its observation advanced — doing so is exactly
+          // the bug that let a real status change be silently lost forever,
+          // because the next run would then compare the (already-updated)
+          // stored status against the Register's still-current one, see no
+          // difference, and never enrich it. Leaving fca_status untouched
+          // means the next run's diff sees the SAME change again and retries
+          // it — see shouldAdvanceObservation's own comment for the full
+          // story, and the "re-detected on the following run" tests in
+          // enrich-prospects-fca.test.ts.
+          //
+          // A brand-new FRN (diff.event === 'new') gets no row at all this
+          // run: fca_status is NOT NULL, so there is no "stale but valid"
+          // value such a row could hold, and touchObservationSeen only ever
+          // updates a row that already exists. The next run sees it as 'new'
+          // again and gets another chance, subject to the same limit.
+          if (write && diff.event === 'status-changed') {
+            await touchObservationSeen(c.frn, c.name);
+          }
+          continue;
+        }
+
+        // The enrichment budget is spent on this firm now, regardless of
+        // whether the lookup below actually succeeds — see
+        // shouldAdvanceObservation('enrichment-attempted').
+        if (write) await advanceObservation(c.frn, c.name, c.status, diff);
+
+        const enrichOutcome = await enrichFirm(c.frn, c.status, rl, headers);
+        enrichedCount++;
+        if (!enrichOutcome.ok) {
+          failed.push(`  "${c.name}" (FRN ${c.frn}) — ${enrichOutcome.reason}`);
+          console.log(`  [FAILED]    "${c.name}" (FRN ${c.frn}) — ${enrichOutcome.reason}`);
+          continue;
+        }
+        const firm = enrichOutcome.firm;
+
+        if (!isLikelyCompanyName(firm.firmName)) {
+          skippedIndividualCount++;
+          console.log(`  [skip-individual] "${firm.firmName}" (FRN ${firm.frn})`);
+          continue;
+        }
+
+        if (!args.includeClients) {
+          const matchedOrg = findMatchingExistingClient(firm.firmName, existingClientNames);
+          if (matchedOrg) {
+            skippedExistingClientCount++;
+            console.log(`  [skip-existing-client] "${firm.firmName}" (FRN ${firm.frn}) — matches existing tenant "${matchedOrg}"`);
+            continue;
+          }
+        }
+
+        const transitionLookup = isConfirmedAuthorisedStatus(firm.fcaStatus)
+          ? await findTransitionEvidence(firm.firmName, firm.companiesHouseNumber, lapsedArIndex, rl, headers)
+          : { evidence: null, unconfirmedFrn: null };
+        const transition = transitionLookup.evidence;
+
+        try {
+          const plan = await processEnriched(firm, write, transition);
+          // Unlike --discover, this per-firm line is --verbose-only: a real
+          // first sweep can enrich hundreds of genuinely new firms in one
+          // run (see docs/prospect-sweep.md), and a previous run's per-firm
+          // exclusion logging already once produced a 50,000+ character
+          // report from routine volume like this — every firm here is still
+          // counted (createdCount/updatedCount) and named individually in
+          // the "New firms, grouped by tier" digest below regardless.
+          if (plan.action === 'create') {
+            createdCount++;
+            if (args.verbose) {
+              console.log(`  [${write ? 'created' : 'would create'}] ${firm.firmName} (FRN ${firm.frn}) — tier: ${plan.tier}`);
+            }
+          } else {
+            updatedCount++;
+            if (args.verbose) {
+              const changeNote = plan.diffs.length > 0 ? plan.diffs.join('; ') : 'no changes';
+              console.log(`  [${write ? 'updated' : 'would update'}] ${firm.firmName} (FRN ${firm.frn}) — ${changeNote} — tier: ${plan.tier}`);
+            }
+          }
+          if (category === 'new') {
+            digestFirms.push({
+              frn: firm.frn,
+              firmName: firm.firmName,
+              category: 'new',
+              previousStatus: null,
+              newStatus: firm.fcaStatus ?? c.status,
+              tier: plan.tier,
+              observedOn: sweepStartedOn,
+            });
+          }
+        } catch (err) {
+          failed.push(`  "${firm.firmName}" (FRN ${firm.frn}) — ${(err as Error).message}`);
+          console.log(`  [FAILED]    ${firm.firmName} (FRN ${firm.frn}) — ${(err as Error).message}`);
+        }
+      }
+
+      if (!pageResult.resultInfo?.Next) break;
+      page++;
+    }
+  }
+
+  const digest = buildSweepDigest(digestFirms);
+
+  console.log(`\n=== Transitions detected (${digest.transitions.length}) — the money list ===`);
+  digest.transitions.forEach((f) =>
+    console.log(
+      `  ${f.firmName} (FRN ${f.frn}) — ${f.previousStatus ?? '(unknown)'} -> ${f.newStatus}` +
+        ` (observed ${f.observedOn})`
+    )
+  );
+
+  // Counts only by default — a broad first sweep can turn up hundreds of
+  // genuinely new firms in one run (see docs/prospect-sweep.md), and naming
+  // every one of them is exactly the kind of routine volume that once made
+  // a report exceed 50,000 characters. --verbose restores the full,
+  // per-firm name list within each tier.
+  console.log('\n=== New firms, grouped by tier ===');
+  for (const tier of ALL_TARGET_TIERS) {
+    const firms = digest.newByTier[tier];
+    console.log(`  ${tier} (${firms.length})${args.verbose ? ':' : ''}`);
+    if (args.verbose) firms.forEach((f) => console.log(`    "${f.firmName}" (FRN ${f.frn})`));
+  }
+
+  console.log(`\n=== Firms that left the market (${digest.departures.length}) ===`);
+  digest.departures.forEach((f) =>
+    console.log(
+      `  ${f.firmName} (FRN ${f.frn}) — ${f.previousStatus ?? '(unknown)'} -> ${f.newStatus}` +
+        ` (observed ${f.observedOn})`
+    )
+  );
+
+  console.log('\n=== Sweep Summary ===');
+  console.log(`Terms searched:                    ${termsSearched} / ${terms.length}`);
+  console.log(`Raw search results seen:           ${rawResultsCount}`);
+  console.log(`Skipped — named individual:        ${skippedIndividualCount} (not observed; needs an LIA)`);
+  console.log(`Dropped — blank-FRN scam clone:    ${blankFrnCount}`);
+  console.log(`Duplicate FRN (seen earlier term):  ${duplicateCount}`);
+  console.log(`Observed:                           ${observedCount}`);
+  console.log(`Unchanged — skipped (no enrichment): ${unchangedSkippedCount}`);
+  console.log(`Status changed — other:            ${otherStatusChangedCount}`);
+  console.log(`Excluded — dead firm (not enriched): ${excludedDeadCount}`);
+  console.log(`Excluded — introducer AR (not enriched): ${excludedIntroducerCount}`);
+  console.log(`Skipped — existing client:         ${skippedExistingClientCount} (not written; matches a CallGuard tenant)`);
+  console.log(`Enriched:                           ${enrichedCount}`);
+  // Distinct from every other count above: this is the one that would have
+  // been silent before the --limit fix — each of these is a real, detected
+  // change that this run chose not to act on purely for budget reasons, and
+  // will be reported again and retried on the next run (see
+  // shouldAdvanceObservation).
+  console.log(
+    `Changed/new but NOT enriched — budget reached, will retry next run: ${enrichBudgetDeferredCount}` +
+      (enrichBudgetDeferredCount > 0 ? ` (--limit ${args.limit})` : '')
+  );
+  console.log(`${write ? 'Created' : 'Would create'}:                       ${createdCount}`);
+  console.log(`${write ? 'Updated' : 'Would update'}:                       ${updatedCount}`);
+  console.log(`Failed:                             ${failed.length}`);
+  failed.forEach((l) => console.log(l));
+
+  if (!write) {
+    console.log('\nPREVIEW ONLY — nothing has been written. Re-run with --sweep ... --yes to write the changes above.');
+  }
+}
+
 async function main(): Promise<void> {
   const cred = checkFcaCredentials(process.env);
   if (!cred.ok) {
@@ -1716,6 +2385,10 @@ async function main(): Promise<void> {
   const rawArgv = process.argv.slice(2);
   if (rawArgv.includes('--discover')) {
     await runDiscover(rawArgv, headers, existingClientNames);
+    return;
+  }
+  if (rawArgv.includes('--sweep')) {
+    await runSweep(rawArgv, headers, existingClientNames);
     return;
   }
 
