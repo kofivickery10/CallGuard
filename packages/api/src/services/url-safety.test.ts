@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import dns from 'dns/promises';
+import type { LookupAddress } from 'dns';
 import { AppError } from '../middleware/errors.js';
 
 // dns.lookup is the only I/O this module does — mock it so these tests never
@@ -100,6 +101,80 @@ describe('assertSafeRemoteUrl', () => {
     });
 
     expect(connected.address).toBe('93.184.216.34');
+  });
+
+  // The regression that took the pipeline down: Node's `net` calls the lookup
+  // with `all: true` whenever autoSelectFamily is on (the default since Node
+  // 20), and then expects an ARRAY of { address, family }. The pinned lookup
+  // answered with the single-address form, so Node indexed into a string and
+  // failed every connection with "Invalid IP address: undefined". Every remote
+  // audio download (CloudTalk recordings included) broke. The tests above all
+  // pass `{}`, which is exactly why none of them caught it.
+  it('answers the array form when the client asks for all addresses (options.all)', async () => {
+    lookupMock.mockResolvedValueOnce([{ address: '93.184.216.34', family: 4 }]);
+    const { lookup } = await assertSafeRemoteUrl('https://example.com/audio.mp3');
+
+    const addresses = await new Promise<LookupAddress[]>((resolve, reject) => {
+      lookup('example.com', { all: true }, (err, result) => {
+        if (err) reject(err);
+        else resolve(result as LookupAddress[]);
+      });
+    });
+
+    expect(Array.isArray(addresses)).toBe(true);
+    expect(addresses).toEqual([{ address: '93.184.216.34', family: 4 }]);
+    expect(lookupMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('hands back every validated address under options.all, not just the first', async () => {
+    lookupMock.mockResolvedValueOnce([
+      { address: '93.184.216.34', family: 4 },
+      { address: '2606:2800:220:1:248:1893:25c8:1946', family: 6 },
+    ]);
+    const { lookup } = await assertSafeRemoteUrl('https://example.com/audio.mp3');
+
+    const addresses = await new Promise<LookupAddress[]>((resolve, reject) => {
+      lookup('example.com', { all: true }, (err, result) => {
+        if (err) reject(err);
+        else resolve(result as LookupAddress[]);
+      });
+    });
+
+    // All of them passed the public-address check, so returning all of them
+    // preserves the client's normal failover without weakening anything.
+    expect(addresses).toHaveLength(2);
+    expect(addresses.map((a) => a.address)).toContain('2606:2800:220:1:248:1893:25c8:1946');
+  });
+
+  it('restricts to the requested family when the client asks for one', async () => {
+    lookupMock.mockResolvedValueOnce([
+      { address: '93.184.216.34', family: 4 },
+      { address: '2606:2800:220:1:248:1893:25c8:1946', family: 6 },
+    ]);
+    const { lookup } = await assertSafeRemoteUrl('https://example.com/audio.mp3');
+
+    const addresses = await new Promise<LookupAddress[]>((resolve, reject) => {
+      lookup('example.com', { all: true, family: 6 }, (err, result) => {
+        if (err) reject(err);
+        else resolve(result as LookupAddress[]);
+      });
+    });
+
+    expect(addresses).toEqual([
+      { address: '2606:2800:220:1:248:1893:25c8:1946', family: 6 },
+    ]);
+  });
+
+  it('errors rather than returning a mismatched address when no address has the requested family', async () => {
+    lookupMock.mockResolvedValueOnce([{ address: '93.184.216.34', family: 4 }]);
+    const { lookup } = await assertSafeRemoteUrl('https://example.com/audio.mp3');
+
+    const err = await new Promise<NodeJS.ErrnoException | null>((resolve) => {
+      lookup('example.com', { all: true, family: 6 }, (e) => resolve(e));
+    });
+
+    expect(err).toBeInstanceOf(Error);
+    expect(err?.code).toBe('ENOTFOUND');
   });
 
   // Redirect hops: assertSafeRemoteUrl does not follow redirects itself: a
