@@ -123,15 +123,57 @@ Run weekly — an FCA status change happening this month and being caught next
 week rather than in two years is the entire point; there's no need to sweep
 daily.
 
+Substitute your own checkout path below — on the current host the repo lives at
+`/home/ubuntu/CallGuard`, not `/opt/callguard`.
+
 ```cron
-0 6 * * 1  cd /opt/callguard/packages/api && DATABASE_URL=... FCA_API_EMAIL=... FCA_API_KEY=... \
-  npx tsx src/scripts/enrich-prospects-fca.ts --sweep --terms-file /opt/callguard/prospect-sweep-terms.txt --yes \
-  >> /var/log/callguard-prospect-sweep.log 2>&1
+PATH=/usr/local/bin:/usr/bin:/bin
+
+0 6 * * 1  cd /home/ubuntu/CallGuard/packages/api && npx tsx src/scripts/enrich-prospects-fca.ts \
+  --sweep --terms-file /home/ubuntu/CallGuard/prospect-sweep-terms.txt --yes \
+  >> /home/ubuntu/callguard-prospect-sweep.log 2>&1
+```
+
+**No credentials in the crontab.** `config.ts` loads the repo-root `.env` on
+import, which populates `DATABASE_URL`, `FCA_API_EMAIL` and `FCA_API_KEY`
+before the script reads them. Repeating them in the cron line only creates a
+second copy to keep in step.
+
+**Set `PATH`, and test the exact line by hand before trusting it.** cron runs
+with a near-empty environment, so a bare `npx` frequently resolves under an
+interactive shell and not under cron — the job then fails immediately, writes a
+short error to its log, and nothing reports it. That is precisely how this
+project's nightly backup silently produced nothing for an extended period (see
+`docs/backup-and-restore.md`). Find the real path with `which npx` and, if it
+sits outside the `PATH` above, use the absolute path instead. Then run the
+command exactly as written, as the user cron will run it, and confirm it
+reaches the digest.
+
+Because a sweep is long, also check the log has a *recent* digest rather than
+assuming a silent log means success:
+
+```bash
+tail -40 /home/ubuntu/callguard-prospect-sweep.log
 ```
 
 Keep the term list in its own file (one term per line, `#` for comments —
 `--terms-file` supports both) rather than inline in the crontab, so it can be
-extended without editing the schedule.
+extended without editing the schedule. A starter file:
+
+```bash
+cat > /home/ubuntu/CallGuard/prospect-sweep-terms.txt <<'EOF'
+# Two-word phrases only — single common words fail with a governor limit.
+# "mortgage and protection" and "mortgage protection" are the SAME query.
+mortgage and protection
+mortgage advice
+mortgage broker
+mortgage solutions
+equity release
+independent financial
+# Noisier — surfaces manufacturers (Aviva, Zurich) rather than intermediaries:
+protection advice
+EOF
+```
 
 ## Caveats
 
