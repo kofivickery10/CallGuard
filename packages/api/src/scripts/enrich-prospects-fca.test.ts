@@ -66,6 +66,7 @@ import {
   isPlausibleFirmDomain,
   emailDomain,
   wouldBeSharedDomain,
+  isSameHostAllowingWww,
   type FcaSearchResultItem,
   type LapsedArCandidate,
   type ExistingProspectRow,
@@ -1691,5 +1692,39 @@ describe('wouldBeSharedDomain', () => {
   it('is unaffected by an unrelated domain being present in the map', () => {
     const counts = new Map([['hcbmortgages.co.uk', 1]]);
     expect(wouldBeSharedDomain('quilterinvest.com', counts)).toBe(false);
+  });
+});
+
+describe('isSameHostAllowingWww', () => {
+  it('treats www.x.co.uk and x.co.uk as the same host', () => {
+    expect(isSameHostAllowingWww('www.x.co.uk', 'x.co.uk')).toBe(true);
+  });
+
+  it('is symmetric: x.co.uk and www.x.co.uk are the same host either way round', () => {
+    expect(isSameHostAllowingWww('x.co.uk', 'www.x.co.uk')).toBe(true);
+  });
+
+  it('does NOT treat two different www hosts as the same', () => {
+    expect(isSameHostAllowingWww('www.x.co.uk', 'www.y.com')).toBe(false);
+  });
+
+  it('does NOT treat a subdomain as the same host as the apex — only a single leading "www." is stripped', () => {
+    expect(isSameHostAllowingWww('shop.x.co.uk', 'x.co.uk')).toBe(false);
+  });
+
+  it('is case-insensitive', () => {
+    expect(isSameHostAllowingWww('WWW.Example.CO.UK', 'example.co.uk')).toBe(true);
+  });
+
+  it('still refuses the real acquirer/principal redirects this rule must not relax', () => {
+    expect(isSameHostAllowingWww('www.lift-financial.com', 'www.brooksmacdonald.com')).toBe(false);
+    expect(isSameHostAllowingWww('www.responsiblelending.co.uk', 'equityrelease.royallondon.com')).toBe(false);
+    expect(isSameHostAllowingWww('www.quilterfinancialadvisers.co.uk', 'www.quilter.com')).toBe(false);
+  });
+
+  it('accepts the real apex<->www cases that were being wrongly rejected', () => {
+    expect(isSameHostAllowingWww('www.lowemortgages.co.uk', 'lowemortgages.co.uk')).toBe(true);
+    expect(isSameHostAllowingWww('likemortgageadvice.com', 'www.likemortgageadvice.com')).toBe(true);
+    expect(isSameHostAllowingWww('www.mallardmortgages.co.uk', 'mallardmortgages.co.uk')).toBe(true);
   });
 });

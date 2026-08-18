@@ -2811,15 +2811,48 @@ async function runExportOutreach(argv: string[]): Promise<void> {
 // prospect's `website` column can never be used to make this server request
 // an internal address. See that file's own comments for the DNS-rebinding
 // hazard its pinned `lookup` closes; the same requirement applies here:
-// every request (including the one-hop redirect this allows, below) must
-// connect using the `lookup` assertSafeRemoteUrl just returned, never a
-// fresh resolution of the hostname.
+// every request (including the redirects this allows, below) must connect
+// using the `lookup` assertSafeRemoteUrl just returned, never a fresh
+// resolution of the hostname.
+//
+// HOST EQUALITY: a real large-scale run showed the single biggest cause of
+// fetch-failed was rejecting apex<->www as different hosts — "redirect left
+// www.lowemortgages.co.uk for lowemortgages.co.uk", over and over, for
+// perfectly ordinary sites. isSameHostAllowingWww (below) fixes exactly
+// that and nothing more: two hosts are the same host only when they are
+// identical, or identical after stripping a single leading "www." from one
+// side. Deliberately NOT general registrable-domain logic — that needs a
+// public suffix list to get right (lowemortgages.co.uk has a two-label
+// suffix, so a naive "last two labels" comparison is already wrong for it),
+// and a subtle mistake there would reopen exactly the hole this rule exists
+// to close. Real redirects this must keep rejecting, seen in the same run:
+// www.lift-financial.com -> www.brooksmacdonald.com,
+// www.responsiblelending.co.uk -> equityrelease.royallondon.com,
+// www.quilterfinancialadvisers.co.uk -> www.quilter.com — every one of
+// those is an acquirer or principal, and following it is precisely how this
+// script would end up harvesting a network's inbox again, the exact mistake
+// the ownership checks above exist to catch.
 
 // A small, fixed set of paths most business sites use for a contact/about
 // page — never any URL supplied by a prospect record itself beyond the
 // origin. Tried in this order; --harvest-emails stops at the first one that
 // yields a role-based address.
 const HARVEST_PATHS = ['/', '/contact', '/contact-us', '/about'];
+
+// apex -> www -> a canonical URL is a common two-hop chain (and the reverse,
+// www -> apex, is just as common) — raised from 1 to accommodate that,
+// still bounded so a redirect loop or chain can't run away.
+const MAX_HARVEST_REDIRECTS = 2;
+
+/** Two hosts are the SAME host only when they are identical, or identical
+ * after stripping a single leading "www." from one side — see the section
+ * comment above for why this is deliberately not any cleverer than that.
+ * Case-insensitive, matching how hostnames already compare everywhere else
+ * in this file. */
+export function isSameHostAllowingWww(a: string, b: string): boolean {
+  const stripWww = (h: string) => h.toLowerCase().replace(/^www\./, '');
+  return stripWww(a) === stripWww(b);
+}
 
 const HARVEST_TIMEOUT_MS = 10_000;
 
@@ -2865,7 +2898,12 @@ function fetchPinnedOnce(url: URL, lookup: LookupFunction): Promise<PinnedRespon
         path: `${url.pathname}${url.search}`,
         method: 'GET',
         headers: {
-          'User-Agent': 'CallGuardOutreachHarvester/1.0 (prospect research; see docs/prospect-sweep.md)',
+          // Truthful and identifiable on purpose — never a browser-
+          // spoofing string to slip past bot protection. A site operator
+          // who sees this in their logs can tell exactly who fetched their
+          // page, why, and how to ask us to stop; a 403 after seeing it is a
+          // legitimate no, not something to work around.
+          'User-Agent': 'CallGuardOutreachHarvester/1.0 (+https://callguardai.co.uk/; contact: hello@callguardai.co.uk)',
           Accept: 'text/html',
         },
         lookup,
@@ -2895,11 +2933,13 @@ function fetchPinnedOnce(url: URL, lookup: LookupFunction): Promise<PinnedRespon
 
 type HarvestFetchOutcome = { ok: true; html: string } | { ok: false; reason: string };
 
-/** Fetches one candidate URL, safely: SSRF-checked (and re-checked on the
- * redirect target — see below), at most one redirect and only when it stays
- * on the SAME host, a hard timeout, a hard size cap, and a content-type
- * check that skips anything that isn't HTML (a PDF brochure or a JSON API
- * response is never worth running the email regexes over). */
+/** Fetches one candidate URL, safely: SSRF-checked (and re-checked on every
+ * redirect target — see below), at most MAX_HARVEST_REDIRECTS redirects and
+ * only when each one stays on the SAME host (apex/www treated as equal —
+ * see isSameHostAllowingWww — but nothing more permissive than that), a
+ * hard timeout, a hard size cap, and a content-type check that skips
+ * anything that isn't HTML (a PDF brochure or a JSON API response is never
+ * worth running the email regexes over). */
 async function fetchHtmlSameHost(rawUrl: string): Promise<HarvestFetchOutcome> {
   let pinned;
   try {
@@ -2908,7 +2948,7 @@ async function fetchHtmlSameHost(rawUrl: string): Promise<HarvestFetchOutcome> {
     return { ok: false, reason: (err as Error).message };
   }
   let { url, lookup } = pinned;
-  let redirected = false;
+  let redirectCount = 0;
 
   for (;;) {
     await throttleHarvestRequest();
@@ -2920,7 +2960,9 @@ async function fetchHtmlSameHost(rawUrl: string): Promise<HarvestFetchOutcome> {
     }
 
     if (res.status >= 300 && res.status < 400) {
-      if (redirected) return { ok: false, reason: 'more than one redirect — not followed' };
+      if (redirectCount >= MAX_HARVEST_REDIRECTS) {
+        return { ok: false, reason: `more than ${MAX_HARVEST_REDIRECTS} redirects — not followed` };
+      }
       const location = res.headers.location;
       if (!location) return { ok: false, reason: `redirect (${res.status}) with no Location header` };
       let redirectUrl: URL;
@@ -2929,8 +2971,8 @@ async function fetchHtmlSameHost(rawUrl: string): Promise<HarvestFetchOutcome> {
       } catch {
         return { ok: false, reason: `redirect to an unparseable URL: ${location}` };
       }
-      if (redirectUrl.hostname !== url.hostname) {
-        return { ok: false, reason: `redirect left ${url.hostname} for ${redirectUrl.hostname} — not followed (same-host only)` };
+      if (!isSameHostAllowingWww(url.hostname, redirectUrl.hostname)) {
+        return { ok: false, reason: `redirect left ${url.hostname} for ${redirectUrl.hostname} — not followed (same-host only, apex/www excepted)` };
       }
       // Re-validate the redirect target from scratch — a fresh
       // assertSafeRemoteUrl call, and the fresh `lookup` it returns, exactly
@@ -2943,7 +2985,7 @@ async function fetchHtmlSameHost(rawUrl: string): Promise<HarvestFetchOutcome> {
       }
       url = pinned.url;
       lookup = pinned.lookup;
-      redirected = true;
+      redirectCount++;
       continue;
     }
 
