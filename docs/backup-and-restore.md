@@ -40,6 +40,35 @@ retention (configure lifecycle on the DR target).
   script (`packages/api/src/scripts/encrypt-existing-files.ts`) run against live
   data, not an env edit.
 
+## Client version must be >= the server
+
+`pg_dump` refuses to dump a server newer than itself, and `pg_restore` has the
+same constraint. This is not theoretical: on the production host the managed
+database was upgraded to Postgres 18 while the box still had only the client
+Ubuntu ships (16), so **every backup aborted at the dump step**. Ubuntu's own
+repositories carry 16 and nothing newer, so the fix is the PGDG repo:
+
+```bash
+sudo install -d /usr/share/postgresql-common/pgdg
+sudo curl -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc --fail \
+  https://www.postgresql.org/media/keys/ACCC4CF8.asc
+. /etc/os-release
+sudo sh -c "echo 'deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main' > /etc/apt/sources.list.d/pgdg.list"
+sudo apt update && sudo apt install -y postgresql-client-18   # match the server
+```
+
+A second trap: on Debian and Ubuntu, `pg_dump` on `PATH` is postgresql-common's
+`pg_wrapper`, which chooses a version from its own configuration rather than
+the newest installed one — so installing the right client is not sufficient,
+and `pg_dump --version` can still report the old one. `backup.sh` therefore
+resolves the newest `/usr/lib/postgresql/*/bin/pg_dump` itself (overridable
+with `PG_DUMP`) and compares majors against the server before dumping, failing
+with what to install rather than libpq's terser "server version mismatch".
+
+Do the same by hand when restoring: call the versioned binary, e.g.
+`/usr/lib/postgresql/18/bin/pg_restore`, rather than trusting `PATH`. **Expect
+this to bite again** the next time the managed database's major version moves.
+
 ## Restore procedure
 
 On a clean host with the same major Postgres version and Node runtime:

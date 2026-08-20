@@ -14,6 +14,7 @@
 #   BACKUP_DIR       Where backups are written (default ./backups)
 #   BACKUP_RETAIN_DAYS  Local copies to keep (default 14)
 #   OFFSITE_RSYNC_TARGET  Optional rsync target for an off-box copy (second UK location)
+#   PG_DUMP          Optional explicit path to pg_dump (overrides auto-detection)
 
 set -euo pipefail
 
@@ -94,8 +95,37 @@ echo "[backup] ${STAMP} starting"
 
 # 1. Postgres — custom format (-Fc) so it restores with pg_restore and is
 #    compressed. This is the scores/breaches/journeys/audit record.
-echo "[backup] dumping database..."
-pg_dump --format=custom --no-owner --dbname="${DB_URL_NO_SSLMODE}" --file="${DEST}/db.dump"
+# pg_dump refuses to dump a server newer than itself, and on Debian/Ubuntu
+# `pg_dump` on PATH is postgresql-common's pg_wrapper, which picks a version
+# from its own config rather than the newest installed one. On this host that
+# meant a 16 client against an 18 server -- so the dump aborted every time even
+# with postgresql-client-18 present. Resolve the newest real binary explicitly
+# instead of trusting PATH, and let PG_DUMP override.
+if [[ -n "${PG_DUMP:-}" ]]; then
+  PG_DUMP_BIN="${PG_DUMP}"
+else
+  PG_DUMP_BIN="$(ls -1d /usr/lib/postgresql/*/bin/pg_dump 2>/dev/null | sort -V | tail -1 || true)"
+  PG_DUMP_BIN="${PG_DUMP_BIN:-$(command -v pg_dump || true)}"
+fi
+if [[ -z "${PG_DUMP_BIN}" ]]; then
+  echo "[backup] no pg_dump found — install postgresql-client matching the server" >&2
+  exit 1
+fi
+
+# Compare majors before dumping, so a mismatch says what to install rather
+# than surfacing libpq's "server version mismatch", which only reads clearly
+# if you already know pg_dump must be >= the server. This will matter again the
+# next time the managed database's major version is bumped.
+CLIENT_MAJOR="$("${PG_DUMP_BIN}" --version | sed -E 's/[^0-9]*([0-9]+).*/\1/')"
+SERVER_MAJOR="$(psql "${DB_URL_NO_SSLMODE}" -tAc 'SHOW server_version' 2>/dev/null | sed -E 's/[^0-9]*([0-9]+).*/\1/' || true)"
+if [[ -n "${SERVER_MAJOR}" ]] && (( CLIENT_MAJOR < SERVER_MAJOR )); then
+  echo "[backup] pg_dump is ${CLIENT_MAJOR}, server is ${SERVER_MAJOR} — pg_dump must be >= the server." >&2
+  echo "[backup] install postgresql-client-${SERVER_MAJOR} (Ubuntu ships only 16; add the PGDG repo), or set PG_DUMP." >&2
+  exit 1
+fi
+
+echo "[backup] dumping database with ${PG_DUMP_BIN} (client ${CLIENT_MAJOR}, server ${SERVER_MAJOR:-unknown})..."
+"${PG_DUMP_BIN}" --format=custom --no-owner --dbname="${DB_URL_NO_SSLMODE}" --file="${DEST}/db.dump"
 
 # 2. Uploads — already ciphertext on disk, so an off-box copy is safe to store
 #    anywhere. Tar + gzip preserves the key layout the DB references.
