@@ -74,15 +74,107 @@ either an HTTP 500 Apex governor-limit error ("Too many query rows: 50001") or
 an HTTP 200 body `{Status:"413", Message:"Error: Request Entity Too Large"}` —
 even on page 1, before any pagination happens.
 
-A starting term set for CallGuard's ICP (mortgage/protection intermediaries):
+Every candidate term below was measured against the live Register — one
+search request each, reading `ResultInfo.total_count`. Use the full list; it
+is the widest coverage the free API can reach.
 
 ```
+mortgage solutions
 mortgage advice
-mortgage broker
+independent mortgage
+financial advice
+mortgage centre
 mortgage and protection
+mortgage broker
+mortgage bureau
+mortgage finance
+property finance
 equity release
-life insurance
+mortgage company
+mortgage brokers
+mortgage shop
+mortgage consultants
+private finance
+mortgage direct
+home loans
+mortgage choice
+protection services
+protection solutions
+later life
+mortgage network
+mortgage matters
+mortgage group
+mortgage partners
+mortgage hub
+mortgage experts
+protection advice
+income protection
+critical illness
+family protection
 ```
+
+### Measured coverage
+
+| Term | Firms matched |
+|---|---|
+| `mortgage solutions` | 1,980 |
+| `mortgage advice` | 947 |
+| `independent mortgage` | 697 |
+| `financial advice` | 694 |
+| `mortgage centre` | 682 |
+| `mortgage and protection` | 564 |
+| `mortgage broker` | 506 |
+| `mortgage bureau` | 483 |
+| `mortgage finance` | 442 |
+| `property finance` | 392 |
+| `equity release` | 363 |
+| `mortgage company` | 334 |
+| `mortgage brokers` | 332 |
+| `mortgage shop` | 298 |
+| `mortgage consultants` | 273 |
+| `private finance` | 270 |
+| `mortgage direct` | 258 |
+| `home loans` | 254 |
+| `mortgage choice` | 208 |
+| `protection services` | 126 |
+| `protection solutions` | 106 |
+| `later life` | 104 |
+| `mortgage network` | 87 |
+| `mortgage matters` | 87 |
+| `mortgage group` | 85 |
+| `mortgage partners` | 67 |
+| `mortgage hub` | 38 |
+| `mortgage experts` | 37 |
+| `protection advice` | 33 |
+| `income protection` | 21 |
+| `critical illness` | 9 |
+| `family protection` | 9 |
+
+Refused with `413 Request Entity Too Large` (too generic to query):
+
+`mortgage services`, `insurance brokers`, `insurance services`, `financial solutions`, `financial services`, `financial planning`, `wealth management`
+
+Those 32 terms match **10,786 firm records** between them. Expect heavy
+overlap (a firm called "X Mortgage Solutions Ltd" matches several) and, on
+prior runs, roughly two thirds excluded as dead firms, lapsed ARs or named
+individuals — so the realistic yield is a few thousand live firms, not ten
+thousand.
+
+### The coverage ceiling is real
+
+The seven refused terms are the most generic ones, and that is not a
+coincidence: the more firms a phrase matches, the likelier the Register
+refuses to answer at all. So a firm named plainly `Smith Financial Services
+Ltd` is **unreachable by name search** unless its name also contains a
+mortgage- or protection-flavoured word.
+
+This bias happens to work in our favour. The terms that succeed are the ones
+that describe the business — a firm calling itself a mortgage or protection
+broker is the target; a generic `Financial Services` firm is as likely to be
+a pensions IFA. But it does mean this list is not, and cannot be, a complete
+census of UK mortgage intermediaries. Completeness needs the paid Register
+Extract Service (about £6.3k one-off), which also solves permission
+filtering the API cannot do.
 
 Two caveats worth knowing before adding more terms to that list:
 
