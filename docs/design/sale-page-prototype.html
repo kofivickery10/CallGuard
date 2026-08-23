@@ -1,0 +1,1204 @@
+<title>CallGuard Sale Page</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@500;600;700&family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700&display=swap">
+
+<style>
+/* ════════════════════════════════════════════════════════════════════
+   Same token set as the airy prototype &mdash; colour contrast-verified, and
+   the spatial scale is what makes it read as airy. Nothing new here.
+   ════════════════════════════════════════════════════════════════════ */
+:root{
+  --page:#F4F6F9; --card:#FFFFFF; --inset:#F7F9FB; --raised:#FFFFFF;
+  --ink:#131720; --t2:#454C59; --t3:#616977;
+  --line:#E7EBF0; --line-soft:#F0F3F7; --line-hard:#CDD4DD;
+  --brand:#23314F; --brand-h:#1A2740; --link:#2C3E66; --wash:#EAEEF5;
+  --pass:#127A54; --pass-w:#E2F1E9;
+  --fail:#C22A1C; --fail-w:#FCE7E4;
+  --revw:#6B6200; --revw-w:#F5EFD6;
+  --chart:#3A5185; --chart-f:rgba(58,81,133,.10);
+  --sel:#EAEEF5; --sel-line:#23314F;
+
+  --pad-page:32px; --pad-card:24px; --pad-card-y:22px;
+  --gap:20px; --gap-sm:12px; --rhythm:24px;
+  --row:52px; --ctl:40px;
+  --r-ctl:10px; --r-card:14px; --r-sheet:20px;
+
+  --font:'Inter',-apple-system,'Segoe UI',sans-serif;
+  --disp:'Inter Tight','Inter',sans-serif;
+  --fs-kpi:34px; --fs-title:28px; --fs-sec:18px;
+  --fs-body:14.5px; --fs-sm:13.5px; --fs-mi:12.5px;
+  --lh:1.6;
+  --lab-tt:none; --lab-ls:0.005em; --lab-fw:500;
+
+  --sh-1:0 1px 2px rgba(19,23,32,.04), 0 1px 3px rgba(19,23,32,.03);
+  --sh-2:0 1px 2px rgba(19,23,32,.04), 0 6px 16px -6px rgba(19,23,32,.10);
+  --sh-3:0 2px 4px rgba(19,23,32,.05), 0 16px 32px -12px rgba(19,23,32,.16);
+  --sh-4:0 24px 64px -16px rgba(19,23,32,.28), 0 2px 8px rgba(19,23,32,.10);
+  --dur:140ms;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --page:#0D0F13; --card:#161A20; --inset:#1B2028; --raised:#20262F;
+    --ink:#E8EBF1; --t2:#AEB5C2; --t3:#8A92A0;
+    --line:#242A33; --line-soft:#1D222A; --line-hard:#39414D;
+    --brand:#3D5691; --brand-h:#4A65A4; --link:#9FB3EA; --wash:#1A2133;
+    --pass:#4FBE86; --pass-w:#12301F;
+    --fail:#F0837C; --fail-w:#341D1A;
+    --revw:#D9B23C; --revw-w:#322A12;
+    --chart:#7E97DC; --chart-f:rgba(126,151,220,.14);
+    --sel:#1E2739; --sel-line:#7E97DC;
+    --sh-1:0 1px 2px rgba(0,0,0,.4);
+    --sh-2:0 1px 2px rgba(0,0,0,.4), 0 6px 16px -6px rgba(0,0,0,.5);
+    --sh-3:0 2px 4px rgba(0,0,0,.45), 0 16px 32px -12px rgba(0,0,0,.6);
+    --sh-4:0 24px 64px -16px rgba(0,0,0,.8), 0 2px 8px rgba(0,0,0,.5);
+  }
+}
+:root[data-theme="dark"]{
+  --page:#0D0F13; --card:#161A20; --inset:#1B2028; --raised:#20262F;
+  --ink:#E8EBF1; --t2:#AEB5C2; --t3:#8A92A0;
+  --line:#242A33; --line-soft:#1D222A; --line-hard:#39414D;
+  --brand:#3D5691; --brand-h:#4A65A4; --link:#9FB3EA; --wash:#1A2133;
+  --pass:#4FBE86; --pass-w:#12301F;
+  --fail:#F0837C; --fail-w:#341D1A;
+  --revw:#D9B23C; --revw-w:#322A12;
+  --chart:#7E97DC; --chart-f:rgba(126,151,220,.14);
+  --sel:#1E2739; --sel-line:#7E97DC;
+  --sh-1:0 1px 2px rgba(0,0,0,.4);
+  --sh-2:0 1px 2px rgba(0,0,0,.4), 0 6px 16px -6px rgba(0,0,0,.5);
+  --sh-3:0 2px 4px rgba(0,0,0,.45), 0 16px 32px -12px rgba(0,0,0,.6);
+  --sh-4:0 24px 64px -16px rgba(0,0,0,.8), 0 2px 8px rgba(0,0,0,.5);
+}
+
+*{box-sizing:border-box;}
+html,body{height:100%;}
+body{
+  margin:0;background:var(--page);color:var(--ink);
+  font-family:var(--font);font-size:var(--fs-body);line-height:var(--lh);
+  -webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums;
+}
+button,input{font:inherit;color:inherit;}
+button{cursor:pointer;background:none;border:0;padding:0;}
+:focus-visible{outline:2px solid var(--link);outline-offset:2px;border-radius:5px;}
+h1,h2,h3{margin:0;font-family:var(--disp);font-weight:600;letter-spacing:-0.018em;line-height:1.2;}
+p{margin:0;}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);}
+.lab{font-size:var(--fs-mi);font-weight:var(--lab-fw);text-transform:var(--lab-tt);letter-spacing:var(--lab-ls);color:var(--t3);}
+
+/* ════════ shell ════════ */
+.app{display:grid;grid-template-columns:248px 1fr;height:100vh;overflow:hidden;}
+.side{padding:16px 0 16px 16px;display:flex;}
+.side-in{background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);box-shadow:var(--sh-1);flex:1;display:flex;flex-direction:column;overflow:hidden;}
+.brandrow{display:flex;align-items:center;gap:11px;padding:18px 18px 14px;}
+.mk{width:30px;height:30px;border-radius:9px;background:var(--brand);display:grid;place-items:center;flex:none;}
+.mk svg{width:17px;height:17px;stroke:#fff;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;}
+.brandrow b{font-family:var(--disp);font-size:16px;font-weight:600;letter-spacing:-0.02em;}
+nav{flex:1;overflow-y:auto;padding:0 12px 12px;display:flex;flex-direction:column;gap:3px;}
+.nv{display:flex;align-items:center;gap:12px;width:100%;text-align:left;min-height:var(--ctl);padding:0 12px;border-radius:var(--r-ctl);color:var(--t2);font-size:var(--fs-body);font-weight:500;transition:background var(--dur),color var(--dur);}
+.nv svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;flex:none;opacity:.9;}
+.nv:hover{background:var(--inset);color:var(--ink);}
+.nv[aria-current="page"]{background:var(--wash);color:var(--link);font-weight:600;}
+.nv .ct{margin-left:auto;font-size:var(--fs-mi);font-weight:600;color:var(--t3);}
+.nv .pip{margin-left:auto;min-width:22px;height:20px;padding:0 6px;border-radius:99px;background:var(--fail);color:#fff;font-size:11px;font-weight:700;display:grid;place-items:center;}
+.side-foot{border-top:1px solid var(--line-soft);padding:14px 16px;display:flex;align-items:center;gap:11px;}
+.av{width:32px;height:32px;border-radius:50%;background:var(--wash);color:var(--link);display:grid;place-items:center;font-size:var(--fs-mi);font-weight:700;flex:none;}
+.side-foot .who b{display:block;font-size:var(--fs-sm);font-weight:600;}
+.side-foot .who span{display:block;font-size:var(--fs-mi);color:var(--t3);}
+
+.main{display:flex;flex-direction:column;min-width:0;min-height:0;}
+.top{flex:none;display:flex;align-items:center;gap:12px;padding:16px var(--pad-page) 0;}
+.search{
+  flex:1;max-width:440px;display:flex;align-items:center;gap:10px;height:var(--ctl);padding:0 14px;
+  border-radius:var(--r-ctl);background:var(--card);border:1px solid var(--line);box-shadow:var(--sh-1);
+  color:var(--t3);font-size:var(--fs-sm);white-space:nowrap;overflow:hidden;
+}
+.search svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.8;flex:none;}
+.search .k{margin-left:auto;display:flex;gap:4px;}
+kbd{font-family:var(--font);font-size:11px;font-weight:600;padding:2px 6px;border:1px solid var(--line);border-bottom-width:2px;border-radius:6px;background:var(--inset);color:var(--t3);line-height:1.2;}
+.top-r{margin-left:auto;display:flex;align-items:center;gap:8px;}
+.ib{width:var(--ctl);height:var(--ctl);border-radius:var(--r-ctl);display:grid;place-items:center;color:var(--t2);background:var(--card);border:1px solid var(--line);box-shadow:var(--sh-1);transition:box-shadow var(--dur),color var(--dur);}
+.ib:hover{box-shadow:var(--sh-2);color:var(--ink);}
+.ib svg{width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;}
+
+.btn{
+  display:inline-flex;align-items:center;gap:8px;height:var(--ctl);padding:0 16px;border-radius:var(--r-ctl);
+  font-size:var(--fs-sm);font-weight:600;border:1px solid var(--line);background:var(--card);color:var(--ink);
+  box-shadow:var(--sh-1);transition:box-shadow var(--dur),background var(--dur);white-space:nowrap;
+}
+.btn:hover{box-shadow:var(--sh-2);}
+.btn svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;}
+.btn.pri{background:var(--brand);border-color:var(--brand);color:#fff;}
+.btn.pri:hover{background:var(--brand-h);}
+.btn.sm{height:32px;padding:0 12px;font-size:var(--fs-mi);}
+
+.bg{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:99px;font-size:var(--fs-mi);font-weight:600;white-space:nowrap;}
+.bg svg{width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round;}
+.bg.p{background:var(--pass-w);color:var(--pass);}
+.bg.f{background:var(--fail-w);color:var(--fail);}
+.bg.r{background:var(--revw-w);color:var(--revw);}
+.bg.n{background:var(--inset);color:var(--t3);}
+.bg.sev{background:transparent;color:var(--fail);border:1px solid color-mix(in srgb,var(--fail) 38%,transparent);}
+
+/* ════════ the two states ════════ */
+.state{flex:1;min-height:0;display:none;flex-direction:column;}
+.state.on{display:flex;}
+.scroll{flex:1;min-height:0;overflow-y:auto;}
+.pad{padding:16px var(--pad-page) 56px;display:flex;flex-direction:column;gap:var(--rhythm);max-width:1520px;}
+
+.crumbs{display:flex;align-items:center;gap:9px;font-size:var(--fs-sm);color:var(--t3);}
+.crumbs button{color:var(--link);font-weight:500;}
+.crumbs button:hover{text-decoration:underline;}
+
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);box-shadow:var(--sh-1);overflow:hidden;display:flex;flex-direction:column;}
+.card-h{padding:var(--pad-card-y) var(--pad-card);display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
+.card-h h2{font-family:var(--disp);font-size:var(--fs-sec);}
+.card-h .r{margin-left:auto;display:flex;align-items:center;gap:10px;}
+.card-b{padding:0 var(--pad-card) var(--pad-card);}
+.div{height:1px;background:var(--line-soft);}
+
+/* ── 1. identity card ── */
+.hero{padding:var(--pad-card);display:flex;gap:var(--gap);flex-wrap:wrap;align-items:flex-start;}
+.hero-id{flex:1;min-width:260px;display:flex;flex-direction:column;gap:12px;}
+.hero-id h1{font-size:var(--fs-title);}
+.hero-id h1 a{color:var(--link);text-decoration:none;}
+.hero-id h1 a:hover{text-decoration:underline;}
+.facts{display:flex;flex-wrap:wrap;gap:10px 18px;}
+.fact{display:flex;flex-direction:column;gap:2px;min-width:0;}
+.fact .k{font-size:var(--fs-mi);color:var(--t3);}
+.fact .v{font-size:var(--fs-sm);color:var(--ink);font-weight:500;}
+.hero-act{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+.queue{display:flex;align-items:center;gap:2px;padding:4px;border-radius:var(--r-ctl);background:var(--inset);}
+.queue span{font-size:var(--fs-mi);font-weight:600;color:var(--t2);padding:0 9px;white-space:nowrap;}
+.qb{width:28px;height:28px;border-radius:7px;display:grid;place-items:center;color:var(--t2);}
+.qb:hover{background:var(--card);box-shadow:var(--sh-1);color:var(--ink);}
+.qb svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;}
+
+/* ── 2. top stat cards ── */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(216px,1fr));gap:var(--gap);}
+.stat{
+  position:relative;text-align:left;background:var(--card);border:1px solid var(--line);
+  border-radius:var(--r-card);box-shadow:var(--sh-1);padding:var(--pad-card-y) var(--pad-card);
+  display:flex;flex-direction:column;gap:9px;min-height:132px;
+  transition:box-shadow var(--dur),transform var(--dur);
+}
+.stat:hover{box-shadow:var(--sh-3);transform:translateY(-2px);}
+.stat:hover .go{opacity:1;transform:none;}
+.stat .top{display:flex;align-items:center;gap:10px;}
+.stat .ic{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;flex:none;}
+.stat .ic svg{width:16px;height:16px;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;}
+.stat .ic.f{background:var(--fail-w);} .stat .ic.f svg{stroke:var(--fail);}
+.stat .ic.r{background:var(--revw-w);} .stat .ic.r svg{stroke:var(--revw);}
+.stat .ic.p{background:var(--pass-w);} .stat .ic.p svg{stroke:var(--pass);}
+.stat .ic.n{background:var(--wash);} .stat .ic.n svg{stroke:var(--link);}
+.stat .v{font-family:var(--disp);font-size:var(--fs-kpi);font-weight:600;line-height:1;letter-spacing:-0.03em;display:flex;align-items:baseline;gap:8px;}
+.stat .v em{font-style:normal;font-size:var(--fs-mi);font-weight:600;letter-spacing:0;}
+.stat .sub{font-size:var(--fs-mi);color:var(--t3);}
+.stat .go{position:absolute;top:var(--pad-card-y);right:var(--pad-card);color:var(--t3);opacity:0;transform:translateX(-4px);transition:all var(--dur);}
+.stat .go svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;}
+.meter{height:6px;border-radius:99px;background:var(--line);overflow:hidden;}
+.meter i{display:block;height:100%;border-radius:99px;}
+.pips{display:flex;gap:3px;}
+.pips i{flex:1;height:6px;border-radius:2px;background:var(--line);}
+.pips i.p{background:var(--pass);} .pips i.f{background:var(--fail);} .pips i.r{background:var(--revw);}
+
+/* ── 3. caveat ── */
+.caveat{
+  padding:var(--pad-card-y) var(--pad-card);border-radius:var(--r-card);
+  background:var(--revw-w);border:1px solid color-mix(in srgb,var(--revw) 26%,transparent);
+  display:flex;gap:14px;align-items:flex-start;
+}
+.caveat>svg{width:19px;height:19px;stroke:var(--revw);fill:none;stroke-width:1.8;stroke-linecap:round;flex:none;margin-top:2px;}
+.caveat h3{font-family:var(--font);font-size:var(--fs-body);font-weight:600;color:var(--ink);}
+.caveat ul{margin:8px 0 0;padding-left:18px;font-size:var(--fs-sm);color:var(--t2);display:flex;flex-direction:column;gap:6px;}
+.caveat ul b{color:var(--ink);}
+.caveat .x{margin-left:auto;color:var(--t3);font-size:18px;line-height:1;flex:none;padding:0 4px;}
+
+/* ── 4. main / side ── */
+.cols{display:grid;grid-template-columns:minmax(0,1fr) 336px;gap:var(--gap);align-items:start;}
+.sidecol{display:flex;flex-direction:column;gap:var(--gap);}
+
+/* checkpoint rows, expandable in place */
+.sec-lab{
+  padding:12px var(--pad-card);background:var(--inset);
+  border-top:1px solid var(--line-soft);border-bottom:1px solid var(--line-soft);
+  font-size:var(--fs-mi);font-weight:600;color:var(--t3);
+  text-transform:var(--lab-tt);letter-spacing:var(--lab-ls);
+  display:flex;align-items:center;gap:10px;
+}
+.sec-lab .n{margin-left:auto;font-weight:500;}
+.ck{border-bottom:1px solid var(--line-soft);}
+.ck:last-child{border-bottom:0;}
+.ck-hd{
+  width:100%;display:grid;grid-template-columns:22px 1fr auto;gap:14px;align-items:center;
+  padding:16px var(--pad-card);text-align:left;transition:background var(--dur);
+}
+.ck-hd:hover{background:var(--inset);}
+.ck-ic{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;flex:none;}
+.ck-ic svg{width:12px;height:12px;stroke-width:2.4;fill:none;stroke-linecap:round;stroke-linejoin:round;}
+.ck-ic.p{background:var(--pass-w);} .ck-ic.p svg{stroke:var(--pass);}
+.ck-ic.f{background:var(--fail-w);} .ck-ic.f svg{stroke:var(--fail);}
+.ck-ic.r{background:var(--revw-w);} .ck-ic.r svg{stroke:var(--revw);}
+.ck-ic.n{background:var(--inset);border:1px solid var(--line);} .ck-ic.n svg{stroke:var(--t3);}
+.ck-l{font-size:var(--fs-body);color:var(--ink);font-weight:500;line-height:1.45;min-width:0;}
+.ck-rt{display:flex;align-items:center;gap:12px;flex:none;}
+.ck-chev{width:16px;height:16px;stroke:var(--t3);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;transition:transform var(--dur);}
+.ck-hd[aria-expanded="true"] .ck-chev{transform:rotate(90deg);}
+.ck-bd{padding:0 var(--pad-card) var(--pad-card) calc(var(--pad-card) + 36px);display:flex;flex-direction:column;gap:14px;}
+.quote{
+  background:var(--inset);border-left:3px solid var(--line-hard);border-radius:0 var(--r-ctl) var(--r-ctl) 0;
+  padding:14px 16px;display:flex;flex-direction:column;gap:10px;max-width:68ch;
+}
+.quote blockquote{margin:0;font-size:var(--fs-body);color:var(--t2);font-style:italic;line-height:1.6;}
+.quote .meta{display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
+.quote .who{font-size:var(--fs-mi);color:var(--t3);}
+.why{font-size:var(--fs-sm);color:var(--t2);line-height:1.65;max-width:68ch;}
+.why b{color:var(--ink);}
+.ck-act{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+.mini{display:flex;gap:8px;}
+.mini button{padding:6px 13px;border-radius:8px;font-size:var(--fs-mi);font-weight:600;border:1px solid var(--line);color:var(--t2);background:var(--card);transition:all var(--dur);}
+.mini button.ok:hover{background:var(--pass);border-color:var(--pass);color:#fff;}
+.mini button.no:hover{background:var(--fail);border-color:var(--fail);color:#fff;}
+.fold{width:100%;display:flex;align-items:center;gap:11px;padding:16px var(--pad-card);background:var(--inset);font-size:var(--fs-sm);color:var(--t2);font-weight:500;border-top:1px solid var(--line-soft);}
+.fold:hover{color:var(--ink);}
+.fold svg{width:14px;height:14px;stroke:var(--t3);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;transition:transform var(--dur);}
+.fold[aria-expanded="true"] svg{transform:rotate(90deg);}
+.fold .c{margin-left:auto;font-size:var(--fs-mi);color:var(--t3);}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:var(--r-ctl);overflow:hidden;background:var(--card);}
+.seg button{padding:7px 12px;font-size:var(--fs-mi);font-weight:600;color:var(--t3);border-right:1px solid var(--line);}
+.seg button:last-child{border-right:0;}
+.seg button[aria-pressed="true"]{background:var(--inset);color:var(--ink);}
+
+/* call cards in the side column */
+.callrow{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;padding:14px var(--pad-card);border-bottom:1px solid var(--line-soft);text-align:left;width:100%;transition:background var(--dur);}
+.callrow:last-child{border-bottom:0;}
+.callrow:hover{background:var(--inset);}
+.callrow .m{min-width:0;display:flex;flex-direction:column;gap:3px;}
+.callrow .m b{font-size:var(--fs-sm);font-weight:600;color:var(--ink);}
+.callrow .m span{font-size:var(--fs-mi);color:var(--t3);}
+.callrow .rt{display:flex;flex-direction:column;align-items:flex-end;gap:5px;flex:none;}
+.callrow .sc{font-family:var(--disp);font-size:16px;font-weight:600;}
+.brow{display:flex;align-items:center;gap:12px;padding:14px var(--pad-card);border-bottom:1px solid var(--line-soft);}
+.brow:last-child{border-bottom:0;}
+.brow .m{flex:1;min-width:0;font-size:var(--fs-sm);color:var(--ink);}
+.empty{padding:28px var(--pad-card);text-align:center;color:var(--t3);font-size:var(--fs-sm);}
+
+/* ── 5. module hub ── */
+.mods{display:grid;grid-template-columns:repeat(auto-fit,minmax(238px,1fr));gap:var(--gap);}
+.mod{
+  text-align:left;background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);
+  box-shadow:var(--sh-1);padding:var(--pad-card);display:flex;flex-direction:column;gap:11px;
+  position:relative;transition:box-shadow var(--dur),transform var(--dur);
+}
+.mod:hover{box-shadow:var(--sh-3);transform:translateY(-2px);}
+.mod .ic{width:38px;height:38px;border-radius:11px;background:var(--wash);color:var(--link);display:grid;place-items:center;}
+.mod .ic svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;}
+.mod .t{font-family:var(--disp);font-size:16px;font-weight:600;}
+.mod .d{font-size:var(--fs-sm);color:var(--t3);line-height:1.5;}
+.mod .pill{position:absolute;top:16px;right:16px;}
+
+/* ── audio, inline ── */
+.playbtn{
+  display:inline-flex;align-items:center;gap:9px;height:32px;padding:0 13px 0 5px;
+  border-radius:99px;background:var(--card);border:1px solid var(--line);box-shadow:var(--sh-1);
+  font-size:var(--fs-mi);font-weight:600;color:var(--ink);transition:box-shadow var(--dur);
+}
+.playbtn:hover{box-shadow:var(--sh-2);}
+.playbtn .p{width:24px;height:24px;border-radius:50%;background:var(--brand);display:grid;place-items:center;flex:none;}
+.playbtn .p svg{width:10px;height:10px;fill:#fff;margin-left:1.5px;}
+.lnk{font-size:var(--fs-mi);font-weight:600;color:var(--link);display:inline-flex;align-items:center;gap:5px;}
+.lnk:hover{text-decoration:underline;}
+.lnk svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;}
+
+/* ════════ focus state: the dense workbench ════════ */
+.fx-top{flex:none;padding:16px var(--pad-page) 0;}
+.fx-bar{
+  background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);box-shadow:var(--sh-1);
+  padding:14px var(--pad-card);display:flex;align-items:center;gap:16px;flex-wrap:wrap;
+}
+.fx-bar .id{min-width:0;flex:1;display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
+.fx-bar h2{font-family:var(--disp);font-size:var(--fs-sec);}
+.work{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:var(--gap);padding:var(--gap-sm) var(--pad-page) 0;}
+.pane{background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);box-shadow:var(--sh-1);display:flex;flex-direction:column;min-height:0;overflow:hidden;}
+.pane-h{flex:none;padding:15px var(--pad-card);display:flex;align-items:center;gap:12px;flex-wrap:wrap;border-bottom:1px solid var(--line-soft);}
+.pane-h h2{font-family:var(--disp);font-size:var(--fs-sec);}
+.pane-h .r{margin-left:auto;display:flex;align-items:center;gap:10px;}
+.pane-b{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;}
+.cp{width:100%;display:grid;grid-template-columns:22px 1fr auto;gap:13px;padding:14px var(--pad-card);border-bottom:1px solid var(--line-soft);position:relative;transition:background var(--dur);}
+.cp:hover{background:var(--inset);}
+.cp[aria-current="true"]{background:var(--sel);}
+.cp[aria-current="true"]::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--sel-line);}
+.cp-m{min-width:0;display:flex;flex-direction:column;gap:6px;text-align:left;font:inherit;color:inherit;background:none;border:0;padding:0;}
+.cp-m:focus-visible{outline:2px solid var(--link);outline-offset:3px;border-radius:7px;}
+.cp[data-line]{cursor:pointer;}
+.cp-q{font-size:var(--fs-sm);color:var(--t2);font-style:italic;border-left:2px solid var(--line-hard);padding-left:11px;line-height:1.55;max-width:58ch;}
+.turn{display:grid;grid-template-columns:56px 1fr;gap:14px;padding:8px var(--pad-card);position:relative;scroll-margin:80px;}
+.turn.hi{background:var(--sel);}
+.turn.hi::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--sel-line);}
+.turn.dim{opacity:.3;}
+.ts{font-size:var(--fs-mi);color:var(--t3);padding-top:3px;text-align:right;}
+.turn .say{min-width:0;max-width:66ch;font-size:var(--fs-body);line-height:1.65;color:var(--t2);}
+.turn .say b{font-weight:600;color:var(--ink);}
+.turn.ag .say b{color:var(--link);}
+.turn .say mark{background:var(--revw-w);color:var(--ink);padding:0 3px;border-radius:4px;}
+.redact{display:inline-flex;padding:0 6px;border-radius:6px;background:var(--inset);border:1px dashed var(--line-hard);font-size:11.5px;font-weight:600;color:var(--t3);vertical-align:1px;}
+.cite{display:inline-flex;align-items:center;justify-content:center;width:17px;height:17px;border-radius:6px;background:var(--wash);color:var(--link);font-size:10.5px;font-weight:700;vertical-align:2px;margin-left:6px;}
+.spk{position:sticky;top:0;z-index:2;background:var(--card);padding:11px var(--pad-card) 8px;border-bottom:1px solid var(--line-soft);font-size:11px;font-weight:600;color:var(--t3);text-transform:var(--lab-tt);letter-spacing:var(--lab-ls);}
+.tsearch{display:flex;align-items:center;gap:8px;height:32px;padding:0 11px;border:1px solid var(--line);border-radius:var(--r-ctl);background:var(--card);font-size:var(--fs-mi);color:var(--t3);min-width:164px;}
+.tsearch svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.9;flex:none;}
+.tsearch input{border:0;background:none;outline:none;width:100%;font-size:var(--fs-sm);color:var(--ink);}
+.tsearch .ct{font-size:11px;font-weight:600;color:var(--t3);white-space:nowrap;}
+.dock{
+  flex:none;margin:var(--gap-sm) var(--pad-page) var(--pad-page);padding:13px var(--pad-card);
+  background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);box-shadow:var(--sh-2);
+  display:flex;align-items:center;gap:16px;
+}
+.play{width:38px;height:38px;border-radius:50%;background:var(--brand);flex:none;display:grid;place-items:center;}
+.play:hover{background:var(--brand-h);}
+.play svg{width:15px;height:15px;fill:#fff;margin-left:2px;}
+.dock .t{font-size:var(--fs-mi);color:var(--t3);white-space:nowrap;flex:none;}
+.track{flex:1;min-width:0;position:relative;height:28px;display:flex;align-items:center;cursor:pointer;}
+.track .bar{position:absolute;left:0;right:0;height:5px;border-radius:99px;background:var(--line);}
+.track .done{position:absolute;left:0;height:5px;border-radius:99px;background:var(--brand);}
+.track .head{position:absolute;width:13px;height:13px;border-radius:50%;background:var(--card);border:2px solid var(--brand);box-shadow:var(--sh-1);transform:translateX(-50%);transition:left 260ms cubic-bezier(.22,.61,.36,1);}
+.mk-t{position:absolute;width:3px;height:15px;border-radius:2px;transform:translateX(-50%);}
+.mk-t.f{background:var(--fail);} .mk-t.r{background:var(--revw);} .mk-t.p{background:var(--pass);opacity:.5;}
+.dock .lbl{font-size:var(--fs-mi);color:var(--t2);max-width:24ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:none;}
+.kb{display:flex;gap:5px;flex:none;}
+
+/* ════════ drill-in for a module ════════ */
+.tw{overflow-x:auto;}
+table{border-collapse:collapse;width:100%;font-size:var(--fs-sm);min-width:600px;}
+th{text-align:left;padding:12px var(--pad-card);background:var(--inset);border-top:1px solid var(--line-soft);border-bottom:1px solid var(--line-soft);color:var(--t3);font-size:var(--fs-mi);font-weight:600;text-transform:var(--lab-tt);letter-spacing:var(--lab-ls);white-space:nowrap;}
+td{padding:0 var(--pad-card);height:var(--row);border-bottom:1px solid var(--line-soft);color:var(--t2);}
+tbody tr:last-child td{border-bottom:0;}
+td .who{color:var(--ink);font-weight:500;}
+
+/* ════════ notes ════════ */
+.notes{position:fixed;top:0;right:0;bottom:0;width:min(450px,94vw);z-index:70;background:var(--raised);border-left:1px solid var(--line);box-shadow:var(--sh-4);transform:translateX(101%);transition:transform 260ms cubic-bezier(.22,.61,.36,1);display:flex;flex-direction:column;}
+.notes.on{transform:none;}
+.notes-h{padding:20px;border-bottom:1px solid var(--line-soft);display:flex;align-items:center;gap:12px;}
+.notes-h h2{font-family:var(--disp);font-size:var(--fs-sec);}
+.notes-b{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:22px;}
+.notes-b section{display:flex;flex-direction:column;gap:8px;}
+.notes-b h3{font-family:var(--font);font-size:var(--fs-sm);font-weight:600;color:var(--ink);}
+.notes-b p{font-size:var(--fs-sm);color:var(--t2);line-height:1.65;}
+.notes-b .pill{align-self:flex-start;font-size:11px;font-weight:600;padding:3px 9px;border-radius:99px;background:var(--wash);color:var(--link);}
+
+@media (max-width:1240px){ .cols{grid-template-columns:1fr;} }
+@media (max-width:1120px){
+  .app{grid-template-columns:1fr;}
+  .side{display:none;}
+  .work{grid-template-columns:1fr;flex:none;padding-bottom:0;}
+  .pane{max-height:64vh;}
+  .fx-body{overflow-y:auto;}
+  .dock{position:sticky;bottom:12px;}
+  .dock .lbl,.dock .kb{display:none;}
+  .search .k{display:none;}
+  .ck-bd{padding-left:var(--pad-card);}
+}
+@media (prefers-reduced-motion:reduce){*{animation-duration:.01ms !important;transition-duration:.01ms !important;}}
+</style>
+
+<div class="app">
+
+  <aside class="side"><div class="side-in">
+    <div class="brandrow">
+      <div class="mk" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v5.5c0 4.3-2.9 7.6-7 8.9-4.1-1.3-7-4.6-7-8.9V6l7-3z"/><path d="M9 12l2.2 2.2L15.5 10"/></svg></div>
+      <b>CallGuard</b>
+    </div>
+    <nav aria-label="Main">
+      <button class="nv"><svg viewBox="0 0 24 24"><path d="M4 11l8-7 8 7M6 10v9a1 1 0 001 1h10a1 1 0 001-1v-9"/></svg>Home</button>
+      <button class="nv"><svg viewBox="0 0 24 24"><path d="M9 12l2.2 2.2L16 9"/><path d="M20 12v7a2 2 0 01-2 2H6a2 2 0 01-2-2V5a2 2 0 012-2h10"/></svg>Review<span class="pip">27</span></button>
+      <button class="nv" aria-current="page"><svg viewBox="0 0 24 24"><path d="M4 6h9M4 12h16M4 18h12"/><path d="M17 4l3 3-3 3"/></svg>Sales<span class="ct">1,284</span></button>
+      <button class="nv"><svg viewBox="0 0 24 24"><path d="M15.5 12.5a8 8 0 01-4 4l-1-1.6a1.4 1.4 0 00-1.5-.4 11 11 0 01-2-.5A1.4 1.4 0 005 15.4v2.2A1.4 1.4 0 003.4 19 13.6 13.6 0 015 5.4 1.4 1.4 0 016.4 4h2.2a1.4 1.4 0 011.4 1.5 11 11 0 00.5 2 1.4 1.4 0 01-.4 1.5L8.5 10"/></svg>Calls<span class="ct">4,182</span></button>
+      <button class="nv"><svg viewBox="0 0 24 24"><path d="M16 20v-1.5a3.5 3.5 0 00-3.5-3.5h-5A3.5 3.5 0 004 18.5V20M10 4a3.5 3.5 0 110 7 3.5 3.5 0 010-7"/></svg>Customers</button>
+      <button class="nv"><svg viewBox="0 0 24 24"><path d="M3 20V9M9 20V4M15 20v-7M21 20v-11"/></svg>Insights</button>
+      <button class="nv"><svg viewBox="0 0 24 24"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"/></svg>Set up</button>
+    </nav>
+    <div class="side-foot">
+      <div class="av" aria-hidden="true">KV</div>
+      <div class="who"><b>Kofi Vickery</b><span>Compliance supervisor</span></div>
+    </div>
+  </div></aside>
+
+  <div class="main">
+    <div class="top">
+      <div class="search">
+        <svg viewBox="0 0 24 24" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M16.5 16.5L21 21"/></svg>
+        Search a customer, call or sale
+        <span class="k"><kbd>&#8984;</kbd><kbd>K</kbd></span>
+      </div>
+      <div class="top-r">
+        <button class="ib" id="themeBtn" aria-label="Switch theme">
+          <svg viewBox="0 0 24 24" id="themeIcon"><circle cx="12" cy="12" r="4.2"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M18.4 5.6L17 7M7 17l-1.4 1.4"/></svg>
+        </button>
+        <button class="ib" id="notesBtn" aria-label="Design notes">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- ═══════════════ STATE A: the sale page ═══════════════ -->
+    <div class="state on" id="s-page"><div class="scroll"><div class="pad">
+
+      <div class="crumbs">
+        <button>Sales</button><span aria-hidden="true">/</span>
+        <button>Failed &middot; unactioned</button><span aria-hidden="true">/</span>
+        <span>SJ-40912</span>
+      </div>
+
+      <!-- 1 &middot; identity -->
+      <div class="card">
+        <div class="hero">
+          <div class="hero-id">
+            <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
+              <h1>Sale &mdash; <a href="#" onclick="return false;">R. Okonkwo</a></h1>
+              <span class="bg f"><svg viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg>Fail</span>
+            </div>
+            <div class="facts">
+              <div class="fact"><span class="k">Adviser</span><span class="v">J. Halloran</span></div>
+              <div class="fact"><span class="k">Products</span><span class="v">Mortgage + income protection</span></div>
+              <div class="fact"><span class="k">Branch</span><span class="v">Advised</span></div>
+              <div class="fact"><span class="k">Trigger</span><span class="v">Zoho sale</span></div>
+              <div class="fact"><span class="k">Scored</span><span class="v">21 Aug, 14:06</span></div>
+            </div>
+          </div>
+          <div class="hero-act">
+            <div class="queue">
+              <button class="qb" aria-label="Previous in queue"><svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></button>
+              <span>3 of 27</span>
+              <button class="qb" aria-label="Next in queue"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></button>
+            </div>
+            <button class="btn"><svg viewBox="0 0 24 24"><path d="M14 3v4a1 1 0 001 1h4M14 3H6a1 1 0 00-1 1v16a1 1 0 001 1h12a1 1 0 001-1V8z"/><path d="M9 14l3 3 3-3M12 11v6"/></svg>Claims pack</button>
+            <button class="btn pri"><svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg>Send to adviser</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2 &middot; top stats -->
+      <div class="stats">
+        <button class="stat" data-jump="ckCard">
+          <span class="go"><svg viewBox="0 0 24 24"><path d="M7 17L17 7M17 7H9M17 7v8"/></svg></span>
+          <span class="top"><span class="ic f" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg></span><span class="lab">Overall score</span></span>
+          <span class="v" style="color:var(--fail);">78<em style="font-size:.5em;font-weight:600;">%</em></span>
+          <span class="meter"><i style="width:78%;background:var(--fail);"></i></span>
+          <span class="sub">down 2.4 on the previous run</span>
+        </button>
+        <button class="stat" data-jump="ckCard">
+          <span class="go"><svg viewBox="0 0 24 24"><path d="M7 17L17 7M17 7H9M17 7v8"/></svg></span>
+          <span class="top"><span class="ic n" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 12l2.2 2.2L16 9"/><path d="M20 12v7a2 2 0 01-2 2H6a2 2 0 01-2-2V5a2 2 0 012-2h10"/></svg></span><span class="lab">Checkpoints</span></span>
+          <span class="v">24<em>passed of 28 scored</em></span>
+          <span class="pips" aria-hidden="true">
+            <i class="f"></i><i class="f"></i><i class="r"></i><i class="r"></i><i class="p"></i><i class="p"></i><i class="p"></i><i class="p"></i><i class="p"></i><i class="p"></i><i class="p"></i><i class="p"></i>
+          </span>
+          <span class="sub">2 failed &middot; 2 to review &middot; 2 not applicable</span>
+        </button>
+        <button class="stat" data-jump="brCard">
+          <span class="go"><svg viewBox="0 0 24 24"><path d="M7 17L17 7M17 7H9M17 7v8"/></svg></span>
+          <span class="top"><span class="ic f" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v5.5c0 4.3-2.9 7.6-7 8.9-4.1-1.3-7-4.6-7-8.9V6l7-3z"/><path d="M12 9v4M12 16h.01"/></svg></span><span class="lab">Breaches</span></span>
+          <span class="v" style="color:var(--fail);">2</span>
+          <span class="sub">both serious &middot; neither actioned yet</span>
+        </button>
+        <button class="stat" data-jump="clCard">
+          <span class="go"><svg viewBox="0 0 24 24"><path d="M7 17L17 7M17 7H9M17 7v8"/></svg></span>
+          <span class="top"><span class="ic n" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M15.5 12.5a8 8 0 01-4 4l-1-1.6a1.4 1.4 0 00-1.5-.4 11 11 0 01-2-.5A1.4 1.4 0 005 15.4v2.2A1.4 1.4 0 003.4 19 13.6 13.6 0 015 5.4 1.4 1.4 0 016.4 4h2.2a1.4 1.4 0 011.4 1.5 11 11 0 00.5 2 1.4 1.4 0 01-.4 1.5L8.5 10"/></svg></span><span class="lab">Calls in this sale</span></span>
+          <span class="v">3<em>47:12 total</em></span>
+          <span class="sub">21&ndash;22 Aug &middot; 1 wrap-up</span>
+        </button>
+      </div>
+
+      <!-- 3 &middot; caveat -->
+      <div class="caveat" id="caveat">
+        <svg viewBox="0 0 24 24"><path d="M10.3 3.9L1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+        <div style="min-width:0;">
+          <h3>Read this score with care</h3>
+          <ul>
+            <li><b>Branch &ldquo;Advised&rdquo; came from the transcript, not the CRM.</b> A phrase in call 2 matched it. Confirm against the policy stage before relying on the checkpoint set &mdash; a wrong branch changes which checkpoints applied at all.</li>
+            <li><b>Speaker labels are unreliable on 1 of 3 calls.</b> Automated checks found adviser and customer turns mixed up, so both consent checkpoints went to manual review rather than auto-scoring.</li>
+          </ul>
+        </div>
+        <button class="x" aria-label="Dismiss">&times;</button>
+      </div>
+
+      <!-- 4 &middot; findings + side -->
+      <div class="cols">
+        <div class="card" id="ckCard">
+          <div class="card-h">
+            <h2>What the AI found</h2>
+            <span class="bg f">2 failed</span><span class="bg r">2 to review</span>
+            <div class="r">
+              <div class="seg" role="group" aria-label="Filter checkpoints">
+                <button aria-pressed="true">Needs action</button>
+                <button aria-pressed="false">All 30</button>
+              </div>
+              <button class="btn sm" id="toFocus">
+                <svg viewBox="0 0 24 24"><path d="M4 9V5a1 1 0 011-1h4M20 15v4a1 1 0 01-1 1h-4M20 9V5a1 1 0 00-1-1h-4M4 15v4a1 1 0 001 1h4"/></svg>
+                Read alongside the transcript
+              </button>
+            </div>
+          </div>
+
+          <div class="sec-lab">Disclosure <span class="n">1 of 3 failed</span></div>
+          <div class="ck">
+            <button class="ck-hd" aria-expanded="true" data-ck>
+              <span class="ck-ic f" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg></span>
+              <span class="ck-l">Fee disclosed, and how it is paid, before the recommendation</span>
+              <span class="ck-rt"><span class="bg sev">Serious</span><span class="bg f">Fail</span>
+                <svg class="ck-chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></span>
+            </button>
+            <div class="ck-bd">
+              <div class="quote">
+                <blockquote>&ldquo;&hellip;so what I'd suggest for you is the five-year fix with Aldermere, that's the one that works best on your numbers.&rdquo;</blockquote>
+                <div class="meta">
+                  <span class="who">Adviser &middot; call 1 &middot; 04:41</span>
+                  <button class="playbtn"><span class="p"><svg viewBox="0 0 24 24"><path d="M7 4l13 8-13 8z"/></svg></span>Play from 04:41</button>
+                  <button class="lnk" data-focus>See in transcript <svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+                </div>
+              </div>
+              <p class="why">The recommendation is made at 04:41. The fee is first mentioned at <b>31:08, in call 3</b> &mdash; after the customer has already agreed to proceed. The checkpoint requires the fee before the recommendation, not before completion.</p>
+              <div class="ck-act">
+                <button class="btn sm">Overturn this finding</button>
+                <button class="btn sm">Add a note</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="sec-lab">Post-sale <span class="n">1 of 4 failed</span></div>
+          <div class="ck">
+            <button class="ck-hd" aria-expanded="true" data-ck>
+              <span class="ck-ic f" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg></span>
+              <span class="ck-l">Right to cancel and the 14-day period explained</span>
+              <span class="ck-rt"><span class="bg sev">Serious</span><span class="bg f">Fail</span>
+                <svg class="ck-chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></span>
+            </button>
+            <div class="ck-bd">
+              <div class="quote">
+                <blockquote>&ldquo;I'll get all that over to you by email tonight and you can have a proper read through it then.&rdquo;</blockquote>
+                <div class="meta">
+                  <span class="who">Adviser &middot; call 3 &middot; 38:52</span>
+                  <button class="playbtn"><span class="p"><svg viewBox="0 0 24 24"><path d="M7 4l13 8-13 8z"/></svg></span>Play from 38:52</button>
+                  <button class="lnk" data-focus>See in transcript <svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+                </div>
+              </div>
+              <p class="why">No cancellation right or cooling-off period is stated anywhere in the three calls. Deferring to the email pack does not satisfy the checkpoint &mdash; it has to be said on the call.</p>
+              <div class="ck-act">
+                <button class="btn sm">Overturn this finding</button>
+                <button class="btn sm">Add a note</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="sec-lab">Consent gates <span class="n">2 awaiting a person</span></div>
+          <div class="ck">
+            <button class="ck-hd" aria-expanded="true" data-ck>
+              <span class="ck-ic r" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v4l3 2"/></svg></span>
+              <span class="ck-l">Explicit consent captured before the credit search was run</span>
+              <span class="ck-rt"><span class="bg r">Needs review</span>
+                <svg class="ck-chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></span>
+            </button>
+            <div class="ck-bd">
+              <div class="quote">
+                <blockquote>&ldquo;That's fine, yeah, go ahead and do that.&rdquo;</blockquote>
+                <div class="meta">
+                  <span class="who">Attributed to Customer &middot; call 2 &middot; 09:16</span>
+                  <button class="playbtn"><span class="p"><svg viewBox="0 0 24 24"><path d="M7 4l13 8-13 8z"/></svg></span>Play from 09:16</button>
+                  <button class="lnk" data-focus>See in transcript <svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+                </div>
+              </div>
+              <p class="why"><b style="color:var(--revw);">The AI suggests Pass, and it has not been trusted.</b> Speaker attribution on this call scored 0.61, so we cannot be certain the customer said this rather than the adviser. Listen to the moment and confirm.</p>
+              <div class="ck-act">
+                <span class="mini"><button class="ok">Confirm pass</button><button class="no">Mark fail</button></span>
+              </div>
+            </div>
+          </div>
+          <div class="ck">
+            <button class="ck-hd" aria-expanded="false" data-ck>
+              <span class="ck-ic r" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v4l3 2"/></svg></span>
+              <span class="ck-l">Customer confirmed they understood the illustration</span>
+              <span class="ck-rt"><span class="bg r">Needs review</span>
+                <svg class="ck-chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></span>
+            </button>
+            <div class="ck-bd" hidden>
+              <div class="quote">
+                <blockquote>&ldquo;Yeah &mdash; no, that all makes sense to me.&rdquo;</blockquote>
+                <div class="meta">
+                  <span class="who">Attributed to Customer &middot; call 2 &middot; 26:03</span>
+                  <button class="playbtn"><span class="p"><svg viewBox="0 0 24 24"><path d="M7 4l13 8-13 8z"/></svg></span>Play from 26:03</button>
+                  <button class="lnk" data-focus>See in transcript <svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+                </div>
+              </div>
+              <p class="why"><b style="color:var(--revw);">The AI suggests Pass, and it has not been trusted.</b> The turn immediately before this one is attributed to the same speaker, which is unlikely in a two-party call.</p>
+              <div class="ck-act">
+                <span class="mini"><button class="ok">Confirm pass</button><button class="no">Mark fail</button></span>
+              </div>
+            </div>
+          </div>
+
+          <button class="fold" id="foldBtn" aria-expanded="false">
+            <svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>
+            Everything that passed
+            <span class="c">24 passed &middot; 2 not applicable</span>
+          </button>
+          <div id="foldBody" hidden>
+            <div class="ck">
+              <button class="ck-hd" aria-expanded="false" data-ck>
+                <span class="ck-ic p" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
+                <span class="ck-l">Adviser identified themselves and the firm</span>
+                <span class="ck-rt"><span class="bg p">Pass</span><svg class="ck-chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></span>
+              </button>
+              <div class="ck-bd" hidden>
+                <div class="quote">
+                  <blockquote>&ldquo;It's Jack calling from Ardenmoor Financial &mdash; is now still all right for our appointment?&rdquo;</blockquote>
+                  <div class="meta"><span class="who">Adviser &middot; call 1 &middot; 00:08</span>
+                    <button class="playbtn"><span class="p"><svg viewBox="0 0 24 24"><path d="M7 4l13 8-13 8z"/></svg></span>Play from 00:08</button></div>
+                </div>
+              </div>
+            </div>
+            <div class="ck">
+              <button class="ck-hd" aria-expanded="false" data-ck>
+                <span class="ck-ic p" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
+                <span class="ck-l">Affordability checked against stated income and outgoings</span>
+                <span class="ck-rt"><span class="bg p">Pass</span><svg class="ck-chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></span>
+              </button>
+              <div class="ck-bd" hidden>
+                <div class="quote">
+                  <blockquote>&ldquo;Take-home is two-nine-forty a month, and you said around eleven hundred goes out on the car and the cards.&rdquo;</blockquote>
+                  <div class="meta"><span class="who">Adviser &middot; call 2 &middot; 14:02</span>
+                    <button class="playbtn"><span class="p"><svg viewBox="0 0 24 24"><path d="M7 4l13 8-13 8z"/></svg></span>Play from 14:02</button></div>
+                </div>
+              </div>
+            </div>
+            <div class="ck">
+              <button class="ck-hd" aria-expanded="false" data-ck>
+                <span class="ck-ic n" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 12h12"/></svg></span>
+                <span class="ck-l">Buildings insurance suitability assessed</span>
+                <span class="ck-rt"><span class="bg n">Not applicable</span><svg class="ck-chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></span>
+              </button>
+              <div class="ck-bd" hidden>
+                <p class="why">Not required for this sale's products &mdash; this checkpoint is only scored where buildings cover is sold. It is excluded from the score rather than counted as a pass.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="sidecol">
+          <div class="card" id="clCard">
+            <div class="card-h"><h2>Calls</h2><div class="r"><span class="lab">3 &middot; 47:12</span></div></div>
+            <div class="div"></div>
+            <button class="callrow">
+              <span class="m"><b>21 Aug, 09:40</b><span>J. Halloran &middot; outbound &middot; 5:20</span></span>
+              <span class="rt"><span class="lab">call 1</span></span>
+            </button>
+            <button class="callrow">
+              <span class="m"><b>21 Aug, 11:14</b><span>J. Halloran &middot; outbound &middot; 21:04</span></span>
+              <span class="rt"><span class="bg r" style="font-size:11px;">Speaker risk</span></span>
+            </button>
+            <button class="callrow">
+              <span class="m"><b>22 Aug, 10:02</b><span>J. Halloran &middot; inbound &middot; 20:48</span></span>
+              <span class="rt"><span class="bg n" style="font-size:11px;">Wrap-up</span></span>
+            </button>
+            <div class="div"></div>
+            <p style="padding:14px var(--pad-card);font-size:var(--fs-mi);color:var(--t3);">
+              Scored as one sale, so the calls carry no score of their own.
+            </p>
+          </div>
+
+          <div class="card" id="brCard">
+            <div class="card-h"><h2>Breaches</h2><div class="r"><span class="bg f">2 open</span></div></div>
+            <div class="div"></div>
+            <div class="brow"><span class="m">Fee disclosed after the recommendation</span><span class="bg sev">Serious</span></div>
+            <div class="brow"><span class="m">Cancellation rights not explained</span><span class="bg sev">Serious</span></div>
+          </div>
+
+          <div class="card">
+            <div class="card-h"><h2>Coaching</h2></div>
+            <div class="card-b" style="padding-top:0;">
+              <p style="font-size:var(--fs-sm);color:var(--t2);line-height:1.65;">
+                Both findings are sequencing, not knowledge: the fee and the cancellation right were
+                covered, just in the wrong order and the wrong place. Worth one conversation about
+                the order of the close rather than a full retraining.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 5 &middot; module cards -->
+      <div>
+        <div style="display:flex;align-items:baseline;gap:12px;margin-bottom:14px;">
+          <h2 style="font-family:var(--disp);font-size:var(--fs-sec);">The rest of the file</h2>
+          <span class="lab">opens here, with a way back</span>
+        </div>
+        <div class="mods">
+          <button class="mod" data-drill="capture">
+            <span class="pill"><span class="bg r">1 mismatch</span></span>
+            <span class="ic"><svg viewBox="0 0 24 24"><path d="M4 4h16v4H4zM4 10h16v4H4zM4 16h10v4H4zM18 18l2 2 4-4"/></svg></span>
+            <span class="t">Data capture</span>
+            <span class="d">Three fields pulled from the call and checked against the application.</span>
+          </button>
+          <button class="mod" data-drill="rec">
+            <span class="pill"><span class="bg n">2</span></span>
+            <span class="ic"><svg viewBox="0 0 24 24"><path d="M14 3v4a1 1 0 001 1h4M14 3H6a1 1 0 00-1 1v16a1 1 0 001 1h12a1 1 0 001-1V8z"/><path d="M9 14.5l2 2 4-4"/></svg></span>
+            <span class="t">Reconciliation</span>
+            <span class="d">Two amendments made after the call, each evidenced against a recording.</span>
+          </button>
+          <button class="mod" data-drill="feedback">
+            <span class="pill"><span class="bg n">Not sent</span></span>
+            <span class="ic"><svg viewBox="0 0 24 24"><path d="M21 11.5a8.4 8.4 0 01-8.5 8.5 8.4 8.4 0 01-3.8-.9L3 21l1.9-5.7A8.4 8.4 0 0112.5 3a8.5 8.5 0 018.5 8.5z"/></svg></span>
+            <span class="t">Feedback</span>
+            <span class="d">Two findings stand. Draft the note to J. Halloran, or overturn one first.</span>
+          </button>
+          <button class="mod" data-drill="history">
+            <span class="pill"><span class="bg n">4 runs</span></span>
+            <span class="ic"><svg viewBox="0 0 24 24"><path d="M3 4v5h5"/><path d="M3.5 12.5A8.5 8.5 0 106 6.3L3 9"/><path d="M12 8v4.5l3.5 2"/></svg></span>
+            <span class="t">Scoring history</span>
+            <span class="d">Scored four times. What moved between runs, and who asked for it.</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- drill-in target -->
+      <div id="drill" hidden>
+        <div class="crumbs" style="margin-bottom:14px;">
+          <button id="drillBack">The rest of the file</button><span aria-hidden="true">/</span><span id="drillCrumb">Data capture</span>
+        </div>
+        <div class="card" style="border-top:3px solid var(--brand);">
+          <div class="card-h"><h2 id="drillTitle">Data capture</h2><div class="r" id="drillPill"></div></div>
+          <div id="drillBody"></div>
+        </div>
+      </div>
+
+    </div></div></div>
+
+    <!-- ═══════════════ STATE B: focus mode ═══════════════ -->
+    <div class="state" id="s-focus">
+      <div class="fx-top"><div class="fx-bar">
+        <div class="id">
+          <button class="btn sm" id="backToPage">
+            <svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg>Back to the sale
+          </button>
+          <h2>R. Okonkwo</h2>
+          <span class="bg f">Fail</span><span class="bg n">78%</span>
+          <span class="lab">reading the findings against the transcript</span>
+        </div>
+        <div class="queue">
+          <button class="qb" aria-label="Previous in queue"><svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></button>
+          <span>3 of 27</span>
+          <button class="qb" aria-label="Next in queue"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></button>
+        </div>
+      </div></div>
+
+      <div class="work">
+        <div class="pane">
+          <div class="pane-h">
+            <h2>Checkpoints</h2>
+            <span class="bg f">2 failed</span><span class="bg r">2 to review</span>
+          </div>
+          <div class="pane-b" id="cpList">
+            <div class="cp" data-line="12" data-t="4:41" data-lab="Fee disclosed before recommendation">
+              <span class="ck-ic f" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg></span>
+              <button class="cp-m" type="button">
+                <span class="ck-l">Fee disclosed before the recommendation</span>
+                <span class="cp-q">&ldquo;&hellip;so what I'd suggest for you is the five-year fix with Aldermere&hellip;&rdquo;</span>
+              </button>
+              <span class="ck-rt" style="flex-direction:column;align-items:flex-end;gap:7px;"><span class="bg f">Fail</span><span class="bg sev">Serious</span></span>
+            </div>
+            <div class="cp" data-line="34" data-t="38:52" data-lab="Right to cancel explained">
+              <span class="ck-ic f" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg></span>
+              <button class="cp-m" type="button">
+                <span class="ck-l">Right to cancel and the 14-day period explained</span>
+                <span class="cp-q">&ldquo;I'll get all that over to you by email tonight&hellip;&rdquo;</span>
+              </button>
+              <span class="ck-rt" style="flex-direction:column;align-items:flex-end;gap:7px;"><span class="bg f">Fail</span><span class="bg sev">Serious</span></span>
+            </div>
+            <div class="cp" data-line="18" data-t="9:16" data-lab="Consent before credit search">
+              <span class="ck-ic r" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v4l3 2"/></svg></span>
+              <button class="cp-m" type="button">
+                <span class="ck-l">Explicit consent before the credit search</span>
+                <span class="cp-q">&ldquo;That's fine, yeah, go ahead and do that.&rdquo;</span>
+              </button>
+              <span class="ck-rt" style="flex-direction:column;align-items:flex-end;gap:7px;"><span class="bg r">Review</span>
+                <span class="mini"><button class="ok">Pass</button><button class="no">Fail</button></span></span>
+            </div>
+            <div class="cp" data-line="29" data-t="26:03" data-lab="Illustration understood">
+              <span class="ck-ic r" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v4l3 2"/></svg></span>
+              <button class="cp-m" type="button">
+                <span class="ck-l">Customer confirmed they understood the illustration</span>
+                <span class="cp-q">&ldquo;Yeah &mdash; no, that all makes sense to me.&rdquo;</span>
+              </button>
+              <span class="ck-rt" style="flex-direction:column;align-items:flex-end;gap:7px;"><span class="bg r">Review</span>
+                <span class="mini"><button class="ok">Pass</button><button class="no">Fail</button></span></span>
+            </div>
+            <div class="cp" data-line="25" data-t="18:30" data-lab="Vulnerability explored">
+              <span class="ck-ic p" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
+              <button class="cp-m" type="button">
+                <span class="ck-l">Vulnerability indicators explored and recorded</span>
+                <span class="cp-q">&ldquo;You mentioned your hours were cut back in the spring&hellip;&rdquo;</span>
+              </button>
+              <span class="ck-rt"><span class="bg p">Pass</span></span>
+            </div>
+            <div class="cp" data-line="22" data-t="14:02" data-lab="Affordability checked">
+              <span class="ck-ic p" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
+              <button class="cp-m" type="button">
+                <span class="ck-l">Affordability checked against income and outgoings</span>
+                <span class="cp-q">&ldquo;Take-home is two-nine-forty a month&hellip;&rdquo;</span>
+              </button>
+              <span class="ck-rt"><span class="bg p">Pass</span></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="pane">
+          <div class="pane-h">
+            <h2>Transcript</h2>
+            <span class="bg n">3 calls &middot; 47:12</span>
+            <div class="r">
+              <label class="tsearch">
+                <svg viewBox="0 0 24 24" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M16.5 16.5L21 21"/></svg>
+                <input id="tSearch" type="search" placeholder="Find in transcript" aria-label="Find in transcript">
+                <span class="ct" id="tCount"></span>
+              </label>
+            </div>
+          </div>
+          <div class="pane-b" id="tPane">
+            <div class="spk">Call 1 &mdash; 21 Aug, 09:40 &middot; outbound &middot; 5:20</div>
+            <div style="padding:6px 0 24px;">
+              <div class="turn ag" data-i="1"><span class="ts">0:02</span><span class="say"><b>Adviser</b> Morning, is that <span class="redact">NAME_GIVEN_1</span>?</span></div>
+              <div class="turn ag" data-i="2"><span class="ts">0:08</span><span class="say"><b>Adviser</b> It's Jack calling from Ardenmoor Financial &mdash; is now still all right for our appointment?<span class="cite">1</span></span></div>
+              <div class="turn cu" data-i="3"><span class="ts">0:14</span><span class="say"><b>Customer</b> Yeah, now's fine. I've got about half an hour before I have to pick the kids up.</span></div>
+              <div class="turn ag" data-i="5"><span class="ts">1:24</span><span class="say"><b>Adviser</b> What I'll do is give you a recommendation at the end &mdash; so this is advice, not just me reading options out.<span class="cite">1</span></span></div>
+              <div class="turn cu" data-i="10"><span class="ts">2:31</span><span class="say"><b>Customer</b> Definitely. Certainty, every time. I don't want to be watching the news for it.</span></div>
+              <div class="turn ag" data-i="12"><span class="ts">4:41</span><span class="say"><b>Adviser</b> So what I'd suggest for you is the five-year fix with Aldermere, that's the one that works best on your numbers.<span class="cite">1</span></span></div>
+              <div class="turn cu" data-i="15"><span class="ts">5:12</span><span class="say"><b>Customer</b> And what's the payment?</span></div>
+              <div class="turn ag" data-i="16"><span class="ts">5:15</span><span class="say"><b>Adviser</b> On the figures you've given me, one-four-eighty-two a month. I'll confirm it in writing.</span></div>
+              <div class="spk">Call 2 &mdash; 21 Aug, 11:14 &middot; outbound &middot; 21:04</div>
+              <div class="turn ag" data-i="17"><span class="ts">8:44</span><span class="say"><b>Adviser</b> Now, to actually get this to the lender I'll need to run a credit check. It leaves a footprint.</span></div>
+              <div class="turn cu" data-i="18"><span class="ts">9:16</span><span class="say"><b>Customer</b> That's fine, yeah, go ahead and do that.<span class="cite">1</span></span></div>
+              <div class="turn ag" data-i="19"><span class="ts">9:22</span><span class="say"><b>Adviser</b> Lovely. And your address is still the one on <span class="redact">LOCATION_1</span>?</span></div>
+              <div class="turn ag" data-i="22"><span class="ts">14:02</span><span class="say"><b>Adviser</b> Take-home is two-nine-forty a month, and you said around eleven hundred goes out on the car and the cards.<span class="cite">1</span></span></div>
+              <div class="turn cu" data-i="23"><span class="ts">14:18</span><span class="say"><b>Customer</b> That's about right. The car's got fourteen months left on it.</span></div>
+              <div class="turn ag" data-i="25"><span class="ts">18:30</span><span class="say"><b>Adviser</b> You mentioned your hours were cut back in the spring &mdash; has that settled down now, or is it still up and down month to month?<span class="cite">1</span></span></div>
+              <div class="turn cu" data-i="26"><span class="ts">18:47</span><span class="say"><b>Customer</b> It's steady again since June. It was tight for a few months there, I won't pretend otherwise.</span></div>
+              <div class="turn ag" data-i="28"><span class="ts">25:44</span><span class="say"><b>Adviser</b> That illustration I've just sent through &mdash; page two is the one that matters, the total cost over the term.</span></div>
+              <div class="turn cu" data-i="29"><span class="ts">26:03</span><span class="say"><b>Customer</b> Yeah &mdash; no, that all makes sense to me.<span class="cite">1</span></span></div>
+              <div class="spk">Call 3 &mdash; 22 Aug, 10:02 &middot; inbound &middot; 20:48</div>
+              <div class="turn ag" data-i="31"><span class="ts">30:15</span><span class="say"><b>Adviser</b> So: five-year fix because you told me certainty matters more than the last few pounds, and cover to match the term.<span class="cite">1</span></span></div>
+              <div class="turn cu" data-i="32"><span class="ts">30:38</span><span class="say"><b>Customer</b> Yeah. Yeah, I'm happy with that. Let's do it.</span></div>
+              <div class="turn ag" data-i="33"><span class="ts">31:08</span><span class="say"><b>Adviser</b> Great. There's a broker fee of four-nine-five which is payable on completion, that's on the illustration.</span></div>
+              <div class="turn ag" data-i="34"><span class="ts">38:52</span><span class="say"><b>Adviser</b> I'll get all that over to you by email tonight and you can have a proper read through it then.<span class="cite">1</span></span></div>
+              <div class="turn cu" data-i="35"><span class="ts">39:04</span><span class="say"><b>Customer</b> Brilliant. Thanks Jack, you've made that a lot less painful than I expected.</span></div>
+              <div class="turn ag" data-i="36"><span class="ts">39:12</span><span class="say"><b>Adviser</b> Any time. I'll ring you Thursday once the lender's come back. Take care.</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="dock">
+        <button class="play" aria-label="Play recording"><svg viewBox="0 0 24 24"><path d="M7 4l13 8-13 8z"/></svg></button>
+        <span class="t" id="dockNow">04:41</span>
+        <div class="track" id="track">
+          <span class="bar"></span><span class="done" id="dockDone" style="width:9.9%"></span>
+          <span class="mk-t f" style="left:9.9%" title="Fee disclosed before recommendation"></span>
+          <span class="mk-t r" style="left:19.6%" title="Consent before credit search"></span>
+          <span class="mk-t p" style="left:39.2%" title="Vulnerability explored"></span>
+          <span class="mk-t r" style="left:55.2%" title="Illustration understood"></span>
+          <span class="mk-t f" style="left:82.3%" title="Right to cancel explained"></span>
+          <span class="head" id="dockHead" style="left:9.9%"></span>
+        </div>
+        <span class="t">47:12</span>
+        <span class="lbl" id="dockLbl">Fee disclosed before recommendation</span>
+        <div class="kb"><kbd>space</kbd><kbd>J</kbd><kbd>K</kbd></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<aside class="notes" id="notes" aria-label="Design notes" aria-hidden="true">
+  <div class="notes-h">
+    <h2>How this page is built</h2>
+    <button class="ib" id="notesClose" style="margin-left:auto;" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+  </div>
+  <div class="notes-b">
+    <section>
+      <span class="pill">The main decision</span>
+      <h3>Two states, not one compromise</h3>
+      <p>The last prototype kept the sale as a dense two-pane tool and I said airy and dense
+        pull against each other. They do &mdash; but they are two different jobs, so they get two
+        states. <strong>The sale page</strong> is where you decide: score, findings, evidence
+        quote, act. <strong>Focus mode</strong> is where you read the transcript alongside the
+        checkpoints. &ldquo;Read alongside the transcript&rdquo; hands off between them, and any
+        &ldquo;See in transcript&rdquo; link goes straight there with that checkpoint selected.</p>
+    </section>
+    <section>
+      <h3>Most reviews never need the transcript</h3>
+      <p>That's what makes the split work. The quote, the timestamp, and a play button from that
+        second are usually enough to judge a finding. So the default state gives you those inline
+        and keeps the full transcript one click away, instead of spending half the screen on it
+        every time.</p>
+    </section>
+    <section>
+      <h3>Four stat cards, each a jump</h3>
+      <p>Score with its meter and the delta from the previous run; checkpoints as a pass/fail
+        strip so the shape is visible before the number; breaches; calls. Clicking one scrolls to
+        the card that explains it &mdash; the same rule as the home page, where a tile you can't
+        act on is a poster.</p>
+    </section>
+    <section>
+      <h3>Findings are grouped by section, failures first</h3>
+      <p>&ldquo;Disclosure &mdash; 1 of 3 failed&rdquo; tells you where the problem lives before
+        you read a word of it. Failures and consent gates open expanded; everything that passed
+        folds into one row, because 22 passes are a reassurance, not reading.</p>
+    </section>
+    <section>
+      <h3>Each finding carries its own evidence and its own actions</h3>
+      <p>Quote, who said it and when, play from that second, why the AI judged it that way, and
+        the action &mdash; overturn, note, or confirm/reject for a consent gate. No modal: the
+        decision happens where the evidence is.</p>
+    </section>
+    <section>
+      <h3>The caveats sit above the findings</h3>
+      <p>An unconfirmed branch changes which checkpoints applied at all, and unreliable speaker
+        labels are why two checkpoints are unscored. Both change how the score should be read, so
+        they come before it rather than in a footnote.</p>
+    </section>
+    <section>
+      <h3>Capture, reconciliation, feedback and history are cards, not panels</h3>
+      <p>Each shows a one-line summary and a count, and opens in place with a breadcrumb back.
+        The same card-hub pattern as the Set up page, so the gesture is learned once. An unused
+        module costs one card rather than a screenful of empty panel.</p>
+    </section>
+    <section>
+      <h3>The calls card says why it has no scores</h3>
+      <p>Under sale scoring the member calls rest unscored on purpose. Left blank that reads as a
+        bug, so the card says it in a line.</p>
+    </section>
+    <section>
+      <p style="color:var(--t3);">Prototype. Same tokens as the airy prototype &mdash; all text
+        clears 4.5:1 on every surface in both themes. Names and figures invented.</p>
+    </section>
+  </div>
+</aside>
+
+<script>
+(function(){
+  "use strict";
+  var root=document.documentElement;
+
+  /* theme */
+  var sun='<circle cx="12" cy="12" r="4.2"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M18.4 5.6L17 7M7 17l-1.4 1.4"/>';
+  var moon='<path d="M20 14.5A8.5 8.5 0 019.5 4a8.5 8.5 0 1010.5 10.5z"/>';
+  function prefersDark(){try{return window.matchMedia('(prefers-color-scheme: dark)').matches;}catch(e){return false;}}
+  function isDark(){return root.getAttribute('data-theme')==='dark'||(!root.hasAttribute('data-theme')&&prefersDark());}
+  document.getElementById('themeBtn').addEventListener('click',function(){
+    root.setAttribute('data-theme',isDark()?'light':'dark');
+    document.getElementById('themeIcon').innerHTML=isDark()?moon:sun;
+  });
+  document.getElementById('themeIcon').innerHTML=isDark()?moon:sun;
+
+  /* ── the two states ── */
+  var sPage=document.getElementById('s-page'), sFocus=document.getElementById('s-focus');
+  function toFocus(){ sPage.classList.remove('on'); sFocus.classList.add('on'); }
+  function toPage(){ sFocus.classList.remove('on'); sPage.classList.add('on'); }
+  document.getElementById('toFocus').addEventListener('click',toFocus);
+  document.getElementById('backToPage').addEventListener('click',toPage);
+
+  /* checkpoint accordions */
+  document.querySelectorAll('.ck-hd[data-ck]').forEach(function(h){
+    h.addEventListener('click',function(){
+      var open=h.getAttribute('aria-expanded')==='true';
+      h.setAttribute('aria-expanded',String(!open));
+      var bd=h.nextElementSibling;
+      if(bd && bd.classList.contains('ck-bd')) bd.hidden=open;
+    });
+  });
+
+  var fold=document.getElementById('foldBtn'), foldBody=document.getElementById('foldBody');
+  fold.addEventListener('click',function(){
+    var open=fold.getAttribute('aria-expanded')==='true';
+    fold.setAttribute('aria-expanded',String(!open)); foldBody.hidden=open;
+  });
+
+  var cav=document.getElementById('caveat');
+  cav.querySelector('.x').addEventListener('click',function(){cav.remove();});
+
+  /* stat cards jump to the card that explains them */
+  document.querySelectorAll('.stat[data-jump]').forEach(function(s){
+    s.addEventListener('click',function(){
+      var el=document.getElementById(s.getAttribute('data-jump'));
+      if(el) el.scrollIntoView({behavior:'smooth',block:'start'});
+    });
+  });
+
+  /* "see in transcript" &rarr; focus mode, that checkpoint selected */
+  var LINK_TO_CK={0:'12',1:'34',2:'18',3:'29'};
+  document.querySelectorAll('[data-focus]').forEach(function(b,i){
+    b.addEventListener('click',function(e){
+      e.stopPropagation();
+      toFocus();
+      var line=LINK_TO_CK[i];
+      var cp=line?document.querySelector('.cp[data-line="'+line+'"]'):null;
+      if(cp) select(cp);
+    });
+  });
+
+  /* module drill-in, in place with a breadcrumb */
+  var MODS={
+    capture:['Data capture','<span class="bg r">1 mismatch</span>',
+      '<div class="tw"><table><thead><tr><th>Field</th><th>Said on the call</th><th>On the application</th><th>Result</th></tr></thead><tbody>'+
+      '<tr><td class="who">Monthly net income</td><td>&pound;2,940</td><td>&pound;2,940</td><td><span class="bg p">Match</span></td></tr>'+
+      '<tr><td class="who">Existing credit commitments</td><td>&pound;1,100</td><td>&pound;640</td><td><span class="bg r">Mismatch</span></td></tr>'+
+      '<tr><td class="who">Employment status</td><td>Employed, PAYE</td><td>Employed, PAYE</td><td><span class="bg p">Match</span></td></tr>'+
+      '</tbody></table></div>'],
+    rec:['Reconciliation','<span class="bg n">2 amendments</span>',
+      '<div class="card-b" style="padding-top:0;"><p style="font-size:var(--fs-sm);color:var(--t2);max-width:66ch;line-height:1.65;">'+
+      'Two amendments were made to the application after the call. Each is cued to the moment the customer confirmed it, '+
+      'so the change can be evidenced rather than assumed.</p></div>'+
+      '<div class="div"></div>'+
+      '<div class="brow"><span class="m">Term shortened 30 &rarr; 25 years</span><span class="bg p">Evidenced 30:38</span></div>'+
+      '<div class="brow"><span class="m">Cover amount raised &pound;180k &rarr; &pound;210k</span><span class="bg r">No confirmation found</span></div>'],
+    feedback:['Feedback','<span class="bg n">Not sent</span>',
+      '<div class="card-b" style="padding-top:0;"><p style="font-size:var(--fs-sm);color:var(--t2);max-width:66ch;line-height:1.65;">'+
+      'Two findings stand after review. Overturn one first if you disagree with it &mdash; the note to the adviser is built '+
+      'from whatever is still standing when you send it.</p></div>'+
+      '<div class="div"></div>'+
+      '<div class="brow"><span class="m">Fee disclosed after the recommendation</span><span class="bg sev">Serious</span></div>'+
+      '<div class="brow"><span class="m">Cancellation rights not explained</span><span class="bg sev">Serious</span></div>'+
+      '<div class="card-b" style="padding-top:16px;"><button class="btn pri">Draft the note to J. Halloran</button></div>'],
+    history:['Scoring history','<span class="bg n">4 runs</span>',
+      '<div class="card-b" style="padding-top:0;"><p style="font-size:var(--fs-sm);color:var(--t2);max-width:68ch;line-height:1.65;">'+
+      'AI scoring is not fully repeatable, so re-running it can reach a different result on the same evidence. Every run is kept. '+
+      'A change in the checkpoint count means a different set applied, not just a different verdict on the same ones.</p></div>'+
+      '<div class="tw"><table><thead><tr><th>Run</th><th>Score</th><th>Change</th><th>Checkpoints</th><th>Run by</th><th>When</th></tr></thead><tbody>'+
+      '<tr><td class="who">4</td><td><b>78.00%</b></td><td style="color:var(--fail);font-weight:600;">&minus;2.40</td><td>26/28 passed</td><td>K. Vickery</td><td>21 Aug, 14:06</td></tr>'+
+      '<tr><td class="who">3</td><td><b>80.40%</b></td><td style="color:var(--pass);font-weight:600;">+1.20</td><td>27/28 passed</td><td>Bulk re-score</td><td>19 Aug, 02:10</td></tr>'+
+      '<tr><td class="who">2</td><td><b>79.20%</b></td><td style="color:var(--fail);font-weight:600;">&minus;3.60</td><td>26/28 passed</td><td>J. Mensah</td><td>16 Aug, 09:41</td></tr>'+
+      '<tr><td class="who">1</td><td><b>82.80%</b></td><td style="color:var(--t3);">&mdash;</td><td>28/30 passed</td><td>Automatic</td><td>15 Aug, 18:22</td></tr>'+
+      '</tbody></table></div>']
+  };
+  var modsWrap=document.querySelector('.mods').parentElement, drill=document.getElementById('drill');
+  document.querySelectorAll('.mod[data-drill]').forEach(function(m){
+    m.addEventListener('click',function(){
+      var d=MODS[m.getAttribute('data-drill')]; if(!d) return;
+      document.getElementById('drillTitle').textContent=d[0];
+      document.getElementById('drillCrumb').textContent=d[0];
+      document.getElementById('drillPill').innerHTML=d[1];
+      document.getElementById('drillBody').innerHTML=d[2];
+      modsWrap.hidden=true; drill.hidden=false;
+      drill.scrollIntoView({behavior:'smooth',block:'start'});
+    });
+  });
+  document.getElementById('drillBack').addEventListener('click',function(){
+    drill.hidden=true; modsWrap.hidden=false;
+    modsWrap.scrollIntoView({behavior:'smooth',block:'start'});
+  });
+
+  /* focus mode: checkpoint &#8644; transcript &#8644; dock */
+  var pane=document.getElementById('tPane');
+  var turns=[].slice.call(document.querySelectorAll('.turn'));
+  var head=document.getElementById('dockHead'), done=document.getElementById('dockDone');
+  var dockNow=document.getElementById('dockNow'), dockLbl=document.getElementById('dockLbl');
+  var TOTAL=47*60+12;
+  function secs(c){var p=String(c).split(':');return (parseInt(p[0],10)||0)*60+(parseInt(p[1],10)||0);}
+  function pad(n){return (n<10?'0':'')+n;}
+  function select(cp){
+    if(!cp) return;
+    document.querySelectorAll('.cp[aria-current="true"]').forEach(function(x){x.removeAttribute('aria-current');});
+    cp.setAttribute('aria-current','true');
+    var i=cp.getAttribute('data-line');
+    turns.forEach(function(t){t.classList.toggle('hi',t.getAttribute('data-i')===i);});
+    var target=document.querySelector('.turn[data-i="'+i+'"]');
+    if(target) pane.scrollTo({top:Math.max(0,target.offsetTop-pane.clientHeight/2+target.offsetHeight/2),behavior:'smooth'});
+    var s=secs(cp.getAttribute('data-t')), pct=Math.min(100,(s/TOTAL)*100);
+    head.style.left=pct+'%'; done.style.width=pct+'%';
+    dockNow.textContent=pad(Math.floor(s/60))+':'+pad(s%60);
+    dockLbl.textContent=cp.getAttribute('data-lab');
+  }
+  document.querySelectorAll('.cp[data-line] .cp-m').forEach(function(m){
+    m.addEventListener('click',function(){select(m.closest('.cp'));});
+  });
+
+  /* resolving a consent gate, in either state */
+  document.addEventListener('click',function(e){
+    var b=e.target.closest('.mini button'); if(!b) return;
+    e.stopPropagation();
+    var pass=b.classList.contains('ok');
+    var tick='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+    var cross='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>';
+    var lozenge='<span class="bg '+(pass?'p':'f')+'">'+(pass?tick+'Passed by you':cross+'Failed by you')+'</span>';
+    var host=b.closest('.ck-act')||b.closest('.ck-rt');
+    if(host) host.innerHTML=lozenge;
+    var row=b.closest('.ck')||b.closest('.cp');
+    if(row){
+      var ic=row.querySelector('.ck-ic');
+      if(ic){
+        ic.className='ck-ic '+(pass?'p':'f');
+        ic.innerHTML=pass?'<svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>'
+                         :'<svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>';
+      }
+      var badge=row.querySelector('.ck-rt .bg.r');
+      if(badge) badge.outerHTML='<span class="bg '+(pass?'p':'f')+'">'+(pass?'Passed by you':'Failed by you')+'</span>';
+    }
+  });
+
+  /* transcript search */
+  var tSearch=document.getElementById('tSearch'), tCount=document.getElementById('tCount');
+  tSearch.addEventListener('input',function(){
+    var q=tSearch.value.trim().toLowerCase(), hits=0;
+    turns.forEach(function(t){
+      var say=t.querySelector('.say');
+      if(!say.dataset.orig) say.dataset.orig=say.innerHTML;
+      say.innerHTML=say.dataset.orig;
+      if(!q){t.classList.remove('dim');return;}
+      var found=say.textContent.toLowerCase().indexOf(q)!==-1;
+      t.classList.toggle('dim',!found);
+      if(!found) return;
+      hits++;
+      var walk=document.createTreeWalker(say,NodeFilter.SHOW_TEXT,null), nodes=[], n;
+      while((n=walk.nextNode())) nodes.push(n);
+      nodes.forEach(function(node){
+        var at=node.nodeValue.toLowerCase().indexOf(q); if(at===-1) return;
+        var mid=node.splitText(at); mid.splitText(q.length);
+        var mk=document.createElement('mark');
+        mk.appendChild(mid.cloneNode(true));
+        mid.parentNode.replaceChild(mk,mid);
+      });
+    });
+    tCount.textContent=q?(hits+(hits===1?' turn':' turns')):'';
+  });
+
+  var track=document.getElementById('track');
+  track.addEventListener('click',function(e){
+    var r=track.getBoundingClientRect(), pct=Math.max(0,Math.min(1,(e.clientX-r.left)/r.width));
+    head.style.left=(pct*100)+'%'; done.style.width=(pct*100)+'%';
+    var s=Math.round(pct*TOTAL);
+    dockNow.textContent=pad(Math.floor(s/60))+':'+pad(s%60);
+  });
+
+  /* keyboard, focus mode only */
+  document.addEventListener('keydown',function(e){
+    if(/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
+    if(!sFocus.classList.contains('on')){
+      if(e.key==='Escape') return;
+      return;
+    }
+    if(e.key==='Escape'){toPage();return;}
+    if(e.key==='/'){e.preventDefault();tSearch.focus();return;}
+    if(e.key==='j'||e.key==='k'){
+      var list=[].slice.call(document.querySelectorAll('.cp[data-line]'));
+      if(!list.length) return;
+      var at=list.indexOf(document.querySelector('.cp[aria-current="true"]'));
+      var next=at===-1?0:(e.key==='j'?Math.min(list.length-1,at+1):Math.max(0,at-1));
+      select(list[next]); list[next].scrollIntoView({block:'nearest'});
+    }
+  });
+
+  /* notes */
+  var notes=document.getElementById('notes');
+  function setNotes(on){notes.classList.toggle('on',on);notes.setAttribute('aria-hidden',String(!on));}
+  document.getElementById('notesBtn').addEventListener('click',function(){setNotes(!notes.classList.contains('on'));});
+  document.getElementById('notesClose').addEventListener('click',function(){setNotes(false);});
+
+  select(document.querySelector('.cp[data-line="12"]'));
+})();
+</script>
