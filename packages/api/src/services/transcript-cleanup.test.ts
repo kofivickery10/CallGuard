@@ -14,6 +14,28 @@ describe('resolveSpeakerConfidence', () => {
     expect(raised).toBeGreaterThanOrEqual(CONSENT_SPEAKER_CONFIDENCE_FLOOR);
   });
 
+  // Andrew Kerr's sale: a 19-minute call diarisation returned as ONE cluster, so
+  // the whole thing sits under a single label with no Agent turn at all. The
+  // cleanup pass reported 'swapped', which lifted 0.3 -> 0.75, cleared the
+  // consent-gate floor of 0.5, and let every consent gate auto-score. A verdict
+  // about which label is which cannot mean anything when there is only one.
+  it('refuses to lift a call diarisation never split into two speakers', () => {
+    const held = resolveSpeakerConfidence(0.3, 'swapped', false, 1);
+    expect(held).toBe(0.3);
+    expect(held).toBeLessThan(CONSENT_SPEAKER_CONFIDENCE_FLOOR);
+  });
+
+  it('refuses the lift on one cluster even when the verdict is confirmed', () => {
+    expect(resolveSpeakerConfidence(0.3, 'confirmed', true, 1)).toBe(0.3);
+  });
+
+  // The guard is on the speaker count alone, so it must not touch a normal
+  // two-party call — that lift is the one this function exists to give.
+  it('still lifts a two-speaker call', () => {
+    expect(resolveSpeakerConfidence(0.3, 'swapped', false, 2)).toBe(0.75);
+    expect(resolveSpeakerConfidence(0.3, 'confirmed', true, 3)).toBe(0.75);
+  });
+
   it('raises a low mono confidence above the floor when labels are positively confirmed', () => {
     // The bug this fixes: a content-confirmed mono call used to stay at 0.3 and
     // route every consent gate to manual review.

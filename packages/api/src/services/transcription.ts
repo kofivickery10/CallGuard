@@ -19,6 +19,11 @@ interface TranscriptionResult {
   // later "labels look right" verdict is independent corroboration or just the
   // same weak signal a second time — see resolveSpeakerConfidence.
   adviser_identified_by_content: boolean;
+  // How many speaker clusters diarisation found. One means the parties were
+  // never separated and the whole call sits under a single label, which no
+  // later verdict about the labels may be allowed to lift — see
+  // resolveSpeakerConfidence.
+  speakerCount: number;
 }
 
 const DEEPGRAM_BASE_URLS: Record<DeepgramRegion, string> = {
@@ -89,6 +94,11 @@ function computeSpeakerAttributionConfidence(
   adviserIdentifiedByContent: boolean
 ): number {
   if (isMultichannel) return pinnedAdviserChannel !== null ? 1.0 : 0.7;
+  // NB a single-cluster call cannot reach the content branch below:
+  // identifyAdviserCluster abstains under two clusters, so it falls through to
+  // the 0.3 at the bottom. The lift such a call CAN still get comes later, from
+  // resolveSpeakerConfidence's 'swapped' branch — guarded there, not here.
+  //
   // Content identification is a materially stronger basis than the positional
   // guess: it aggregates adviser-specific behaviour over the whole call instead
   // of betting everything on the first utterance. High enough to clear the
@@ -658,5 +668,6 @@ export async function transcribeCall(
     duration_seconds: duration,
     speaker_attribution_confidence: assembly.speaker_attribution_confidence,
     adviser_identified_by_content: assembly.adviser_identified_by_content,
+    speakerCount: assembly.speakerCount,
   };
 }

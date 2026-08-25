@@ -266,6 +266,63 @@ describe('assembleTranscript', () => {
     expect(result.speaker_attribution_confidence).toBe(0.3);
   });
 
+  // The regression that let a 19-minute health-disclosure call score 92.68 with
+  // no Agent turn in its transcript. One cluster means diarisation never
+  // separated the parties, so the content pick has a single candidate, finds the
+  // adviser's words inside it, and "identifies" the adviser — awarding 0.8 to a
+  // transcript where both people are fused together. The speaker count has to be
+  // settled before the content branch can lift anything.
+  it('mono with ONE diarised cluster: refuses the content lift, confidence 0.3', () => {
+    const utterances: TranscriptUtterance[] = [
+      {
+        transcript:
+          "It's Jane calling from Trust Point about the life insurance. " +
+          'I was up in neurology yesterday. Calls are recorded. ' +
+          'Can I just confirm your date of birth?',
+        speaker: 0,
+        start: 0,
+      },
+      { transcript: 'Nothing came up at all, a clean bill of health.', speaker: 0, start: 20 },
+    ];
+    const result = assembleTranscript({
+      utterances,
+      isMultichannel: false,
+      pinnedAdviserChannel: null,
+      monoFirstSpeaker: 'customer',
+      channelFallbackText: '',
+    });
+    expect(result.speakerCount).toBe(1);
+    // identifyAdviserCluster abstains under two clusters, so the content lift is
+    // already unreachable here — the base confidence is the floor value. The
+    // lift a call like this CAN still get comes from the cleanup verdict, which
+    // is guarded in resolveSpeakerConfidence (see transcript-cleanup.test.ts).
+    expect(result.adviser_identified_by_content).toBe(false);
+    expect(result.speaker_attribution_confidence).toBe(0.3);
+  });
+
+  // Guards the ordering specifically: two clusters plus content markers is the
+  // case that legitimately earns 0.8, and the new short-circuit must not eat it.
+  it('mono with two clusters still earns the content lift', () => {
+    const utterances: TranscriptUtterance[] = [
+      { transcript: 'Hello?', speaker: 0, start: 0 },
+      {
+        transcript: 'Calls are recorded. Can I just confirm your date of birth?',
+        speaker: 1,
+        start: 3,
+      },
+    ];
+    const result = assembleTranscript({
+      utterances,
+      isMultichannel: false,
+      pinnedAdviserChannel: null,
+      monoFirstSpeaker: 'customer',
+      channelFallbackText: '',
+    });
+    expect(result.speakerCount).toBe(2);
+    expect(result.adviser_identified_by_content).toBe(true);
+    expect(result.speaker_attribution_confidence).toBe(0.8);
+  });
+
   it('joins consecutive same-speaker words into one turn and splits a mid-utterance speaker change at word level', () => {
     const utterances: TranscriptUtterance[] = [
       {

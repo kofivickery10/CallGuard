@@ -3,6 +3,8 @@ import { query, queryOne } from '../db/client.js';
 import { CLAUDE_MODELS } from '@callguard/shared';
 import { recordUsage } from './usage.js';
 import { CACHE_1H, CACHE_TTL_HEADERS } from './scoring.js';
+// One implementation of the label flip, in the module that owns label integrity.
+import { swapSpeakerLabels } from './speaker-integrity.js';
 
 // The model's content-based verdict on the Agent/Customer labels:
 // - 'swapped'     — clear evidence the labels were inverted throughout; corrected.
@@ -47,8 +49,32 @@ export function resolveSpeakerConfidence(
   // cluster is the adviser (services/speaker-integrity.ts). Defaults true so
   // existing callers keep their behaviour; the transcribe path passes the real
   // value.
-  contentIdentifiedAdviser: boolean = true
+  contentIdentifiedAdviser: boolean = true,
+  // How many speaker clusters diarisation actually found. Defaults to 2 so
+  // existing callers keep their behaviour; the transcribe path passes the real
+  // value.
+  speakerCount: number = 2
 ): number {
+  // Diarisation never separated the parties: one cluster, so the whole call sits
+  // under a single label. No verdict about which label is which can mean
+  // anything here — there is only one in play — so no verdict may lift the
+  // confidence either.
+  //
+  // This is the hole that mattered. 'swapped' lifts unconditionally below, on the
+  // reasoning that a model actively correcting the labels is stating evidence.
+  // That reasoning assumes two labels to correct BETWEEN. On a single-cluster
+  // transcript the "swap" is flipping the one label the whole call is under,
+  // which is not a correction of anything.
+  //
+  // Measured on Trust Point: 76 of 297 transcribed calls came back with a single
+  // cluster, all of them carrying the entire call under one label. Most are short
+  // (median 39s — voicemails and no-answers) and harmless. Four are the wrap-up
+  // call of a scored sale. One is a 19-minute health-disclosure conversation with
+  // both voices plainly present in the text, stored as a single 'Customer:' turn
+  // and no Agent turn at all: lifted 0.3 -> 0.75, which cleared the consent-gate
+  // floor of 0.5, so every consent gate auto-scored and the sale came out at
+  // 92.68 — judged throughout against a transcript with no adviser in it.
+  if (speakerCount < 2) return baseConfidence;
   // 'partial' deliberately grouped with 'unclear': knowing PART of the call is
   // inverted is not a basis for trusting any of it, and the whole-transcript
   // swap cannot fix it. Confidence stays low so who-said-it checkpoints route
@@ -70,16 +96,6 @@ export function resolveSpeakerConfidence(
   if (verdict === 'swapped') return Math.max(baseConfidence, 0.75);
   if (verdict === 'confirmed' && contentIdentifiedAdviser) return Math.max(baseConfidence, 0.75);
   return baseConfidence;
-}
-
-// Mechanically flip every Agent:/Customer: turn label. Used when the model's
-// one-time swap decision is known but its cleaned output can't be trusted
-// (truncated at max_tokens) — a raw-but-correctly-attributed transcript beats
-// a cleaned-but-inverted one for scoring.
-function swapSpeakerLabels(transcript: string): string {
-  return transcript.replace(/^(Agent|Customer):/gm, (_m, who: string) =>
-    who === 'Agent' ? 'Customer:' : 'Agent:'
-  );
 }
 
 // Read the leading `SPEAKER_LABELS: <verdict>` line the model is asked to emit.

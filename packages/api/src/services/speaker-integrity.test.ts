@@ -3,6 +3,8 @@ import {
   assessSpeakerIntegrity,
   countSpeakerMarkers,
   identifyAdviserCluster,
+  swapSpeakerLabels,
+  transcriptSupportsAttribution,
   UNRELIABLE_SPEAKER_CONFIDENCE,
 } from './speaker-integrity.js';
 import { CONSENT_SPEAKER_CONFIDENCE_FLOOR } from './checkpoint-classification.js';
@@ -201,5 +203,75 @@ describe('identifyAdviserCluster', () => {
 
   it('abstains on a single cluster', () => {
     expect(identifyAdviserCluster([{ key: 0, text: adviserSpeech }])).toBeNull();
+  });
+});
+
+describe('swapSpeakerLabels', () => {
+  it('flips every label and leaves turn order and text untouched', () => {
+    const before = 'Agent: Hello there.\nCustomer: Hi.\nAgent: Right.';
+    expect(swapSpeakerLabels(before)).toBe(
+      'Customer: Hello there.\nAgent: Hi.\nCustomer: Right.'
+    );
+  });
+
+  it('is its own inverse', () => {
+    expect(swapSpeakerLabels(swapSpeakerLabels(INVERTED))).toBe(INVERTED);
+  });
+
+  // A label is only a label at the start of a turn. "Agent:" inside a sentence
+  // is speech, and flipping it would corrupt the transcript.
+  it('ignores the words mid-line', () => {
+    const line = 'Customer: I asked the Agent: why?';
+    expect(swapSpeakerLabels(line)).toBe('Agent: I asked the Agent: why?');
+  });
+});
+
+describe('transcriptSupportsAttribution', () => {
+  it('accepts a normal two-party transcript', () => {
+    const r = transcriptSupportsAttribution(CORRECT, null);
+    expect(r.ok).toBe(true);
+    expect(r.reason).toBeNull();
+  });
+
+  // Andrew Kerr's sale: diarisation returned one cluster, so the whole
+  // 19-minute call sits under 'Customer:' with no Agent turn. It scored 92.68.
+  it('refuses a transcript where the whole call is one party', () => {
+    const r = transcriptSupportsAttribution(
+      "Customer: It's Jane from Trust Point about the life insurance. " +
+        'I was up in neurology yesterday, clean bill of health.',
+      null
+    );
+    expect(r.ok).toBe(false);
+    expect(r.reason).toContain('never separated');
+  });
+
+  it('refuses either one-sided direction', () => {
+    expect(transcriptSupportsAttribution('Agent: Hello. Anyone there?', null).ok).toBe(false);
+    expect(transcriptSupportsAttribution('Customer: Hello?', null).ok).toBe(false);
+  });
+
+  it('refuses a transcript with no labels at all', () => {
+    const r = transcriptSupportsAttribution('Hello, is anyone there?', null);
+    expect(r.ok).toBe(false);
+    expect(r.reason).toContain('no speaker labels');
+  });
+
+  it('refuses an empty or missing transcript', () => {
+    expect(transcriptSupportsAttribution('', null).ok).toBe(false);
+    expect(transcriptSupportsAttribution(null, null).ok).toBe(false);
+  });
+
+  // Two labels present, but the content says they are on the wrong parties.
+  // Previously this only gated consent items; everything else scored on it.
+  it('refuses a well-formed transcript whose labels are flagged', () => {
+    const r = transcriptSupportsAttribution(CORRECT, 'inverted_labels');
+    expect(r.ok).toBe(false);
+    expect(r.reason).toContain('inverted_labels');
+  });
+
+  it('refuses on any integrity flag, not just inversion', () => {
+    for (const flag of ['partial_inversion', 'role_marker_conflict', 'model_verdict_conflict'] as const) {
+      expect(transcriptSupportsAttribution(CORRECT, flag).ok).toBe(false);
+    }
   });
 });

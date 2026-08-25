@@ -242,7 +242,9 @@ async function transcribeAndStore(
     let speakerAttributionConfidence = resolveSpeakerConfidence(
       result.speaker_attribution_confidence,
       cleanup.speakerVerdict,
-      result.adviser_identified_by_content
+      result.adviser_identified_by_content,
+      // No verdict may lift a call diarisation never split into two parties.
+      result.speakerCount
     );
 
     // Deterministic cross-check on the labels the cleanup pass just blessed.
@@ -254,6 +256,24 @@ async function transcribeAndStore(
     // markers contradict the verdict, we refuse the lift and pin confidence
     // below the floor (services/speaker-integrity.ts).
     const integrity = assessSpeakerIntegrity(cleanup.text, cleanup.speakerVerdict);
+
+    // NOT auto-corrected, and the reason is worth recording so it is not
+    // attempted again.
+    //
+    // An 'inverted_labels' verdict looks like it names the direction of the
+    // error, which would make it repairable: flip every label and re-verify.
+    // Measured on six flagged Trust Point calls, flipping made the marker
+    // distribution come back clean on all six — and inspection showed only two
+    // were actually inverted. On the other four, diarisation had collapsed both
+    // parties into single turns ("Agent: Hi. You're through to [name] at Trust
+    // Point. How can I help? I had a missed call off you yesterday."), and one
+    // was a three-party call with a receptionist. No arrangement of two labels
+    // is correct for those, so flipping moves the error rather than fixing it —
+    // and the marker check cannot tell the two cases apart, because the adviser's
+    // scripted phrases cluster into whichever half lands under 'Agent'.
+    //
+    // So the flag stays diagnostic and the confidence penalty stands. What these
+    // calls need is re-transcription, not relabelling.
     if (integrity.flag) {
       speakerAttributionConfidence = Math.min(
         speakerAttributionConfidence,

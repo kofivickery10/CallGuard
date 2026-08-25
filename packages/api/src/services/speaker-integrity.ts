@@ -298,6 +298,86 @@ export function assessSpeakerIntegrity(
 // routes to manual review rather than auto-scoring off labels we don't trust.
 export const UNRELIABLE_SPEAKER_CONFIDENCE = 0.3;
 
+export interface AttributionSupport {
+  /** False when no checkpoint about who said something can be judged from this. */
+  ok: boolean;
+  /** Reader-facing reason, for the log and the reviewer. Null when ok. */
+  reason: string | null;
+}
+
+/**
+ * Can this transcript support a claim about who said something?
+ *
+ * A score is an assertion about the adviser's conduct, so it needs a transcript
+ * in which the adviser is identifiable. Two states fail that outright, and both
+ * were being scored as though they passed it.
+ *
+ * ONE PARTY IN THE WHOLE TRANSCRIPT
+ *
+ * Diarisation returned a single cluster, so every word carries one label and the
+ * other party does not appear. Measured on Trust Point: 76 of 297 transcribed
+ * calls. Most are short — voicemails and no-answers — and never reach scoring.
+ * Four are the wrap-up call of a scored sale, and one of those is a 19-minute
+ * health-disclosure conversation stored as a single 'Customer:' turn with no
+ * Agent turn at all. It scored 92.68: every "did the adviser say this"
+ * checkpoint judged against a transcript with no adviser in it.
+ *
+ * Note this is read off the LABELS rather than a stored cluster count, because
+ * it is the labels scoring actually consumes — and it catches a transcript that
+ * arrived one-sided by any route, not only the one we know about.
+ *
+ * LABELS PRESENT BUT NOT TRUSTWORTHY
+ *
+ * Any integrity flag means the marker content contradicts the labelling. The
+ * flag has been diagnostic until now: confidence was pinned, which protects
+ * consent gates and leaves the thirty-odd checkpoints that are not consent
+ * gates auto-scoring off the same suspect labels.
+ *
+ * WHAT THIS DOES NOT DO
+ *
+ * It does not decide the transcript is worthless. The words are all there and a
+ * person listening to the recording can score the sale perfectly well — which is
+ * why the caller routes every checkpoint to review rather than discarding the
+ * sale. The reviewer's verdicts produce the score.
+ */
+export function transcriptSupportsAttribution(
+  transcript: string | null | undefined,
+  flag: SpeakerIntegrityFlag | null
+): AttributionSupport {
+  if (flag !== null) {
+    return {
+      ok: false,
+      reason: `speaker labels are not trustworthy (${flag})`,
+    };
+  }
+  const text = transcript ?? '';
+  const agent = (text.match(/^Agent:/gm) ?? []).length;
+  const customer = (text.match(/^Customer:/gm) ?? []).length;
+  if (agent === 0 || customer === 0) {
+    return {
+      ok: false,
+      reason:
+        agent === 0 && customer === 0
+          ? 'the transcript carries no speaker labels at all'
+          : `the whole call is labelled ${agent === 0 ? 'Customer' : 'Agent'} — the two parties were never separated`,
+    };
+  }
+  return { ok: true, reason: null };
+}
+
+/**
+ * Mechanically flip every Agent:/Customer: turn label. Turn order and text are
+ * untouched.
+ *
+ * The single implementation. transcript-cleanup.ts uses it when the model's swap
+ * decision is known but its cleaned output cannot be trusted, and
+ * repairInvertedLabels below uses it to act on a detected inversion.
+ */
+export function swapSpeakerLabels(transcript: string): string {
+  return transcript.replace(/^(Agent|Customer):/gm, (_m, who: string) =>
+    who === 'Agent' ? 'Customer:' : 'Agent:'
+  );
+}
 
 // ============================================================
 // Cluster → role assignment (used BEFORE any label exists)
