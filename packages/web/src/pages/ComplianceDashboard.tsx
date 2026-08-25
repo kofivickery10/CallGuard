@@ -38,6 +38,7 @@ const RUN_STATUS: Record<ReconciliationRunStatus, { label: string; className: st
   summary_only: { label: 'No questions', className: 'bg-table-header text-text-secondary' },
   failed: { label: 'Failed', className: 'bg-fail-bg text-fail' },
   abandoned: { label: 'Never checked', className: 'bg-table-header text-text-secondary' },
+  identity_mismatch: { label: 'Wrong customer', className: 'bg-fail-bg text-fail' },
 };
 
 interface RunRow {
@@ -476,11 +477,29 @@ export function ComplianceDashboard() {
               loading={loading}
             />
             <StatCard
-              label="Failed or abandoned"
+              label="Failed"
               value={s?.failed ?? null}
               to="/reconciliation#attention"
               tone={s && s.failed > 0 ? 'fail' : 'default'}
               note="These never retry on their own"
+              loading={loading}
+            />
+            {/* Split out of "Failed or abandoned", because the two ask for
+                opposite things: a failure is ours to fix, and this is the pack
+                never having been attached — nothing for us to read, and nothing
+                that retrying can change. Shown as a rate over sales whose
+                waiting window has closed, since "28" prompts nothing and
+                "28 of 67" prompts a conversation. */}
+            <StatCard
+              label="No application attached"
+              value={s?.no_document ?? null}
+              to="/reconciliation#attention"
+              tone={s && s.no_document_due > 0 && s.no_document / s.no_document_due >= 0.2 ? 'review' : 'default'}
+              note={
+                s && s.no_document_due > 0
+                  ? `${Math.round((s.no_document / s.no_document_due) * 100)}% of ${s.no_document_due} sales past the wait`
+                  : 'Nothing has passed the waiting window yet'
+              }
               loading={loading}
             />
             <StatCard

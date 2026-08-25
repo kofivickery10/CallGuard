@@ -38,6 +38,80 @@ const LEARN_FAILURES: Record<NonNullable<LearnOutcome['failure']>, string> = {
 };
 
 /**
+ * When the message above was written.
+ *
+ * The states that show a stored message — waiting, unrecognised, abandoned — show
+ * a SNAPSHOT of a check that ran at some point, not a live verdict, and the gap
+ * between the two is where the confusion lives. One sale read "None of the 1
+ * attached document(s) match a known format" for half a day after the real
+ * application became the second of three attachments; the panel was telling the
+ * truth about a moment that had passed. Dating it is what makes that legible.
+ */
+function CheckedAt({ at }: { at: string | null }) {
+  if (!at) return null;
+  return (
+    <p className="text-xs text-text-muted mt-1.5">
+      Last checked{' '}
+      {new Date(at).toLocaleString('en-GB', {
+        day: 'numeric',
+        month: 'short',
+        hour: '2-digit',
+        minute: '2-digit',
+      })}
+      .
+    </p>
+  );
+}
+
+/**
+ * Check this sale again now, rather than waiting for the sweep.
+ *
+ * Exists because the commonest reason a parked sale is parked is that the
+ * application had not been uploaded when we last looked — so the document
+ * arriving is exactly the event nothing tells CallGuard about. The sweep does
+ * come back on its own, but on a twelve-hour cadence for a parked run and not at
+ * all for an abandoned one, which left forty of one tenant's sales written off
+ * with no route back but a database write.
+ *
+ * The route it calls has existed all along (POST /reconciliation/journeys/:id/run);
+ * only the button was missing.
+ */
+function RecheckAction({ journeyId, detail }: { journeyId: string; detail: string }) {
+  const queryClient = useQueryClient();
+
+  const recheck = useMutation({
+    mutationFn: () => api.post<{ id: string; status: string }>(`/reconciliation/journeys/${journeyId}/run`, {}),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['reconciliation-journey', journeyId] });
+    },
+  });
+
+  return (
+    <div className="mt-4">
+      <button
+        onClick={() => recheck.mutate()}
+        disabled={recheck.isPending}
+        aria-label="Check this sale against its application again"
+        className="px-3 py-1.5 rounded-btn text-badge font-semibold bg-primary text-white hover:bg-primary-hover disabled:opacity-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+      >
+        {recheck.isPending ? 'Checking again…' : 'Check this sale again'}
+      </button>
+      <p className="text-xs text-text-muted mt-1.5 leading-relaxed">{detail}</p>
+      {recheck.isError && (
+        <div className="bg-fail-bg text-fail px-3 py-2 rounded-btn text-table-cell mt-2.5 inline-block">
+          {(recheck.error as Error).message}
+        </div>
+      )}
+      {recheck.isSuccess && (
+        <div className="bg-review-bg text-review px-3 py-2 rounded-btn text-table-cell mt-2.5 inline-block">
+          Queued. This panel updates once the check finishes.
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
  * Teach CallGuard an insurer's document format from this sale's attachment.
  *
  * Admin-only and deliberately manual. Nothing it produces is used to judge a
@@ -65,7 +139,8 @@ function LearnProfileAction({ journeyId }: { journeyId: string }) {
       <button
         onClick={() => learn.mutate(null)}
         disabled={learn.isPending}
-        className="px-3 py-1.5 rounded-btn text-badge font-semibold bg-primary text-white hover:opacity-90 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+        aria-label="Read this application and propose a format for it"
+        className="px-3 py-1.5 rounded-btn border border-border text-text-cell text-badge font-semibold hover:bg-sidebar-hover disabled:opacity-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
       >
         {learn.isPending ? 'Reading the document…' : 'Read this application and propose a format'}
       </button>
@@ -250,6 +325,13 @@ export function ReconciliationPanel({
                   'No application document has been attached to this sale in the CRM yet.'}{' '}
                 CallGuard keeps checking, and this runs on its own once the pack is attached.
               </p>
+              <CheckedAt at={run.last_attempt_at ?? run.created_at} />
+              {isAdmin && (
+                <RecheckAction
+                  journeyId={journeyId}
+                  detail="If the application has just been attached, this checks it now rather than waiting for the next automatic sweep."
+                />
+              )}
             </div>
           </div>
         </div>
@@ -273,6 +355,13 @@ export function ReconciliationPanel({
                 {run.error_message ??
                   'No application document was attached to this sale in the CRM, so there was nothing to compare the call against.'}
               </p>
+              <CheckedAt at={run.last_attempt_at ?? run.created_at} />
+              {isAdmin && (
+                <RecheckAction
+                  journeyId={journeyId}
+                  detail="Attach the application to the CRM record, then check again — an abandoned sale is never revisited on its own, so this is the only way back."
+                />
+              )}
             </div>
           </div>
         </div>
@@ -312,6 +401,26 @@ export function ReconciliationPanel({
               `An administrator needs to review ${unrecognised ? 'this format' : 'the change'} before this sale can be reconciled.`
             )}
           </p>
+          <CheckedAt at={run.last_attempt_at ?? run.created_at} />
+          {/* Re-check FIRST, and deliberately so on an unrecognised format.
+              "None of the N attached documents match a known format" is a
+              statement about the pack as it was when we looked, and the pack
+              grows: one sale said "none of the 1 document(s)" while the real
+              application sat second of three, already covered by a format that
+              was live. Proposing a format there teaches nothing and puts another
+              row in somebody's review queue, when the sale needed looking at
+              again. Learning a format is the right move only once a re-check has
+              confirmed the document genuinely is not one we know. */}
+          {isAdmin && (
+            <RecheckAction
+              journeyId={journeyId}
+              detail={
+                unrecognised
+                  ? 'Documents are often attached after the sale is scored. Check again first — if the application has arrived since, it may already be covered by a format that is live.'
+                  : 'Checks the pack as it stands now, in case the document has been replaced with one matching the format already in use.'
+              }
+            />
+          )}
           {isAdmin && <LearnProfileAction journeyId={journeyId} />}
         </div>
       </PanelShell>
@@ -333,6 +442,37 @@ export function ReconciliationPanel({
             nothing to compare those answers against. This is how the product is underwritten,
             not a fault — but it does mean an omission here would not be detected.
           </p>
+        </div>
+      </PanelShell>
+    );
+  }
+
+  // The document is fine and the call is fine; the pairing between them is not.
+  // Given its own state rather than a quiet 'undetermined' on two rows, because
+  // that is exactly how a sale once produced six findings against an adviser
+  // with the disproof sitting above them. Nothing was compared, and the sale is
+  // waiting on a person rather than a clock — so no "we will keep checking".
+  if (run.status === 'identity_mismatch') {
+    return (
+      <PanelShell subtitle="What the insurer received, against what the customer said.">
+        <div className="px-5 py-6">
+          <div className="flex items-start gap-3">
+            <DocumentAlertIcon className="w-5 h-5 text-fail flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-table-cell text-text-primary font-medium">
+                This application and this call are about different people
+              </p>
+              <p className="text-xs text-text-muted mt-1 leading-relaxed">
+                {run.error_message ??
+                  'The date of birth on the application does not match the one given on the call, by more than a mishearing can explain. Nothing has been compared.'}
+              </p>
+              <p className="text-xs text-text-muted mt-2 leading-relaxed">
+                Sales are matched to a customer by phone number, so a mobile shared
+                within a household can attach the wrong recording. Check which call
+                belongs to this sale, then re-run the check.
+              </p>
+            </div>
+          </div>
         </div>
       </PanelShell>
     );

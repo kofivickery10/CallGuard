@@ -25,7 +25,14 @@ export type ReconciliationRunStatus =
   // We stopped waiting: no application document was ever attached within the
   // window, or the sale has no CRM record for one to appear on. Distinct from
   // 'needs_document', which invites the reader to keep waiting.
-  | 'abandoned';
+  | 'abandoned'
+  // The document and the call are about different people — the identity fields
+  // contradict by more than a mishearing can explain. Journeys match a customer
+  // by phone number, and a shared household mobile pairs one person's
+  // application with another person's recording. No items are stored: a run
+  // that cannot say who it is about must not assert anything about anyone. Not
+  // retried and not abandoned — only a person can repair the pairing.
+  | 'identity_mismatch';
 
 export type ReconciliationOutcome =
   | 'match'
@@ -312,6 +319,24 @@ export interface ReconciliationDashboardSummary {
   oldest_waiting_days: number | null;
   /** Runs that gave up or errored. */
   failed: number;
+  /**
+   * Sales where no application document was ever attached to the CRM record
+   * within the waiting window, so nothing could be compared.
+   *
+   * Counted apart from `failed`, which it used to be folded into, because the two
+   * ask for opposite things. A failure is ours to fix. This is not a fault at
+   * all: the pack is attached by hand after the call, and where it never is,
+   * there is nothing for the platform to read. Reported alongside
+   * `no_document_due` so it reads as a rate — the number that prompts anything is
+   * "28 of 67", not "28".
+   *
+   * On the first deploying firm this was 42% of sales past the window, flat over
+   * three weeks, and it caps what the module can ever cover. Folded into
+   * "failed" it read as a system problem and nobody was told.
+   */
+  no_document: number;
+  /** Sales past the waiting window, i.e. the denominator for `no_document`. */
+  no_document_due: number;
   /**
    * Question sets awaiting a person. Not windowed: an unconfirmed set parks
    * every sale on that format regardless of when it was proposed.

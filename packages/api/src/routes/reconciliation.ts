@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { ABANDON_AFTER_DAYS } from '../services/reconciliation-sweep.js';
 import { authenticate, requireAdmin, requireOrgView } from '../middleware/auth.js';
 import { query, queryOne } from '../db/client.js';
 import { AppError } from '../middleware/errors.js';
@@ -610,7 +611,12 @@ reconciliationRouter.get('/dashboard/summary', async (req, res, next) => {
          -- a failure, and not something waiting. Without this the tiles silently
          -- fail to account for every run.
          count(*) FILTER (WHERE status = 'summary_only')::int AS summary_only,
-         count(*) FILTER (WHERE status IN ('failed','abandoned'))::int AS failed
+         -- 'abandoned' deliberately NOT counted here any more. It used to be, and
+         -- the two ask for opposite things: a failure is ours to fix, an
+         -- abandonment means the pack was never attached and there is nothing to
+         -- read. Folded together it read as a system fault, and the number that
+         -- caps what this module can cover was invisible.
+         count(*) FILTER (WHERE status = 'failed')::int AS failed
        FROM capture_reconciliation_runs
       WHERE organization_id = $1
         AND created_at >= now() - make_interval(days => $2::int)`,
@@ -649,6 +655,27 @@ reconciliationRouter.get('/dashboard/summary', async (req, res, next) => {
           AND j.zoho_record_id IS NOT NULL
           AND j.scored_at >= now() - make_interval(days => $2::int)`,
       [orgId, days]
+    );
+
+    // How often the pack never arrives.
+    //
+    // NOT windowed by the page's date filter, and measured only over sales whose
+    // waiting window has CLOSED — a sale two days old with no document yet is
+    // waiting, not missing, and counting it would overstate the problem by half.
+    //
+    // The window is the right length: measured over 59 completed runs on the
+    // first deploying firm, the median wait for a pack was 12 minutes, the 90th
+    // percentile an hour, and the slowest ever 3.7 days against a 7-day window.
+    // So a sale that reaches the end of it is not waiting on a slow upload.
+    const noDoc = await queryOne<{ due: number; missing: number }>(
+      `SELECT count(*)::int AS due,
+              count(*) FILTER (WHERE r.status IN ('needs_document','abandoned'))::int AS missing
+         FROM journeys j
+         JOIN capture_reconciliation_runs r ON r.journey_id = j.id
+        WHERE j.organization_id = $1
+          AND j.zoho_record_id IS NOT NULL
+          AND r.created_at < now() - make_interval(days => $2::int)`,
+      [orgId, ABANDON_AFTER_DAYS]
     );
 
     // Item figures come only from runs that actually completed a comparison —
@@ -706,6 +733,8 @@ reconciliationRouter.get('/dashboard/summary', async (req, res, next) => {
       // Only meaningful when something is actually waiting.
       oldest_waiting_days: parked > 0 ? (backlog?.oldest_days ?? 0) : null,
       failed: runStats?.failed ?? 0,
+      no_document: noDoc?.missing ?? 0,
+      no_document_due: noDoc?.due ?? 0,
       awaiting_confirmation: awaiting?.n ?? 0,
     };
     res.json(payload);

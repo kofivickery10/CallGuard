@@ -364,6 +364,72 @@ describe('proposal guards found by running against a real pack', () => {
   });
 });
 
+// The layout that produced two unconfirmable formats on the first deploying
+// firm: labels printed with the value on the FOLLOWING line, sometimes after a
+// bullet, and no colon anywhere. parseLabelValue reads none of them.
+const BULLET_APPLICATION = [
+  'Protection Application Details',
+  'For Family Protection',
+  'Client Information',
+  '\u2022 Sex',
+  'Male',
+  '\u2022 Date of Birth',
+  '23/12/1992',
+  '\u2022 Employment Status',
+  'Full time employee',
+  '\u2022 During the last 12 months have you smoked any cigarettes?',
+  'A simple medical test may be required to check your answer.',
+  'None at all',
+  'Height Metric: 168cm Height Imperial: 5ft 6in',
+].join('\n');
+
+const BULLET_PROPOSAL: ProfileProposal = {
+  insurer: 'Legal & General Assurance Society Limited',
+  product: 'Life Insurance',
+  strategy: 'label_value',
+  detect_patterns: ['Protection Application Details', 'For Family Protection'],
+  parse_config: {
+    labels: [
+      'Sex',
+      'Date of Birth',
+      'Employment Status',
+      'During the last 12 months have you smoked any cigarettes?',
+      'Height Metric',
+      'Height Imperial',
+    ],
+  },
+  notes: null,
+};
+
+describe('a label_value config that reads almost none of its own labels', () => {
+  // Found on a real 19-page application: the config listed 68 labels and the
+  // parse read 4 — the only four the document happens to print with a colon.
+  // It was offered for confirmation looking like a working format whose question
+  // set was height and weight, while every health question on the form went
+  // unread. Nothing in the proposal said so, because coverage used to claim
+  // nothing at all for label_value.
+  const result = verifyProposal(BULLET_APPLICATION, BULLET_PROPOSAL);
+
+  it('refuses it rather than offering it for confirmation', () => {
+    expect(result.usable).toBe(false);
+  });
+
+  it('says how many the document had and how many were read', () => {
+    expect(result.problems.some((p) => /only 2 were read/.test(p.message))).toBe(true);
+  });
+
+  it('names the questions that would stop being checked', () => {
+    const message = result.problems.map((p) => p.message).join(' ');
+    expect(message).toContain('Not read:');
+    expect(message).toContain('smoked any cigarettes');
+  });
+
+  it('still accepts a sheet whose labels the parse genuinely reads', () => {
+    // The guard must not touch the format this strategy exists for.
+    expect(verifyProposal(METLIFE_SUMMARY, GOOD_METLIFE).usable).toBe(true);
+  });
+});
+
 describe('looksLikeDisclosureSet', () => {
   it('recognises the health and lifestyle questionnaire', () => {
     expect(

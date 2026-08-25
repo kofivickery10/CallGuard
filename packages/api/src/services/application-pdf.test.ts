@@ -11,6 +11,7 @@ import {
   parseLooksHealthy,
   formatSignature,
   expectedRecordCount,
+  countLabelRows,
   relaxAttribution,
   assembleSpans,
   type PositionedItem,
@@ -767,10 +768,49 @@ describe('expectedRecordCount — an expectation the parser cannot fake', () => 
   });
 
   it('claims nothing where there is no marker to count', () => {
-    // label_value asks for known labels, so a label absent from the sheet is
-    // absent rather than lost. Asserting a count there would invent failures.
+    // A label the sheet does not contain is absent, not lost — counting it would
+    // invent a failure on every conditional question this customer skipped.
     expect(expectedRecordCount('anything', 'label_value', { labels: ['Name'] })).toBeNull();
     expect(expectedRecordCount('anything', 'question_marker', {})).toBeNull();
+  });
+
+  it('counts label_value labels the document prints as rows', () => {
+    // The value on the FOLLOWING line, which parseLabelValue cannot read: two
+    // rows are plainly there, so two are expected and the shortfall is real.
+    const text = ['Sex', 'Male', 'Date of Birth', '23/12/1992'].join('\n');
+    expect(expectedRecordCount(text, 'label_value', { labels: ['Sex', 'Date of Birth'] })).toBe(2);
+  });
+});
+
+describe('countLabelRows — a label the document presents but the parse never read', () => {
+  it('counts a bullet-prefixed label with the value on the next line', () => {
+    const text = ['• Sex', 'Male', '• Employment Status', 'Full time employee'].join('\n');
+    expect(countLabelRows(text, ['Sex', 'Employment Status'])).toBe(2);
+  });
+
+  it('counts a tab-delimited row and a colon row alike', () => {
+    expect(countLabelRows('Occupation\tDriver - HGV', ['Occupation'])).toBe(1);
+    expect(countLabelRows('Policy number: EPH005387', ['Policy number'])).toBe(1);
+  });
+
+  it('does not count a label that only appears mid-sentence', () => {
+    // The distinction the whole gate rests on. "Name" inside prose is not the
+    // document offering a Name field, and counting it would refuse a good
+    // format for a record it never had.
+    expect(countLabelRows('Please give the name of account holder below.', ['name'])).toBe(0);
+  });
+
+  it('does not count a label whose row continues into other words', () => {
+    // "First Client" is not the row here; "First Client Name" is.
+    expect(countLabelRows('• First Client Name\nMs Q', ['First Client'])).toBe(0);
+  });
+
+  it('counts a label the extraction wrapped across two lines', () => {
+    expect(countLabelRows('Preferred direct debit\ncollection date\t5', ['Preferred direct debit collection date'])).toBe(1);
+  });
+
+  it('claims nothing when no labels are configured', () => {
+    expect(countLabelRows('Sex\nMale', [])).toBe(0);
   });
 });
 

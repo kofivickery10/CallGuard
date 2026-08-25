@@ -4,6 +4,7 @@ import {
   resolveApplicationDocument,
   learnProfileFromSale,
   statusForFailure,
+  withdrawProposal,
   type ResolutionResult,
   type LearnOutcome,
 } from '../../services/reconciliation-runs.js';
@@ -21,6 +22,7 @@ import {
   deriveAnswerTerms,
   deriveChoiceTerms,
   defaultCheckMode,
+  coincidentalEvidence,
   classifyItem,
   classifyAmendment,
   type QuestionCheckMode,
@@ -36,6 +38,15 @@ import {
   ApplicationExtractionError,
 } from '../../services/application-extraction.js';
 import { extractCallAnswers, type ExtractedValue } from '../../services/reconciliation-values.js';
+import {
+  checkIdentity,
+  identityRoleOf,
+  type IdentityVerdict,
+} from '../../services/reconciliation-identity.js';
+import {
+  maskApplicationAnswer,
+  redactionCheckMode,
+} from '../../services/application-redaction.js';
 import { recordUsage } from '../../services/usage.js';
 import { notify, recipientsByRole } from '../../services/notify.js';
 import type { AlertSeverity, NotificationType } from '@callguard/shared';
@@ -393,6 +404,28 @@ export async function processReconcile(job: Job<{ runId: string }>) {
         if (!resolution.document) {
           const done = await reconcileByModel(run, journey.zoho_record_id, resolution, outcome);
           if (done) return;
+
+          // reconcileByModel puts the learner's own chosen document first, so
+          // reaching here means the model read THE PROPOSED DOCUMENT and would
+          // not vouch for it as an application. That verdict is the better
+          // evidenced of the two: it is checked against the text, whereas the
+          // learner never asks the question at all. So the proposal is taken
+          // back rather than left for a person to reject. See withdrawProposal.
+          if (outcome?.profileId && !outcome.reusedExisting) {
+            const withdrawn = await withdrawProposal(
+              run.organization_id,
+              outcome.profileId,
+              'Withdrawn automatically: a direct AI read of this document could not verify it as an ' +
+                'application form, and no other document attached to the sale verified either. ' +
+                'The pack most likely does not contain the submitted application yet.'
+            );
+            if (withdrawn) {
+              console.log(
+                `[Reconciliation] withdrew the proposed format ${outcome.profileId} ` +
+                  `(${outcome.insurer} / ${outcome.product ?? '—'}): no candidate verified as an application.`
+              );
+            }
+          }
         }
       }
 
@@ -487,7 +520,20 @@ export async function processReconcile(job: Job<{ runId: string }>) {
     const profileRulings = new Map<string, ProfileRuling>();
     if (humanReviewed) {
       for (const q of profile.questions ?? []) {
-        profileRulings.set(normaliseKey(q.question), {
+        const key = normaliseKey(q.question);
+        // Two questions with the same key means one person's ruling silently
+        // replaces another's. Real on a list-selection portal, which reuses one
+        // stem — "Have you ever:" appears twice on the UnderwriteMe form, once
+        // for suicide and once for self-harm, distinguished only by the options
+        // underneath. Keyed by text, those are one entry.
+        if (profileRulings.has(key)) {
+          console.warn(
+            `[Reconciliation] profile ${profile.id}: two questions share the ruling key ` +
+              `${JSON.stringify(q.question)} — only the last ruling can be applied. ` +
+              `Rulings on a repeated question stem cannot be told apart.`
+          );
+        }
+        profileRulings.set(key, {
           absenceMeaningful:
             typeof q.absence_meaningful === 'boolean' ? q.absence_meaningful : undefined,
           checkMode: q.check_mode,
@@ -495,7 +541,33 @@ export async function processReconcile(job: Job<{ runId: string }>) {
       }
     }
 
-    const { flagged } = await compareAndStore(run, parsed.pairs, profileRulings);
+    const { flagged, identity } = await compareAndStore(run, parsed.pairs, profileRulings);
+
+    // The pairing between the document and the recording is wrong, so nothing
+    // on this sale can be judged. Told out loud rather than left as a quiet
+    // status: the whole failure mode is that the disproof was already on screen
+    // and nobody saw it, and the sale is now waiting on a person, not a clock.
+    if (identity.aborts) {
+      await finish(runId, 'identity_mismatch', identity.message, {
+        profileId: profile.id,
+        attachment,
+        fingerprint: parsed.fingerprint,
+        extractionMethod: 'profile',
+      });
+      await notifyAdmins(run.organization_id, {
+        type: 'dataforms.needs_attention',
+        severity: 'warning',
+        title: 'A sale’s application and call are about different people',
+        body: identity.message ?? 'The identity fields on the application contradict the call.',
+        actionUrl: `/journeys/${run.journey_id}`,
+        dedupeKey: `dataforms-identity-${run.journey_id}`,
+      });
+      console.warn(
+        `[Reconciliation] Run ${runId} halted: identity mismatch, ` +
+          `date of birth ${identity.dobGapDays} day(s) apart — nothing compared`
+      );
+      return;
+    }
 
     await finish(runId, 'completed', null, {
       profileId: profile.id,
@@ -535,7 +607,7 @@ async function compareAndStore(
   run: RunRow,
   pairs: ParsedPair[],
   profileRulings: Map<string, ProfileRuling>
-): Promise<{ flagged: number }> {
+): Promise<{ flagged: number; identity: IdentityVerdict }> {
   const calls = await query<TranscriptCall>(
     `SELECT c.id, c.call_date, c.created_at, c.agent_name, c.transcript_text
        FROM journey_calls jc
@@ -547,11 +619,43 @@ async function compareAndStore(
   const { text: transcript, segments } = buildCombinedTranscriptWithOffsets(calls);
   const redacted = transcriptRedactsHealth(transcript);
 
+  // What this tenant keeps in the clear. The same allowlist Deepgram is given for
+  // the call side, so both halves of a comparison agree about what exists — and
+  // the basis for masking the application half (services/application-redaction.ts).
+  const orgRow = await queryOne<{ pii_unredacted_categories: string[] | null }>(
+    'SELECT pii_unredacted_categories FROM organizations WHERE id = $1',
+    [run.organization_id]
+  );
+  const readableCategories = orgRow?.pii_unredacted_categories ?? [];
+
+  // Questions a reviewed profile holds no ruling for.
+  //
+  // The lookup is by question text, so a snapshot whose wording differs from
+  // what the parser produces today can never be matched — and the fallback to
+  // today's heuristics is silent. That is how a person can set a mode on a
+  // tenant's mental-health questions, see it saved, and have it never apply:
+  // the stored text read "Have you : ever" and the document says "Have you
+  // ever:". Reported per run rather than per question, and only for a profile
+  // somebody actually reviewed, since an auto-confirmed one holds no rulings by
+  // design and would report all of them.
+  const unruled: string[] = [];
+
   // PHASE 1 — deterministic. Locate each question in the call and attribute the
   // hit to a specific call. No model involved.
   const located = pairs.map((pair) => {
     const ruling = profileRulings.get(normaliseKey(pair.question));
-    const checkMode: QuestionCheckMode = ruling?.checkMode ?? defaultCheckMode(pair.question);
+    if (profileRulings.size > 0 && ruling === undefined) unruled.push(pair.question);
+    const ruled: QuestionCheckMode = ruling?.checkMode ?? defaultCheckMode(pair.question);
+    // Redaction is a physical constraint, not a preference: where the tenant
+    // strips this kind of value out of the transcript, there is no call side to
+    // compare against and 'reconcile' can only ever produce 'undetermined'.
+    //
+    // It may only DOWNGRADE. A human's 'presence' or 'none' is already at least
+    // as conservative, so this never loosens a ruling — and it never overrides a
+    // person to make a check stricter either.
+    const byRedaction = redactionCheckMode(pair.question, readableCategories);
+    const checkMode: QuestionCheckMode =
+      ruled === 'reconcile' && byRedaction !== null ? byRedaction : ruled;
 
     // The question's own wording, plus the options it offered, plus the
     // submitted answer's distinctive values.
@@ -676,6 +780,38 @@ async function compareAndStore(
     firstPass.set(l.pair.order, comparePair(l, redacted, extracted.get(String(l.pair.order)) ?? null));
   }
 
+  // Is this document even about the person on the call?
+  //
+  // Checked here, after the first read and before the corroboration pass, for
+  // two reasons: the identity answers have been extracted by now, and a run we
+  // are about to discard should not pay for a second model call.
+  //
+  // Deliberately narrow — see services/reconciliation-identity.ts for why only a
+  // date of birth can trigger it and why a transposed day/month or a near miss
+  // must not. Aborting withholds every genuine finding on the sale, so the bar
+  // is "this cannot be one human being", not "these differ".
+  const identity = checkIdentity(
+    located.flatMap((l) => {
+      const role = identityRoleOf(l.pair.question);
+      if (role === null) return [];
+      return [
+        {
+          role,
+          question: l.pair.question,
+          applicationAnswer: l.pair.answer,
+          callAnswer: firstPass.get(l.pair.order)?.callAnswer ?? null,
+        },
+      ];
+    })
+  );
+  if (identity.aborts) {
+    // Items from an earlier read of this same run would otherwise survive the
+    // abort and sit under a run that has just declared it cannot say who the
+    // sale is about.
+    await query('DELETE FROM capture_reconciliation_items WHERE run_id = $1', [run.id]);
+    return { flagged: 0, identity };
+  }
+
   const secondPass = new Map<number, ComparedItem>();
   const disputed = located.filter((l) => {
     const outcome = firstPass.get(l.pair.order)?.outcome;
@@ -721,6 +857,16 @@ async function compareAndStore(
     }
   }
 
+  if (unruled.length > 0) {
+    console.warn(
+      `[Reconciliation] run ${run.id}: ${unruled.length} of ${located.length} question(s) ` +
+        `have no ruling on the reviewed profile, so the reviewer's decisions are NOT being ` +
+        `applied to them — the stored wording does not match what the document produces. ` +
+        unruled.slice(0, 5).map((q) => JSON.stringify(q)).join(', ') +
+        (unruled.length > 5 ? `, and ${unruled.length - 5} more` : '')
+    );
+  }
+
   await query('DELETE FROM capture_reconciliation_items WHERE run_id = $1', [run.id]);
 
   let flagged = 0;
@@ -737,8 +883,16 @@ async function compareAndStore(
     // Only where there is a value to move. A withdrawn question the portal
     // never captured an answer for has nothing to preserve, and an empty
     // revision would read on screen as an answer that was given and blanked.
-    const applicationAnswer = pair.withdrawn ? null : pair.answer;
-    const revisions =
+    // Masked where the tenant redacts this category — the value cannot be
+    // compared against a transcript it was removed from, so storing it buys
+    // nothing and copies the application pack's contents into a column the DPIA
+    // does not cover (services/application-redaction.ts).
+    const mask = (v: string | null): string | null =>
+      maskApplicationAnswer(pair.question, v, readableCategories);
+    const applicationAnswer = pair.withdrawn ? null : mask(pair.answer);
+    // The revision trail carries superseded ANSWERS, so it carries the same
+    // values and needs the same treatment.
+    const revisions = (
       pair.withdrawn && pair.answer && pair.answer.trim() !== ''
         ? [
             ...(pair.revisions ?? []),
@@ -748,7 +902,8 @@ async function compareAndStore(
               recordedBy: pair.recordedBy ?? null,
             },
           ]
-        : (pair.revisions ?? []);
+        : (pair.revisions ?? [])
+    ).map((r) => ({ ...r, value: mask(r.value) }));
 
     await query(
       `INSERT INTO capture_reconciliation_items
@@ -779,7 +934,7 @@ async function compareAndStore(
     );
   }
 
-  return { flagged };
+  return { flagged, identity };
 }
 
 function normaliseKey(question: string): string {
@@ -897,6 +1052,9 @@ function comparePair(
 ): ComparedItem {
   const { pair, terms, hits, absenceMeaningful, checkMode } = located;
   const found = hits.length > 0;
+  // One generic term matching all over the transcript: we found a word, not the
+  // question. See coincidentalEvidence.
+  const coincidental = coincidentalEvidence(terms, hits.length);
 
   // Answered during the application, then dropped from it before submission.
   //
@@ -987,6 +1145,7 @@ function comparePair(
     callAnswerRedacted,
     evidenceFound: found,
     absenceMeaningful,
+    evidenceCoincidental: coincidental,
     redactedTranscript: redacted,
     // Only the model can assert this, and only when it saw the exchange run
     // past the question. Absent an extraction it stays undefined, so a failed
@@ -998,7 +1157,11 @@ function comparePair(
 
   const amendmentType = classifyAmendment(pair.answer, pair.revisions ?? []);
 
-  const reasoning = !found
+  const reasoning = coincidental
+    ? `This question's only searchable wording is ${JSON.stringify(terms[0] ?? '')}, which comes up ` +
+      `${hits.length} times in the call in unrelated places. Nothing here identifies which — if any — ` +
+      `is this question, so the call was not checked for it rather than checked against the wrong passage.`
+    : !found
     ? terms.length === 0
       ? 'This question has no distinctive wording to search for, so the call could not be checked for it.'
       : absenceMeaningful

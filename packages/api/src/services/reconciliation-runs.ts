@@ -1,4 +1,5 @@
 import { query, queryOne } from '../db/client.js';
+import { auditQuestionSet, proposalIsUsable } from './question-quality.js';
 import { scoringQueue } from '../jobs/queue.js';
 import { listSaleAttachments, downloadSaleAttachment, type ZohoAttachment } from './zoho.js';
 import {
@@ -368,7 +369,11 @@ export type LearnFailure =
   | 'no_attachments'
   | 'attachment_not_found'
   | 'unreadable'
-  | 'unusable';
+  | 'unusable'
+  // The document parsed and produced questions, but too many of them came out
+  // mangled to be a format worth a human's time (services/question-quality.ts).
+  // Distinct from 'unreadable', which means nothing came out at all.
+  | 'unusable_proposal';
 
 export interface LearnOutcome {
   profileId: string | null;
@@ -571,7 +576,7 @@ export async function learnProfileFromSale(
   // fingerprint on every sale and would otherwise queue a fresh proposal each
   // time — 8 sales of one tenant's portal export produced 8 distinct question
   // sets between 23 and 95 questions.
-  const existing = await queryOne<{
+  let existing = await queryOne<{
     id: string;
     status: string;
     question_fingerprint: string;
@@ -586,6 +591,48 @@ export async function learnProfileFromSale(
       LIMIT 1`,
     [organizationId, signature]
   );
+
+  // Same question set, different signature.
+  //
+  // The signature is built from the detect patterns, so the same document read
+  // twice by a model that phrased its patterns differently produces two
+  // signatures and therefore two proposals. It happened twice on the first
+  // deploying firm: one insurer's summary sheet was proposed a second time with
+  // a question set byte-identical to the live profile's, and one sale's quote was
+  // proposed twice three seconds apart as "Simple cover" and "Simple cover
+  // options". Nothing distinguishes those to a reviewer, and confirming the
+  // second supersedes a working first.
+  //
+  // Guarded on the existing profile actually MATCHING this document, which is
+  // what makes the reuse safe: an identical question set alone would let a
+  // profile whose patterns never fire absorb a document it can never read, and
+  // the sale would wait for ever on a format that already "exists".
+  if (!existing) {
+    const twins = await query<{
+      id: string;
+      status: string;
+      question_fingerprint: string;
+      questions_vary: boolean;
+      corroborating_journeys: string[];
+      detect_patterns: string[];
+    }>(
+      `SELECT id, status, question_fingerprint, questions_vary, corroborating_journeys, detect_patterns
+         FROM capture_document_profiles
+        WHERE organization_id = $1 AND question_fingerprint = $2
+          AND status IN ('needs_confirmation', 'active', 'dismissed')
+        ORDER BY status = 'active' DESC, created_at ASC`,
+      [organizationId, learned.fingerprint]
+    );
+    const twin = matchProfile(text, twins);
+    if (twin) {
+      console.log(
+        `[Reconciliation] the proposed format for ${learned.proposal.insurer} carries the same ` +
+          `question set as profile ${twin.id} (${twin.status}), which also matches this document — ` +
+          'reusing it rather than queueing a second proposal.'
+      );
+      existing = twin;
+    }
+  }
 
   if (existing) {
     // Already rejected by a person. Say so and change nothing.
@@ -624,6 +671,47 @@ export async function learnProfileFromSale(
       await activateProfile(organizationId, existing.id, { auto: true });
     }
     return { ...base, failure: null, profileId: existing.id, reusedExisting: true };
+  }
+
+  // Is this a format, or a parse that failed?
+  //
+  // A proposal is offered to a human to confirm, and a set that is mostly page
+  // furniture is something they can only reject — one proposed Aviva format was
+  // five page footers out of eight "questions". Refusing here leaves the sale at
+  // 'needs_profile', which is the honest state: nothing readable was found.
+  //
+  // Deliberately a share, not any-corruption-at-all. The tenant's most useful
+  // format has four mangled questions out of 39 and is worth confirming with
+  // those flagged (services/question-quality.ts).
+  const audit = auditQuestionSet(learned.questions.map((q) => q.question));
+  if (audit.corrupt.length > 0) {
+    console.warn(
+      `[Reconciliation] proposed format for ${learned.proposal.insurer} carries ` +
+        `${audit.corrupt.length} of ${audit.total} question(s) that look mangled: ` +
+        audit.corrupt
+          .map((c) => `#${c.index} (${c.flags.map((f) => f.name).join(', ')})`)
+          .join('; ')
+    );
+  }
+  if (!proposalIsUsable(learned.questions.map((q) => q.question))) {
+    console.warn(
+      `[Reconciliation] refusing the proposed format for ${learned.proposal.insurer}: ` +
+        `${audit.corrupt.length} of ${audit.total} questions are unreadable — this is a failed ` +
+        `parse, not a format. The sale stays at needs_profile.`
+    );
+    return {
+      ...base,
+      failure: 'unusable_proposal',
+      problems: [
+        ...base.problems,
+        {
+          severity: 'error',
+          message:
+            `The document was read, but ${audit.corrupt.length} of its ${audit.total} questions ` +
+            `came out unreadable, so there is no format worth confirming yet.`,
+        },
+      ],
+    };
   }
 
   // Version numbers run per insurer+product across all statuses, so a superseded
@@ -777,6 +865,46 @@ export async function activateProfile(
   }
 
   return { insurer: profile.insurer, product: profile.product, requeued: waiting.length };
+}
+
+/**
+ * Take back a proposal the pipeline has since disproved itself.
+ *
+ * WHY A PROPOSAL CAN BE WRONG AND STILL BE OFFERED
+ *
+ * Learning a format and reading a document with a model are two different
+ * judgements, and only the second one asks "is this an application at all".
+ * `extractApplicationPairs` refuses a document that is not one — a quote summary,
+ * an identity search, a covering letter — and it refuses word-for-word against
+ * the text. The learner has no such test: `hasDisclosureQuestions` only RANKS
+ * candidates, because a summary of application details with no health questions
+ * on it is a perfectly legitimate format for a non-underwritten product.
+ *
+ * So a pack with no application in it produces both: a proposal, and a model read
+ * that refuses the very document that proposal was learned from. Three of the
+ * first deploying firm's ten pending formats were that exact pair — two
+ * pre-application quote summaries and an identity-verification search — and each
+ * was re-proposed on every sweep tick, one of them sixty times.
+ *
+ * The model's refusal is the better-evidenced of the two verdicts, so it wins.
+ * Recorded as a dismissal rather than deleted, because the dismissal is what
+ * stops the next tick proposing it again.
+ */
+export async function withdrawProposal(
+  organizationId: string,
+  profileId: string,
+  reason: string
+): Promise<boolean> {
+  // needs_confirmation only. A format somebody has confirmed, or already
+  // rejected, is not the pipeline's to take back.
+  const row = await queryOne<{ id: string }>(
+    `UPDATE capture_document_profiles
+        SET status = 'dismissed', dismissed_at = now(), dismissed_reason = $3, updated_at = now()
+      WHERE id = $1 AND organization_id = $2 AND status = 'needs_confirmation'
+      RETURNING id`,
+    [profileId, organizationId, reason]
+  );
+  return row !== null;
 }
 
 /**

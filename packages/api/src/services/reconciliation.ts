@@ -259,6 +259,35 @@ export function absenceIsMeaningful(terms: string[]): boolean {
 }
 
 /**
+ * How many times one search term may match before the first hit is a coin flip.
+ *
+ * Three. Measured across 18 MetLife sales: "No. of Units" matches a median of
+ * four times per call and never fewer than four, because "unit" is also how
+ * alcohol is measured. Two matches could be the same exchange mentioned twice;
+ * from three separate places there is no basis for reading the first one.
+ */
+const COINCIDENTAL_HIT_THRESHOLD = 3;
+
+/**
+ * Was this question located, or did one of its words merely turn up?
+ *
+ * A question carrying a single searchable term is identified by that term alone,
+ * so if the term is a common word the located passage is whichever place it
+ * happened to appear first. The excerpt then goes to the model, which reads a
+ * passage about something else and reports honestly on what it was given — and
+ * that becomes a finding about how an adviser ran a call.
+ *
+ * Deliberately requires BOTH conditions. One term matching once or twice is
+ * ordinary and usable. Many hits across several terms is a well-identified
+ * question mentioned often, which is fine. And a single term matching NOTHING is
+ * not coincidental at all — it resolves 'undetermined' through the normal path,
+ * which is what "UK Residency" does on every sale.
+ */
+export function coincidentalEvidence(terms: string[], hitCount: number): boolean {
+  return terms.length <= 1 && hitCount >= COINCIDENTAL_HIT_THRESHOLD;
+}
+
+/**
  * Fields the insurer generates, which cannot have been discussed on the call.
  *
  * A policy number does not exist while the sale is happening — it is issued on
@@ -308,6 +337,31 @@ export function isBankAccountDetail(question: string): boolean {
 }
 
 /**
+ * A tickbox on the form, not a question put to the customer.
+ *
+ * "Please confirm you have read this statement by clicking this box." is an
+ * instruction to the person filling in the portal. Nobody says it aloud, and
+ * nobody answers it aloud, so comparing it against a recording produces an
+ * accusation from a certainty: the words will never be found, so an
+ * absence-meaningful reading makes it 'asked_no_answer' — the adviser recorded a
+ * declaration without putting it to the customer — on every sale carrying the
+ * form. Observed once on a live tenant, on a Legal & General application.
+ *
+ * 'none' rather than 'presence': the box being ticked is what submitting the
+ * application means, so its being populated says nothing either.
+ *
+ * Anchored on the instruction, not on the word "confirm". "Can I just confirm
+ * your date of birth" and "confirmed happy with cover" are spoken questions and
+ * must stay comparable, so this requires the box itself to be named.
+ */
+const FORM_DECLARATION =
+  /\b(clicking|ticking|checking|selecting)\s+(this|the)\s+box\b|\bby\s+(ticking|checking)\b|\btick\s+(this|the)\s+box\b/i;
+
+export function isFormDeclaration(question: string): boolean {
+  return FORM_DECLARATION.test(question.trim());
+}
+
+/**
  * How a field should be checked, absent a human's ruling on the profile.
  *
  * A default is required rather than optional: three of one tenant's profiles
@@ -322,6 +376,7 @@ export function isBankAccountDetail(question: string): boolean {
  */
 export function defaultCheckMode(question: string): QuestionCheckMode {
   if (isInsurerGenerated(question)) return 'none';
+  if (isFormDeclaration(question)) return 'none';
   if (isBankAccountDetail(question)) return 'presence';
   return 'reconcile';
 }
@@ -792,6 +847,281 @@ export function weightInKg(text: string): number | null {
   return null;
 }
 
+const MONTHS: Record<string, number> = {
+  jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6,
+  jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12,
+};
+
+
+/**
+ * Every date this text could plausibly be, as UTC epoch milliseconds.
+ *
+ * Ambiguity is preserved rather than resolved: a numeric 03/04/1957 yields both
+ * readings, and a contradiction is only claimed when no reading of one side
+ * matches any reading of the other. A written month ("20 October 1962",
+ * "August 26, 2005") is unambiguous and yields one.
+ */
+export function dateCandidates(text: string | null | undefined): number[] {
+  if (!text) return [];
+  const out = new Set<number>();
+  const push = (y: number, m: number, d: number): void => {
+    if (m < 1 || m > 12 || d < 1 || d > 31) return;
+    if (y < 1900 || y > 2100) return;
+    const t = Date.UTC(y, m - 1, d);
+    // Rejects 31/02 and friends: the constructed date rolls over to March.
+    const back = new Date(t);
+    if (back.getUTCMonth() !== m - 1 || back.getUTCDate() !== d) return;
+    out.add(t);
+  };
+
+  const s = text.toLowerCase();
+
+  // Written month, either order: "20 october 1962", "october 20 1962",
+  // "august 26, 2005".
+  const wordRe = /\b(\d{1,2})(?:st|nd|rd|th)?\s+([a-z]{3,9})\.?,?\s+(\d{4})\b|\b([a-z]{3,9})\.?\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})\b/g;
+  for (const m of s.matchAll(wordRe)) {
+    if (m[1]) {
+      const mon = MONTHS[m[2]!.slice(0, 3)];
+      if (mon) push(Number(m[3]), mon, Number(m[1]));
+    } else {
+      const mon = MONTHS[m[4]!.slice(0, 3)];
+      if (mon) push(Number(m[6]), mon, Number(m[5]));
+    }
+  }
+
+  // Numeric, separated by / - or . — both field orders, plus ISO.
+  const numRe = /\b(\d{1,4})[/\-.](\d{1,2})[/\-.](\d{2,4})\b/g;
+  for (const m of s.matchAll(numRe)) {
+    const a = Number(m[1]);
+    const b = Number(m[2]);
+    const c = Number(m[3]);
+    if (m[1]!.length === 4) {
+      // ISO: yyyy-mm-dd. One reading only.
+      push(a, b, c);
+      continue;
+    }
+    const year = c < 100 ? (c <= new Date().getUTCFullYear() % 100 ? 2000 + c : 1900 + c) : c;
+    push(year, b, a); // dd/mm/yyyy
+    push(year, a, b); // mm/dd/yyyy
+  }
+
+  return [...out];
+}
+
+/**
+ * A height in centimetres, every reading the text could plausibly be.
+ *
+ * The same problem as weight, one conversion further out: insurers record metric
+ * and customers speak imperial, and comparing the bare numbers declared them a
+ * contradiction. "6 foot" against a stored 1.83 was reported as a mismatch at
+ * 0.95 confidence on a live sale — with the model's own reasoning ending "so this
+ * matches". Across the first deploying firm, 31 height comparisons produced 4
+ * usable verdicts: 24 undetermined and 3 mismatches, and all three mismatches
+ * were the same height in different units.
+ *
+ * WHY A SET OF READINGS RATHER THAN ONE VALUE
+ *
+ * The application side is usually a bare number with no unit at all — "1.83",
+ * "1.7", "183" — so there is nothing to read the unit from. Rather than guess,
+ * every unit it could be is generated and implausible ones dropped: 1.83 is
+ * 183cm as metres, 1.83cm as centimetres and 55cm as feet, and only the first is
+ * a person. That filter does the disambiguation without a rule about which
+ * format which insurer uses, and it is why "6" alone reads as six foot while
+ * "183" alone reads as centimetres.
+ *
+ * Agreement under ANY pair of readings is agreement — two heights landing within
+ * an inch of each other by coincidence does not happen. Disagreement under every
+ * reading is a genuine mismatch, so a real mis-keying (1.83 against 1.63) still
+ * reports.
+ */
+const CM_PER_INCH = 2.54;
+const CM_PER_FOOT = 30.48;
+
+// Human heights. Anything outside is a misread unit, not a person.
+const MIN_HUMAN_CM = 120;
+const MAX_HUMAN_CM = 220;
+
+/** Spoken feet and inches, as people actually say a height aloud. */
+const HEIGHT_WORDS: Record<string, number> = {
+  one: 1, two: 2, three: 3, four: 4, five: 5, six: 6,
+  seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12,
+};
+
+function foldHeightWords(text: string): string {
+  return text.replace(/\b([a-z]+)\b/g, (m, w: string) =>
+    HEIGHT_WORDS[w] === undefined ? m : String(HEIGHT_WORDS[w])
+  );
+}
+
+export function heightCandidatesCm(text: string): number[] {
+  const n = foldHeightWords(normaliseAnswer(text));
+  const out = new Set<number>();
+  const add = (cm: number): void => {
+    if (cm >= MIN_HUMAN_CM && cm <= MAX_HUMAN_CM) out.add(Math.round(cm * 100) / 100);
+  };
+
+  // Explicit units first. A stated unit is not a guess, so these are added
+  // whatever else the string contains.
+  for (const m of n.matchAll(/(\d+(?:\.\d+)?)\s*(?:m|metres?|meters?)\b/g)) add(Number(m[1]) * 100);
+  for (const m of n.matchAll(/(\d+(?:\.\d+)?)\s*(?:cm|centimetres?|centimeters?)\b/g)) add(Number(m[1]));
+  // Feet, with optional inches: 6 foot, 5'7", 5 ft 7 in, 6 feet 4 inches.
+  for (const m of n.matchAll(
+    /(\d+)\s*(?:'|ft\b|feet\b|foot\b)\s*(?:(\d+(?:\.\d+)?)\s*(?:"|''|in\b|ins\b|inches?\b)?)?/g
+  )) {
+    add(Number(m[1]) * CM_PER_FOOT + (m[2] ? Number(m[2]) * CM_PER_INCH : 0));
+  }
+
+  if (out.size > 0) return [...out];
+
+  // No unit stated anywhere. Two bare numbers read as feet and inches — "5 7",
+  // "5 5" — which is how a height comes back when the unit was spoken once and
+  // the transcript kept only the figures.
+  const pair = /^(\d{1,2})\s+(\d{1,2})$/.exec(n.trim());
+  if (pair) {
+    add(Number(pair[1]) * CM_PER_FOOT + Number(pair[2]) * CM_PER_INCH);
+    return [...out];
+  }
+
+  // One bare number: try every unit it could be and keep the plausible ones.
+  const bare = /^(\d+(?:\.\d+)?)$/.exec(n.trim());
+  if (bare) {
+    const v = Number(bare[1]);
+    add(v * 100); // metres
+    add(v); // centimetres
+    add(v * CM_PER_FOOT); // feet
+  }
+  return [...out];
+}
+
+/**
+ * An inch and a bit either way. A height spoken to the nearest inch against a
+ * form field converted to two decimals differs by up to half an inch before
+ * anyone has made a mistake; 3cm covers that and stays far below a real
+ * mis-keying, which moves a height by a decimetre or more.
+ */
+const HEIGHT_TOLERANCE_CM = 3;
+
+function compareHeights(applicationAnswer: string, callAnswer: string): AnswerComparison | null {
+  const app = heightCandidatesCm(applicationAnswer);
+  const call = heightCandidatesCm(callAnswer);
+  if (app.length === 0 || call.length === 0) return null;
+  for (const a of app) {
+    for (const c of call) {
+      if (Math.abs(a - c) <= HEIGHT_TOLERANCE_CM) return 'match';
+    }
+  }
+  return 'mismatch';
+}
+
+/**
+ * Two dates, compared as dates rather than as strings.
+ *
+ * A date of birth written 20/05/1995 on the form and read back 05/20/1995 on the
+ * call is one date in two field orders, and the numeric rule below sees three
+ * numbers on each side and returns 'unclear'. Across the first deploying firm
+ * that left 22 of 51 date-of-birth comparisons unresolved — and buried three
+ * genuine discrepancies among them, indistinguishable on screen from the
+ * format-only cases.
+ *
+ * dateCandidates keeps every reading of an ambiguous numeric date, so a match
+ * requires only that some reading of each side agrees. Disjoint readings ARE a
+ * mismatch: a differing day-of-month or year is a real discrepancy, whatever
+ * order the fields are in.
+ */
+/**
+ * A month and year with no day, as YYYYMM.
+ *
+ * Insurers ask "when did you last have this?" and get a month: the form stores
+ * "10/2025" and the customer says "October 2025". Neither carries a day, so
+ * dateCandidates finds nothing on either side and the item resolved
+ * 'undetermined' — observed on a live sale's cataract-operation date, at 0.90
+ * confidence, on two values that plainly agree.
+ *
+ * Deliberately kept out of dateCandidates. That function feeds the identity
+ * guard, which decides whether a whole run is about the right person, and
+ * month-precision readings there would let a February and a February eleven years
+ * apart look comparable.
+ */
+function monthCandidates(text: string): number[] {
+  const out = new Set<number>();
+  const s = text.toLowerCase();
+  for (const m of s.matchAll(/\b([a-z]{3,9})\.?,?\s+(\d{4})\b/g)) {
+    const mon = MONTHS[m[1]!.slice(0, 3)];
+    if (mon) out.add(Number(m[2]) * 100 + mon);
+  }
+  for (const m of s.matchAll(/\b(\d{1,2})\s*[/\-.]\s*(\d{4})\b/g)) {
+    const mon = Number(m[1]);
+    if (mon >= 1 && mon <= 12) out.add(Number(m[2]) * 100 + mon);
+  }
+  return [...out];
+}
+
+function compareDates(applicationAnswer: string, callAnswer: string): AnswerComparison | null {
+  const app = dateCandidates(applicationAnswer);
+  const call = dateCandidates(callAnswer);
+  if (app.length > 0 && call.length > 0) {
+    return app.some((a) => call.includes(a)) ? 'match' : 'mismatch';
+  }
+  // Neither side carries a full date. Fall back to month precision — but only
+  // when BOTH sides lack a day, so a month-precision reading is never compared
+  // against a full date it cannot properly disagree with.
+  if (app.length === 0 && call.length === 0) {
+    const appMonths = monthCandidates(applicationAnswer);
+    const callMonths = monthCandidates(callAnswer);
+    if (appMonths.length === 0 || callMonths.length === 0) return null;
+    return appMonths.some((a) => callMonths.includes(a)) ? 'match' : 'mismatch';
+  }
+  return null;
+}
+
+/**
+ * Both sides a bare number, and one could be the other in different units.
+ *
+ * compareBareWeight handles the common case, where ONE side names a unit and the
+ * conversion can be tried against it. Neither naming one is different and the
+ * numeric rule below decides it anyway: "65" against "145" on "How much do you
+ * weigh?" was reported as a mismatch, and 65 kg is 143 lb. Same person, two
+ * units, no unit written down on either side — and an accusation on a health
+ * field as a result.
+ *
+ * Returns 'unclear' rather than 'match', deliberately. Nothing here establishes
+ * that they agree; what it establishes is that the figures are consistent with
+ * one conversion, which is not a basis for a finding either way. A real
+ * mis-keying — 80 against a spoken "120 to 130 kilograms" — survives, because no
+ * conversion reconciles it.
+ *
+ * Only the conversions people actually use for their own weight, and only where
+ * both readings land on a plausible human weight, so two unrelated small numbers
+ * cannot reconcile by arithmetic accident.
+ */
+const MIN_HUMAN_KG = 35;
+const MAX_HUMAN_KG = 250;
+
+function bareUnitConfusion(applicationAnswer: string, callAnswer: string): AnswerComparison | null {
+  const app = numbersIn(applicationAnswer);
+  const call = numbersIn(callAnswer);
+  if (app.length !== 1 || call.length !== 1) return null;
+  // A stated unit anywhere means this is not the case being handled.
+  if (WEIGHT_UNIT.test(normaliseAnswer(applicationAnswer))) return null;
+  if (WEIGHT_UNIT.test(normaliseAnswer(callAnswer))) return null;
+
+  const a = app[0]!;
+  const b = call[0]!;
+  const plausible = (kg: number): boolean => kg >= MIN_HUMAN_KG && kg <= MAX_HUMAN_KG;
+  // Each side read as kg, and the other as the imperial equivalent of that kg.
+  const readings: Array<[number, number]> = [
+    [a, b * KG_PER_POUND],
+    [a, b * KG_PER_STONE],
+    [b, a * KG_PER_POUND],
+    [b, a * KG_PER_STONE],
+  ];
+  for (const [kg, converted] of readings) {
+    if (!plausible(kg) || !plausible(converted)) continue;
+    if (sameWeight(kg, converted)) return 'unclear';
+  }
+  return null;
+}
+
 /** A kilogram either way, or 2% on heavier figures: speech against a form field. */
 function sameWeight(a: number, b: number): boolean {
   return Math.abs(a - b) <= Math.max(1, a * 0.02);
@@ -873,6 +1203,81 @@ function containsAsPhrase(haystack: string, needle: string): boolean {
 }
 
 /**
+ * Does a checklist answer cover what the customer named?
+ *
+ * A list-selection health question stores the OPTION the adviser ticked, and the
+ * customer speaks the specific thing they have. The application records "Cancer,
+ * cancer-in-situ, leukaemia, Hodgkin's disease or any other tumour" and the call
+ * says "Bladder cancer" — the same disclosure, one as a category and one as an
+ * instance. Neither string contains the other, so containment misses it, and
+ * neither carries a number, so the numeric rule misses it too. On the first
+ * deploying firm those resolved 'undetermined' at 0.90–0.95 confidence, on the
+ * question class that matters most.
+ *
+ * WHY EVERY NAMED ITEM MUST BE COVERED
+ *
+ * A checklist is multi-select, so "the customer named three things and the form
+ * records two" is a finding, not a paraphrase. Reporting a match because ONE
+ * item lined up would paper over exactly the under-recording this module exists
+ * to catch — "Chest pain, Fibromyalgia" against a list holding chest pain but not
+ * fibromyalgia is not agreement. Partial coverage returns false and the item
+ * stays 'undetermined', which is honest: something is there, and a person should
+ * look.
+ *
+ * WHY THE SMALLER TERM SET IS THE ONE THAT MUST BE COVERED
+ *
+ * The relationship is asymmetric and runs both ways depending on the pair. A
+ * category ("cancer") is a subset of the instance's words ("bladder cancer"); a
+ * paraphrase ("changing bowel habit") carries the same words as the option. So
+ * the test is that the shorter list is wholly accounted for in the longer, which
+ * covers both without letting a single shared modifier decide anything: "Raised
+ * cholesterol" against "Raised blood pressure" shares "rais" and is correctly NOT
+ * covered, because "cholesterol" is matched by nothing.
+ */
+function termsMatch(a: string, b: string): boolean {
+  if (a === b) return true;
+  // "chang" against "change", from the stemmer treating -ing and -e differently,
+  // and "heart" against "heartbeat", from a compound written both ways.
+  const min = Math.min(a.length, b.length);
+  return min >= 4 && (a.startsWith(b) || b.startsWith(a));
+}
+
+function coveredBy(needle: string[], haystack: string[]): boolean {
+  if (needle.length === 0) return false;
+  // Prefix matching only where BOTH sides carry more than one term, so the
+  // surrounding words corroborate it.
+  //
+  // A lone term has no corroboration, and splitting an option list on commas
+  // produces them as artefacts: "Impaired, blurred or double vision" yields
+  // "Impaired" with its noun gone. Allowed to prefix-match, that fragment would
+  // cover "impaired hearing" — a different sense entirely. Required to match
+  // exactly, it covers nothing it should not, while the genuine single-term
+  // options still work: "cancer" exactly matches a term of "bladder cancer".
+  const allowPrefix = needle.length >= 2 && haystack.length >= 2;
+  return needle.every((n) =>
+    haystack.some((h) => (allowPrefix ? termsMatch(n, h) : n === h))
+  );
+}
+
+export function checklistCovers(applicationAnswer: string, callAnswer: string): boolean {
+  // The option list, as the document prints it. Splitting on commas over-
+  // fragments a phrase like "Impaired, blurred or double vision" into parts that
+  // have lost their noun, so a single leftover word can never carry a match on
+  // its own — hence the two-term minimum on one side or the other below.
+  const options = applicationAnswer
+    .split(/,| or /i)
+    .map((o) => deriveSearchTerms(o))
+    .filter((t) => t.length > 0);
+  const named = callAnswer
+    .split(/,| and /i)
+    .map((c) => deriveSearchTerms(c))
+    .filter((t) => t.length > 0);
+  if (options.length === 0 || named.length === 0) return false;
+
+  return named.every((item) => options.some((option) => coveredBy(item, option) || coveredBy(option, item)));
+}
+
+/**
  * Compare an application answer with what the customer said.
  *
  * Returns `unclear` rather than guessing wherever the two are not
@@ -922,6 +1327,18 @@ export function compareAnswers(
     return 'unclear';
   }
 
+  // Heights, on the same principle as weights and for the same reason: the
+  // insurer records metric, the customer speaks imperial, and the bare-number
+  // rule below reads the two as a contradiction.
+  const heights = compareHeights(applicationAnswer, callAnswer);
+  if (heights !== null) return heights;
+
+  // Dates as dates, before any rule that counts the numbers in them: a date of
+  // birth carries three numbers on each side, which the numeric rule can only
+  // ever call 'unclear'.
+  const dates = compareDates(applicationAnswer, callAnswer);
+  if (dates !== null) return dates;
+
   const bareWeight = compareBareWeight(applicationAnswer, callAnswer, appKg, callKg);
   if (bareWeight !== null) return bareWeight;
 
@@ -933,6 +1350,11 @@ export function compareAnswers(
     referenceDate ? referenceDate.getUTCFullYear() : null
   );
   if (elapsed !== null) return elapsed;
+
+  // Two bare numbers that one unit conversion reconciles. Ahead of the numeric
+  // rule, which would call them a contradiction.
+  const unitConfusion = bareUnitConfusion(applicationAnswer, callAnswer);
+  if (unitConfusion !== null) return unitConfusion;
 
   // Numeric answers are where mis-keying actually bites (50 cigarettes keyed as
   // 5). Only conclude when both sides carry exactly one number, so a compound
@@ -949,6 +1371,16 @@ export function compareAnswers(
     if (isRounded(appNums[0]!, callNums[0]!)) return 'match';
     return 'mismatch';
   }
+  // Last: a checklist category against the specific thing the customer named.
+  //
+  // Deliberately after every rule that can decide a number or a date. It splits
+  // an answer on commas to read the option list, and a comma is also a thousands
+  // separator and a date separator — run earlier it read "£150,000" against
+  // "£15,000" as two lists rather than two figures, and 09/04/1997 against
+  // 19/04/1997 as agreeing. Everything decidable is decided by the time this
+  // sees it, so it only judges prose the other rules had no purchase on.
+  if (checklistCovers(applicationAnswer, callAnswer)) return 'match';
+
   // A number on one side and none on the other tells us nothing on its own.
   return 'unclear';
 }
@@ -1050,6 +1482,11 @@ export interface ClassifyInput {
   /** Whether this transcript shows health redaction at all. */
   redactedTranscript: boolean;
   /**
+   * Whether the evidence was located by coincidence rather than by recognising
+   * the question — see coincidentalEvidence.
+   */
+  evidenceCoincidental?: boolean;
+  /**
    * Whether the customer demonstrably did NOT answer — the exchange is there to
    * read, and they changed the subject, deflected, or the adviser moved on.
    *
@@ -1119,6 +1556,19 @@ export function classifyItem(input: ClassifyInput): ReconciliationOutcome {
   if (applicationAnswer === null || applicationAnswer.trim() === '') {
     return 'no_application_answer';
   }
+
+  // Evidence found by coincidence cannot support any conclusion, including a
+  // match. If the passage we located is about something else, a value extracted
+  // from it is not this question's answer whether or not it happens to agree.
+  //
+  // Same failure the bank-account rule already guards against — "a stray '38'
+  // gets located, the model is handed a passage about something else" — reached
+  // by a different route: a question whose entire searchable content is one
+  // generic word. Measured on MetLife's summary sheet, "No. of Units" derives the
+  // single term "unit", which matches a median of four times per call because the
+  // adviser also asks about units of alcohol. Four of that format's five findings
+  // came from it, one reading a drinking answer against a cover-units field.
+  if (input.evidenceCoincidental) return 'undetermined';
 
   if (!input.evidenceFound) {
     // THE SAFETY RULE. Absence proves absence only where we can vouch for the

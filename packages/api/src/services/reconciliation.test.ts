@@ -9,6 +9,11 @@ import {
   deriveChoiceTerms,
   isInsurerGenerated,
   isBankAccountDetail,
+  isFormDeclaration,
+  coincidentalEvidence,
+  checklistCovers,
+  dateCandidates,
+  heightCandidatesCm,
   defaultCheckMode,
   quoteAround,
   quoteExchange,
@@ -596,7 +601,14 @@ describe('compareAnswers', () => {
   it('escalates rather than guesses on compound or unit-converted answers', () => {
     // The application carries both forms; the customer said neither exactly.
     expect(compareAnswers('111.1kg or 17 stone 7 pounds', 'about seventeen and a half stone')).toBe('unclear');
-    expect(compareAnswers('1.75m or 5 feet 9 inches', 'five nine')).toBe('unclear');
+  });
+
+  // Was 'unclear' until heightCandidatesCm existed, and that was the honest
+  // answer while nothing could read imperial. It is decidable arithmetic, not a
+  // guess: "five nine" and "5 feet 9 inches" are both 175.26cm, which is also
+  // what the application's own 1.75m rounds to.
+  it('resolves a height the two sides stated in different units', () => {
+    expect(compareAnswers('1.75m or 5 feet 9 inches', 'five nine')).toBe('match');
   });
 });
 
@@ -1113,5 +1125,371 @@ describe('a large figure the customer rounded when they said it', () => {
   it('holds the line just outside the tolerance', () => {
     expect(compareAnswers('100000', '101000')).toBe('match');
     expect(compareAnswers('100000', '102000')).toBe('mismatch');
+  });
+});
+
+describe('isFormDeclaration — a tickbox, not a question', () => {
+  // The one observed live: it produced an 'asked_no_answer' against an adviser on
+  // a Legal & General application, for not putting a portal instruction to the
+  // customer aloud.
+  it('claims the tickbox instructions', () => {
+    for (const label of [
+      'Please confirm you have read this statement by clicking this box.',
+      'Confirm by ticking the box below',
+      'I agree by checking this box',
+      'Tick this box to confirm',
+    ]) {
+      expect(isFormDeclaration(label)).toBe(true);
+    }
+  });
+
+  // Anchored on the box, not on "confirm" — these are spoken and must stay
+  // comparable, several of them producing real findings.
+  it('does not claim a spoken confirmation', () => {
+    for (const label of [
+      'Can I just confirm your date of birth',
+      'Confirmed happy with cover, premium and everything applied for',
+      'Please confirm you are a UK resident',
+      'Bank account held in payers name',
+    ]) {
+      expect(isFormDeclaration(label)).toBe(false);
+    }
+  });
+
+  it("resolves to 'none' — a ticked box says nothing either way", () => {
+    expect(defaultCheckMode('Please confirm you have read this statement by clicking this box.')).toBe('none');
+  });
+});
+
+describe('dateCandidates', () => {
+  it('keeps both readings of an ambiguous numeric date', () => {
+    expect(dateCandidates('03/04/1957').sort()).toEqual(
+      [Date.UTC(1957, 3, 3), Date.UTC(1957, 2, 4)].sort()
+    );
+  });
+
+  it('yields one reading when the day cannot be a month', () => {
+    expect(dateCandidates('20/10/1962')).toEqual([Date.UTC(1962, 9, 20)]);
+    expect(dateCandidates('05/20/1995')).toEqual([Date.UTC(1995, 4, 20)]);
+  });
+
+  it('reads a written month in either order', () => {
+    expect(dateCandidates('20 October 1962')).toEqual([Date.UTC(1962, 9, 20)]);
+    expect(dateCandidates('August 26, 2005')).toEqual([Date.UTC(2005, 7, 26)]);
+  });
+
+  it('rejects impossible dates rather than rolling them over', () => {
+    expect(dateCandidates('31/02/1990')).toEqual([]);
+  });
+
+  it('returns nothing for absent or unparseable values', () => {
+    expect(dateCandidates(null)).toEqual([]);
+    expect(dateCandidates('')).toEqual([]);
+    expect(dateCandidates('some time in the eighties')).toEqual([]);
+  });
+});
+
+describe('heightCandidatesCm', () => {
+  it('reads a stated unit', () => {
+    expect(heightCandidatesCm('1.83m')).toEqual([183]);
+    expect(heightCandidatesCm('183cm')).toEqual([183]);
+    expect(heightCandidatesCm('6 foot')).toEqual([182.88]);
+    expect(heightCandidatesCm("5'7\"")).toEqual([170.18]);
+    expect(heightCandidatesCm('6 feet 4 inches')).toEqual([193.04]);
+  });
+
+  it('reads a height spoken in words', () => {
+    expect(heightCandidatesCm('Five foot six')).toEqual([167.64]);
+    expect(heightCandidatesCm('five foot ten')).toEqual([177.8]);
+  });
+
+  // How a height comes back when the unit was said once and the transcript kept
+  // only the figures. Observed on four sales.
+  it('reads two bare numbers as feet and inches', () => {
+    expect(heightCandidatesCm('5 7')).toEqual([170.18]);
+    expect(heightCandidatesCm('5 3')).toEqual([160.02]);
+  });
+
+  // The application side is usually a bare number. Every unit it could be is
+  // tried and the implausible readings dropped, which is what makes "6" six foot
+  // and "183" a hundred and eighty-three centimetres without a rule about it.
+  it('keeps only plausible readings of a bare number', () => {
+    expect(heightCandidatesCm('1.83')).toEqual([183]);
+    expect(heightCandidatesCm('183')).toEqual([183]);
+    expect(heightCandidatesCm('6')).toEqual([182.88]);
+  });
+
+  it('returns nothing where there is no height to read', () => {
+    expect(heightCandidatesCm('')).toEqual([]);
+    expect(heightCandidatesCm('No')).toEqual([]);
+    expect(heightCandidatesCm('99')).toEqual([]); // no human is 99cm or 99m
+  });
+});
+
+describe('compareAnswers — heights', () => {
+  // Every one of these was reported 'undetermined' or 'mismatch' on a live
+  // tenant. The three that were mismatches are the same height in two units, and
+  // one of them carried the model's own reasoning ending "so this matches".
+  it('matches metric against imperial', () => {
+    const observed: Array<[string, string]> = [
+      ['1.83', '6 foot'],
+      ['183cm', 'Just under 6 foot'],
+      ['1.7', '5 7'],
+      ['1.65', '5 5'],
+      ['1.6', '5 3'],
+      ['1.93', '6 foot 4'],
+      ['1.68', 'Five foot six'],
+      ['1.75', "5'9\""],
+      ['1.73', '5 foot 8'],
+      ['1.57', "5'2\""],
+      ['1.8', "5'11\""],
+      ['1.65m or 5 feet 5 inches', '5 foot 5'],
+    ];
+    for (const [app, call] of observed) {
+      expect(compareAnswers(app, call), `${app} vs ${call}`).toBe('match');
+    }
+  });
+
+  // Speech rounds to the nearest inch; a form field carries two decimals. 1.68m
+  // against "5 foot 5" is 2.9cm apart and the same person.
+  it('tolerates rounding to the nearest inch', () => {
+    expect(compareAnswers('1.68', '5 foot 5')).toBe('match');
+  });
+
+  // The tolerance must not swallow a real mis-keying, which moves a height by a
+  // decimetre or more.
+  it('still reports a genuine height discrepancy', () => {
+    expect(compareAnswers('1.83', '5 foot 4')).toBe('mismatch');
+    expect(compareAnswers('1.63', '6 foot')).toBe('mismatch');
+  });
+});
+
+describe('compareAnswers — dates', () => {
+  // 22 of 51 date-of-birth comparisons went unresolved on a live tenant, most of
+  // them one date written two ways.
+  it('matches the same date in a different field order', () => {
+    for (const [app, call] of [
+      ['20/05/1995', '05/20/1995'],
+      ['25/04/2002', '04/25/2002'],
+      ['08/11/1999', '11/08/1999'],
+      ['17/08/2003', '08/17/2003'],
+    ] as Array<[string, string]>) {
+      expect(compareAnswers(app, call), `${app} vs ${call}`).toBe('match');
+    }
+  });
+
+  it('matches a written month against a numeric one', () => {
+    expect(compareAnswers('20/10/1962', '20 October 1962')).toBe('match');
+    expect(compareAnswers('10/2025', 'October 2025')).toBe('match');
+  });
+
+  // The three that were hidden inside the unresolved pile. A differing day or
+  // year is a real discrepancy whatever order the fields are in.
+  it('reports a date that genuinely differs', () => {
+    expect(compareAnswers('09/04/1997', '19/04/1997')).toBe('mismatch');
+    expect(compareAnswers('20/04/1968', '04/20/1969')).toBe('mismatch');
+    expect(compareAnswers('20/10/1962', '04/05/1973')).toBe('mismatch');
+  });
+});
+
+describe('coincidentalEvidence', () => {
+  // Measured across 18 MetLife sales: "No. of Units" derives the single term
+  // "unit" and matches a median of four times per call, because the adviser also
+  // asks about units of alcohol. Four of that format's five findings came from
+  // it, one reading a drinking answer against a cover-units field.
+  it('flags one generic term matching all over the call', () => {
+    expect(coincidentalEvidence(['unit'], 4)).toBe(true);
+    expect(coincidentalEvidence(['unit'], 3)).toBe(true);
+  });
+
+  // Two hits could be the same exchange mentioned twice.
+  it('accepts one term matching once or twice', () => {
+    expect(coincidentalEvidence(['unit'], 1)).toBe(false);
+    expect(coincidentalEvidence(['unit'], 2)).toBe(false);
+  });
+
+  // A single term matching nothing is not coincidental — it resolves
+  // undetermined through the ordinary path. "UK Residency" does this on every
+  // sale, and treating it as coincidental would say something different and
+  // wrong about it.
+  it('is not about absence', () => {
+    expect(coincidentalEvidence(['residency'], 0)).toBe(false);
+    expect(coincidentalEvidence([], 0)).toBe(false);
+  });
+
+  // A well-identified question mentioned often is fine — that is a question the
+  // call genuinely returns to, not a word that happens to recur.
+  it('accepts a well-identified question however often it matches', () => {
+    expect(coincidentalEvidence(['monthly', 'premium'], 6)).toBe(false);
+    expect(coincidentalEvidence(['active', 'lifestyle', 'cover'], 12)).toBe(false);
+  });
+});
+
+describe('classifyItem — coincidental evidence', () => {
+  const base = {
+    applicationAnswer: '2',
+    callAnswer: '5',
+    callAnswerRedacted: false,
+    evidenceFound: true,
+    absenceMeaningful: false,
+    redactedTranscript: false,
+  };
+
+  it('refuses to found a mismatch on a passage located by chance', () => {
+    expect(classifyItem({ ...base, evidenceCoincidental: true })).toBe('undetermined');
+  });
+
+  // Including a match. If the passage is about something else, a value from it is
+  // not this question's answer whether or not it happens to agree.
+  it('refuses to found a match on it either', () => {
+    expect(
+      classifyItem({ ...base, callAnswer: '2', evidenceCoincidental: true })
+    ).toBe('undetermined');
+  });
+
+  it('refuses to found an asked_no_answer on it', () => {
+    expect(
+      classifyItem({
+        ...base,
+        callAnswer: null,
+        customerDidNotAnswer: true,
+        evidenceCoincidental: true,
+      })
+    ).toBe('undetermined');
+  });
+
+  it('changes nothing when the evidence was properly located', () => {
+    expect(classifyItem({ ...base, evidenceCoincidental: false })).toBe('mismatch');
+    expect(classifyItem(base)).toBe('mismatch');
+  });
+
+  // The presence and none modes never consult call evidence, so the flag must
+  // not disturb them.
+  it('does not disturb the non-comparing modes', () => {
+    expect(classifyItem({ ...base, checkMode: 'presence', evidenceCoincidental: true })).toBe('recorded');
+    expect(classifyItem({ ...base, checkMode: 'none', evidenceCoincidental: true })).toBe('recorded');
+  });
+});
+
+describe('checklistCovers — a category against the thing the customer named', () => {
+  // All from live sales, all previously 'undetermined' at 0.85–0.95 confidence on
+  // the question class that matters most.
+  it('covers an instance named under a category', () => {
+    expect(
+      checklistCovers(
+        "Cancer, cancer-in-situ, leukaemia, Hodgkin's disease or any other tumour",
+        'Bladder cancer'
+      )
+    ).toBe(true);
+    expect(
+      checklistCovers('Arthritis, gout or anything else affecting your bones, joints', 'Arthritis in lower spine/back')
+    ).toBe(true);
+    expect(
+      checklistCovers(
+        'Kidney stones, urinary infection or anything else affecting your kidneys, prostate, bladder or urine',
+        'Enlarged prostate'
+      )
+    ).toBe(true);
+  });
+
+  it('covers a paraphrase of the option itself', () => {
+    expect(checklistCovers('Anxiety, Depression', 'Anxiety and depression')).toBe(true);
+    expect(
+      checklistCovers('Bleeding from the bowel or a change in bowel habit', 'Changing bowel habit')
+    ).toBe(true);
+    // "heart beat" written one way on the form and the other on the call.
+    expect(
+      checklistCovers('Heart attack, irregular heart beat, cardiomyopathy', 'Irregular heartbeat')
+    ).toBe(true);
+  });
+
+  it('covers every item when the customer named several and all are on the list', () => {
+    expect(
+      checklistCovers(
+        'Raised blood pressure, cholesterol or chest pain, Diabetes, borderline diabetes, A growth, lump or cyst',
+        'Raised blood pressure, Raised cholesterol, Diabetes'
+      )
+    ).toBe(true);
+  });
+
+  // A checklist is multi-select, so "named three, recorded two" is a finding, not
+  // a paraphrase. Reporting a match on partial coverage would paper over exactly
+  // the under-recording this module exists to catch.
+  it('refuses partial coverage', () => {
+    expect(
+      checklistCovers(
+        'Raised blood pressure, raised cholesterol or chest pain',
+        'Chest pain, Fibromyalgia'
+      )
+    ).toBe(false);
+  });
+
+  // A shared modifier must not decide anything. Both sides carry "raised"; only
+  // one carries cholesterol.
+  it('refuses a match resting on a shared modifier', () => {
+    expect(checklistCovers('Raised blood pressure', 'Raised cholesterol')).toBe(false);
+  });
+
+  it('refuses an unrelated condition', () => {
+    expect(
+      checklistCovers('Impaired, blurred or double vision, optic neuritis', 'Hearing loss')
+    ).toBe(false);
+  });
+
+  // Beyond a literal option list — "cataracts" is a disorder of the eye, but
+  // nothing in the text says so. Left undetermined, which is honest.
+  it('does not attempt semantic knowledge it does not have', () => {
+    expect(
+      checklistCovers(
+        'Impaired, blurred or double vision, optic neuritis or anything else affecting your eyes',
+        'Cataracts'
+      )
+    ).toBe(false);
+  });
+
+  // The class this must never touch: the application denies and the customer
+  // disclosed. Those are potential non-disclosures and belong to a person.
+  it('never covers a negative application answer', () => {
+    expect(checklistCovers('No', 'Prescription medication, I use sertraline')).toBe(false);
+    expect(checklistCovers('None of these', "I'm currently off work")).toBe(false);
+    expect(checklistCovers('None of these', 'Smart Insurance')).toBe(false);
+  });
+
+  it('leaves an ordinary single-value comparison alone', () => {
+    expect(checklistCovers('No', 'No')).toBe(false);
+    expect(checklistCovers('2', '5')).toBe(false);
+  });
+});
+
+describe('compareAnswers — two bare numbers one conversion reconciles', () => {
+  // "How much do you weigh?" answered 65 on the form and 145 on the call. 65 kg
+  // is 143 lb: the same person, two units, neither written down. It was being
+  // reported as a mismatch — an accusation on a health field.
+  it('refuses to accuse where a unit conversion reconciles the figures', () => {
+    expect(compareAnswers('65', '145')).toBe('unclear');
+  });
+
+  // Deliberately not 'match'. Nothing establishes that they agree; what is
+  // established is that a finding cannot rest on them.
+  it('does not claim a match either', () => {
+    expect(compareAnswers('65', '145')).not.toBe('match');
+  });
+
+  // A real mis-keying survives, because no conversion reconciles it.
+  it('still reports a genuine discrepancy', () => {
+    expect(compareAnswers('80', '120 to 130 kilograms')).toBe('mismatch');
+    expect(compareAnswers('65', '95')).toBe('mismatch');
+  });
+
+  // Only plausible human weights, so two unrelated small numbers cannot
+  // reconcile by arithmetic accident.
+  it('does not reconcile numbers no person could weigh', () => {
+    expect(compareAnswers('2', '5')).toBe('mismatch');
+    expect(compareAnswers('1', '2')).toBe('mismatch');
+  });
+
+  // A stated unit means compareBareWeight's rules apply instead.
+  it('leaves a stated unit to the weight rules', () => {
+    expect(compareAnswers('76.2', '12 stone')).toBe('match');
   });
 });

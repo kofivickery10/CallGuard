@@ -48,6 +48,7 @@ const RUN_STATUS: Record<ReconciliationRunStatus, { label: string; className: st
   summary_only: { label: 'No questions', className: 'bg-table-header text-text-secondary' },
   failed: { label: 'Failed', className: 'bg-fail-bg text-fail' },
   abandoned: { label: 'Never checked', className: 'bg-table-header text-text-secondary' },
+  identity_mismatch: { label: 'Wrong customer', className: 'bg-fail-bg text-fail' },
 };
 
 /** Stroke icon (§icons) — a document with a warning. */

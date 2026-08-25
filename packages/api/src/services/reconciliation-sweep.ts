@@ -31,6 +31,14 @@ const DAY = 24 * HOUR;
 export const ABANDON_AFTER_MS = 7 * DAY;
 
 /**
+ * The same window in days, for callers that measure against it in SQL.
+ *
+ * Derived rather than restated so the dashboard's "no document" rate cannot drift
+ * from the window the sweep actually enforces.
+ */
+export const ABANDON_AFTER_DAYS = ABANDON_AFTER_MS / DAY;
+
+/**
  * How often to revisit a sale parked for want of a readable format, and how long
  * to keep doing it.
  *

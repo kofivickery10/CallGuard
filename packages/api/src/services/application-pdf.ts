@@ -951,9 +951,49 @@ export function expectedRecordCount(
     if (!d) return null;
     return (text.split(d).length - 1) || null;
   }
-  // label_value asks for a known list of labels, so "missing" is not meaningful:
-  // a label absent from the sheet is absent, not lost.
-  return null;
+  return countLabelRows(text, config.labels ?? []) || null;
+}
+
+/**
+ * How many of these labels the document actually presents AS labels.
+ *
+ * The reasoning here used to be "label_value asks for a known list, so missing
+ * is not meaningful: a label absent from the sheet is absent, not lost". That is
+ * true of a label the document does not contain — a conditional health question
+ * this customer was never asked — and false of one it puts at the head of its
+ * own line. Two of the first deploying firm's proposed formats turned on exactly
+ * that distinction: a 19-page application listed 68 labels and read 4, and a
+ * 20-page one listed 43 and read 22, in both cases because the labels are
+ * printed with the value on the FOLLOWING line and parseLabelValue requires a
+ * colon. Every missing one was plainly there in the text.
+ *
+ * So the expectation counts label ROWS, not label strings: a line whose start is
+ * the label (optionally after a bullet) and whose next character ends the label —
+ * a colon, a tab, or the end of the line. That is the shape parseLabelValue is
+ * supposed to read, which makes "present as a row but not parsed" the honest
+ * definition of a lost record, and leaves a genuinely absent label absent.
+ *
+ * Matching is whitespace-flexible because extraction wraps long labels across
+ * lines, and case-insensitive because the same sheet prints "Date of birth" and
+ * "Date Of Birth".
+ */
+export function countLabelRows(text: string, labels: string[]): number {
+  if (labels.length === 0) return 0;
+  const flat = text.replace(/\s*\n\s*/g, ' ').replace(/[ \t]{2,}/g, ' ');
+  let count = 0;
+  for (const label of labels) {
+    const flexible = escapeRegex(label).replace(/\\?\s+/g, String.raw`\s+`);
+    // Anchored on a line start in the original text, OR on a bullet/newline
+    // boundary in the flattened text — the flattened form is what catches a
+    // label the extraction broke over two lines.
+    const asRow = new RegExp(
+      String.raw`(?:^|[\n•*·])\s*` + flexible + String.raw`\s*(?::|\t|$)`,
+      'im'
+    );
+    const asFlatRow = new RegExp(String.raw`(?:^|[•*·])\s*` + flexible + String.raw`\s*(?::|\t)`, 'i');
+    if (asRow.test(text) || asFlatRow.test(flat)) count++;
+  }
+  return count;
 }
 
 /**

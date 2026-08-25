@@ -480,12 +480,27 @@ export function verifyProposal(rawText: string, proposal: ProfileProposal): Lear
   const coverage = parseCoverage(rawText, proposal.strategy, proposal.parse_config, parsed.pairs.length);
   if (coverage.ratio !== null && coverage.ratio < 0.95) {
     const missing = (coverage.expected ?? 0) - parsed.pairs.length;
+    // Which ones, for label_value. "22 of 43 were read" tells a reviewer the
+    // parse is broken; naming the questions it dropped tells them what stops
+    // being checked, and on the two real cases those were the entire health
+    // disclosure sections while the policy and contact fields came through
+    // perfectly — a difference invisible in a ratio.
+    const unread =
+      proposal.strategy === 'label_value'
+        ? (proposal.parse_config.labels ?? []).filter(
+            (l) => !parsed.pairs.some((p) => p.question.toLowerCase() === l.toLowerCase())
+          )
+        : [];
     problems.push({
       severity: missing > 2 ? 'error' : 'warning',
       message:
         `The document contains ${coverage.expected} records but only ${parsed.pairs.length} were read — ` +
         `${missing} would be missed on every sale of this format. A question that is not extracted is ` +
-        'never checked against the call, so this cannot be accepted as it stands.',
+        'never checked against the call, so this cannot be accepted as it stands.' +
+        (unread.length
+          ? ` Not read: ${unread.slice(0, 6).map((l) => JSON.stringify(l)).join(', ')}` +
+            (unread.length > 6 ? ` and ${unread.length - 6} more.` : '.')
+          : ''),
     });
   }
 
