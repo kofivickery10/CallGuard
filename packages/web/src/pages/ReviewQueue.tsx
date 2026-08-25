@@ -44,7 +44,7 @@ export function ReviewQueue() {
   });
   const manualItems = manualData?.data ?? [];
 
-  const resolveManual = async (item: ManualReviewItem, result: 'pass' | 'fail') => {
+  const resolveManual = async (item: ManualReviewItem, result: 'pass' | 'fail' | 'na') => {
     const key = item.item_score_id;
     setResolvingKey(key);
     try {
@@ -177,6 +177,21 @@ export function ReviewQueue() {
                               className="text-xs text-fail hover:text-white hover:bg-fail px-2 py-1 rounded border border-fail/30 hover:border-fail transition-colors disabled:opacity-50"
                             >
                               Fail
+                            </button>
+                            {/* Without this the only way to clear a checkpoint that
+                                could not apply was to pass it, which put "the adviser
+                                did this" on the register for something never in scope
+                                — a trust item on a product that cannot be placed in
+                                trust, say. 'Not applicable' drops it out of the score
+                                instead of passing it. */}
+                            <button
+                              onClick={() => resolveManual(item, 'na')}
+                              disabled={resolvingKey === item.item_score_id}
+                              aria-label={`Mark "${item.label}" as not applicable to this sale`}
+                              title="This checkpoint did not apply to this sale — excluded from the score rather than passed"
+                              className="text-xs text-text-secondary hover:text-text-primary hover:bg-table-header px-2 py-1 rounded border border-border hover:border-text-muted transition-colors disabled:opacity-50"
+                            >
+                              N/A
                             </button>
                           </span>
                         )}

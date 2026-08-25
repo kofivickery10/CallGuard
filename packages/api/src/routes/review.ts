@@ -179,26 +179,38 @@ interface EvidenceRow {
 }
 
 // POST /api/review-items/resolve — a reviewer marks a manual_review checkpoint
-// pass/fail. Recomputes the parent overall score (scored items only) and
-// raises/clears the breach, mirroring the per-call correction path, then
-// re-pushes the corrected score downstream (webhook + Zoho) so the CRM reflects
-// the human verdict rather than the AI's provisional score.
+// pass, fail, or not applicable. Recomputes the parent overall score (scored
+// items only) and raises/clears the breach, mirroring the per-call correction
+// path, then re-pushes the corrected score downstream (webhook + Zoho) so the CRM
+// reflects the human verdict rather than the AI's provisional score.
+//
+// 'na' exists because the queue offering only pass/fail forced reviewers to
+// record a false pass on checkpoints that could not apply to the sale — a trust
+// item on a product that cannot be placed in trust, a payment-date item where no
+// Direct Debit was taken (migration 108). An 'na' resolution drops the checkpoint
+// out of the denominator rather than passing it, which is the difference between
+// "the adviser did this" and "this was never in scope".
 reviewRouter.post('/resolve', requireActioner, async (req, res, next) => {
   try {
     const { kind, item_score_id, result, note } = req.body as {
       kind?: 'call' | 'journey';
       item_score_id?: string;
-      result?: 'pass' | 'fail';
+      result?: 'pass' | 'fail' | 'na';
       note?: string;
     };
     if (kind !== 'call' && kind !== 'journey') throw new AppError(400, "kind must be 'call' or 'journey'");
     if (!item_score_id) throw new AppError(400, 'item_score_id is required');
-    if (result !== 'pass' && result !== 'fail') throw new AppError(400, "result must be 'pass' or 'fail'");
+    if (result !== 'pass' && result !== 'fail' && result !== 'na') {
+      throw new AppError(400, "result must be 'pass', 'fail' or 'na'");
+    }
 
     const orgId = req.user!.organizationId;
     const settings = await getScoringSettings(orgId);
-    const normalized = result === 'pass' ? 100 : 0;
-    const rawScore = result === 'pass' ? 1 : 0;
+    // A checkpoint that did not apply carries no score. NULL rather than 0: the
+    // recompute reads pass/fail rows only, so the row must not look like a fail
+    // to anything that later widens that filter.
+    const normalized = result === 'na' ? null : result === 'pass' ? 100 : 0;
+    const rawScore = result === 'na' ? null : result === 'pass' ? 1 : 0;
 
     if (kind === 'call') {
       const callId = await resolveCallItem(orgId, req.user!.userId, item_score_id, result, normalized, rawScore, settings.passThreshold);
@@ -232,9 +244,9 @@ async function resolveCallItem(
   orgId: string,
   userId: string,
   itemScoreId: string,
-  result: 'pass' | 'fail',
-  normalized: number,
-  rawScore: number,
+  result: 'pass' | 'fail' | 'na',
+  normalized: number | null,
+  rawScore: number | null,
   threshold: number
 ): Promise<string> {
   const row = await queryOne<{ call_score_id: string; scorecard_item_id: string; call_id: string; weight: string; severity: string | null }>(
@@ -325,9 +337,9 @@ async function resolveJourneyItem(
   orgId: string,
   userId: string,
   itemScoreId: string,
-  result: 'pass' | 'fail',
-  normalized: number,
-  rawScore: number,
+  result: 'pass' | 'fail' | 'na',
+  normalized: number | null,
+  rawScore: number | null,
   threshold: number
 ): Promise<string> {
   const row = await queryOne<{ journey_id: string; scorecard_item_id: string; weight: string; severity: string | null; evidence: string | null; normalized_score: number | null }>(
@@ -377,8 +389,10 @@ async function resolveJourneyItem(
         userId,
         row.normalized_score ?? 0,
         normalized,
-        result === 'pass',
-        'Confirmed on manual review',
+        // NULL = resolved as not applicable (migration 108). Distinct from
+        // false, which asserts the adviser did not do it.
+        result === 'na' ? null : result === 'pass',
+        result === 'na' ? 'Not applicable to this sale' : 'Confirmed on manual review',
         row.evidence,
       ]
     );

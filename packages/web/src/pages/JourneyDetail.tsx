@@ -116,7 +116,7 @@ export function JourneyDetail() {
     }
   };
 
-  const resolve = async (itemScoreId: string, result: 'pass' | 'fail') => {
+  const resolve = async (itemScoreId: string, result: 'pass' | 'fail' | 'na') => {
     setResolvingId(itemScoreId);
     try {
       await api.post('/review-items/resolve', { kind: 'journey', item_score_id: itemScoreId, result });
@@ -609,6 +609,18 @@ export function JourneyDetail() {
                           className="text-badge text-fail hover:text-white hover:bg-fail px-2 py-1 rounded-btn border border-fail/30 hover:border-fail transition-colors disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
                         >
                           Fail
+                        </button>
+                        {/* See ReviewQueue.tsx: passing a checkpoint that could not
+                            apply is what put "the adviser did this" on the register
+                            for something never in scope. */}
+                        <button
+                          onClick={() => resolve(item.id, 'na')}
+                          disabled={resolvingId === item.id}
+                          aria-label={`Mark "${item.label}" as not applicable to this sale`}
+                          title="This checkpoint did not apply to this sale — excluded from the score rather than passed"
+                          className="text-badge text-text-secondary hover:text-text-primary hover:bg-table-header px-2 py-1 rounded-btn border border-border hover:border-text-muted transition-colors disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                        >
+                          N/A
                         </button>
                       </div>
                     )}
