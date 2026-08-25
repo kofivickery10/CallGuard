@@ -6,6 +6,10 @@ import { getLearningContext } from '../../services/learning-context.js';
 import { recordUsage } from '../../services/usage.js';
 import { getScoringSettings } from '../../services/tenant-settings.js';
 import { classifyItems } from '../../services/checkpoint-classification.js';
+import {
+  transcriptSupportsAttribution,
+  type SpeakerIntegrityFlag,
+} from '../../services/speaker-integrity.js';
 import { deliverCallScored } from '../../services/webhook-delivery.js';
 import { sendOpsAlert } from '../../services/ops-alert.js';
 import { pushJourneyScored, fetchSaleProducts } from '../../services/zoho.js';
@@ -86,6 +90,11 @@ export async function processScoreJourney(job: Job<ScoreJourneyJobData>) {
     if (withTranscript.length === 0) {
       throw new Error('No transcribed calls in this journey');
     }
+
+    // Resolved here rather than at first use: the checkpoint classification
+    // below needs it to decide whether this sale's evidence can be attributed
+    // at all, and that has to happen before anything is sent to Claude.
+    const wrapUp = journeyCalls.find((c) => c.role === 'wrap_up') ?? journeyCalls[journeyCalls.length - 1]!;
 
     // Combined, call-delimited transcript — one Claude call sees the whole
     // journey at once, so a statement/consent given in one call and a sale
@@ -258,12 +267,32 @@ export async function processScoreJourney(job: Job<ScoreJourneyJobData>) {
       .filter((c): c is number => c !== null);
     const journeySpeakerConfidence = confidences.length > 0 ? Math.min(...confidences) : null;
 
+    // Can the wrap-up support a claim about who said something at all?
+    //
+    // The wrap-up specifically, not the whole set: it is the call the sale's
+    // checkpoints are actually judged from, and a scrappy 20-second context call
+    // should not withhold a score the wrap-up can carry. If the wrap-up itself is
+    // one-sided or its labels are flagged, no checkpoint on this sale may be
+    // auto-scored — every one goes to a person with the AI's provisional verdict
+    // attached, and the sale reports no score until they work through it.
+    const attribution = transcriptSupportsAttribution(
+      wrapUp.transcript_text,
+      wrapUp.speaker_integrity_flag as SpeakerIntegrityFlag | null
+    );
+    if (!attribution.ok) {
+      console.warn(
+        `[ScoreJourney] ${journeyId}: wrap-up cannot be attributed — ${attribution.reason}. ` +
+          `Every applicable checkpoint routes to review; the sale reports no score.`
+      );
+    }
+
     const { scoreable, na, manualReview, provisional } = classifyItems(
       items,
       branch,
       journeySpeakerConfidence,
       undefined,
-      journeyProductIds
+      journeyProductIds,
+      attribution.ok
     );
     // Provisional items (consent gates under the speaker-confidence floor) are
     // AI-scored alongside the rest — the verdict is stored on their
@@ -285,7 +314,6 @@ export async function processScoreJourney(job: Job<ScoreJourneyJobData>) {
     );
     const scoringSettings = await getScoringSettings(journey.organization_id);
     const kbContext = await getKBContext(journey.organization_id);
-    const wrapUp = journeyCalls.find((c) => c.role === 'wrap_up') ?? journeyCalls[journeyCalls.length - 1]!;
     const learning = org
       ? await getLearningContext(journey.organization_id, org.plan, scoreable.map((i) => i.id), wrapUp.agent_id)
       : undefined;
@@ -482,7 +510,15 @@ export async function processScoreJourney(job: Job<ScoreJourneyJobData>) {
       // confidence floor rather than anything about the recording or the runs.
       const lowConfidence = routesToReviewOnConfidence(
         itemScore.confidence,
-        scoringSettings.reviewConfidenceFloor
+        scoringSettings.reviewConfidenceFloor,
+        // Asymmetric below the floor: a low-confidence FAIL is an allegation and
+        // is wrong 94% of the time, so it goes to a person; a low-confidence PASS
+        // on a non-consent checkpoint has never been overturned. See
+        // routesToReviewOnConfidence.
+        {
+          isPass: isItemPass(normalized, scoringSettings.passThreshold),
+          consentGate: item.consent_gate === true,
+        }
       );
 
       // A checkpoint the independent runs disagreed on is genuinely ambiguous.

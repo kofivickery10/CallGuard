@@ -81,6 +81,44 @@ describe('classifyItems', () => {
     expect(result.provisional).toEqual([]);
   });
 
+  // The gap the attribution gate closes. Confidence is a consent-gate rule, so a
+  // high-confidence-but-unusable transcript still auto-scored the other ~35
+  // checkpoints on the scorecard. Andrew Kerr's sale scored 92.68 that way, off a
+  // transcript with no Agent turn in it.
+  it('routes EVERY applicable item to provisional when the evidence cannot be attributed', () => {
+    const ordinary = makeItem({ id: 'a', consent_gate: false });
+    const gate = makeItem({ id: 'b', consent_gate: true });
+    const result = classifyItems([ordinary, gate], null, 0.8, undefined, [], false);
+    expect(result.scoreable).toEqual([]);
+    expect(result.provisional).toEqual([ordinary, gate]);
+  });
+
+  // Provisional, not na. na asserts the checkpoint did not apply to this sale,
+  // which is a different and false claim — the sale is scoreable by a person.
+  it('does not mark unattributable items na', () => {
+    const item = makeItem({ consent_gate: false });
+    const result = classifyItems([item], null, 0.8, undefined, [], false);
+    expect(result.na).toEqual([]);
+    expect(result.manualReview).toEqual([]);
+  });
+
+  it('still auto-scores normally when the evidence can be attributed', () => {
+    const item = makeItem({ consent_gate: false });
+    const result = classifyItems([item], null, 0.8, undefined, [], true);
+    expect(result.scoreable).toEqual([item]);
+    expect(result.provisional).toEqual([]);
+  });
+
+  // Branch exclusion is about whether the checkpoint applies at all, so it must
+  // still win — an unattributable transcript does not make an inapplicable
+  // checkpoint suddenly reviewable.
+  it('keeps branch exclusion ahead of the attribution gate', () => {
+    const item = makeItem({ applies_when: { branch: 'on_risk' } });
+    const result = classifyItems([item], 'referred', 0.8, undefined, [], false);
+    expect(result.na).toEqual([item]);
+    expect(result.provisional).toEqual([]);
+  });
+
   // A NULL confidence is only a problem for consent gates — an ordinary AI
   // item has nothing that depends on which speaker cluster is which.
   it('does not route a non-consent-gate item to provisional on NULL confidence', () => {
@@ -88,5 +126,52 @@ describe('classifyItems', () => {
     const result = classifyItems([item], null, null);
     expect(result.scoreable).toEqual([item]);
     expect(result.provisional).toEqual([]);
+  });
+});
+
+describe('routesToReviewOnConfidence — asymmetric below the floor', () => {
+  const FLOOR = 0.8;
+
+  it('does not route anything when the floor is off', () => {
+    expect(routesToReviewOnConfidence(0.1, 0)).toBe(false);
+  });
+
+  it('does not route a checkpoint at or above the floor', () => {
+    expect(routesToReviewOnConfidence(0.8, FLOOR)).toBe(false);
+    expect(routesToReviewOnConfidence(0.95, FLOOR)).toBe(false);
+  });
+
+  // "We do not know how sure it was" is not a reason to write a verdict into a
+  // compliance register.
+  it('routes a missing confidence', () => {
+    expect(routesToReviewOnConfidence(null, FLOOR)).toBe(true);
+    expect(routesToReviewOnConfidence(undefined, FLOOR)).toBe(true);
+    expect(routesToReviewOnConfidence(NaN, FLOOR)).toBe(true);
+  });
+
+  // Measured over 594 sub-floor checkpoints: a low-confidence FAIL was overturned
+  // 313 of 333 times (94%). It is an allegation against a named adviser and must
+  // never auto-score.
+  it('always routes a low-confidence fail', () => {
+    expect(routesToReviewOnConfidence(0.6, FLOOR, { isPass: false, consentGate: false })).toBe(true);
+    expect(routesToReviewOnConfidence(0.75, FLOOR, { isPass: false, consentGate: true })).toBe(true);
+  });
+
+  // 0 of 180 non-consent sub-floor passes were overturned.
+  it('auto-scores a low-confidence pass on an ordinary checkpoint', () => {
+    expect(routesToReviewOnConfidence(0.6, FLOOR, { isPass: true, consentGate: false })).toBe(false);
+    expect(routesToReviewOnConfidence(0.5, FLOOR, { isPass: true, consentGate: false })).toBe(false);
+  });
+
+  // A false pass on a consent is the worst output this product can produce, so
+  // consent gates keep the symmetric floor whatever the sample says.
+  it('still routes a low-confidence pass on a consent gate', () => {
+    expect(routesToReviewOnConfidence(0.6, FLOOR, { isPass: true, consentGate: true })).toBe(true);
+  });
+
+  // Callers that pass no verdict keep the old symmetric behaviour, so nothing
+  // changes by omission.
+  it('routes both ways when no verdict is supplied', () => {
+    expect(routesToReviewOnConfidence(0.6, FLOOR)).toBe(true);
   });
 });

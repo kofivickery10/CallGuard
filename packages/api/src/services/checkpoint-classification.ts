@@ -23,11 +23,41 @@ export const CONSENT_SPEAKER_CONFIDENCE_FLOOR = 0.5;
  */
 export function routesToReviewOnConfidence(
   confidence: number | null | undefined,
-  floor: number
+  floor: number,
+  // The AI's provisional verdict, and whether this checkpoint guards a consent.
+  // Both default so existing callers keep the symmetric behaviour.
+  verdict?: { isPass: boolean; consentGate: boolean }
 ): boolean {
   if (!(floor > 0)) return false;
   if (typeof confidence !== 'number' || Number.isNaN(confidence)) return true;
-  return confidence < floor;
+  if (confidence >= floor) return false;
+
+  // Below the floor. Whether that needs a person depends on which way the
+  // verdict went, and the difference is not marginal.
+  //
+  // Measured over 594 sub-floor checkpoints a reviewer worked on the first
+  // deploying firm:
+  //
+  //   AI said PASS   261 items -> reviewer agreed 261, overturned   0   (0.0%)
+  //   AI said FAIL   333 items -> reviewer agreed  20, overturned 313  (94.0%)
+  //
+  // So the model's uncertainty is real, and it is almost entirely on the FAIL
+  // side. A low-confidence fail is wrong 94% of the time and must never be
+  // written into a compliance register unseen — it is an allegation against a
+  // named adviser. A low-confidence pass has not been overturned once.
+  //
+  // Lowering the floor instead, which is the obvious move from the queue's
+  // volume, would have auto-scored 390 items and turned 153 of them into
+  // recorded failures a human had already overturned. The queue is not wasteful;
+  // it is catching the over-failing that D-03 is about. What it does not need is
+  // the pass side.
+  //
+  // CONSENT GATES ARE EXEMPT. A false pass on a consent is the worst output this
+  // product can produce, so they keep the symmetric floor whatever the numbers
+  // say — 0 of 81 is a measurement of reviewer behaviour, not a proof, and this
+  // is not the place to spend it.
+  if (verdict && verdict.isPass && !verdict.consentGate) return false;
+  return true;
 }
 
 export interface ClassifiedItems {
@@ -60,7 +90,12 @@ export function classifyItems(
   // product-restricted items then still score (conservative — see
   // productAppliesToItem). An item is scored only when it applies to BOTH the
   // resolved branch and the sale's products.
-  journeyProductIds: string[] = []
+  journeyProductIds: string[] = [],
+  // False when the evidence cannot support a claim about who said something at
+  // all — the transcript is one-sided, or its labels are flagged as untrustworthy
+  // (services/speaker-integrity.ts transcriptSupportsAttribution). Defaults true
+  // so existing callers keep their behaviour.
+  evidenceAttributable: boolean = true
 ): ClassifiedItems {
   const na: ScorecardItem[] = [];
   const manualReview: ScorecardItem[] = [];
@@ -92,7 +127,20 @@ export function classifyItems(
     const unreliableSpeakerSplit =
       item.consent_gate &&
       (speakerAttributionConfidence === null || speakerAttributionConfidence < confidenceFloor);
-    if (unreliableSpeakerSplit) {
+    // Nothing on this transcript can be attributed, so nothing on it may be
+    // auto-scored — not just the consent gates.
+    //
+    // The confidence floor above is a consent-gate rule, and that was the whole
+    // gap: it protects the checkpoints that ask WHO said something and leaves
+    // every other checkpoint scoring off the same unusable evidence. On a
+    // 41-item scorecard that is roughly 35 checkpoints judged against a
+    // transcript the platform has already concluded it cannot read.
+    //
+    // Provisional rather than na: the words are all there, so a person with the
+    // recording can score the sale, and their verdicts produce the score. na
+    // would assert the checkpoints did not apply, which is a different and false
+    // claim.
+    if (unreliableSpeakerSplit || !evidenceAttributable) {
       provisional.push(item);
       continue;
     }

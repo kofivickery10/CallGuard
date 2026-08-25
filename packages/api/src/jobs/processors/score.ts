@@ -295,7 +295,14 @@ export async function processScoring(job: Job<{ callId: string }>) {
       // manual_review row so the reviewer confirms rather than starts over.
       const lowConfidence = routesToReviewOnConfidence(
         itemScore.confidence,
-        scoringSettings.reviewConfidenceFloor
+        scoringSettings.reviewConfidenceFloor,
+        // Asymmetric below the floor — see routesToReviewOnConfidence. Applied
+        // on this path too so per-call and per-journey scoring cannot drift on
+        // what reaches a reviewer.
+        {
+          isPass: isItemPass(normalized, scoringSettings.passThreshold),
+          consentGate: item.consent_gate === true,
+        }
       );
       // A checkpoint the consensus runs could not agree on is routed the same
       // way as the two cases above — held out of the weighted score and sent
