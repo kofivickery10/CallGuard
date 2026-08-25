@@ -1,0 +1,1110 @@
+<title>Trust Point Defect Register</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+
+<style>
+:root {
+  --ground:      #F1F3F6;
+  --surface:     #FFFFFF;
+  --surface-2:   #E9ECF1;
+  --ink:         #14171D;
+  --ink-2:       #59616F;
+  --ink-3:       #868D9B;
+  --hairline:    #D9DEE6;
+  --hairline-2:  #C3CAD5;
+  --accent:      #3B4A6B;
+  --accent-soft: #E4E8F0;
+  --sev-crit:    #A62F2F;
+  --sev-high:    #B0601A;
+  --sev-med:     #7E7020;
+  --sev-low:     #4A6478;
+  --sev-ok:      #2F6B4F;
+  --crit-wash:   #F7E9E9;
+  --high-wash:   #F9EEE2;
+  --med-wash:    #F5F2E1;
+  --low-wash:    #E9EEF2;
+  --ok-wash:     #E4EFE8;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground:      #13161B;
+    --surface:     #1A1E25;
+    --surface-2:   #22272F;
+    --ink:         #E7EAEF;
+    --ink-2:       #9AA3B1;
+    --ink-3:       #6F7784;
+    --hairline:    #2B313B;
+    --hairline-2:  #3A4250;
+    --accent:      #93A6CC;
+    --accent-soft: #232A38;
+    --sev-crit:    #E58B8B;
+    --sev-high:    #E0A468;
+    --sev-med:     #CFC072;
+    --sev-low:     #9DB6C7;
+    --sev-ok:      #7FC49B;
+    --crit-wash:   #2B1D1D;
+    --high-wash:   #2B2318;
+    --med-wash:    #262316;
+    --low-wash:    #1D242A;
+    --ok-wash:     #1A2621;
+  }
+}
+
+:root[data-theme="dark"] {
+  --ground:      #13161B;
+  --surface:     #1A1E25;
+  --surface-2:   #22272F;
+  --ink:         #E7EAEF;
+  --ink-2:       #9AA3B1;
+  --ink-3:       #6F7784;
+  --hairline:    #2B313B;
+  --hairline-2:  #3A4250;
+  --accent:      #93A6CC;
+  --accent-soft: #232A38;
+  --sev-crit:    #E58B8B;
+  --sev-high:    #E0A468;
+  --sev-med:     #CFC072;
+  --sev-low:     #9DB6C7;
+  --sev-ok:      #7FC49B;
+  --crit-wash:   #2B1D1D;
+  --high-wash:   #2B2318;
+  --med-wash:    #262316;
+  --low-wash:    #1D242A;
+  --ok-wash:     #1A2621;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+.wrap {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 0 28px 120px;
+}
+
+.measure { max-width: 68ch; }
+
+/* ── masthead ─────────────────────────────────────────────── */
+
+.masthead {
+  padding: 64px 0 28px;
+  border-bottom: 2px solid var(--ink);
+}
+
+.eyebrow {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 11.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin: 0 0 18px;
+}
+
+h1 {
+  font-family: Newsreader, Georgia, serif;
+  font-weight: 500;
+  font-size: clamp(2.4rem, 5.2vw, 3.5rem);
+  line-height: 1.05;
+  letter-spacing: -0.015em;
+  margin: 0 0 20px;
+  text-wrap: balance;
+}
+
+.standfirst {
+  font-family: Newsreader, Georgia, serif;
+  font-size: 1.2rem;
+  line-height: 1.5;
+  color: var(--ink-2);
+  max-width: 62ch;
+  margin: 0;
+}
+
+.standfirst em { color: var(--ink); font-style: italic; }
+
+/* ── figure strip ─────────────────────────────────────────── */
+
+.figures {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
+  gap: 1px;
+  background: var(--hairline);
+  border-bottom: 1px solid var(--hairline);
+  margin: 0 0 56px;
+}
+
+.fig {
+  background: var(--ground);
+  padding: 20px 18px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.fig-n {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 1.75rem;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+.fig-l {
+  font-size: 12.5px;
+  line-height: 1.35;
+  color: var(--ink-2);
+}
+
+.fig.crit .fig-n { color: var(--sev-crit); }
+.fig.ok   .fig-n { color: var(--sev-ok); }
+
+/* ── sections ─────────────────────────────────────────────── */
+
+section { margin: 0 0 72px; }
+
+.sec-head {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  border-bottom: 1px solid var(--hairline-2);
+  padding-bottom: 10px;
+  margin-bottom: 28px;
+}
+
+.sec-head h2 {
+  font-family: Newsreader, Georgia, serif;
+  font-weight: 500;
+  font-size: 1.7rem;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+
+.sec-head .count {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 12px;
+  color: var(--ink-3);
+  letter-spacing: 0.04em;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+p { margin: 0 0 1.1em; }
+p.lede { color: var(--ink-2); }
+
+a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 2px; }
+
+/* ── finding register ─────────────────────────────────────── */
+
+.register { display: flex; flex-direction: column; gap: 14px; }
+
+.finding {
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-left: 4px solid var(--sev-low);
+  display: grid;
+  grid-template-columns: 1fr;
+}
+
+.finding.crit { border-left-color: var(--sev-crit); }
+.finding.high { border-left-color: var(--sev-high); }
+.finding.med  { border-left-color: var(--sev-med); }
+.finding.low  { border-left-color: var(--sev-low); }
+
+.f-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 16px 20px 0;
+}
+
+.f-id {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-3);
+  letter-spacing: 0.04em;
+}
+
+.sev {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  padding: 3px 8px 2px;
+  border-radius: 2px;
+  white-space: nowrap;
+}
+
+.sev.crit { color: var(--sev-crit); background: var(--crit-wash); }
+.sev.high { color: var(--sev-high); background: var(--high-wash); }
+.sev.med  { color: var(--sev-med);  background: var(--med-wash); }
+.sev.low  { color: var(--sev-low);  background: var(--low-wash); }
+.sev.ok   { color: var(--sev-ok);   background: var(--ok-wash); }
+
+.f-title {
+  font-family: Newsreader, Georgia, serif;
+  font-size: 1.32rem;
+  font-weight: 500;
+  line-height: 1.25;
+  letter-spacing: -0.008em;
+  margin: 8px 20px 0;
+  text-wrap: balance;
+}
+
+.f-body { padding: 10px 20px 18px; }
+.f-body p { max-width: 74ch; margin: 0 0 0.85em; }
+.f-body p:last-child { margin-bottom: 0; }
+
+.f-body ul {
+  margin: 0 0 0.9em;
+  padding-left: 1.1em;
+  max-width: 74ch;
+}
+.f-body li { margin-bottom: 0.4em; }
+
+code, .m {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.87em;
+  background: var(--surface-2);
+  padding: 1px 5px;
+  border-radius: 2px;
+}
+
+.quote {
+  border-left: 2px solid var(--hairline-2);
+  padding: 2px 0 2px 14px;
+  margin: 0 0 0.95em;
+  color: var(--ink-2);
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 12.5px;
+  line-height: 1.65;
+  max-width: 78ch;
+}
+
+.quote b { color: var(--ink); font-weight: 500; }
+
+.fix {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--hairline-2);
+  font-size: 14.5px;
+  color: var(--ink-2);
+  max-width: 76ch;
+}
+
+.fix strong {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  font-weight: 500;
+  display: block;
+  margin-bottom: 3px;
+}
+
+/* ── tables ───────────────────────────────────────────────── */
+
+.tw { overflow-x: auto; margin: 0 0 1.4em; }
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  min-width: 480px;
+  font-size: 14px;
+}
+
+th {
+  text-align: left;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  font-weight: 500;
+  padding: 0 14px 7px 0;
+  border-bottom: 1px solid var(--hairline-2);
+  white-space: nowrap;
+}
+
+td {
+  padding: 8px 14px 8px 0;
+  border-bottom: 1px solid var(--hairline);
+  vertical-align: top;
+}
+
+td.n, th.n {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  padding-right: 18px;
+}
+
+tr:last-child td { border-bottom: none; }
+
+.bad  { color: var(--sev-crit); }
+.warn { color: var(--sev-high); }
+.good { color: var(--sev-ok); }
+
+/* ── clean list ───────────────────────────────────────────── */
+
+.clean {
+  display: grid;
+  gap: 1px;
+  background: var(--hairline);
+  border: 1px solid var(--hairline);
+}
+
+.clean-row {
+  background: var(--surface);
+  padding: 14px 18px;
+  display: grid;
+  grid-template-columns: 78px 1fr;
+  gap: 16px;
+  align-items: baseline;
+}
+
+.clean-row .tick {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--sev-ok);
+}
+
+.clean-row .what { font-size: 14.5px; }
+.clean-row .what b { font-weight: 600; }
+
+@media (max-width: 560px) {
+  .clean-row { grid-template-columns: 1fr; gap: 4px; }
+  .wrap { padding: 0 18px 80px; }
+  .masthead { padding-top: 44px; }
+}
+
+footer {
+  border-top: 1px solid var(--hairline-2);
+  padding-top: 20px;
+  font-size: 13px;
+  color: var(--ink-3);
+  max-width: 74ch;
+}
+</style>
+
+<div class="wrap">
+
+<header class="masthead">
+  <p class="eyebrow">CallGuard AI &nbsp;·&nbsp; Tenant review &nbsp;·&nbsp; 21 August 2026</p>
+  <h1>Trust Point: every sale and reconciliation to date</h1>
+  <p class="standfirst">All 107 scored sales and all 106 reconciliation runs, read against the database rather than the dashboard. The scoring arithmetic is clean. <em>Twenty-four defects</em> sit above it, and eight of them put a claim on the record that the evidence does not support. Six are fixed, six more have fixes written, and four had their premise corrected once measured — the next section says where each one stands.</p>
+</header>
+
+<div class="figures">
+  <div class="fig ok"><span class="fig-n">107</span><span class="fig-l">sales reviewed<br>4–21 Aug 2026</span></div>
+  <div class="fig ok"><span class="fig-n">0</span><span class="fig-l">arithmetic or<br>register errors</span></div>
+  <div class="fig"><span class="fig-n">4,494</span><span class="fig-l">checkpoint<br>scores</span></div>
+  <div class="fig"><span class="fig-n">2,103</span><span class="fig-l">reconciliation<br>items</span></div>
+  <div class="fig crit"><span class="fig-n">24</span><span class="fig-l">defects<br>found</span></div>
+  <div class="fig crit"><span class="fig-n">8</span><span class="fig-l">produce false<br>claims on record</span></div>
+  <div class="fig ok"><span class="fig-n">2</span><span class="fig-l">fixed and<br>verified</span></div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<section>
+  <div class="sec-head">
+    <h2>Where every finding stands</h2>
+    <span class="count">as at 22 August 2026</span>
+  </div>
+  <p class="lede measure">Four findings had their premise corrected by investigation — D-02, D-08, D-09 and D-10 — and in three of those the fix this report originally recommended would have made things worse. Those corrections are recorded in each entry. The report is a reliable map of where the problems are; it was not a reliable guide to what to do about them.</p>
+
+  <div class="tw"><table>
+    <thead><tr><th>#</th><th>Finding</th><th>Sev</th><th>State</th><th>What is left</th></tr></thead>
+    <tbody>
+      <tr><td>D-01</td><td>Sale reconciled against a different person's call</td><td class="bad">Critical</td><td class="good">Fixed &amp; verified in production</td><td>—</td></tr>
+      <tr><td>D-24</td><td>19-minute call scored 92.68 with no adviser in the transcript</td><td class="bad">Critical</td><td class="good">Confidence lift fixed</td><td>Quarantine at go-live</td></tr>
+      <tr><td>D-10</td><td>Review queue volume <em>(premise corrected)</em></td><td class="warn">Medium</td><td class="good">Fixed — asymmetric gate</td><td>—</td></tr>
+      <tr><td>D-02</td><td>Sales scored from inverted transcripts <em>(premise corrected)</em></td><td class="warn">High</td><td>Quarantine code shipped</td><td>9 sales to re-score at go-live</td></tr>
+      <tr><td>D-03</td><td>Over-failing + trust-item config gap</td><td class="warn">High</td><td>N/A verdict shipped; scope script written</td><td>Migration 108 + product sign-off</td></tr>
+      <tr><td>D-04</td><td>Customer PII outside the DPIA on the application side</td><td class="warn">High</td><td>Masking shipped</td><td><strong>Run the mask script — do this first</strong></td></tr>
+      <tr><td>D-05</td><td>Height never reconciles</td><td class="warn">High</td><td class="good">Fixed</td><td>Takes effect on re-run</td></tr>
+      <tr><td>D-06</td><td>Date of birth not order-normalised</td><td class="warn">High</td><td class="good">Fixed</td><td>Takes effect on re-run</td></tr>
+      <tr><td>D-07</td><td>“No. of Units” answered from the alcohol question</td><td class="warn">High</td><td class="good">Fixed — coincidental-evidence guard</td><td>Takes effect on re-run</td></tr>
+      <tr><td>D-08</td><td>Mangled questions on the live profile <em>(premise corrected)</em></td><td class="warn">Medium</td><td>Guard + loud fallback shipped</td><td>Repair script, before confirming profiles</td></tr>
+      <tr><td>D-09</td><td>42% of sales have no application attached <em>(premise corrected)</em></td><td class="warn">Medium</td><td>Dashboard tile shipped</td><td><strong>A conversation with the firm — not code</strong></td></tr>
+      <tr><td>D-13</td><td>Form furniture stored as answer values</td><td class="warn">Medium</td><td>Partly — the email-in-phone case is fixed</td><td>“Eligibility Cover”, page numbering</td></tr>
+      <tr><td>D-21</td><td>MetLife profile half non-functional</td><td>Low</td><td>Largely covered by D-04's modes</td><td>Confirm the profile</td></tr>
+      <tr><td>D-19</td><td>No call reaches high-confidence attribution <em>(premise corrected)</em></td><td>Low</td><td>Diagnosed — 8 kHz mono, uniform</td><td>Ask CloudTalk for 16 kHz</td></tr>
+      <tr><td>D-11</td><td>Health questions producing accusations the schema forbids</td><td class="warn">Medium</td><td>Not started</td><td>Bar the outcome on health questions</td></tr>
+      <tr><td>D-12</td><td>Confidence not derived from the reasoning</td><td class="warn">Medium</td><td>Not started</td><td>—</td></tr>
+      <tr><td>D-14</td><td>Occupation not matched on paraphrase</td><td class="warn">Medium</td><td>Not started</td><td>2 real discrepancies to review by hand</td></tr>
+      <tr><td>D-15</td><td>Health checklist answers cannot resolve</td><td class="warn">Medium</td><td>Not started</td><td>Containment test — largest recoverable block</td></tr>
+      <tr><td>D-16</td><td>One answer counted against two fields</td><td class="warn">Medium</td><td>Not started</td><td>Delete the cigarette mismatch</td></tr>
+      <tr><td>D-17</td><td>Model extraction ran on a client review document</td><td class="warn">Medium</td><td>Not started</td><td>Document-type gate</td></tr>
+      <tr><td>D-18</td><td>Phantom duplicate sale</td><td class="warn">Medium</td><td>Not started</td><td>Confirm with the firm, then delete</td></tr>
+      <tr><td>D-20</td><td>Commercial asks are the top two “compliance” failures</td><td>Low</td><td>Not started</td><td>Weight or re-section them</td></tr>
+      <tr><td>D-22</td><td>Two sales filed under the wrong customer name</td><td>Low</td><td>Not started</td><td>Prefer the CRM name when DOB agrees</td></tr>
+      <tr><td>D-23</td><td>Score distribution too compressed</td><td>Low</td><td>Observation</td><td>A calibration question, not a defect</td></tr>
+    </tbody>
+  </table></div>
+
+  <p class="measure"><strong>Applied to production so far:</strong> migration 107 and the D-01 data repair — one sale's four void findings retired, verified. <strong>Everything else is code and scripts, not yet applied.</strong> Migration 108 is written and pending.</p>
+
+  <p class="measure"><strong>Safe to run now, independently of go-live:</strong> <code>mask-application-pii.ts --commit</code> (live customer PII outside the DPIA permission) and <code>repair-profile-questions.ts --commit</code> (before anyone confirms a profile, since confirming the UnderwriteMe one as it stands is what sets D-08's trap). Neither re-runs anything or touches an outcome.</p>
+
+  <p class="measure"><strong>Needs a decision from the firm:</strong> which products can be placed in trust (D-03); whether the stale figure in their CRM is blanked, annotated or left when CallGuard withdraws a score (D-01, D-02); and whether the phantom sale was a test (D-18).</p>
+</section>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<section>
+  <div class="sec-head">
+    <h2>What is verifiably correct</h2>
+    <span class="count">6 checks, all clean</span>
+  </div>
+  <p class="lede measure">Worth stating first, because it bounds everything below: none of the defects are in the maths. I recomputed every sale from its own checkpoint rows and cross-checked the register.</p>
+
+  <div class="clean">
+    <div class="clean-row"><span class="tick">Clean</span><span class="what"><b>Score arithmetic.</b> All 107 sales recomputed from their checkpoint rows to the stored <code>overall_score</code>. Zero drift, to the penny.</span></div>
+    <div class="clean-row"><span class="tick">Clean</span><span class="what"><b>Pass gate.</b> Every pass/fail matches “score ≥ 70 and no critical breach”. Zero sales passing with a critical failure; zero failing without a reason.</span></div>
+    <div class="clean-row"><span class="tick">Clean</span><span class="what"><b>Breach register.</b> 199 failing checkpoints, 199 breaches, no orphans in either direction — including after 35 breaches were withdrawn by review.</span></div>
+    <div class="clean-row"><span class="tick">Clean</span><span class="what"><b>Sale composition.</b> Every sale has at least one call and exactly one wrap-up. No duplicate sale for any Zoho record.</span></div>
+    <div class="clean-row"><span class="tick">Clean</span><span class="what"><b>Branch exclusions.</b> The <code>applies_when</code> rules fire exactly as configured — 22 referred, 85 on-risk, and the N/A counts line up item by item.</span></div>
+    <div class="clean-row"><span class="tick">Clean</span><span class="what"><b>Value comparison, where it exists.</b> Weight converts both ways (“7 stone 6 pounds” → 47.17 kg), “Neither of these” resolves to “No”, currency and thousands separators normalise, and relative dates land (“4 years ago” → 2022).</span></div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<section>
+  <div class="sec-head">
+    <h2>Defects that put a false claim on the record</h2>
+    <span class="count">8 findings</span>
+  </div>
+  <p class="lede measure">Ranked first because these are the ones a firm or a regulator could challenge. Each names a specific sale so it can be pulled up and checked.</p>
+
+  <div class="register">
+
+    <article class="finding crit">
+      <div class="f-head"><span class="f-id">D-24</span><span class="sev crit">Critical</span><span class="sev low">Found 21 Aug, during remediation</span></div>
+      <h3 class="f-title">A 19-minute health-disclosure call was scored 92.68 against a transcript containing no adviser</h3>
+      <div class="f-body">
+        <p>Diarisation returns a speaker count, and on <strong>76 of 297 transcribed calls — 26%</strong> it comes back as <em>one</em>. Every one of those carries the whole call under a single label. Most are short (median 39 seconds: voicemails, no-answers) and harmless. Four are the wrap-up call of a scored sale:</p>
+        <div class="tw"><table>
+          <thead><tr><th>Sale</th><th class="n">Duration</th><th class="n">Score</th><th class="n">Confidence</th><th>Turns in transcript</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Andrew Kerr</strong></td><td class="n">19.5 min</td><td class="n">92.68</td><td class="n bad">0.75</td><td class="bad">0 Agent, 1 Customer</td></tr>
+            <tr><td>Nathan Gonzalez</td><td class="n">37s</td><td class="n">82.93</td><td class="n">0.30</td><td>1 Agent, 0 Customer</td></tr>
+            <tr><td>Lisa Walker</td><td class="n">61s</td><td class="n">100.00</td><td class="n">0.30</td><td>1 Agent, 0 Customer</td></tr>
+            <tr><td>(unnamed)</td><td class="n">50s</td><td class="n">100.00</td><td class="n">0.30</td><td>1 Agent, 0 Customer</td></tr>
+          </tbody>
+        </table></div>
+        <p>Andrew Kerr is the worst sale in the tenant. Both voices are plainly present and readable in the text — and fused into a single <code>Customer:</code> turn with no Agent turn at all:</p>
+        <div class="quote">
+          <b>Customer:</b> Hey, mister [NAME] Hi there, mister [NAME] It’s just [NAME] calling from Trust Point with regards to the life insurance. <span class="warn">← adviser</span> Life insurance. Yeah. Well, I actually, I was up in neurology yesterday, which is good. And, basically, I’ve been given pretty much a clean bill of health. <span class="warn">← customer</span> … So there’s nothing no sort of issues come up on all the tests? <span class="warn">← adviser</span> Nothing come up at all. <span class="warn">← customer</span>
+        </div>
+        <p>Every “did the adviser say this” checkpoint on that sale was judged against a transcript in which the adviser does not exist as a speaker, on a call carrying a neurology referral, a viral infection and chronic fatigue. It scored 92.68.</p>
+        <p><strong>Why it scored at all.</strong> A single-cluster call correctly bottoms out at 0.30 — but <code>resolveSpeakerConfidence</code> lifts a <code>'swapped'</code> cleanup verdict to 0.75 <em>unconditionally</em>. That lift is justified on the reasoning that a model actively correcting labels is stating evidence, which assumes two labels to correct between. Here the “swap” flipped the one label the entire call sits under. 0.75 cleared the consent-gate floor of 0.5, so the consent gates auto-scored too.</p>
+        <div class="fix"><strong>Fixed — 21 Aug</strong> <code>resolveSpeakerConfidence</code> now takes the speaker count and refuses any lift below two clusters, with tests. A first attempt guarded the wrong function — <code>identifyAdviserCluster</code> abstains under two clusters, so that branch was already unreachable and the guard was dead code; it was reverted. Still open: the four sales keep their scores until quarantining lands, and reconstructing the turns is <em>not</em> the answer — see the note below.</div>
+        <div class="fix"><strong>Why the turns cannot be rebuilt</strong> Deepgram segmented Andrew Kerr’s call into 221 utterances and 79 paragraphs, so it knows <em>where</em> the turns change and only the <em>who</em> is missing — which looks like an opening. It is not. Role markers appear on <strong>1.2% of utterances</strong> (3 of 253 across the affected calls; 3 of Andrew Kerr’s 221), so a deterministic assignment would be guessing at 98.8% of the call. A model pass could read it — but <code>assessSpeakerIntegrity</code> needs 6 markers to judge anything and these calls have 3, so the deterministic verifier returns “insufficient evidence” on exactly the transcripts needing verification. That would put unverifiable model-assigned speaker labels into a compliance record, which is the specific failure the integrity module exists to prevent.</div>
+      </div>
+    </article>
+
+    <article class="finding crit">
+      <div class="f-head"><span class="f-id">D-01</span><span class="sev crit">Critical</span></div>
+      <h3 class="f-title">One sale was reconciled against a different person’s call</h3>
+      <div class="f-body">
+        <p>Sale <code>09eb946c</code>. The Zoho sale and the attached application belong to one member of a household; the CallGuard customer record the sale was matched to is <em>another member of the same household</em>, on the same mobile. The reconciliation itself says so, twice:</p>
+        <div class="quote">
+          <b>Name</b> — application: “Mr M— R—” · call: a different first name, same surname<br>
+          <b>Date of Birth</b> — application: 20/10/1962 · call: 04/05/1973
+        </div>
+        <p>Both were filed as <code>undetermined</code>, so nothing surfaced. The run then produced <strong>four findings against the adviser, all of them <code>asked_no_answer</code></strong> — “you completed this field without asking” — on Guaranteed Sum Assured, Term, bank account held in payer’s name, and account holder’s name. Every one is derived from the wrong recording, and every one is void.</p>
+        <p>The cause is customer matching on normalised phone number, which cannot separate two people who share a mobile. A contradicting name or DOB is the strongest possible signal that the pairing is wrong, and it is currently a silent <code>undetermined</code> rather than a hard stop.</p>
+        <div class="fix"><strong>Done — 21 Aug</strong> Guard shipped: <code>services/reconciliation-identity.ts</code> plus migration 107’s <code>identity_mismatch</code> status. A decisive date-of-birth contradiction now halts the run before any question is judged, and the sale says so on screen. A near miss or a transposed day/month deliberately does not fire — see D-06. Retiring this sale’s four findings is a one-line script run, pending approval.</div>
+      </div>
+    </article>
+
+    <article class="finding high">
+      <div class="f-head"><span class="f-id">D-02</span><span class="sev high">High</span></div>
+      <h3 class="f-title">Five sales were scored from a wrap-up call whose speaker labels are known to be swapped</h3>
+      <div class="f-body">
+        <p>Seven calls carry a <code>speaker_integrity_flag</code>. On five of them the flag is <code>inverted_labels</code> and the call is the <em>wrap-up</em> — the primary evidence call for the whole sale. Confidence was correctly dropped to 0.30, but the flag is diagnostic only, and only consent-gate checkpoints gate on speaker confidence. Everything else was auto-scored from a transcript in which “Agent:” is the customer.</p>
+        <div class="tw"><table>
+          <thead><tr><th>Sale</th><th>Wrap-up length</th><th class="n">Score</th><th>Result</th></tr></thead>
+          <tbody>
+            <tr><td><code>3307e4cd</code></td><td>34 min</td><td class="n">100.00</td><td class="good">Pass</td></tr>
+            <tr><td><code>8a338c59</code></td><td>47 min</td><td class="n">97.56</td><td class="good">Pass</td></tr>
+            <tr><td><code>76984071</code></td><td>13 min</td><td class="n">95.12</td><td class="good">Pass</td></tr>
+            <tr><td><code>a7ab1083</code></td><td>7 min</td><td class="n">63.41</td><td class="bad">Fail</td></tr>
+            <tr><td><code>004728f5</code></td><td>29 min</td><td class="n">56.41</td><td class="bad">Fail</td></tr>
+          </tbody>
+        </table></div>
+        <p>Three near-perfect passes and two recorded failures, all resting on evidence that is not what it claims to be. The two failures are breaches on an adviser’s record.</p>
+        <p><strong>Investigated 21 Aug, and the flag is a misdiagnosis on four of the six calls.</strong> The obvious fix — flip the labels and re-score, which <code>fix-journey-speaker-swap.ts</code> once did by hand — was built and abandoned. Flipping made the marker distribution come back clean on all six, and inspection showed only two were actually inverted:</p>
+        <div class="tw"><table>
+          <thead><tr><th>Call</th><th>Diagnosis</th><th>Flip?</th></tr></thead>
+          <tbody>
+            <tr><td>Paul Hartley, Danni Beck</td><td>genuinely inverted end to end</td><td class="good">would fix it</td></tr>
+            <tr><td>Simon Bradley, Patric Dixon, Adam Richards</td><td class="bad">diarisation fused both parties into single turns</td><td class="bad">moves the error</td></tr>
+            <tr><td>Lisa Walker (context)</td><td class="bad">fused <em>and</em> three-party — a receptionist transferring the call</td><td class="bad">no two labels fit</td></tr>
+          </tbody>
+        </table></div>
+        <div class="quote">Simon Bradley’s stored transcript, turns 0–3 — both speakers inside each turn:<br><br>
+          <b>Agent:</b> Hi. You’re through to [NAME] at Trust Point. How can I help? / I had a missed call off you yesterday. Right?<br>
+          <b>Customer:</b> Yeah. Sorry. Who was speaking? / I’ll double check that for you now.<br>
+          <b>Agent:</b> Who is it 1st? &nbsp;<span class="warn">— the customer</span><br>
+          <b>Customer:</b> [NAME] from Trust Point. &nbsp;<span class="warn">— the adviser</span>
+        </div>
+        <p>The marker check cannot separate the two cases, because the adviser’s scripted phrases cluster into whichever half lands under <code>Agent:</code> either way. So there is no safe automatic repair, and the original recommendation stands.</p>
+        <div class="fix"><strong>What to do</strong> Quarantine: a sale whose wrap-up carries <code>inverted_labels</code> must not show a score. Paul Hartley and Danni Beck can be hand-flipped on the existing one-off pattern. The other four need re-transcription — see D-19 for why that may not help. Do <em>not</em> auto-flip: the verification cannot tell inversion from interleaving.</div>
+      </div>
+    </article>
+
+    <article class="finding high">
+      <div class="f-head"><span class="f-id">D-03</span><span class="sev high">High</span></div>
+      <h3 class="f-title">The scorer over-fails, and every reviewer disagreement runs the same way</h3>
+      <div class="f-body">
+        <p>Trust Point’s admin has made 822 corrections. 787 are review-queue resolutions. The remaining <strong>35 are the reviewer overturning a checkpoint the AI had decided was a failure</strong>. In the other direction — a pass the reviewer turned into a fail — there are <strong>zero</strong>.</p>
+        <p>Of the 199 failures standing today, 49 were decided by the reviewer, not the AI. So the AI decided <strong>185 failures</strong> in total and 35 of them were wrong — a <strong>19% false-fail rate</strong> on decided verdicts. It is not evenly spread:</p>
+        <div class="tw"><table>
+          <thead><tr><th>Checkpoint</th><th>Severity</th><th class="n">AI fails</th><th class="n">Overturned</th><th class="n">Wrong</th></tr></thead>
+          <tbody>
+            <tr><td>Raised will / estate planning where appropriate</td><td>high</td><td class="n">10</td><td class="n">5</td><td class="n bad">50%</td></tr>
+            <tr><td>Arranged to contact the nominated trustee</td><td>high</td><td class="n">13</td><td class="n">6</td><td class="n bad">46%</td></tr>
+            <tr><td>Stated Trust Point is authorised and regulated by the FCA</td><td>medium</td><td class="n">15</td><td class="n">6</td><td class="n bad">40%</td></tr>
+            <tr><td>Delivered the vulnerability / duty-of-care statement</td><td>medium</td><td class="n">5</td><td class="n">2</td><td class="n bad">40%</td></tr>
+            <tr><td>Confirmed fully advised, whole-of-market, no fee</td><td>medium</td><td class="n">12</td><td class="n">4</td><td class="n warn">33%</td></tr>
+            <tr><td>Mentioned policy can be placed in Trust free of charge</td><td>low</td><td class="n">11</td><td class="n">2</td><td class="n">18%</td></tr>
+          </tbody>
+        </table></div>
+        <p>The FCA-statement item is the sharpest case: its <code>ai_check</code> tells the model to flag wording that “materially deviates from the approved word-for-word script”, and it is flagging paraphrase that a human reads as compliant. Two of the six checkpoints above are subjective by construction — “where appropriate”, “fully advised” — and a subjective checkpoint decided at high confidence is where the false fails come from.</p>
+        <div class="fix"><strong>Re-assessed 22 Aug — it is three problems, not one</strong> Nine of the 35 overturns are a scorecard gap, not a model error: <code>applies_to_products</code> is NULL on the three Trust checkpoints, so they score against MetLife hospital-cash plans that cannot be placed in trust. <strong>87 checkpoint scores across 29 sales on questions that cannot apply</strong>, ten of them recorded failures. The model was right every time; the reviewer overturned because the checkpoint did not apply — and the review queue offered only pass or fail, so they had to record a false pass and explain in free text ("No trust so n/a", "Metlife product - no trust").</div>
+        <div class="fix"><strong>Fixed — 22 Aug</strong> Migration 108 adds an N/A verdict to the review queue, using NULL for "did not apply" to match the existing convention on <code>original_pass</code>; an N/A drops the checkpoint out of the denominator rather than passing it. <code>fix-trust-item-scope.ts</code> sets <code>applies_to_products</code> on the three Trust items (10 of 17 products) and rewrites the <code>ai_check</code> on the two disclosure checkpoints with a measured false-fail rate. <strong>The product split needs the firm's sign-off.</strong></div>
+        <div class="fix"><strong>And the ai_check is a pasted template</strong> The same string — "flag if the wording materially deviates from the approved word-for-word script" — sits on <em>nine</em> checkpoints. It is especially unfair here: 8 kHz mono telephony mangles the FCA phrase so badly that the transcription layer boosts it as a keyterm to compensate, so the model fails advisers for Deepgram's errors. Only the two with a measured false-fail rate were rewritten; the other seven are listed in the script header for a deliberate review.</div>
+      </div>
+    </article>
+
+    <article class="finding high">
+      <div class="f-head"><span class="f-id">D-04</span><span class="sev high">High</span></div>
+      <h3 class="f-title">Non-verifiable fields are still compared against the call, and produce accusations</h3>
+      <div class="f-body">
+        <p>Migration 094 added <code>check_mode</code> precisely to stop this, and it has not been applied to Trust Point’s profiles. The evidence: across 2,103 items the tenant has <strong>zero</strong> <code>missing_from_application</code> outcomes and only 46 <code>recorded</code> — the presence check has never once fired.</p>
+        <p>So fields that cannot resolve, never do:</p>
+        <div class="tw"><table>
+          <thead><tr><th>Question</th><th class="n">Asked</th><th class="n">Undetermined</th><th class="n">Never resolved</th></tr></thead>
+          <tbody>
+            <tr><td>Day tel no</td><td class="n">17</td><td class="n">17</td><td class="n bad">100%</td></tr>
+            <tr><td>UK Residency</td><td class="n">17</td><td class="n">17</td><td class="n bad">100%</td></tr>
+            <tr><td>Email Address</td><td class="n">5</td><td class="n">5</td><td class="n bad">100%</td></tr>
+            <tr><td>Address</td><td class="n">22</td><td class="n">20</td><td class="n bad">91%</td></tr>
+            <tr><td>Occupational eligibility</td><td class="n">17</td><td class="n">16</td><td class="n bad">94%</td></tr>
+            <tr><td>Active Lifestyle Cover</td><td class="n">17</td><td class="n">15</td><td class="n bad">88%</td></tr>
+            <tr><td>Marital status</td><td class="n">17</td><td class="n">13</td><td class="n warn">76%</td></tr>
+          </tbody>
+        </table></div>
+        <p>Worse, some of them do not stop at <code>undetermined</code>. Three accusations in the current data come from fields nobody could have spoken:</p>
+        <div class="quote">
+          <b>“Please confirm you have read this statement by clicking this box.”</b><br>
+          Sale <code>b4692141</code> · application: Yes · outcome: <span class="bad">asked_no_answer</span><br>
+          — a tickbox on a form, recorded as the adviser failing to ask a question.<br><br>
+          <b>“Account holder’s name”</b> · <b>“Bank account held in payers name”</b><br>
+          Sale <code>09eb946c</code> · outcome: <span class="bad">asked_no_answer</span> ×2, and <code>mismatch</code> on sale <code>22780821</code><br>
+          — bank fields, the exact class migration 094 was written for.
+        </div>
+        <p>One more consequence: the account-holder item stores the customer’s full name in <code>application_answer</code>. Names are redacted out of transcripts by design, so this is unredacted customer PII sitting in a table the DPIA does not account for.</p>
+        <div class="fix"><strong>Re-assessed 22 Aug — this is mainly a data-protection finding</strong> <code>check_mode</code> IS applied; <code>defaultCheckMode</code> runs on every question. It is narrow by design. The real issue is an asymmetry: the same row holds <code>[LOCATION_ADDRESS_1]</code> on the call side, because Deepgram was told to strip it, and <code>"14 Templars Way Grantham Lincolnshire NG33 5PS"</code> on the application side, because nothing told the document reader to. <strong>73 items of 2,307 hold customer PII outside this tenant's DPIA permission</strong> (it permits phi, numbers and dob; these are names, emails and addresses). Migration 081 was careful the pack itself is never retained — its contents were being copied into a column instead.</div>
+        <div class="fix"><strong>The one I nearly missed</strong> 18 of those 73 are <em>email addresses riding inside the "Day tel no" field</em>, which the parser merged with the adjacent form field. Hidden in the one identity field the DPIA does permit, where a check on the field's own category would never look. It is also why that question is 17/17 undetermined: the stored value is two fields concatenated, so it matches nothing on the call.</div>
+        <div class="fix"><strong>Fixed — 22 Aug</strong> <code>services/application-redaction.ts</code> mirrors the transcript side using the same <code>pii_unredacted_categories</code> allowlist, so both halves of a comparison agree about what exists. A redacted-category question becomes a <code>presence</code> check (self-maintaining — change the DPIA and the modes follow), its value is stored as a typed placeholder, and embedded PII is scrubbed out of permitted fields. Plus <code>isFormDeclaration</code> → <code>none</code> for the tickbox that was accusing an adviser of not reading a portal instruction aloud. Apply with <code>mask-application-pii.ts --commit</code> — one column, in place, idempotent, no re-runs. <strong>Live customer PII outside the DPIA: worth doing sooner than the rest.</strong></div>
+        <div class="fix"><strong>One report claim was wrong</strong> "Bank account held in payers name" should NOT be a presence check. The author deliberately excluded it, with the reasoning in the code — it is asked out loud ("the sort code and account number, is that in your name?") — and the data proves them right: that exact question caught a genuine mismatch on sale <code>22780821</code>. Making it <code>presence</code> would have destroyed a real finding.</div>
+      </div>
+    </article>
+
+    <article class="finding high">
+      <div class="f-head"><span class="f-id">D-05</span><span class="sev high">High</span></div>
+      <h3 class="f-title">Height never reconciles, and all three of its “mismatches” are false</h3>
+      <div class="f-body">
+        <p>31 height comparisons across the tenant. <strong>Four produced a usable verdict.</strong> 24 went <code>undetermined</code>, 3 were reported as mismatches — and all three are the same value in different units:</p>
+        <div class="tw"><table>
+          <thead><tr><th>Sale</th><th>Application</th><th>Call</th><th class="n">Conf.</th><th>Reported</th></tr></thead>
+          <tbody>
+            <tr><td><code>291b6fc4</code></td><td>1.83</td><td>“6 foot”</td><td class="n">0.95</td><td class="bad">mismatch</td></tr>
+            <tr><td><code>01567418</code></td><td>1.83</td><td>“6 foot”</td><td class="n">0.75</td><td class="bad">mismatch</td></tr>
+            <tr><td><code>db58546e</code></td><td>183 cm</td><td>“Just under 6 foot”</td><td class="n">0.95</td><td class="bad">mismatch</td></tr>
+          </tbody>
+        </table></div>
+        <p>The first one’s own reasoning field ends: <em>“The application records 1.83 (which is approximately 6 feet), <b>so this matches</b>.”</em> The outcome column says mismatch anyway.</p>
+        <p>The 24 undetermined are the same story: 1.70 vs “5 7”, 1.65 vs “5 foot 5”, 1.93 vs “6 foot 4”, 1.57 vs 5&#39;2&quot;, 1.60 vs “5 3”. Weight converts correctly in both directions — height has no converter at all. The same gap sits on weeks vs months: sale <code>2521f88f</code> reports “12” weeks of full sick pay against “about 3 months” as a mismatch, with reasoning that says the two are equivalent.</p>
+        <div class="fix"><strong>Fixed — 22 Aug</strong> <code>heightCandidatesCm</code> generates every reading a value could be and drops the implausible ones against a 120–220cm human range — which is how a bare <code>6</code> reads as six foot while a bare <code>183</code> reads as centimetres, with no rule about which insurer writes which format. Handles words ("Five foot six") and the bare-pair shape (<code>5 7</code>) left when the unit was spoken once. Tolerance 3cm: an inch plus rounding, which every observed real case clears while a genuine mis-keying still reports.</div>
+        <div class="fix"><strong>Measured against the stored items</strong> Of 99 heights and dates the new comparisons decide: <strong>26 undetermined → match, 3 undetermined → mismatch, 3 mismatch → match, and no regressions.</strong> A first pass appeared to show 12 items degrading; that was a measurement artefact — comparing a raw <code>compareAnswers</code> verdict against outcomes the fuller <code>classifyItem</code> pipeline produced.</div>
+      </div>
+    </article>
+
+    <article class="finding high">
+      <div class="f-head"><span class="f-id">D-06</span><span class="sev high">High</span></div>
+      <h3 class="f-title">Date of birth is not order-normalised, and three real discrepancies are hidden inside the noise</h3>
+      <div class="f-body">
+        <p>22 of 51 DOB comparisons landed <code>undetermined</code>. Ten of them are the same date written the other way round — <code>20/05/1995</code> vs <code>05/20/1995</code>, <code>25/04/2002</code> vs <code>04/25/2002</code>, <code>17/08/2003</code> vs <code>08/17/2003</code>, and so on. Those should be matches.</p>
+        <p>The cost is not the noise, it is what the noise conceals. Three of the 22 are genuine, and they are indistinguishable from the format cases on screen:</p>
+        <div class="quote">
+          <code>291b6fc4</code> — 09/04/1997 vs 19/04/1997 &nbsp;·&nbsp; <b>9th vs 19th April.</b> Not a format artefact; 19 cannot be a month.<br>
+          <code>cb0e2efb</code> — 20/04/1968 vs 04/20/1969 &nbsp;·&nbsp; <b>the year differs.</b><br>
+          <code>09eb946c</code> — 20/10/1962 vs 04/05/1973 &nbsp;·&nbsp; <b>a different person entirely</b> (see D-01).
+        </div>
+        <div class="fix"><strong>Fixed — 22 Aug</strong> Dates are compared as dates, reusing the <code>dateCandidates</code> parser built for D-01's identity guard — moved into the comparison module with identity importing it, so there is one implementation and the right layering. Every reading of an ambiguous numeric date is kept, so a match needs only that some reading of each side agrees, and disjoint readings are correctly a mismatch. A month-precision fallback handles <code>10/2025</code> against <code>October 2025</code> — the cataract-date case — and is deliberately kept OUT of <code>dateCandidates</code>, because that feeds the identity guard where month-precision readings would let two Februaries eleven years apart look comparable.</div>
+        <div class="fix"><strong>The three it surfaces</strong> <code>20/04/1968</code> vs <code>04/20/1969</code> (year differs), <code>09/04/1997</code> vs <code>19/04/1997</code> (9th vs 19th April), and a real 15cm height discrepancy — all previously invisible.</div>
+      </div>
+    </article>
+
+    <article class="finding high">
+      <div class="f-head"><span class="f-id">D-07</span><span class="sev high">High</span></div>
+      <h3 class="f-title">MetLife’s “No. of Units” is being answered from the alcohol-units question</h3>
+      <div class="f-body">
+        <p>Four of the five MetLife EverydayProtect findings hang on one question — “No. of Units”, meaning cover units at £11 each. The term collides with alcohol units, and the retrieval follows the collision:</p>
+        <div class="quote">
+          <code>d2b3451f</code> · “No. of Units” · application 4 · call 5 · <span class="bad">mismatch</span><br>
+          Its reasoning, in full: <em>“the agent asks ‘how many units of alcohol do you drink typically in a week?’ … the customer settles on ‘Five’ … The application shows 4.”</em><br>
+          <span class="warn">A cover-units field judged against a drinking answer.</span>
+        </div>
+        <p>The same sale’s premium item is the tell: the application records £44.00, which is exactly 4 units × £11. The document is internally consistent; the comparison is not.</p>
+        <p>The other three: <code>ffb513cd</code> infers “1 unit” from “I wouldn’t look at adding the children unless one comes”; <code>3307e4cd</code> reads “how many units you were good for” — itself ambiguous — as cover units; and <code>2174bbe8</code> lands <code>asked_no_answer</code> at 0.95 confidence on an evidence window that <em>truncates mid-sentence</em> (“Customer: will go Agent:”).</p>
+        <div class="fix"><strong>What to do</strong> Set “No. of Units” and “Monthly premium” to <code>presence</code> on the MetLife profile, or give them a derived check (units × £11 = premium) from the document alone. Separately: an evidence window that ends mid-utterance should never support an <code>asked_no_answer</code>.</div>
+      </div>
+    </article>
+
+    
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<section>
+  <div class="sec-head">
+    <h2>Defects that lose findings or waste effort</h2>
+    <span class="count">11 findings</span>
+  </div>
+  <p class="lede measure">Nothing here makes a false claim. These either bury a real finding, or spend money and reviewer time for no yield.</p>
+
+  <div class="register">
+
+    <article class="finding med">
+      <div class="f-head"><span class="f-id">D-08</span><span class="sev med">Medium</span><span class="sev low">Re-assessed 22 Aug — premise was wrong</span></div>
+      <h3 class="f-title">Four mangled questions on the live UnderwriteMe profile set a trap for whoever confirms it</h3>
+      <div class="f-body">
+        <p><strong>This finding originally said the four corrupt questions were inherited by every UnderwriteMe sale and could not match anything. That was wrong.</strong> Three facts it missed:</p>
+        <ul>
+          <li>Items take their question text from the <em>fresh parse</em>, not from the stored profile — the profile is used for format matching and per-question rulings only.</li>
+          <li>Fresh parses are clean. The correct wordings resolve well across the tenant — <code>Have you ever had any of these?</code> 42 matches, <code>Have you ever:</code> 37. The corrupt strings produce <strong>zero items</strong>. The parser was fixed after 9 August; the profile holds the stale capture.</li>
+          <li><code>questions_vary = true</code> on this profile, so drift detection is skipped — which is why 29 runs completed without complaint despite the snapshot no longer matching.</li>
+        </ul>
+        <p>So there are no wrong outcomes today. What there is instead is a trap, and it is laid precisely where D-09 sends someone next.</p>
+        <div class="quote">
+          <b>reconcile.ts</b><br>
+          <code>const ruling = profileRulings.get(normaliseKey(pair.question));</code><br>
+          <code>const ruled = ruling?.checkMode ?? defaultCheckMode(pair.question);</code><br><br>
+          A missed key falls back <span class="bad">silently</span>. And <code>profileRulings</code> is populated only when <code>confirmed_by</code> is set.
+        </div>
+        <p>This profile went live by auto-corroboration, so nobody has confirmed it and the map is empty. <strong>The moment someone does confirm it, the rulings for those four become unreachable</strong> — <code>normaliseKey("Have you : ever")</code> will never match the <code>"Have you ever:"</code> a fresh parse produces. An operator sets check modes on the suicide, self-harm and mental-health questions, sees them saved, and the pipeline quietly uses heuristics instead.</p>
+        <p>The choices stored alongside each question say what they are, and all four sit in the mental-health block:</p>
+        <div class="tw"><table>
+          <thead><tr><th>Stored</th><th>Choices reveal it is</th></tr></thead>
+          <tbody>
+            <tr><td><code>In the have you had any of these? last 5 years</code></td><td>Depression · Anxiety · Stress</td></tr>
+            <tr><td><code>Have you had any of these? ever</code></td><td>Eating disorder · Bipolar · Schizophrenia</td></tr>
+            <tr><td><code>Have you : ever</code></td><td class="bad">Tried to take your own life · thoughts of</td></tr>
+            <tr><td><code>Have you : ever</code></td><td class="bad">Intentionally harmed yourself · thoughts of</td></tr>
+          </tbody>
+        </table></div>
+        <div class="fix"><strong>Fixed — 22 Aug</strong> The shape tests moved out of the diagnostic script into <code>services/question-quality.ts</code> and onto the profile-proposal path, which is the only moment they can prevent anything; a parse that mostly failed is now refused rather than offered to a human who can only reject it. A missed ruling key and two questions sharing one key both log loudly now instead of falling back in silence. The four questions are repaired by <code>repair-profile-questions.ts</code>, which derives each correction by matching word multisets against the wording the profile's own runs have stored — the corruption is span re-ordering, so the mangled and intact text carry the same words — and refuses rather than guesses when more than one candidate matches. Run it BEFORE confirming any profile under D-09.</div>
+        <div class="fix"><strong>Two of my own rules were wrong</strong> An "interior question mark" test flagged a real two-sentence insurer question and had to be narrowed to a continuation that never started a sentence. A "too short to be a question" test flagged <code>Name</code>, <code>DOB</code>, <code>Age</code>, <code>Term</code> and <code>Sex</code> across 16 questions — legitimate summary-sheet labels — and at 1-of-2 and 2-of-6 would have refused two valid National Friendly formats. It was removed entirely. Both were caught by the dry runs before anything shipped.</div>
+      </div>
+    </article>
+
+    <article class="finding med">
+      <div class="f-head"><span class="f-id">D-09</span><span class="sev med">Medium</span></div>
+      <h3 class="f-title">Trust Point attaches an application pack to 58% of their sales</h3>
+      <div class="f-body">
+        <p><strong>This finding originally said the bottleneck was profile activation. It is not — that blocks three sales.</strong> What the 52 unreconciled sales are actually waiting on:</p>
+        <div class="tw"><table>
+          <thead><tr><th class="n">Sales</th><th>Status</th><th>The run's own reason</th></tr></thead>
+          <tbody>
+            <tr><td class="n bad">28</td><td>abandoned</td><td>“No application document was attached to this sale in the CRM”</td></tr>
+            <tr><td class="n bad">21</td><td>needs_document</td><td>“No application document has been attached to the sale yet”</td></tr>
+            <tr><td class="n">3</td><td>needs_profile</td><td>documents present, no format matched</td></tr>
+          </tbody>
+        </table></div>
+        <p><strong>49 of 52 have no document at all.</strong> This is a client-process finding, not an engineering one.</p>
+        <p>Measured only over sales whose seven-day window has <em>closed</em> — a two-day-old sale with no pack yet is waiting, not missing, and counting it overstates the problem by half — <strong>28 of 66 sales (42%) never had an application attached.</strong> Flat across three weeks: 48%, 38%, 46%. Not a process bedding in.</p>
+        <p><strong>And the window is the right length.</strong> Across 59 completed runs the median wait for a pack was <strong>12 minutes</strong>, the 90th percentile an hour, and the slowest ever 3.7 days — against a 7-day window. Two times headroom over the worst case ever seen, so extending it would recover nothing. Those 28 packs are not slow; they were never attached. Which means this caps what Data Forms can ever cover at about 55%, whatever we build.</p>
+        <p>The profiles are also not what this finding said. All nine parked ones have <strong>exactly one corroborating journey</strong> — none is waiting on a human click, they are all waiting for a second sale on the same format, and all nine have already raised their notification. Confirming them would unblock the three <code>needs_profile</code> sales; the reason it still matters is that confirmation is what makes per-question rulings readable at all, which D-07 and D-08 both depend on.</p>
+        <div class="tw"><table>
+          <thead><tr><th>Profile</th><th class="n">Questions</th><th>Status</th></tr></thead>
+          <tbody>
+            <tr><td>Scottish Widows / Scottish Widows Protect</td><td class="n">22</td><td class="warn">needs_confirmation</td></tr>
+            <tr><td>Legal &amp; General / Life Insurance</td><td class="n">4</td><td class="warn">needs_confirmation</td></tr>
+            <tr><td>Legal &amp; General / Life Insurance – Personal Quote</td><td class="n">3</td><td class="warn">needs_confirmation</td></tr>
+            <tr><td>Royal London / Menu Plan Life Cover</td><td class="n">7</td><td class="warn">needs_confirmation</td></tr>
+            <tr><td>National Friendly / Simple cover</td><td class="n">6</td><td class="warn">needs_confirmation</td></tr>
+            <tr><td>National Friendly / Simple cover options</td><td class="n">6</td><td class="warn">needs_confirmation</td></tr>
+            <tr><td>National Friendly / Over 50s Life Cover</td><td class="n">2</td><td class="warn">needs_confirmation</td></tr>
+            <tr><td>Aviva / Life Insurance+</td><td class="n">8</td><td class="bad">needs_confirmation (corrupt)</td></tr>
+            <tr><td>MetLife / EverydayProtect</td><td class="n">17</td><td class="good">active</td></tr>
+            <tr><td>MetLife / EverydayProtect</td><td class="n">17</td><td class="bad">second signature, unconfirmed</td></tr>
+            <tr><td>Royal London / Personal Menu Plan</td><td class="n">8</td><td class="good">active</td></tr>
+            <tr><td>Shepherds Friendly / Over 50s Life Insurance</td><td class="n">18</td><td class="good">active</td></tr>
+            <tr><td>UnderwriteMe / Protection Platform</td><td class="n">39</td><td class="good">active</td></tr>
+          </tbody>
+        </table></div>
+        <p>Two further rows are <code>superseded</code> with insurer and product both <code>&lt;UNKNOWN&gt;</code> — never identified. And MetLife has produced <em>two different signatures for the same insurer and product</em>, which is the instability the module’s own diagnostics warn about: one is live, the other is queued behind a corroboration that will never come from a format the detector no longer recognises.</p>
+        <div class="fix"><strong>What to do — and it is not code</strong> Trust Point needs to attach the pack. The module works well on the sales it can see; the constraint is entirely in their hands, and it is a good conversation to have because it is the single biggest lever on the feature's value. Re-running the abandoned sales achieves nothing while the documents do not exist.</div>
+        <div class="fix"><strong>Fixed — 22 Aug: nobody was being told</strong> The dashboard folded <code>abandoned</code> into a tile labelled “Failed or abandoned”, so the number that caps the whole feature read as a system fault, and a failure — ours to fix — sat in the same count as an unattached pack, which is theirs. Now two tiles: <strong>Failed</strong> for genuine processing failures, and <strong>No application attached</strong> showing “28 — 42% of 66 sales past the wait”. A count of 28 prompts nothing; 28 of 66 prompts a conversation. Measured over closed windows only, with the window derived from <code>ABANDON_AFTER_MS</code> via a new <code>ABANDON_AFTER_DAYS</code> export so the metric cannot drift from the rule the sweep enforces.</div>
+      </div>
+    </article>
+
+    <article class="finding med">
+      <div class="f-head"><span class="f-id">D-10</span><span class="sev med">Medium</span></div>
+      <h3 class="f-title">The confidence floor sends 17.5% of all work to a human, who waves through 94% of it</h3>
+      <div class="f-body">
+        <p>The floor is set to 0.80 and it works exactly as written. That is the problem: <strong>787 of 4,494 checkpoints</strong> went to the review queue, and the reviewer resolved <strong>738 of them as passes</strong> and only 49 as failures. A 6% yield.</p>
+        <div class="tw"><table>
+          <thead><tr><th>Checkpoint</th><th class="n">Reviewed</th><th class="n">Failed</th><th class="n">Yield</th></tr></thead>
+          <tbody>
+            <tr><td>Obtained a clear ‘yes’ to the recommendation</td><td class="n">76</td><td class="n">3</td><td class="n bad">4%</td></tr>
+            <tr><td>Gave the recommendation and checked ‘have I got that right’</td><td class="n">63</td><td class="n">3</td><td class="n bad">5%</td></tr>
+            <tr><td>Confirmed the recap still matches what the client wanted</td><td class="n">60</td><td class="n">5</td><td class="n bad">8%</td></tr>
+            <tr><td>Confirmed documents by email and got a firm yes</td><td class="n">44</td><td class="n">2</td><td class="n bad">5%</td></tr>
+            <tr><td>Obtained a clear ‘yes’ to information sharing</td><td class="n">36</td><td class="n">0</td><td class="n bad">0%</td></tr>
+            <tr><td>Explained placing the policy in Trust</td><td class="n">29</td><td class="n">0</td><td class="n bad">0%</td></tr>
+          </tbody>
+        </table></div>
+        <p>Two of those returned nothing at all across 65 reviews. The model is systematically under-confident on the “did the customer clearly agree” family of checkpoints — its average confidence on them is 0.74–0.78, just under the floor.</p>
+        <p><strong>Re-assessed 22 Aug. “Yield” was the wrong metric, and the fix this finding recommended would have been actively harmful.</strong> It measured value as how often the reviewer records a fail, treating a confirmed pass as wasted work. The queue's real value here is the opposite — it is catching the model's false <em>fails</em>:</p>
+        <div class="tw"><table>
+          <thead><tr><th>Sub-floor items (confidence &lt; 0.80)</th><th class="n">Items</th><th class="n">Reviewer agreed</th><th class="n">Overturned</th></tr></thead>
+          <tbody>
+            <tr><td>AI said PASS</td><td class="n">261</td><td class="n">261</td><td class="n good">0 — 0.0%</td></tr>
+            <tr><td>AI said FAIL</td><td class="n">333</td><td class="n">20</td><td class="n bad">313 — 94.0%</td></tr>
+          </tbody>
+        </table></div>
+        <p><strong>Dropping the floor to 0.70 would have auto-scored 390 items and turned 153 of them into recorded failures a human had already overturned.</strong> The flip rate rises as confidence falls — 31% at 0.75, 50% at 0.70, 77% at 0.60 — so the queue is not wasteful, it is the mitigation for D-03's over-failing. Lowering it would have converted D-03 into 153 new breaches against advisers.</p>
+        <p>The confidence floor is nonetheless the right thing to look at: of the three mechanisms that route to review, it accounts for 489 of 787 on its own, and it is the weakest performer — 3.7% of its routings end in a recorded failure, against 13.6% for the speaker floor and 16.1% for a disputed checkpoint.</p>
+        <div class="fix"><strong>Fixed — 22 Aug</strong> The uncertainty is real but almost entirely one-sided, so the gate is now asymmetric below the floor. A low-confidence <em>fail</em> always goes to a person: it is wrong 94% of the time and it is an allegation against a named adviser. A low-confidence <em>pass</em> on an ordinary checkpoint auto-scores — it has not been overturned once in 261 reviews. Applied on both the journey and per-call paths so they cannot drift, and a caller supplying no verdict keeps the old symmetric behaviour.</div>
+        <div class="fix"><strong>Consent gates deliberately exempt</strong> They keep the symmetric floor whatever the sample says. 0 of 81 is a measurement of reviewer behaviour, not a proof, and a false pass on a consent is the worst output this product can produce. Net effect: <strong>180 of 787 review items removed with zero measured risk, every catch kept</strong> — fewer than the 390 the dial change would have cleared, without manufacturing 153 false breaches to get there.</div>
+        <div class="fix"><strong>The caveat</strong> 0 of 180 measures reviewer behaviour, and D-03 found one instance of a reviewer passing a mandatory disclosure that is not in the transcript. So the true error rate on the pass side is not provably zero. 94% against 0% is too large a gap to be explained by that, but it is the assumption to revisit if reviewer quality is ever sampled properly.</div>
+      </div>
+    </article>
+
+    <article class="finding med">
+      <div class="f-head"><span class="f-id">D-11</span><span class="sev med">Medium</span></div>
+      <h3 class="f-title">Health questions are producing the accusation the schema was written to prevent</h3>
+      <div class="f-body">
+        <p>Migration 081’s premise is explicit: redaction strips health terms from transcripts, so their absence is not evidence a question was skipped, and reporting it as such “would put a false allegation against an adviser on the record, on the most serious questions in the application”. Two items break that rule on sale <code>b4692141</code>:</p>
+        <div class="quote">
+          <b>“Name of the medical condition or illness”</b> · application: “Chest Tightness” · <span class="bad">asked_no_answer</span><br>
+          <b>“What was the cause of your symptoms?”</b> · application: “Chest infection” · <span class="bad">asked_no_answer</span>
+        </div>
+        <p>Both are model-extracted items with <code>call_answer_redacted = false</code>, so they bypassed the redaction guard — the guard depends on the flag being set, and on a model-extracted run nothing sets it.</p>
+        <p>There may well be something real here: the reasoning notes the customer said “I’m healthy” and denied conditions while the application records a chest condition. But if that is the finding it is a <em>mismatch</em>, not “the adviser never asked”. The outcome asserts something about how the call was conducted, on the one class of question where the transcript cannot support it.</p>
+        <div class="fix"><strong>What to do</strong> Bar <code>asked_no_answer</code> and <code>not_asked</code> outright on health-category questions, regardless of extraction method — downgrade to <code>mismatch</code> where both sides have values, <code>undetermined</code> otherwise. Worth noting the deterministic path has never once emitted <code>not_asked</code> in 2,103 items; this leak is specific to model extraction.</div>
+      </div>
+    </article>
+
+    <article class="finding med">
+      <div class="f-head"><span class="f-id">D-12</span><span class="sev med">Medium</span></div>
+      <h3 class="f-title">Confidence is not derived from the reasoning that accompanies it</h3>
+      <div class="f-body">
+        <p>Four items where the number and the words contradict each other. Confidence is what a supervisor uses to decide whether to open the recording, so this is the field that has to be honest.</p>
+        <div class="quote">
+          <code>b8d5f13b</code> · mismatch at <b>0.95</b> · reasoning ends: <em>“…but this appears to be asking about applying for OTHER cover, not whether they have existing cover.”</em><br><br>
+          <code>291b6fc4</code> · mismatch at <b>0.95</b> · reasoning ends: <em>“…so this matches.”</em><br><br>
+          <code>8bbe75da</code> · undetermined at <b>0.95</b> · application 01/1990 vs call “August 26, 2005” — a fifteen-year gap, with both values present<br><br>
+          <code>225af32b</code> · mismatch at <b>0.60</b> · reasoning flags a currency confusion in the transcript and says the figures “may not be directly comparable”
+        </div>
+        <p>Three of the four are marked more certain than the reasoning supports; the fourth is a finding surfaced at a confidence low enough that it should not have been surfaced at all. Separately, all three weight-comparison items carry a <code>NULL</code> confidence while height items carry a value — the field is not populated consistently across comparison types.</p>
+        <div class="fix"><strong>What to do</strong> Require the model to state its confidence <em>after</em> its reasoning in the same pass, and reject an item whose reasoning contains an agreement phrase while the outcome is a mismatch — that check alone catches two of these four and D-05’s three.</div>
+      </div>
+    </article>
+
+    <article class="finding med">
+      <div class="f-head"><span class="f-id">D-13</span><span class="sev med">Medium</span></div>
+      <h3 class="f-title">Form furniture is being stored as answer values</h3>
+      <div class="f-body">
+        <p>The document parser is pulling labels and pagination into the value, which guarantees the comparison fails:</p>
+        <div class="quote">
+          <b>Occupation</b> — “Driver - HGV <span class="warn">Eligibility Cover</span>”, “Security Manager <span class="warn">Eligibility Cover</span>”, “Engineering Fitter <span class="warn">Eligibility Cover</span>”<br>
+          <span class="warn">— a section heading glued onto the end of the value</span><br><br>
+          <b>Preferred Direct Debit date</b> — “1 <span class="warn">-- 1 of 2 --</span>”, “8 <span class="warn">-- 1 of 2 --</span>”<br>
+          <span class="warn">— page numbering, on three sales</span>
+        </div>
+        <p>And it costs a real finding. On sale <code>8f7069d4</code>, stripping the junk leaves the application recording DD date <strong>8</strong> against the customer saying <strong>15</strong> on the call. That is a genuine discrepancy on a payment date, currently filed as <code>undetermined</code> at 0.85 confidence on a sale scored 100.00.</p>
+        <p>Cosmetic but visible to the client: converted weights are stored to seven decimal places — “127.0058636”, “96.16158244”, “75.74992579”.</p>
+        <div class="fix"><strong>What to do</strong> Strip trailing section labels and <code>-- n of m --</code> pagination at extraction. Round converted units to one decimal. Then re-run — the DD-date finding on <code>8f7069d4</code> should surface as a mismatch.</div>
+      </div>
+    </article>
+
+    <article class="finding med">
+      <div class="f-head"><span class="f-id">D-14</span><span class="sev med">Medium</span></div>
+      <h3 class="f-title">Occupation is not matched on paraphrase, and two material discrepancies are hidden in the noise</h3>
+      <div class="f-body">
+        <p>“Occupation” and “What is your job?” together produced 25 undetermined outcomes and 2 <code>asked_no_answer</code>. Most are trivially the same answer:</p>
+        <div class="quote">
+          “Driver - HGV” vs “HGV driver” &nbsp;·&nbsp; undetermined at 0.95<br>
+          “Nurse” vs “Nursing” &nbsp;·&nbsp; undetermined at 0.85<br>
+          “Sales Adviser” vs “I sell gas and electric to businesses” &nbsp;·&nbsp; <span class="bad">asked_no_answer</span><br>
+          “Retired” vs the adviser saying “I put your job down as retired” &nbsp;·&nbsp; <span class="bad">asked_no_answer</span>
+        </div>
+        <p>But two are real, and material to underwriting class — and they sit in the same undifferentiated pile:</p>
+        <div class="quote">
+          <code>094b332b</code> · application <b>“HGV Driver”</b> · call <b>“Field engineer at Thames Water”</b><br>
+          <code>e019fe70</code> · application <b>“Manager - Admin only”</b> · call <b>“Aviation Aerospace certification specialist”</b><br>
+          <span class="warn">“Admin only” is a materially lower occupational risk class than an aerospace certification role.</span>
+        </div>
+        <div class="fix"><strong>What to do</strong> Occupation is a semantic comparison, not a string one — it needs a same-job/different-job judgement rather than the current term match. Until then, both sales above should be reviewed by hand.</div>
+      </div>
+    </article>
+
+    <article class="finding med">
+      <div class="f-head"><span class="f-id">D-15</span><span class="sev med">Medium</span></div>
+      <h3 class="f-title">Health checklist answers can never resolve, because the two sides speak differently</h3>
+      <div class="f-body">
+        <p>134 items have values on both sides and were still filed <code>undetermined</code>. A large share are the “have you ever had any of these?” family, where the application stores the <em>checklist category</em> and the call contains the <em>specific condition</em>. They agree, plainly:</p>
+        <div class="quote">
+          application “Cancer, cancer-in-situ, leukaemia, Hodgkin’s disease or any other tumour” · call <b>“Bladder cancer”</b> · undetermined at 0.95<br>
+          application “Arthritis, gout or anything else affecting your bones, joints…” · call <b>“Arthritis in lower spine/back”</b> · undetermined at 0.90<br>
+          application “Impaired, blurred or double vision, optic neuritis…” · call <b>“Cataracts”</b> · undetermined at 0.95<br>
+          application “10/2025” · call <b>“October 2025”</b> · undetermined at 0.90 &nbsp;<span class="warn">— the same month</span>
+        </div>
+        <p>All four are from one sale, <code>004728f5</code>. A category-to-instance check (“is bladder cancer within this checklist option?”) resolves the first three, and a date normaliser resolves the fourth — that one shares a root cause with D-06.</p>
+        <div class="fix"><strong>What to do</strong> Give checklist questions a containment test rather than an equality test. This is the largest single block of recoverable undetermined items in the tenant.</div>
+      </div>
+    </article>
+
+    <article class="finding med">
+      <div class="f-head"><span class="f-id">D-16</span><span class="sev med">Medium</span></div>
+      <h3 class="f-title">One answer was counted against two fields, and the second became an accusation</h3>
+      <div class="f-body">
+        <p>Sale <code>291b6fc4</code>, two adjacent items:</p>
+        <div class="quote">
+          #8 &nbsp;“average daily consumption of other tobacco (in grams)” · application <b>20</b> · call <b>20</b> · <span class="good">match</span><br>
+          #6 &nbsp;“average daily consumption of cigarettes” · application <b>0</b> · call <b>20</b> · <span class="bad">mismatch</span>
+        </div>
+        <p>There is one “20” in the call. The customer said 20, then clarified they smoke roll-ups, and the adviser recorded 20 under other tobacco and 0 under cigarettes — which is correct. The comparator consumed the same utterance twice and turned the correct entry into a mismatch.</p>
+        <div class="fix"><strong>What to do</strong> Where two questions on a profile draw on the same passage and the answers are complementary, a value already claimed by one should not satisfy the other. Delete the cigarette mismatch on this sale.</div>
+      </div>
+    </article>
+
+    <article class="finding med">
+      <div class="f-head"><span class="f-id">D-17</span><span class="sev med">Medium</span></div>
+      <h3 class="f-title">Model extraction ran on a document that is not an application</h3>
+      <div class="f-body">
+        <p>Sale <code>8bbe75da</code>, attachment <code>"Client review for [customer].pdf"</code>. No saved format matched, so the model read it directly and extracted <strong>77 questions</strong> — of which 47 (61%) came back undetermined, the worst run in the tenant.</p>
+        <p>It is a client review document, not an insurer application form. Nothing checks that the attachment chosen for reconciliation is the right <em>kind</em> of document, so the fallback path will read whatever is attached and present the result as an application check. This is also where D-11’s health accusations and D-12’s contradictory 0.95 came from.</p>
+        <div class="fix"><strong>What to do</strong> Gate the model path on a document-type classification before extraction, and treat “this is not an application form” as <code>needs_document</code> rather than a completed run. Six sales used model extraction; the other five look reasonable.</div>
+      </div>
+    </article>
+
+    <article class="finding med">
+      <div class="f-head"><span class="f-id">D-18</span><span class="sev med">Medium</span></div>
+      <h3 class="f-title">Jason Hamilton has two scored sales; one of them is a phantom</h3>
+      <div class="f-body">
+        <p>Sale <code>9048a7a7</code> is the tenant’s only <code>trigger_source = 'manual'</code> journey. It has no <code>zoho_record_id</code>, no <code>client_name</code>, and no reconciliation run — and it points at the same customer and mobile as sale <code>b045a346</code>, which is a real Zoho sale. It was created this morning, 21 August at 11:54, less than a minute after another sale was assembled.</p>
+        <div class="tw"><table>
+          <thead><tr><th>Sale</th><th>Trigger</th><th>Zoho record</th><th>Branch from</th><th class="n">Score</th><th>Result</th></tr></thead>
+          <tbody>
+            <tr><td><code>b045a346</code></td><td>zoho_sale</td><td>present</td><td>CRM · on_risk</td><td class="n">92.31</td><td class="good">Pass</td></tr>
+            <tr><td><code>9048a7a7</code></td><td class="warn">manual</td><td class="bad">none</td><td class="warn">keyword · referred</td><td class="n">100.00</td><td class="good">Pass</td></tr>
+          </tbody>
+        </table></div>
+        <p>It is also the tenant’s only sale whose branch came from keyword guessing rather than the CRM, and it guessed <em>referred</em> where the customer’s real sale is <em>on-risk</em> — so it was scored against a different set of checkpoints as well as being a duplicate.</p>
+        <p>Two scored sales for one customer, and the phantom is the one scoring 100. It contributes 41 checkpoints and a perfect score to every tenant statistic — including the pass rate and the 63% of sales scoring exactly 100.</p>
+        <div class="fix"><strong>What to do</strong> Confirm with Trust Point whether this was a test, then delete it. Duplicate detection by Zoho record is clean; it does not catch a journey created without one.</div>
+      </div>
+    </article>
+
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<section>
+  <div class="sec-head">
+    <h2>Lower-severity and product-shape observations</h2>
+    <span class="count">5 findings</span>
+  </div>
+
+  <div class="register">
+
+    <article class="finding low">
+      <div class="f-head"><span class="f-id">D-19</span><span class="sev low">Low</span></div>
+      <h3 class="f-title">No call in the tenant reaches high-confidence speaker attribution</h3>
+      <div class="f-body">
+        <p>282 transcribed calls, and the maximum <code>speaker_attribution_confidence</code> anywhere is <strong>0.80</strong>. Nothing is pinned by stereo channel; every attribution is the mono “who spoke first plus call direction” heuristic.</p>
+        <div class="tw"><table>
+          <thead><tr><th class="n">Confidence</th><th class="n">Calls</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td class="n">0.30</td><td class="n">87</td><td class="bad">heuristic could not tell (7 also carry an integrity flag)</td></tr>
+            <tr><td class="n">0.45</td><td class="n">51</td><td class="warn">weak</td></tr>
+            <tr><td class="n">0.75</td><td class="n">41</td><td>below the consent gate</td></tr>
+            <tr><td class="n">0.80</td><td class="n">103</td><td class="good">best available</td></tr>
+          </tbody>
+        </table></div>
+        <p>138 calls — 49% — sit at 0.45 or below. Every “the adviser said” claim in this tenant rests on that heuristic, which is the root cause of D-02, D-24 and a large share of D-10’s review volume.</p>
+        <p><strong>The cause is the recording format, and it is uniform.</strong> Every call is 8 kHz, 16-bit, <em>mono</em> WAV — narrowband telephony with both parties summed into one channel, which strips the spectral detail speaker embeddings depend on. Measured over the 277 transcribed calls longer than 20 seconds:</p>
+        <div class="tw"><table>
+          <thead><tr><th>Format</th><th class="n">Calls</th><th class="n">1 speaker found</th><th class="n">2 speakers</th><th class="n">3+</th></tr></thead>
+          <tbody>
+            <tr><td>wav ~8 kHz mono</td><td class="n">277</td><td class="n bad">61 (22%)</td><td class="n good">171 (62%)</td><td class="n warn">45 (16%)</td></tr>
+          </tbody>
+        </table></div>
+        <p>No variation to compare against — which is itself the finding. Deepgram Nova-3 is doing reasonably on the 62%; the damage is concentrated in the two tails.</p>
+        <div class="fix"><strong>What to do</strong> Dual-channel is confirmed unavailable from CloudTalk, so the stereo pin is off the table and this cannot be fixed to 1.0. The narrower ask worth putting to them: <strong>can they record at 16 kHz rather than 8?</strong> Mono wideband would materially improve diarisation and is a much smaller change than split channels. Re-transcribing on the current audio is not worth the spend — same model, same audio, same settings, same answer.</div>
+      </div>
+    </article>
+
+    <article class="finding low">
+      <div class="f-head"><span class="f-id">D-20</span><span class="sev low">Low</span></div>
+      <h3 class="f-title">The two most-failed “compliance” checkpoints are commercial asks</h3>
+      <div class="f-body">
+        <p>Top of the failure table for the whole tenant:</p>
+        <div class="tw"><table>
+          <thead><tr><th>Checkpoint</th><th>Severity</th><th class="n">Weight</th><th class="n">Fails</th></tr></thead>
+          <tbody>
+            <tr><td>Made the friends &amp; family referral ask</td><td>low</td><td class="n">1.00</td><td class="n">17</td></tr>
+            <tr><td>Asked for a Google review</td><td>low</td><td class="n">1.00</td><td class="n">16</td></tr>
+            <tr><td>Confirmed the recap still matches what the client wanted</td><td>medium</td><td class="n">1.00</td><td class="n">10</td></tr>
+          </tbody>
+        </table></div>
+        <p>33 of 199 breaches (17%) on the compliance register are a referral ask and a review ask. Every item on the scorecard carries weight 1.00, so a Google review counts for exactly as much as “Sought consent for the insurer to contact the GP”.</p>
+        <div class="fix"><strong>What to do</strong> Either weight by severity, or move the two commercial items to a separate non-compliance section. As it stands, a firm handing this register to a regulator is handing over a document where the leading finding is a missed review request.</div>
+      </div>
+    </article>
+
+    <article class="finding low">
+      <div class="f-head"><span class="f-id">D-21</span><span class="sev low">Low</span></div>
+      <h3 class="f-title">MetLife’s live profile is roughly half non-functional</h3>
+      <div class="f-body">
+        <p>Of the 17 questions on the active MetLife EverydayProtect profile, around eight never resolve — Address, Day tel no, Email Address, UK Residency, Occupational eligibility, Active Lifestyle Cover, Marital status, Employment status (see D-04). Two MetLife runs returned 12-of-17 and 11-of-17 undetermined.</p>
+        <p>A firm opening one of those sales sees a checked-looking report in which most rows say nothing.</p>
+        <div class="fix"><strong>What to do</strong> Falls out of D-04. Once <code>check_mode</code> is set, those rows become presence checks that either pass or become a real finding, and MetLife’s reports stop reading as blank.</div>
+      </div>
+    </article>
+
+    <article class="finding low">
+      <div class="f-head"><span class="f-id">D-22</span><span class="sev low">Low</span></div>
+      <h3 class="f-title">Two more sales are filed under a different customer than Zoho has</h3>
+      <div class="f-body">
+        <p>Beyond D-01, two sales disagree with Zoho about who the customer is. In both cases the DOB matched exactly, so the <em>call</em> is the right person — but the name on one of the two systems is wrong:</p>
+        <div class="tw"><table>
+          <thead><tr><th>Sale</th><th>Zoho name</th><th>CallGuard customer</th><th>DOB check</th></tr></thead>
+          <tbody>
+            <tr><td><code>f4bb4c5c</code></td><td>W— Whitaker</td><td>M— Whitaker</td><td class="good">matches</td></tr>
+            <tr><td><code>b8d5f13b</code></td><td>S— Kaur</td><td>H— S— Kainth</td><td class="good">matches</td></tr>
+          </tbody>
+        </table></div>
+        <p>Both share a household mobile with the other name, same as D-01. Low severity because the findings are sound, but the sale displays under the wrong person in one system or the other.</p>
+        <div class="fix"><strong>What to do</strong> Prefer the Zoho <code>client_name</code> over the phone-derived customer name when the two disagree and the DOB confirms the call — and surface the disagreement rather than silently picking one.</div>
+      </div>
+    </article>
+
+    <article class="finding low">
+      <div class="f-head"><span class="f-id">D-23</span><span class="sev low">Low</span></div>
+      <h3 class="f-title">The score distribution is too compressed to look discriminating</h3>
+      <div class="f-body">
+        <p><strong>67 of 107 sales — 63% — score exactly 100.00.</strong> The mean is 94.6 and 86 sales sit at 95 or above. Only eight fall below 80.</p>
+        <p>Some of that is real: Trust Point’s advisers work from a script and the wrap-up is tightly structured. But the shape is partly manufactured, and by defects listed above — 738 sub-floor checkpoints resolved as passes by review (D-10), 35 AI failures withdrawn (D-03), and one phantom sale contributing a free 100 (D-18).</p>
+        <p>Separately, three sales are flagged <code>coverage = 'partial'</code> and were scored anyway — by design, since coverage is detect-only for now — one of them from a single call. 26 more sit at <code>unknown</code>, and only five ever resolved to <code>complete</code>.</p>
+        <div class="fix"><strong>What to do</strong> No fix in the data; a calibration question for the trial. A QA product that returns a perfect score on two thirds of sales is hard to sell as one that finds things — the reconciliation module is where the differentiated findings actually are.</div>
+      </div>
+    </article>
+
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<section>
+  <div class="sec-head">
+    <h2>What Trust Point should be looking at</h2>
+    <span class="count">Findings about their sales, not our system</span>
+  </div>
+  <p class="lede measure">Separated deliberately. Everything above is a defect in CallGuard. This is the output that is working, and it is the strongest evidence the module has produced.</p>
+
+  <p class="measure"><strong>20 withdrawn disclosures across 14 sales.</strong> These come from the insurer portal’s own edit history in the submitted document — no model, no transcript, no exposure to the redaction problem. An answer was entered, then changed to a less-disclosing one. That is not evidence of anything improper on its own, and most amendments are the answer being corrected as the conversation goes on. But several of these reversed <em>inside the same minute</em>, which is not a conversation moving on.</p>
+
+  <div class="tw"><table>
+    <thead><tr><th>Sale</th><th>Question</th><th>Entered</th><th>Final</th></tr></thead>
+    <tbody>
+      <tr><td><code>004728f5</code></td><td>Family history — birth parents, brothers or sisters</td><td class="warn">Any other cancer</td><td>No</td></tr>
+      <tr><td><code>5070796c</code></td><td>Do any of the following apply to you or your unit?</td><td class="warn">Currently in a state of readiness for deployment</td><td>None of these</td></tr>
+      <tr><td><code>8ad7f0db</code></td><td>Is your existing life cover with any of these companies?</td><td class="warn">Legal &amp; General (entered twice)</td><td>None of these</td></tr>
+      <tr><td><code>01567418</code></td><td>Seen a hospital specialist / undergoing checks?</td><td class="warn">Undergoing regular hospital checks</td><td>None of these</td></tr>
+      <tr><td><code>b2de6695</code></td><td>Seen a hospital specialist / undergoing checks?</td><td class="warn">Undergoing regular hospital checks</td><td>None of these</td></tr>
+      <tr><td><code>2521f88f</code></td><td>Ever stopped prescribed medication without being told to?</td><td class="warn">Yes</td><td>No</td></tr>
+      <tr><td><code>45ecfa40</code></td><td>Taking prescribed treatment for your cholesterol?</td><td class="warn">Yes</td><td>No</td></tr>
+      <tr><td><code>f5545973</code></td><td>Do you receive reduced sick pay?</td><td class="warn">Yes</td><td>No</td></tr>
+      <tr><td><code>b045a346</code></td><td>Do any of the following apply to you?</td><td class="warn">I ride a motorbike, scooter or moped on the road</td><td>No</td></tr>
+      <tr><td><code>b045a346</code></td><td>Ever had any of the following complications?</td><td class="warn">Indigestion requiring long term treatment</td><td>None of these</td></tr>
+      <tr><td><code>cbb71b4b</code></td><td>Last 5 years — anything affecting bones or joints</td><td class="warn">Bones, joints, ligaments, tendons or muscles</td><td>No</td></tr>
+      <tr><td><code>0ab73dea</code></td><td>Applied in the last 3 years?</td><td class="warn">Advised to see a specialist or have tests</td><td>No</td></tr>
+      <tr><td><code>0ab73dea</code></td><td>Told your blood test results are now normal?</td><td class="warn">Yes</td><td>No</td></tr>
+      <tr><td><code>b18a5f63</code></td><td>Existing life insurance?</td><td class="warn">Yes</td><td>No</td></tr>
+      <tr><td><code>b8d5f13b</code></td><td>Existing life insurance?</td><td class="warn">Yes</td><td>No</td></tr>
+    </tbody>
+  </table></div>
+
+  <p class="measure">The recorded-by field concentrates: one adviser accounts for <strong>9 of the 20</strong>, a second for 4, and three others for one or two each. That is a supervision prompt, not an allegation — but it is the pattern a supervisor would want to see, and it is invisible in the sales-scoring numbers, all of which pass.</p>
+
+  <p class="measure"><strong>Reconciliation mismatches worth checking against the recording.</strong> Setting aside the false positives above, these survive scrutiny:</p>
+
+  <div class="tw"><table>
+    <thead><tr><th>Sale</th><th>Question</th><th>Application</th><th>Call</th></tr></thead>
+    <tbody>
+      <tr><td><code>61190bca</code></td><td>Ever stopped prescribed medication without being told to?</td><td class="bad">No</td><td>“Yeah”</td></tr>
+      <tr><td><code>e019fe70</code></td><td>Any tests for your family history of diabetes?</td><td class="bad">Yes, results were normal</td><td>“No. I’ve never had any diabetic tests.”</td></tr>
+      <tr><td><code>042acec4</code></td><td>Lived, worked or travelled outside UK/EU/NA/AU/NZ?</td><td class="bad">No</td><td>“Both of those” (business trips and holidays)</td></tr>
+      <tr><td><code>2521f88f</code></td><td>Do you receive reduced sick pay?</td><td class="bad">No</td><td>“goes down to 3 months 0.5 pay”</td></tr>
+      <tr><td><code>cbb71b4b</code></td><td>Days off work in the last 5 years</td><td class="bad">7</td><td>“0, 0. 0. Before this, 0”</td></tr>
+      <tr><td><code>cbb71b4b</code>, <code>b18a5f63</code>, <code>b8d5f13b</code></td><td>Existing life insurance?</td><td class="bad">No</td><td>Yes — two policies / an Aviva plan / a policy to cancel</td></tr>
+      <tr><td><code>22780821</code></td><td>Bank account held in payer’s name</td><td class="bad">Yes</td><td>“Oh, somebody else, of course”</td></tr>
+      <tr><td><code>f5545973</code></td><td>How much do you weigh?</td><td class="bad">80</td><td>“120 to 130 kilograms” <span class="warn">(filed undetermined)</span></td></tr>
+      <tr><td><code>8f7069d4</code></td><td>Preferred Direct Debit date</td><td class="bad">8</td><td>“15” <span class="warn">(filed undetermined)</span></td></tr>
+    </tbody>
+  </table></div>
+
+  <p class="measure">The last two are the point of this whole review: both are real, both are material, and neither is visible to Trust Point today because a formatting defect filed them as “could not tell”.</p>
+</section>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<section>
+  <div class="sec-head">
+    <h2>Order of work</h2>
+    <span class="count">By value, not by severity</span>
+  </div>
+
+  <div class="tw"><table>
+    <thead><tr><th>#</th><th>Do this</th><th>Fixes</th><th>Effort</th></tr></thead>
+    <tbody>
+      <tr><td class="n">1</td><td>Delete the void findings — four on <code>09eb946c</code> <em>(script written, awaiting a production write)</em>, the cigarette mismatch on <code>291b6fc4</code>, the three height mismatches</td><td>D-01, D-05, D-16</td><td>Minutes</td></tr>
+      <tr><td class="n">2</td><td>Quarantine sales whose wrap-up has an inverted or single-speaker transcript — nine sales across the two findings</td><td>D-02, D-24</td><td>Hours</td></tr>
+      <tr><td class="n">2b</td><td><span class="good">Done</span> — refuse a confidence lift on a single-cluster call</td><td>D-24</td><td>Shipped</td></tr>
+      <tr><td class="n">3</td><td>Set <code>check_mode</code> on the four live profiles, then re-run</td><td>D-04, D-21, part of D-11</td><td>Hours</td></tr>
+      <tr><td class="n">4</td><td>Add height, date-order and weeks/months normalisation to the comparator</td><td>D-05, D-06, part of D-15</td><td>Hours</td></tr>
+      <tr><td class="n">5</td><td>Fix the four corrupt UnderwriteMe questions and add a shape guard at profile proposal</td><td>D-08</td><td>Hours</td></tr>
+      <tr><td class="n">6</td><td>Rewrite the <code>ai_check</code> wording on the six over-failing checkpoints</td><td>D-03</td><td>Hours</td></tr>
+      <tr><td class="n">7</td><td><strong>Ask Trust Point to attach the application pack</strong> — 42% of sales have none, and no engineering changes that. Confirming the parked profiles is worth doing separately, to make per-question rulings readable for D-07 and D-08</td><td>D-09</td><td>A conversation</td></tr>
+      <tr><td class="n">8</td><td>Retune the confidence floor with D-03 — per-item, or 0.70 globally</td><td>D-10</td><td>A judgement call</td></tr>
+      <tr><td class="n">9</td><td>Ask CloudTalk for <strong>16 kHz</strong> recording — dual-channel is confirmed unavailable, so this is the remaining lever on attribution</td><td>D-19, root of D-02 and D-24</td><td>A conversation</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<footer>
+  <p>All figures read directly from the production database on 21 August 2026, covering the 107 sales created 4–21 August 2026. Findings D-01 and D-24 were revised on the same day during remediation, and their notes record what shipped. A 108th sale (<code>f66b4611</code>, 58.06, fail) landed mid-review and is outside these counts. Call-level figures cite 297 transcribed calls where the investigation touched them and 282 where the original pass did — the tenant is live and the count moved. Customers are identified by sale ID; names are abbreviated where the name itself is not the finding. Health details appear only where they are the substance of a finding a supervisor needs to act on.</p>
+  <p>CallGuard AI internal review. Not for onward distribution without removing the customer-level detail in the final two sections.</p>
+</footer>
+
+</div>

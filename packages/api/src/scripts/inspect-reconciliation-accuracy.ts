@@ -15,32 +15,16 @@
 //
 // Only the first is a bug we can fix in the parser, so the report separates it.
 import { pool, query } from '../db/client.js';
+// The shape tests moved to a service so the profile-proposal path can use them
+// too — catching a mangled question when it is created beats reporting it here
+// after the fact.
+import { corruptionFlags } from '../services/question-quality.js';
+
+const corruptionFlagNames = (q: string): string[] => corruptionFlags(q).map((f) => f.name);
 
 process.stdout.on('error', (err: NodeJS.ErrnoException) => {
   if (err.code === 'EPIPE') process.exit(0);
 });
-
-// A question that arrived mangled. These are shape tests, not wording tests:
-// every one of them describes text that no insurer would ever have printed.
-const CORRUPTION_TESTS: Array<{ name: string; test: (q: string) => boolean }> = [
-  // "Have you : ever" — a colon with a space in front of it, which happens when
-  // a bold run is closed and reopened mid-sentence and the joiner is inserted
-  // blind.
-  { name: 'stranded colon', test: (q) => / :\s/.test(q) },
-  // "In the have you had any of these? last 5 years" — a '?' inside the string
-  // with more words after it. Two spans emitted out of order.
-  { name: 'interior question mark', test: (q) => /\?\s+\S/.test(q) },
-  // Doubled spaces surviving normalisation, or a space before punctuation.
-  { name: 'stray spacing', test: (q) => /\s{2,}/.test(q) || /\s+[,.;]/.test(q) },
-  // A word glued to the next with no space: "youever", "inthe last".
-  { name: 'missing space', test: (q) => /[a-z][A-Z]/.test(q) },
-  // Ends mid-word or mid-clause rather than on punctuation or a choice list.
-  { name: 'truncated tail', test: (q) => /\b(the|a|an|of|in|to|and|or|with|for)\s*$/i.test(q) },
-];
-
-function corruptionOf(q: string): string[] {
-  return CORRUPTION_TESTS.filter((t) => t.test(q)).map((t) => t.name);
-}
 
 async function main(): Promise<void> {
   const orgArg = process.argv[2] ?? 'Trust Point';
@@ -120,7 +104,7 @@ async function main(): Promise<void> {
       total: w.total,
       undet: w.undet,
       ok: w.resolved,
-      corrupt: corruptionOf(w.question).join(', ') || '',
+      corrupt: corruptionFlagNames(w.question).join(', ') || '',
     })),
   );
 
@@ -144,7 +128,7 @@ async function main(): Promise<void> {
   for (const p of profiles) {
     const qs = p.questions ?? [];
     const bad = qs
-      .map((q, idx) => ({ idx, question: q.question ?? '', flags: corruptionOf(q.question ?? '') }))
+      .map((q, idx) => ({ idx, question: q.question ?? '', flags: corruptionFlagNames(q.question ?? '') }))
       .filter((r) => r.flags.length > 0);
     const label = `${p.insurer}${p.product ? ` / ${p.product}` : ''} [${p.status}]`;
     console.log(`\n   ${label} — ${bad.length} of ${qs.length} questions look corrupt`);
