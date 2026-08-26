@@ -68,6 +68,18 @@
 //   tsx src/scripts/fix-trust-item-scope.ts "Trust Point" --commit
 import { pool, query, queryOne } from '../db/client.js';
 
+/**
+ * The first argument that is not a flag.
+ *
+ * argv[2] is not that. Running this script with only --commit made "--commit"
+ * the organisation name, which fails safe (nothing matches, nothing is written)
+ * but reads as though the tenant is missing rather than the argument.
+ */
+function firstPositional(): string | undefined {
+  return process.argv.slice(2).find((a) => !a.startsWith('--'));
+}
+
+
 // Products whose benefit is payable on death, and so can be written in trust.
 const TRUSTABLE = [
   'Level Term Life Insurance',
@@ -118,7 +130,7 @@ const AI_CHECKS: Record<string, string> = {
 };
 
 async function main(): Promise<void> {
-  const orgArg = process.argv[2] ?? 'Trust Point';
+  const orgArg = firstPositional() ?? 'Trust Point';
   const commit = process.argv.includes('--commit');
 
   const org = await queryOne<{ id: string; name: string }>(

@@ -23,6 +23,18 @@
 //   tsx src/scripts/dataforms-status.ts "Trust Point"   # one, by name or id
 import { pool, query, queryOne } from '../db/client.js';
 
+/**
+ * The first argument that is not a flag.
+ *
+ * argv[2] is not that. Running this script with only --commit made "--commit"
+ * the organisation name, which fails safe (nothing matches, nothing is written)
+ * but reads as though the tenant is missing rather than the argument.
+ */
+function firstPositional(): string | undefined {
+  return process.argv.slice(2).find((a) => !a.startsWith('--'));
+}
+
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // Piping this into `head` closes stdout early, and an unguarded write to a
@@ -465,7 +477,7 @@ async function reportOrg(org: {
 }
 
 async function main(): Promise<void> {
-  const target = process.argv[2] ?? null;
+  const target = firstPositional() ?? null;
 
   // The migration gates everything: the reconcile job selects extraction_method
   // on every run, so without it every sale errors rather than parking.

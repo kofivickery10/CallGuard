@@ -22,6 +22,18 @@ import {
   evidenceExcerpts,
 } from '../services/reconciliation.js';
 
+/**
+ * The first argument that is not a flag.
+ *
+ * argv[2] is not that. Running this script with only --commit made "--commit"
+ * the organisation name, which fails safe (nothing matches, nothing is written)
+ * but reads as though the tenant is missing rather than the argument.
+ */
+function firstPositional(): string | undefined {
+  return process.argv.slice(2).find((a) => !a.startsWith('--'));
+}
+
+
 process.stdout.on('error', (err: NodeJS.ErrnoException) => {
   if (err.code === 'EPIPE') process.exit(0);
 });
@@ -43,7 +55,7 @@ function windowCount(hits: Array<{ index: number }>): number {
 }
 
 async function main(): Promise<void> {
-  const orgArg = process.argv[2] ?? 'Trust Point';
+  const orgArg = firstPositional() ?? 'Trust Point';
   const verbose = process.argv.includes('--verbose');
 
   const runs = await query<{ id: string; journey_id: string; attachment_name: string | null }>(

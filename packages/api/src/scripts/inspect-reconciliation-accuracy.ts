@@ -20,6 +20,18 @@ import { pool, query } from '../db/client.js';
 // after the fact.
 import { corruptionFlags } from '../services/question-quality.js';
 
+/**
+ * The first argument that is not a flag.
+ *
+ * argv[2] is not that. Running this script with only --commit made "--commit"
+ * the organisation name, which fails safe (nothing matches, nothing is written)
+ * but reads as though the tenant is missing rather than the argument.
+ */
+function firstPositional(): string | undefined {
+  return process.argv.slice(2).find((a) => !a.startsWith('--'));
+}
+
+
 const corruptionFlagNames = (q: string): string[] => corruptionFlags(q).map((f) => f.name);
 
 process.stdout.on('error', (err: NodeJS.ErrnoException) => {
@@ -27,7 +39,7 @@ process.stdout.on('error', (err: NodeJS.ErrnoException) => {
 });
 
 async function main(): Promise<void> {
-  const orgArg = process.argv[2] ?? 'Trust Point';
+  const orgArg = firstPositional() ?? 'Trust Point';
   const org = await query<{ id: string; name: string }>(
     `SELECT id, name FROM organizations WHERE name ILIKE $1 LIMIT 1`,
     [`%${orgArg}%`],

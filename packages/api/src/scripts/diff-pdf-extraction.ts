@@ -13,6 +13,18 @@ import { readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { extractPdfText } from '../services/application-pdf.js';
 
+/**
+ * The first argument that is not a flag.
+ *
+ * argv[2] is not that. Running this script with only --commit made "--commit"
+ * the organisation name, which fails safe (nothing matches, nothing is written)
+ * but reads as though the tenant is missing rather than the argument.
+ */
+function firstPositional(): string | undefined {
+  return process.argv.slice(2).find((a) => !a.startsWith('--'));
+}
+
+
 async function legacyExtract(buffer: Buffer): Promise<string> {
   const { PDFParse } = await import('pdf-parse');
   const parser = new PDFParse({ data: new Uint8Array(buffer) });
@@ -83,7 +95,7 @@ function diffLines(a: string, b: string): Array<{ n: number; old: string; new: s
 }
 
 async function main(): Promise<void> {
-  const dir = process.argv[2] ?? 'docs/trustpoint/samples';
+  const dir = firstPositional() ?? 'docs/trustpoint/samples';
   const files = (await readdir(dir)).filter((f) => f.toLowerCase().endsWith('.pdf'));
 
   let totalOld = 0;
