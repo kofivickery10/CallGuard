@@ -23,7 +23,8 @@
     "migrate": "npm run migrate --workspace=packages/api",
     "test": "npm run test --workspace=packages/shared && npm run test --workspace=packages/api",
     "start": "pm2 start ecosystem.config.js",
-    "deploy": "bash scripts/deploy.sh"
+    "deploy": "bash scripts/deploy.sh",
+    "smoke:prod": "node scripts/prod-smoke.mjs"
   },
   "engines": {
     "node": ">=20.0.0"

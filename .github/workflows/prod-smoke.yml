@@ -1,0 +1,35 @@
+name: Production parity
+
+# The landing site is uploaded by hand through the 20i File Manager, so there
+# is no deploy step to hang a check off. This runs against the live site
+# instead and fails when production stops matching main.
+#
+#  - on push to main: tells you an upload is outstanding, straight away
+#  - daily:           catches a file that quietly went stale, which is the
+#                     failure this was written for
+#  - manually:        re-run after an upload without waiting for the schedule
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'landing/**'
+      - 'scripts/prod-smoke.mjs'
+      - '.github/workflows/prod-smoke.yml'
+  schedule:
+    - cron: '17 7 * * *'
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # No dependencies, so no install step: the script uses global fetch.
+      - name: Check production matches main
+        run: node scripts/prod-smoke.mjs
