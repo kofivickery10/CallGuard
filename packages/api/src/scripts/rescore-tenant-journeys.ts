@@ -16,6 +16,9 @@
 //   default          --status=scoring,failed   (the stuck/failed ones from a bug)
 //   --all            every status incl. already-scored (re-scores everything)
 //   --status=a,b     explicit set, e.g. --status=failed
+//   --out-of-scope   narrows the set to sales holding a score for a checkpoint
+//                    that no longer applies to the products they sold. Implies
+//                    --status=scored.
 //   --unattributable narrows the set to sales whose wrap-up cannot support a
 //                    claim about who said something — a one-sided transcript, or
 //                    labels the content contradicts. Implies --status=scored
@@ -44,6 +47,8 @@
 //   tsx src/scripts/rescore-tenant-journeys.ts <orgId|nameSubstring> [--commit] [--all] [--status=scoring,failed] [--no-crm]
 //   tsx src/scripts/rescore-tenant-journeys.ts "Trust Point" --unattributable
 //   tsx src/scripts/rescore-tenant-journeys.ts "Trust Point" --unattributable --commit
+//   tsx src/scripts/rescore-tenant-journeys.ts "Trust Point" --out-of-scope
+//   tsx src/scripts/rescore-tenant-journeys.ts "Trust Point" --out-of-scope --commit
 import { pool, query, queryOne } from '../db/client.js';
 import {
   transcriptSupportsAttribution,
@@ -89,6 +94,7 @@ async function main() {
   const noCrm = args.includes('--no-crm');
   const statusArg = args.find((a) => a.startsWith('--status='))?.split('=')[1];
   const unattributable = args.includes('--unattributable');
+  const outOfScope = args.includes('--out-of-scope');
 
   if (!orgArg) {
     console.error('Usage: tsx src/scripts/rescore-tenant-journeys.ts <orgId|nameSubstring> [--commit] [--all] [--status=scoring,failed] [--no-crm]');
@@ -101,7 +107,7 @@ async function main() {
       ? statusArg.split(',').map((s) => s.trim())
       // The sales this targets are already scored — that IS the problem — so the
       // stuck/failed default would match none of them.
-      : unattributable
+      : unattributable || outOfScope
         ? ['scored']
         : ['scoring', 'failed'];
   const invalid = statuses.filter((s) => !VALID_STATUSES.includes(s as typeof VALID_STATUSES[number]));
@@ -115,6 +121,7 @@ async function main() {
   console.log(
     `Mode: ${commit ? 'COMMIT' : 'DRY RUN'} | target statuses: ${statuses.join(', ')}` +
       `${unattributable ? ' | filter: wrap-up cannot be attributed' : ''}` +
+      `${outOfScope ? ' | filter: holds a checkpoint score now out of product scope' : ''}` +
       ` | CRM write-back: ${noCrm ? 'SUPPRESSED' : 'on'}\n`
   );
 
@@ -180,6 +187,58 @@ async function main() {
       return true;
     });
     console.log(`Sales examined: ${matched.length}\n`);
+  }
+
+  // Sales carrying a score for a checkpoint that no longer applies to what they
+  // sold.
+  //
+  // Scoping a checkpoint to products changes nothing on its own: applies_to_products
+  // is read at SCORING time, so every sale already scored keeps the item it
+  // should never have been given, and a recorded failure keeps its breach. Only
+  // a re-score drops it out.
+  //
+  // Targeted rather than swept for the reason --unattributable is: on the tenant
+  // this was written for, 34 sales of 110 hold such a score, and re-scoring the
+  // other 76 would put their checkpoints back through the model and re-push
+  // their CRM records to change nothing.
+  //
+  // Selected by the same rule scoring applies — an item whose applies_to_products
+  // names none of the sale's products — so the set cannot drift from the gate
+  // that produced it.
+  if (outOfScope) {
+    const stale = await query<{ jid: string; labels: string[]; fails: number }>(
+      `SELECT jis.journey_id AS jid,
+              array_agg(DISTINCT si.label ORDER BY si.label) AS labels,
+              COUNT(*) FILTER (WHERE jis.result = 'fail')::int AS fails
+         FROM journey_item_scores jis
+         JOIN scorecard_items si ON si.id = jis.scorecard_item_id
+        WHERE jis.journey_id = ANY($1::uuid[])
+          AND si.applies_to_products IS NOT NULL
+          AND cardinality(si.applies_to_products) > 0
+          AND NOT EXISTS (
+                SELECT 1 FROM journey_products jp
+                 WHERE jp.journey_id = jis.journey_id
+                   AND jp.product_id = ANY(si.applies_to_products)
+              )
+        GROUP BY jis.journey_id`,
+      [matched.map((j) => j.id)]
+    );
+    const byId = new Map(stale.map((r) => [r.jid, r]));
+    journeys = matched.filter((j) => byId.has(j.id));
+    for (const j of journeys) {
+      const r = byId.get(j.id)!;
+      reasons.set(
+        j.id,
+        `${r.labels.length} out of scope${r.fails > 0 ? `, ${r.fails} recorded as FAILED` : ''}`
+      );
+    }
+    const totalItems = stale.reduce((n, r) => n + r.labels.length, 0);
+    const totalFails = stale.reduce((n, r) => n + r.fails, 0);
+    console.log(
+      `Sales examined: ${matched.length}\n` +
+        `Out-of-scope checkpoint scores: ${totalItems}, of which ${totalFails} recorded as FAILED ` +
+        `(each one a breach on an adviser's record for something never in scope)\n`
+    );
   }
 
   console.log(`Matching sales: ${journeys.length}`);
