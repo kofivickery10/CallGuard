@@ -7,14 +7,28 @@
 # and stops link equity from being split across two hosts.
 RewriteEngine On
 
-# Strip "www." and force HTTPS in one go. Matched on the "www." prefix rather
-# than the exact host so it still fires when Apache reports HTTP_HOST with a
-# port suffix (www.callguardai.co.uk:443), which an exact `$` anchor misses.
-RewriteCond %{HTTP_HOST} ^www\. [NC]
+# Strip "www." Anchored to our own host, with an optional port suffix, which is
+# what the bare `^www\.` prefix was reaching for: that prefix also matches any
+# other www hostname the front end may present to Apache, and each of those
+# redirects to a URL that arrives back at Apache unchanged — a 301 loop.
+RewriteCond %{HTTP_HOST} ^www\.callguardai\.co\.uk(:[0-9]+)?$ [NC]
 RewriteRule ^ https://callguardai.co.uk%{REQUEST_URI} [L,R=301]
 
-# Force HTTPS for the bare host
+# Force HTTPS for the bare host.
+#
+# The site is served through a TLS-terminating CDN, so the edge leg is HTTPS
+# but the edge-to-Apache leg is plain HTTP and %{HTTPS} is never "on" here.
+# Testing %{HTTPS} alone therefore fires on EVERY request, including ones that
+# already arrived over HTTPS, and 301s them to the URL they are already on:
+# an infinite redirect on every page and every asset.
+#
+# So trust the proxy's own signal first and only redirect when nothing says the
+# edge leg was already secure. If a request genuinely arrives over plain HTTP,
+# none of these match and the redirect still fires as intended.
 RewriteCond %{HTTPS} !=on
+RewriteCond %{HTTP:X-Forwarded-Proto} !=https [NC]
+RewriteCond %{HTTP:X-Forwarded-SSL} !=on [NC]
+RewriteCond %{HTTP:X-Forwarded-Port} !=443
 RewriteRule ^ https://callguardai.co.uk%{REQUEST_URI} [L,R=301]
 
 # ─── Legacy URLs: /alternatives/* moved to /compare/* ────────────────────
