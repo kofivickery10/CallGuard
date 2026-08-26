@@ -21,6 +21,29 @@ The site is pure static HTML / CSS / SVG. No build step, no server-side runtime 
 
 ---
 
+## Publishing a blog post
+
+Posts are generated, not hand-written. Write the Markdown, run the build, upload
+what changed.
+
+1. Create `landing/blog/_posts/<slug>.md`. Copy the front-matter from an existing
+   post and change the values; the slug is the filename, so `my-post.md` becomes
+   `/blog/my-post`.
+2. Run `npm run blog:build` from the repo root.
+3. Upload the three things it wrote: `blog/<slug>.html`, `blog/index.html` and
+   `sitemap.xml`.
+
+The build regenerates the index cards and the sitemap's blog entries from the
+posts, so those two never need editing by hand. It refuses to build a post with
+a missing front-matter field, a `related` slug that does not exist, or a
+`useCaseLink` the body does not actually link to.
+
+The Markdown supported is deliberately narrow: `##` and `###` headings,
+paragraphs, `**bold**`, `[links](/path)`, and both kinds of list. Anything else
+is an error rather than a surprise in production.
+
+---
+
 ## Option 1 — Upload via cPanel File Manager (5 mins)
 
 1. Log in to your hosting cPanel.

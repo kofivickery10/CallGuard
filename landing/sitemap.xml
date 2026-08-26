@@ -60,19 +60,7 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://callguardai.co.uk/blog/what-is-ai-call-qa</loc>
-    <lastmod>2026-05-05</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://callguardai.co.uk/blog/score-100-percent-contact-centre-calls</loc>
-    <lastmod>2026-05-05</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://callguardai.co.uk/blog/fca-consumer-duty-call-recordings</loc>
+    <loc>https://callguardai.co.uk/blog/pecr-tps-2026-outbound-compliance</loc>
     <lastmod>2026-05-05</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
@@ -84,7 +72,19 @@
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://callguardai.co.uk/blog/pecr-tps-2026-outbound-compliance</loc>
+    <loc>https://callguardai.co.uk/blog/fca-consumer-duty-call-recordings</loc>
+    <lastmod>2026-05-05</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://callguardai.co.uk/blog/score-100-percent-contact-centre-calls</loc>
+    <lastmod>2026-05-05</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://callguardai.co.uk/blog/what-is-ai-call-qa</loc>
     <lastmod>2026-05-05</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
