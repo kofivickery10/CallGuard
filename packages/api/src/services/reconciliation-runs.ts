@@ -22,7 +22,7 @@ import {
 } from './document-profile-learner.js';
 import { recordUsage } from './usage.js';
 import { attemptJobId } from './reconciliation-sweep.js';
-import type { QuestionCheckMode } from './reconciliation.js';
+import type { QuestionCheckMode, RiskDirection } from './reconciliation.js';
 
 // ============================================================
 // Reconciliation run orchestration: which document, which profile, and starting
@@ -47,6 +47,8 @@ export interface DocumentProfileRow {
     absence_meaningful?: boolean;
     /** Absent on profiles stored before check modes existed; defaulted at read. */
     check_mode?: QuestionCheckMode;
+    /** Absent on profiles stored before directions existed; defaulted at read. */
+    risk_direction?: RiskDirection;
   }>;
   version: number;
   status: 'needs_confirmation' | 'active' | 'superseded';

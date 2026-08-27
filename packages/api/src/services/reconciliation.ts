@@ -13,6 +13,10 @@
 export type ReconciliationOutcome =
   | 'match'
   | 'mismatch'
+  // The application declared MORE than the customer said, on a field where more
+  // means more risk. Not a non-disclosure and not voidable — see RiskDirection
+  // in @callguard/shared, and migration 109.
+  | 'over_declaration'
   | 'not_asked'
   | 'asked_no_answer'
   | 'no_application_answer'
@@ -799,7 +803,7 @@ function compareYearToElapsed(
   return null;
 }
 
-export type AnswerComparison = 'match' | 'mismatch' | 'unclear';
+export type AnswerComparison = 'match' | 'mismatch' | 'over_declaration' | 'unclear';
 
 /**
  * A weight in kilograms, read from either side's phrasing, or null when the
@@ -1285,22 +1289,462 @@ export function checklistCovers(applicationAnswer: string, callAnswer: string): 
  * seventeen and a half stone" needs semantic judgement, and that is a model's
  * job, not this function's. `unclear` is the handover point, not a failure.
  */
-export function compareAnswers(
+// ── Durations ─────────────────────────────────────────────────────────────────
+
+/**
+ * A period of time, in days, whatever units either side chose to say it in.
+ *
+ * The same fault as height and weight, one field along. An income protection
+ * form asks how many weeks of full sick pay an employer gives; the customer says
+ * "about three months". Sale 2521f88f reported that as a mismatch at 0.95
+ * confidence, with the extraction model's own reasoning noting that the two are
+ * equivalent — an adviser accused of mis-recording a figure they converted
+ * correctly.
+ *
+ * A month is 30.44 days rather than 30 because the error compounds: over a year
+ * the rounding is five days, which is more than the tolerance below.
+ */
+const DAYS_PER: Record<DurationUnit, number> = {
+  day: 1,
+  week: 7,
+  month: 30.436875,
+  year: 365.2425,
+};
+
+type DurationUnit = 'day' | 'week' | 'month' | 'year';
+
+/**
+ * Ordered coarsest-last, because the tolerance is taken from the COARSEST unit
+ * either side used. "Three months" is not a claim accurate to the day, and the
+ * comparison must not hold it to one.
+ */
+const DURATION_UNITS: Array<[RegExp, DurationUnit]> = [
+  [/\b(?:days?|dys?)\b/, 'day'],
+  [/\b(?:weeks?|wks?)\b/, 'week'],
+  [/\b(?:months?|mths?|mos?)\b/, 'month'],
+  [/\b(?:years?|yrs?)\b/, 'year'],
+];
+
+/** Any duration unit at all, for telling "no unit stated" from "one we misread". */
+const DURATION_UNIT = /\b(?:days?|dys?|weeks?|wks?|months?|mths?|mos?|years?|yrs?)\b/;
+
+/**
+ * Number words as people say a period aloud, plus the bare article.
+ *
+ * "A year" and "a month" are how anybody answers a question about a sick pay
+ * period, and neither carries a digit for the patterns below to find. Kept
+ * separate from HEIGHT_WORDS because this folds words that would be wrong there
+ * — an "eighteen" in a height is not eighteen feet.
+ */
+const DURATION_WORDS: Record<string, number> = {
+  a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7,
+  eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, thirteen: 13,
+  fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18,
+  nineteen: 19, twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60,
+};
+
+/**
+ * Words to digits, but ONLY where the word is immediately quantifying a period.
+ *
+ * Anchored on the unit deliberately. Folding every number word in the string
+ * would turn "one of the following" into "1 of the following" on questions that
+ * have nothing to do with time, and the point of this whole rule is to be
+ * narrower than the bare-number comparison it is protecting people from.
+ */
+function foldDurationWords(text: string): string {
+  return text.replace(
+    /\b([a-z]+)\b(?=\s+(?:and\s+a\s+(?:half|quarter)\s+)?(?:days?|dys?|weeks?|wks?|months?|mths?|mos?|years?|yrs?)\b)/g,
+    (m, w: string) => (DURATION_WORDS[w] === undefined ? m : String(DURATION_WORDS[w]))
+  );
+}
+
+/**
+ * "50 a day" is a rate, not a period, and the duration rule must not touch it.
+ *
+ * Caught by the existing suite the moment durations went in: "5 cigarettes a
+ * day" against "15 cigarettes a day" both read as one day and MATCHED, turning
+ * a mis-keying the numeric rule had always caught into agreement. The same
+ * folding read "50" against "50 a day" as fifty of something against one day.
+ *
+ * "per", "each" and "every" are always a rate. The bare article is only one when
+ * a quantity comes before it — "a year" on its own is how somebody answers how
+ * long their sick pay runs, and that has to keep working.
+ */
+function statesRate(text: string): boolean {
+  const n = normaliseAnswer(text);
+  if (/\b(?:per|each|every)\s+(?:day|week|month|year|night|hour)\b/.test(n)) return true;
+  const article = /\b(?:a|an)\s+(?:day|week|month|year|night|hour)\b/.exec(n);
+  return article !== null && /\d/.test(n.slice(0, article.index));
+}
+
+interface ReadDuration {
+  days: number;
+  /** The coarsest unit named, which is what the answer's precision is worth. */
+  coarsest: DurationUnit;
+}
+
+/**
+ * Every stated period in the text, summed, in days. Null where none is stated.
+ *
+ * Summed rather than first-match-wins so "2 years 6 months" and "18 months" are
+ * the same period. A bare number is NOT read here — see compareDurations for why
+ * the unit for one has to come from the question rather than from a guess.
+ */
+export function durationInDays(text: string): ReadDuration | null {
+  const n = foldSpokenFractions(foldDurationWords(normaliseAnswer(text)));
+  let days = 0;
+  let coarsest: DurationUnit | null = null;
+  let found = false;
+  for (const [unitRe, unit] of DURATION_UNITS) {
+    const re = new RegExp(`(\\d+(?:\\.\\d+)?)\\s*${unitRe.source}`, 'g');
+    for (const m of n.matchAll(re)) {
+      days += Number(m[1]) * DAYS_PER[unit];
+      found = true;
+      coarsest = unit; // DURATION_UNITS runs fine-to-coarse, so the last wins.
+    }
+  }
+  return found && coarsest ? { days, coarsest } : null;
+}
+
+/**
+ * How far apart two periods may be and still be the same period.
+ *
+ * Half the coarsest unit either side used. "Three months" against "12 weeks" is
+ * seven days apart and is one answer, not two: nobody saying "three months"
+ * about a sick pay period means 91 days rather than 84. Holding a month-precision
+ * answer to a day would report every one of them.
+ *
+ * Capped, because half a unit stops being a tolerance at the top end: half a year
+ * is six months, and "a year" against "18 months" would reconcile. Six weeks is
+ * the widest gap that is still plausibly one answer said two ways, and it leaves
+ * "a year" against "15 months" firing, which it should.
+ */
+const MAX_DURATION_TOLERANCE_DAYS = 45;
+
+function durationTolerance(a: DurationUnit, b: DurationUnit): number {
+  const coarser = DAYS_PER[a] >= DAYS_PER[b] ? a : b;
+  return Math.min(DAYS_PER[coarser] / 2, MAX_DURATION_TOLERANCE_DAYS);
+}
+
+/**
+ * The unit a bare number on this question is counted in, read from the question
+ * itself.
+ *
+ * "12" is not interpretable on its own, and that is exactly what broke the sick
+ * pay case: the form stores a bare 12 and only the question says weeks. The
+ * registry the answer needs is the question wording, which is already stored
+ * verbatim against every item.
+ *
+ * Look-back qualifiers are stripped first. "Days off work in the last 5 years"
+ * counts DAYS, and reading its unit as years would convert a mis-keyed 7 into
+ * seven years and lose a real finding.
+ */
+export function durationUnitFromQuestion(question: string | null | undefined): DurationUnit | null {
+  if (!question) return null;
+  const stripped = normaliseAnswer(question).replace(
+    /\b(?:in|over|during|within|for)\s+the\s+(?:last|past|previous)\s+(?:\d+|[a-z]+)?\s*(?:days?|weeks?|months?|years?)\b/g,
+    ' '
+  );
+  let best: { unit: DurationUnit; at: number } | null = null;
+  for (const [unitRe, unit] of DURATION_UNITS) {
+    const m = unitRe.exec(stripped);
+    if (m && (best === null || m.index < best.at)) best = { unit, at: m.index };
+  }
+  return best?.unit ?? null;
+}
+
+/**
+ * Two periods of time, compared as periods.
+ *
+ * Engages only where at least one side actually names a unit. A rule that read
+ * two bare numbers as durations would swallow every count on the form.
+ *
+ * WHERE ONE SIDE IS BARE
+ *
+ * The unit comes from the question. Where the question does not name one either,
+ * every unit the bare number could be is tried, and a reading that reconciles
+ * the two returns 'unclear' rather than 'match' — the same judgement
+ * bareUnitConfusion makes about weights, for the same reason. Nothing here
+ * establishes that the two agree; what it establishes is that they are
+ * consistent with one unit reading, which is not a basis for a finding in either
+ * direction. Disagreement under EVERY reading is still a mismatch, so a real
+ * mis-keying survives.
+ */
+function compareDurations(
+  applicationAnswer: string,
+  callAnswer: string,
+  question: string | null
+): { comparison: AnswerComparison; appDays: number | null; callDays: number | null; tolerance: number | null } | null {
+  // "Seven years ago" is a point in the past, not a length of time, and
+  // compareYearToElapsed owns it. Reading it as a duration would compare it
+  // against a year number and call two forms of the same fact a disagreement —
+  // the exact mistake that rule exists to undo.
+  if (
+    RELATIVE_YEARS.test(foldSpokenFractions(normaliseAnswer(applicationAnswer))) ||
+    RELATIVE_YEARS.test(foldSpokenFractions(normaliseAnswer(callAnswer)))
+  ) {
+    return null;
+  }
+  // A quantity per unit of time is a rate. Comparing the units of two rates
+  // says only that both are per day.
+  if (statesRate(applicationAnswer) || statesRate(callAnswer)) return null;
+
+  const app = durationInDays(applicationAnswer);
+  const call = durationInDays(callAnswer);
+
+  const decide = (
+    a: ReadDuration,
+    c: ReadDuration
+  ): { comparison: AnswerComparison; appDays: number; callDays: number; tolerance: number } => {
+    const tolerance = durationTolerance(a.coarsest, c.coarsest);
+    return {
+      comparison: Math.abs(a.days - c.days) <= tolerance ? 'match' : 'mismatch',
+      appDays: a.days,
+      callDays: c.days,
+      tolerance,
+    };
+  };
+
+  if (app && call) return decide(app, call);
+
+  const stated = app ?? call;
+  if (!stated) return null;
+
+  // The other side must be a genuinely bare single number. A side that names a
+  // unit and still would not parse is one whose phrasing beat us, not one
+  // missing a unit, and guessing its unit would be inventing the answer.
+  const bareSide = app ? callAnswer : applicationAnswer;
+  if (DURATION_UNIT.test(normaliseAnswer(bareSide))) return null;
+  const bare = numbersIn(bareSide);
+  if (bare.length !== 1) return null;
+  const value = bare[0]!;
+  // A four-digit year is a date, not a count of anything.
+  if (isYear(value)) return null;
+
+  const declared = durationUnitFromQuestion(question);
+  if (declared) {
+    const read: ReadDuration = { days: value * DAYS_PER[declared], coarsest: declared };
+    return app ? decide(stated, read) : decide(read, stated);
+  }
+
+  // No unit anywhere. Try each one it could be.
+  for (const [, unit] of DURATION_UNITS) {
+    const tolerance = durationTolerance(stated.coarsest, unit);
+    if (Math.abs(stated.days - value * DAYS_PER[unit]) <= tolerance) {
+      return { comparison: 'unclear', appDays: null, callDays: null, tolerance: null };
+    }
+  }
+  const tolerance = durationTolerance(stated.coarsest, stated.coarsest);
+  return {
+    comparison: 'mismatch',
+    appDays: app ? app.days : null,
+    callDays: call ? call.days : null,
+    tolerance,
+  };
+}
+
+// ── Risk direction, and the over-declaration it makes visible ─────────────────
+
+/** See RiskDirection in @callguard/shared — kept in step with it. */
+export type RiskDirection = 'higher_is_riskier' | 'lower_is_riskier' | 'neutral';
+
+/**
+ * How many alcohol units a week, and nothing else that counts "units".
+ *
+ * Anchored on the word alcohol on purpose. MetLife's summary sheet carries a
+ * field called "No. of Units", meaning cover units at £11 each, and the two have
+ * already collided once — four of that format's five findings came from a
+ * cover-units field being answered from a drinking question. A direction
+ * declared on the wrong field would quietly relabel a real discrepancy as
+ * harmless.
+ */
+const ALCOHOL_UNITS = /\balcohol\b[\s\S]*\bunits?\b|\bunits?\b[\s\S]*\balcohol\b/i;
+
+/** Smoked or chewed consumption, where the question asks how much of it. */
+const TOBACCO_QUANTITY =
+  /\b(cigarettes?|cigars?|tobacco|roll[-\s]?ups?|pipes?|nicotine|vap\w+|e[-\s]?cig\w*)\b/i;
+const QUANTITY_CUE =
+  /\b(how\s+many|how\s+much|number\s+of|no\.\s*of|amount|consumption|per\s+day|a\s+day|daily|per\s+week|a\s+week|weekly|in\s+grams|grams?)\b/i;
+
+/** Time lost to illness or injury. More of it is more risk on any income product. */
+const ABSENCE_QUANTITY =
+  /\b(days?|weeks?|months?|periods?|occasions?|episodes?|spells?|amount|number)\b[\s\S]*\b(off\s+work|absence|absent|sick(?:ness)?\s+leave|time\s+off)\b|\b(off\s+work|absence|absent|sick(?:ness)?\s+leave|time\s+off)\b[\s\S]*\b(days?|weeks?|months?|periods?|occasions?|episodes?|spells?)\b/i;
+
+/**
+ * Which way a quantity on this question moves the risk, absent a human's ruling
+ * on the profile.
+ *
+ * Deliberately three patterns and no more. A direction can only ever DOWNGRADE a
+ * finding — it is what turns a mismatch into an over-declaration — so widening
+ * this silently retires accusations, which is the opposite failure from the one
+ * this module usually guards against and just as expensive.
+ *
+ * Everything unrecognised is 'neutral', which is the behaviour every field had
+ * before this existed: any disagreement is a mismatch. That is the right default
+ * even for fields where a direction looks obvious. "Have you had tests for a
+ * family history of diabetes?" answered "Yes, results normal" on the form
+ * against "No" on the call reads like a yes-is-more over-declaration, and it is
+ * the reverse: an untested family history is the riskier one, so that item must
+ * stay a mismatch. Only fields where "more" has one unambiguous meaning get a
+ * direction.
+ */
+export function defaultRiskDirection(question: string): RiskDirection {
+  const q = question.trim();
+  if (ALCOHOL_UNITS.test(q)) return 'higher_is_riskier';
+  if (TOBACCO_QUANTITY.test(q) && QUANTITY_CUE.test(q)) return 'higher_is_riskier';
+  if (ABSENCE_QUANTITY.test(q)) return 'higher_is_riskier';
+  return 'neutral';
+}
+
+/**
+ * Does the application's figure overstate the risk the customer described?
+ *
+ * Only ever asked once a comparison has already concluded the two disagree, and
+ * only where both sides reduced to exactly one number in the same unit. A
+ * disagreement we could only decide by keeping several possible readings is not
+ * one we can put a direction on.
+ */
+function overstatesRisk(
+  applicationValue: number,
+  callValue: number,
+  direction: RiskDirection
+): boolean {
+  if (direction === 'higher_is_riskier') return applicationValue > callValue;
+  if (direction === 'lower_is_riskier') return applicationValue < callValue;
+  return false;
+}
+
+/**
+ * What a field is, and which way its quantities move the risk.
+ *
+ * Both come from the stored profile where a reviewer has ruled on them, and from
+ * the question's own wording otherwise — the same arrangement check_mode already
+ * uses, and for the same reason: three of one tenant's profiles went live by
+ * corroboration with nobody reviewing them, so anything that only ever came from
+ * a person would never be set on the formats doing most of the work.
+ */
+export interface FieldContext {
+  /** The insurer's own wording, verbatim. Carries the unit a bare number is in. */
+  question?: string | null;
+  /** Overrides the wording-derived default where a reviewer has set one. */
+  riskDirection?: RiskDirection;
+}
+
+/**
+ * How one comparison was reached, recorded on the item.
+ *
+ * The module's whole claim is that a finding can be defended in front of the
+ * firm it names. A height finding that says "1.83 against 6 foot" and nothing
+ * else cannot be: nobody reading it can tell whether the conversion ran, which
+ * unit each side was read as, or how close the two landed. Every outcome now
+ * carries which rule decided it and what the two sides became, so a disputed
+ * finding can be settled from the record rather than from re-running the code —
+ * and so the tolerances can be tuned against what they actually did.
+ */
+export interface ComparisonTrail {
+  /** The rule that decided it, named as the function or branch that fired. */
+  rule: string;
+  /** Both sides exactly as they were compared, before any conversion. */
+  applicationRaw: string;
+  callRaw: string;
+  /** What kind of quantity, where the deciding rule dealt in one. */
+  dimension: 'length' | 'mass' | 'duration' | 'date' | 'count' | null;
+  /** The unit both sides were converted to. */
+  canonicalUnit: 'cm' | 'kg' | 'days' | 'epoch_ms' | null;
+  /**
+   * Every reading of each side, in the canonical unit.
+   *
+   * Plural because a bare number rarely has one reading. "1.83" is 183cm as
+   * metres and 55cm as feet, and an ambiguous numeric date is two dates; the
+   * comparison keeps all of them and agreement under any pair is agreement, so
+   * the trail has to show what was actually on the table.
+   */
+  applicationCanonical: number[] | null;
+  callCanonical: number[] | null;
+  /** How far apart the two were allowed to be, in the canonical unit. */
+  toleranceApplied: number | null;
+  /** The direction that was in force, and so whether a gap could be benign. */
+  riskDirection: RiskDirection;
+  outcome: AnswerComparison;
+}
+
+/**
+ * Compare two answers, and record how it was decided.
+ *
+ * The rule order is load-bearing and each step says why it sits where it does.
+ * `compareAnswers` below is this function with the trail dropped, which is what
+ * every caller that only wants the verdict uses.
+ */
+export function compareAnswersWithTrail(
   applicationAnswer: string,
   callAnswer: string,
   /** The call's date, for reading "7 years ago" against. */
-  referenceDate: Date | null = null
-): AnswerComparison {
+  referenceDate: Date | null = null,
+  field: FieldContext = {}
+): { comparison: AnswerComparison; trail: ComparisonTrail } {
+  const riskDirection =
+    field.riskDirection ?? (field.question ? defaultRiskDirection(field.question) : 'neutral');
+
+  /**
+   * Close over one verdict and turn it into the recorded result.
+   *
+   * This is also the only place an over-declaration is produced. Reclassifying
+   * here rather than inside each rule means a rule cannot forget to do it, and
+   * it can only ever act on a disagreement a rule already reached — the
+   * direction never decides anything on its own.
+   *
+   * It needs exactly one reading of each side. A verdict that rested on keeping
+   * several possible readings has no single figure to take a direction from, so
+   * it stays a mismatch rather than being labelled benign on a guess.
+   */
+  const settle = (
+    rule: string,
+    comparison: AnswerComparison,
+    extra: Partial<Omit<ComparisonTrail, 'rule' | 'outcome' | 'riskDirection'>> = {}
+  ): { comparison: AnswerComparison; trail: ComparisonTrail } => {
+    let outcome = comparison;
+    const app = extra.applicationCanonical;
+    const call = extra.callCanonical;
+    if (
+      comparison === 'mismatch' &&
+      riskDirection !== 'neutral' &&
+      app?.length === 1 &&
+      call?.length === 1 &&
+      overstatesRisk(app[0]!, call[0]!, riskDirection)
+    ) {
+      outcome = 'over_declaration';
+    }
+    return {
+      comparison: outcome,
+      trail: {
+        rule,
+        applicationRaw: applicationAnswer,
+        callRaw: callAnswer,
+        dimension: extra.dimension ?? null,
+        canonicalUnit: extra.canonicalUnit ?? null,
+        applicationCanonical: extra.applicationCanonical ?? null,
+        callCanonical: extra.callCanonical ?? null,
+        toleranceApplied: extra.toleranceApplied ?? null,
+        riskDirection,
+        outcome,
+      },
+    };
+  };
+
   const appPolarity = polarity(applicationAnswer);
   const callPolarity = polarity(callAnswer);
   if (appPolarity && callPolarity) {
-    return appPolarity === callPolarity ? 'match' : 'mismatch';
+    // A yes/no disclosure carries no magnitude, so no risk direction can apply
+    // to it and it is never an over-declaration. Deliberate: "Yes, results
+    // normal" against "No" looks like declaring more and is the reverse, and an
+    // untested family history is the riskier one.
+    return settle('polarity', appPolarity === callPolarity ? 'match' : 'mismatch');
   }
 
   const app = normaliseAnswer(applicationAnswer);
   const call = normaliseAnswer(callAnswer);
-  if (app === '' || call === '') return 'unclear';
-  if (app === call) return 'match';
+  if (app === '' || call === '') return settle('empty', 'unclear');
+  if (app === call) return settle('identical', 'match');
 
   // One containing the other is a match: the application stores a canonical
   // "Raised blood pressure" where the customer said "yeah, raised blood pressure
@@ -1309,7 +1753,9 @@ export function compareAnswers(
   // "15 cigarettes a day" as containing "5 cigarettes a day", which is a false
   // agreement between numerically different answers, not a paraphrase of the
   // same one.
-  if (app.length >= 4 && (containsAsPhrase(call, app) || containsAsPhrase(app, call))) return 'match';
+  if (app.length >= 4 && (containsAsPhrase(call, app) || containsAsPhrase(app, call))) {
+    return settle('containment', 'match');
+  }
 
   // Weights first: both sides stating one in recognisable units is decidable by
   // arithmetic, whatever units each chose. Tolerance of a kilogram either way,
@@ -1317,30 +1763,53 @@ export function compareAnswers(
   const appKg = weightInKg(applicationAnswer);
   const callKg = weightInKg(callAnswer);
   if (appKg !== null && callKg !== null) {
-    return sameWeight(appKg, callKg) ? 'match' : 'mismatch';
+    return settle('weight', sameWeight(appKg, callKg) ? 'match' : 'mismatch', {
+      dimension: 'mass',
+      canonicalUnit: 'kg',
+      applicationCanonical: [appKg],
+      callCanonical: [callKg],
+      toleranceApplied: Math.max(1, appKg * 0.02),
+    });
   }
   // A count of drinks against a count of units is two different quantities, and
   // only one side of the conversion between them is on the page. Ahead of the
   // bare-number weight reading below, so a lone "2" beside "2 pints" is never
   // taken for a weight.
   if (DRINK_MEASURE.test(normaliseAnswer(callAnswer)) !== DRINK_MEASURE.test(normaliseAnswer(applicationAnswer))) {
-    return 'unclear';
+    return settle('drink_measure', 'unclear');
   }
 
   // Heights, on the same principle as weights and for the same reason: the
   // insurer records metric, the customer speaks imperial, and the bare-number
   // rule below reads the two as a contradiction.
   const heights = compareHeights(applicationAnswer, callAnswer);
-  if (heights !== null) return heights;
+  if (heights !== null) {
+    return settle('height', heights, {
+      dimension: 'length',
+      canonicalUnit: 'cm',
+      applicationCanonical: heightCandidatesCm(applicationAnswer),
+      callCanonical: heightCandidatesCm(callAnswer),
+      toleranceApplied: HEIGHT_TOLERANCE_CM,
+    });
+  }
 
   // Dates as dates, before any rule that counts the numbers in them: a date of
   // birth carries three numbers on each side, which the numeric rule can only
   // ever call 'unclear'.
   const dates = compareDates(applicationAnswer, callAnswer);
-  if (dates !== null) return dates;
+  if (dates !== null) {
+    return settle('date', dates, {
+      dimension: 'date',
+      canonicalUnit: 'epoch_ms',
+      applicationCanonical: dateCandidates(applicationAnswer),
+      callCanonical: dateCandidates(callAnswer),
+    });
+  }
 
   const bareWeight = compareBareWeight(applicationAnswer, callAnswer, appKg, callKg);
-  if (bareWeight !== null) return bareWeight;
+  if (bareWeight !== null) {
+    return settle('bare_weight', bareWeight, { dimension: 'mass', canonicalUnit: 'kg' });
+  }
 
   // A date given as a year against one given as elapsed time is the same fact in
   // two units, and the bare-number rule below reads it as a disagreement.
@@ -1349,12 +1818,27 @@ export function compareAnswers(
     callAnswer,
     referenceDate ? referenceDate.getUTCFullYear() : null
   );
-  if (elapsed !== null) return elapsed;
+  if (elapsed !== null) return settle('year_vs_elapsed', elapsed);
+
+  // Periods of time, on the same principle as heights and weights: the form
+  // records 12 weeks of sick pay and the customer says "about three months".
+  // After the elapsed-time rule, which owns "seven years ago", and before every
+  // rule that would read the two figures as bare numbers.
+  const duration = compareDurations(applicationAnswer, callAnswer, field.question ?? null);
+  if (duration !== null) {
+    return settle('duration', duration.comparison, {
+      dimension: 'duration',
+      canonicalUnit: 'days',
+      applicationCanonical: duration.appDays === null ? null : [duration.appDays],
+      callCanonical: duration.callDays === null ? null : [duration.callDays],
+      toleranceApplied: duration.tolerance,
+    });
+  }
 
   // Two bare numbers that one unit conversion reconciles. Ahead of the numeric
   // rule, which would call them a contradiction.
   const unitConfusion = bareUnitConfusion(applicationAnswer, callAnswer);
-  if (unitConfusion !== null) return unitConfusion;
+  if (unitConfusion !== null) return settle('bare_unit_confusion', unitConfusion);
 
   // Numeric answers are where mis-keying actually bites (50 cigarettes keyed as
   // 5). Only conclude when both sides carry exactly one number, so a compound
@@ -1362,14 +1846,22 @@ export function compareAnswers(
   const appNums = numbersIn(applicationAnswer);
   const callNums = numbersIn(callAnswer);
   if (appNums.length === 1 && callNums.length === 1) {
-    if (appNums[0] === callNums[0]) return 'match';
+    const canonical = {
+      dimension: 'count' as const,
+      applicationCanonical: [appNums[0]!],
+      callCanonical: [callNums[0]!],
+      toleranceApplied: 0,
+    };
+    if (appNums[0] === callNums[0]) return settle('numeric', 'match', canonical);
     // A year against a small count is not a mis-keying, it is two different
     // kinds of quantity — "2019" against "7", an age against a date, a year
     // against a number of episodes. Declaring those a mismatch accuses an
     // adviser on the strength of a unit confusion that is ours, not theirs.
-    if (isYear(appNums[0]!) !== isYear(callNums[0]!)) return 'unclear';
-    if (isRounded(appNums[0]!, callNums[0]!)) return 'match';
-    return 'mismatch';
+    if (isYear(appNums[0]!) !== isYear(callNums[0]!)) return settle('numeric_year_vs_count', 'unclear');
+    if (isRounded(appNums[0]!, callNums[0]!)) return settle('numeric_rounded', 'match', canonical);
+    // The one place an over-declaration is normally reached: two plain counts
+    // that disagree, on a field where more of it means more risk.
+    return settle('numeric', 'mismatch', canonical);
   }
   // Last: a checklist category against the specific thing the customer named.
   //
@@ -1379,10 +1871,21 @@ export function compareAnswers(
   // "£15,000" as two lists rather than two figures, and 09/04/1997 against
   // 19/04/1997 as agreeing. Everything decidable is decided by the time this
   // sees it, so it only judges prose the other rules had no purchase on.
-  if (checklistCovers(applicationAnswer, callAnswer)) return 'match';
+  if (checklistCovers(applicationAnswer, callAnswer)) return settle('checklist', 'match');
 
   // A number on one side and none on the other tells us nothing on its own.
-  return 'unclear';
+  return settle('undecided', 'unclear');
+}
+
+/** The verdict alone, for callers with nothing to record it against. */
+export function compareAnswers(
+  applicationAnswer: string,
+  callAnswer: string,
+  /** The call's date, for reading "7 years ago" against. */
+  referenceDate: Date | null = null,
+  field: FieldContext = {}
+): AnswerComparison {
+  return compareAnswersWithTrail(applicationAnswer, callAnswer, referenceDate, field).comparison;
 }
 
 // ── Answer amendments ─────────────────────────────────────────────────────────
@@ -1507,6 +2010,16 @@ export interface ClassifyInput {
    * before any call evidence is consulted.
    */
   checkMode?: QuestionCheckMode;
+  /**
+   * The insurer's own wording for this question.
+   *
+   * Carries the unit a bare answer is counted in — "12" is only twelve weeks
+   * because the question says weeks — and, absent a reviewer's ruling, the risk
+   * direction that separates an over-declaration from a non-disclosure.
+   */
+  question?: string | null;
+  /** A reviewer's ruling on the direction, where the profile carries one. */
+  riskDirection?: RiskDirection;
 }
 
 /**
@@ -1518,7 +2031,9 @@ export interface ClassifyInput {
  * false allegation on the record against an adviser, on the most serious
  * questions in the application, on every single sale.
  */
-export function classifyItem(input: ClassifyInput): ReconciliationOutcome {
+export function classifyItemWithTrail(
+  input: ClassifyInput
+): { outcome: ReconciliationOutcome; trail: ComparisonTrail | null } {
   const mode = input.checkMode ?? 'reconcile';
   const answered =
     input.applicationAnswer !== null && input.applicationAnswer.trim() !== '';
@@ -1531,7 +2046,9 @@ export function classifyItem(input: ClassifyInput): ReconciliationOutcome {
   // the same emptiness is 'no_application_answer' and benign, because a
   // conditional follow-up that did not apply is legitimately blank. The mode is
   // what separates "nobody needed to fill this in" from "somebody should have".
-  if (mode === 'presence') return answered ? 'recorded' : 'missing_from_application';
+  if (mode === 'presence') {
+    return { outcome: answered ? 'recorded' : 'missing_from_application', trail: null };
+  }
 
   // Never compared, never a finding — the value did not exist during the call.
   // Still reported rather than dropped: it was submitted, and a reviewer may
@@ -1547,14 +2064,16 @@ export function classifyItem(input: ClassifyInput): ReconciliationOutcome {
   // number and application date of one tenant's sales into the unresolved pile,
   // which is where the module's headline "half of all items undetermined" was
   // partly coming from. The modes differ only in what they say about a BLANK.
-  if (mode === 'none') return answered ? 'recorded' : 'no_application_answer';
+  if (mode === 'none') {
+    return { outcome: answered ? 'recorded' : 'no_application_answer', trail: null };
+  }
 
   // Nothing was submitted for this question, so there is nothing to verify.
   // Re-tested against the field rather than reusing `answered`, because this is
   // also what narrows applicationAnswer to non-null for the comparison below.
   const applicationAnswer = input.applicationAnswer;
   if (applicationAnswer === null || applicationAnswer.trim() === '') {
-    return 'no_application_answer';
+    return { outcome: 'no_application_answer', trail: null };
   }
 
   // Evidence found by coincidence cannot support any conclusion, including a
@@ -1568,7 +2087,7 @@ export function classifyItem(input: ClassifyInput): ReconciliationOutcome {
   // single term "unit", which matches a median of four times per call because the
   // adviser also asks about units of alcohol. Four of that format's five findings
   // came from it, one reading a drinking answer against a cover-units field.
-  if (input.evidenceCoincidental) return 'undetermined';
+  if (input.evidenceCoincidental) return { outcome: 'undetermined', trail: null };
 
   if (!input.evidenceFound) {
     // THE SAFETY RULE. Absence proves absence only where we can vouch for the
@@ -1587,17 +2106,17 @@ export function classifyItem(input: ClassifyInput): ReconciliationOutcome {
     // absenceMeaningful already carries the whole judgement, so it is now asked
     // on its own. A tenant turning redaction off cannot quietly convert
     // "we could not tell" into an accusation.
-    if (!input.absenceMeaningful) return 'undetermined';
+    if (!input.absenceMeaningful) return { outcome: 'undetermined', trail: null };
     // The application carries an answer and the call shows no trace of the
     // question being put. This is the serious one: the form was completed
     // without asking.
-    return 'not_asked';
+    return { outcome: 'not_asked', trail: null };
   }
 
   if (input.callAnswer === null || input.callAnswer.trim() === '') {
     // Covered on the call, but the value never reached storage. We know they
     // answered; we cannot see what they said, so we cannot compare.
-    if (input.callAnswerRedacted) return 'undetermined';
+    if (input.callAnswerRedacted) return { outcome: 'undetermined', trail: null };
     // "We could not read an answer" and "the customer did not answer" are not
     // the same claim, and collapsing them was expensive: 252 of one tenant's 448
     // items alleged an adviser had taken an answer nobody gave, when what had
@@ -1607,17 +2126,25 @@ export function classifyItem(input: ClassifyInput): ReconciliationOutcome {
     // because it requires having seen the exchange run past the question. Absent
     // that, this is 'undetermined' — the honest "we could not tell" — which is
     // deliberately not actionable and so cannot bury the real flags.
-    if (input.customerDidNotAnswer === true) return 'asked_no_answer';
-    return 'undetermined';
+    if (input.customerDidNotAnswer === true) return { outcome: 'asked_no_answer', trail: null };
+    return { outcome: 'undetermined', trail: null };
   }
 
-  const comparison = compareAnswers(
+  const { comparison, trail } = compareAnswersWithTrail(
     applicationAnswer,
     input.callAnswer,
-    input.referenceDate ?? null
+    input.referenceDate ?? null,
+    { question: input.question ?? null, riskDirection: input.riskDirection }
   );
-  if (comparison === 'unclear') return 'undetermined';
-  return comparison;
+  // 'unclear' is the honest "we could not tell", and it keeps its trail: which
+  // rule declined, and what each side parsed to, is exactly what someone tuning
+  // the undetermined rate needs to see.
+  return { outcome: comparison === 'unclear' ? 'undetermined' : comparison, trail };
+}
+
+/** The outcome alone, for callers with nowhere to record the trail. */
+export function classifyItem(input: ClassifyInput): ReconciliationOutcome {
+  return classifyItemWithTrail(input).outcome;
 }
 
 /**
@@ -1627,6 +2154,10 @@ export function classifyItem(input: ClassifyInput): ReconciliationOutcome {
  */
 export const ACTIONABLE_OUTCOMES: ReconciliationOutcome[] = [
   'mismatch',
+  // Someone still has to correct the application, and the customer may be
+  // paying for risk they never declared. Counted apart from 'mismatch'
+  // everywhere it is reported, because it cannot void a policy.
+  'over_declaration',
   'not_asked',
   'asked_no_answer',
   // A field the form had to carry, submitted empty. The only one of these that
