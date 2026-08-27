@@ -24,7 +24,7 @@ Consumer Duty has been in force since July 2023. The compliance question shifted
 
 ## What changed in 2023
 
-Before Consumer Duty, the regulator's interest in a recorded advice call was largely procedural. Did the adviser introduce themselves and confirm authorisation? Did they capture ATR and capacity for loss? Were charges disclosed at the point of recommendation? These are still required (COBS 9.2 has not gone away), but they are the floor.
+Before Consumer Duty, the regulator's interest in a recorded advice call was largely procedural. Did the adviser introduce themselves and confirm authorisation? Did they establish the customer's demands and needs before recommending anything? Were charges disclosed at the point of recommendation? These are still required (ICOBS 5 has not gone away), but they are the floor.
 
 Consumer Duty added an outcomes layer on top. The four outcomes (products and services, price and value, consumer understanding, consumer support) are not boxes to tick. They are tests the regulator will apply when reviewing your records. The recordings now have to evidence not just that you did the procedural thing, but that what you did was suitable, fair and understood.
 

@@ -56,7 +56,7 @@ The fix is not to fine-tune the model (slow, expensive, often regresses on edge 
 
 The scorecard is yours, not the vendor's. That is the most important sentence on this page. A serious AI QA system scores against the structured scorecard your firm already uses, not a one-size-fits-all template.
 
-For financial services advice, that scorecard typically encodes COBS 9.2 suitability checks, FG21/1 vulnerable client indicators, charges and Consumer Duty fair-value tests, and DB-transfer specialist-pathway gates. [We cover financial services scoring in detail elsewhere on the site.](/use-cases/financial-services)
+For financial services advice, that scorecard typically encodes ICOBS 5 suitability checks, FG21/1 vulnerable client indicators, charges and Consumer Duty fair-value tests, and DB-transfer specialist-pathway gates. [We cover financial services scoring in detail elsewhere on the site.](/use-cases/financial-services)
 
 For a contact centre, the scorecard typically covers empathy and rapport, first-call resolution, compliance and consent, product knowledge, escalation handling, and outbound regulatory rules (TPS list checks, PECR consent, mini-Miranda statements where applicable). [More on contact centre and BPO scoring here.](/use-cases/bpo)
 
