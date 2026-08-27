@@ -161,7 +161,8 @@ async function main(): Promise<void> {
             COUNT(*)::text AS items,
             COUNT(*) FILTER (WHERE i.outcome = 'undetermined')::text AS undet,
             COUNT(*) FILTER (WHERE i.outcome = 'match')::text AS match,
-            COUNT(*) FILTER (WHERE i.outcome IN ('mismatch','not_asked','asked_no_answer'))::text AS findings,
+            COUNT(*) FILTER (WHERE i.outcome IN ('mismatch','over_declaration','not_asked','asked_no_answer'))::text AS findings,
+            COUNT(*) FILTER (WHERE i.outcome = 'over_declaration')::text AS over_declarations,
             COUNT(*) FILTER (WHERE i.outcome IN ('recorded','missing_from_application'))::text AS modes
        FROM capture_reconciliation_runs r
        JOIN capture_reconciliation_items i ON i.run_id = r.id

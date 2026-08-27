@@ -559,6 +559,7 @@ journeysRouter.get('/:id/claims-defence', requireOrgView, async (req, res, next)
     const limitations: string[] = [
       "Reconciliation outcomes recorded as 'undetermined' mean the system could not establish an answer (most often health redaction removing the words needed to identify the question). This is deliberately never read as a failure, and never as a pass either.",
       "Questions checked for presence only ('recorded' / 'missing_from_application') are never compared against the call — they are excluded from any match-rate figure by design, because nothing about them was verified against the recording.",
+      "An outcome of 'over_declaration' means the application recorded MORE than the customer said on a field where more means more risk (alcohol units, tobacco, time off work). It needs correcting, but it is not a possible non-disclosure and must never be described as one: declaring more cannot void a policy, it only makes the cover dearer than it needed to be.",
     ];
     if (reconciliation) {
       limitations.push(

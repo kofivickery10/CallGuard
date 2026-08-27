@@ -491,6 +491,7 @@ export function ReconciliationPanel({
   }
 
   const mismatches = items.filter((i) => i.outcome === 'mismatch').length;
+  const overDeclared = items.filter((i) => i.outcome === 'over_declaration').length;
   const notAsked = items.filter((i) => i.outcome === 'not_asked').length;
   const noAnswer = items.filter((i) => i.outcome === 'asked_no_answer').length;
   const undetermined = items.filter((i) => i.outcome === 'undetermined').length;
@@ -526,6 +527,11 @@ export function ReconciliationPanel({
         <span className={notAsked > 0 ? 'text-fail font-semibold' : 'text-text-muted'}>
           {notAsked} not asked
         </span>
+        {overDeclared > 0 && (
+          <span className="text-review font-semibold">
+            {overDeclared} declared more than said
+          </span>
+        )}
         {noAnswer > 0 && <span className="text-review font-semibold">{noAnswer} no answer given</span>}
         {leftBlank > 0 && (
           <span className="text-fail font-semibold">{leftBlank} left blank on the form</span>
@@ -535,6 +541,15 @@ export function ReconciliationPanel({
         )}
         {undetermined > 0 && <span className="text-text-muted">{undetermined} could not verify</span>}
       </div>
+
+      {overDeclared > 0 && (
+        <p className="px-5 py-2.5 text-xs text-text-muted border-b border-border-light leading-relaxed">
+          &ldquo;Declared more than said&rdquo; means the application recorded more than the customer
+          stated &mdash; more alcohol units, more tobacco, more time off. It is worth correcting, but
+          it is not a possible non-disclosure: declaring more cannot void a policy, it only makes the
+          cover dearer.
+        </p>
+      )}
 
       {undetermined > 0 && (
         <p className="px-5 py-2.5 text-xs text-text-muted border-b border-border-light leading-relaxed">

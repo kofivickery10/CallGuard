@@ -49,6 +49,7 @@ interface RunRow {
   customer_name: string | null;
   insurer: string | null;
   mismatches: number;
+  over_declarations: number;
   not_asked: number;
   no_answer: number;
   missing: number;
@@ -444,9 +445,11 @@ export function ComplianceDashboard() {
               to="/reconciliation#attention"
               tone={s && s.findings > 0 ? 'fail' : 'default'}
               note={
-                s && s.missing_from_application > 0
-                  ? `Including ${s.missing_from_application} left blank on the application`
-                  : 'Mismatched, not asked, unanswered, withdrawn'
+                s && s.over_declarations > 0
+                  ? `Including ${s.over_declarations} where more was declared than said`
+                  : s && s.missing_from_application > 0
+                    ? `Including ${s.missing_from_application} left blank on the application`
+                    : 'Mismatched, not asked, unanswered, withdrawn'
               }
               loading={loading}
             />
@@ -633,11 +636,17 @@ export function ComplianceDashboard() {
                           <td className="px-5 py-3.5">
                             <div className="flex flex-wrap gap-1.5">
                               <CountPill n={row.mismatches} label="do not match" tone="fail" />
+                              <CountPill
+                                n={row.over_declarations}
+                                label="declared more"
+                                tone="review"
+                              />
                               <CountPill n={row.not_asked} label="not asked" tone="fail" />
                               <CountPill n={row.missing} label="left blank" tone="fail" />
                               <CountPill n={row.withdrawn} label="withdrawn" tone="fail" />
                               <CountPill n={row.no_answer} label="no answer" tone="review" />
                               {row.mismatches +
+                                row.over_declarations +
                                 row.not_asked +
                                 row.missing +
                                 row.withdrawn +
@@ -725,6 +734,11 @@ export function ComplianceDashboard() {
                               <td className="px-5 py-3.5">
                                 <div className="flex flex-wrap gap-1.5">
                                   <CountPill n={q.mismatches} label="do not match" tone="fail" />
+                                  <CountPill
+                                    n={q.over_declarations}
+                                    label="declared more"
+                                    tone="review"
+                                  />
                                   <CountPill n={q.not_asked} label="not asked" tone="fail" />
                                   <CountPill n={q.missing} label="left blank" tone="fail" />
                                   <CountPill n={q.no_answer} label="no answer" tone="review" />
@@ -814,6 +828,11 @@ export function ComplianceDashboard() {
                           <td className="px-5 py-3.5">
                             <div className="flex flex-wrap gap-1.5">
                               <CountPill n={a.mismatches} label="do not match" tone="fail" />
+                              <CountPill
+                                n={a.over_declarations}
+                                label="declared more"
+                                tone="review"
+                              />
                               <CountPill n={a.not_asked} label="not asked" tone="fail" />
                               <CountPill n={a.missing} label="left blank" tone="fail" />
                               <CountPill n={a.withdrawn} label="withdrawn" tone="fail" />
@@ -891,11 +910,21 @@ export function ComplianceDashboard() {
                         <td className="px-5 py-3.5">
                           <div className="flex flex-wrap gap-1.5">
                             <CountPill n={r.mismatches} label="do not match" tone="fail" />
+                            <CountPill
+                              n={r.over_declarations}
+                              label="declared more"
+                              tone="review"
+                            />
                             <CountPill n={r.not_asked} label="not asked" tone="fail" />
                             <CountPill n={r.missing} label="left blank" tone="fail" />
                             <CountPill n={r.withdrawn} label="withdrawn" tone="fail" />
                             <CountPill n={r.no_answer} label="no answer" tone="review" />
-                            {r.mismatches + r.not_asked + r.missing + r.withdrawn + r.no_answer ===
+                            {r.mismatches +
+                              r.over_declarations +
+                              r.not_asked +
+                              r.missing +
+                              r.withdrawn +
+                              r.no_answer ===
                               0 && (
                               <span className="text-table-cell text-text-muted">None</span>
                             )}

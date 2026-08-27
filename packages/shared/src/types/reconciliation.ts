@@ -51,6 +51,21 @@ export type ReconciliationOutcome =
   // 'no_application_answer', which is the same empty value on a question where
   // blank is legitimate.
   | 'missing_from_application'
+  // The two sides disagree, and the application declared MORE than the customer
+  // said on a field where more means more risk: 2 alcohol units a week recorded
+  // against a customer who said none, 1g of tobacco against nothing.
+  //
+  // Split out of 'mismatch' because it is a different allegation. A mismatch on
+  // a health field is a non-disclosure — the insurer was told less than it
+  // should have been, and the policy can be voided on it. Declaring MORE cannot
+  // void anything; it makes the cover more expensive than it needed to be. Both
+  // are worth someone's time, and the second must not be counted in the number a
+  // compliance officer reads as "possible non-disclosures".
+  //
+  // Only ever produced where the question carries a declared risk direction and
+  // both sides reduce to one comparable quantity. A yes/no disclosure has no
+  // direction and stays a 'mismatch' — see RiskDirection.
+  | 'over_declaration'
   // Could not be established — most often because health redaction removed the
   // very words that identify the question. Never presented as a pass or a miss.
   | 'undetermined';
@@ -122,6 +137,12 @@ export interface ReconciliationItem {
 /** Outcomes that warrant a supervisor's attention. */
 export const ACTIONABLE_RECONCILIATION_OUTCOMES: ReconciliationOutcome[] = [
   'mismatch',
+  // Actionable, but never counted as a mismatch. The application overstates the
+  // customer's own answer, which is not a void risk — it is a customer paying
+  // for risk they did not declare, which is a fair-value problem rather than a
+  // non-disclosure one. Surfaced so it is fixed; kept out of the mismatch count
+  // so the non-disclosure figure means what it says.
+  'over_declaration',
   'not_asked',
   'asked_no_answer',
   // A required field left blank on the submitted application. Unlike the other
@@ -176,6 +197,31 @@ export type QuestionCheckMode =
   /** On the record, never compared, never a finding — e.g. a policy number the insurer issues on submission. */
   | 'none';
 
+/**
+ * Which way a quantity on this field moves the risk the insurer is pricing.
+ *
+ * The only thing that can tell an over-declaration from a non-disclosure. Two
+ * alcohol units recorded against a customer who said none, and zero cigarettes
+ * recorded against a customer who said twenty, are the same arithmetic in
+ * opposite directions: the first cannot void a policy and the second can.
+ *
+ * Defaults to 'neutral', and 'neutral' means the disagreement is reported as a
+ * plain mismatch — the behaviour every field had before this existed. A
+ * direction may only ever DOWNGRADE a finding, so it is declared on the small
+ * set of fields where "more" has one unambiguous meaning, never inferred
+ * broadly. "Yes, results normal" against "No" on a family-history question is
+ * exactly why: an untested family history is riskier than a tested-normal one,
+ * so the plain reading of yes-is-more is wrong there, and a field like it must
+ * stay 'neutral' and stay a mismatch.
+ */
+export type RiskDirection =
+  /** More is worse: alcohol units, daily cigarettes, days off work. */
+  | 'higher_is_riskier'
+  /** Less is worse. Declared for completeness; nothing uses it yet. */
+  | 'lower_is_riskier'
+  /** No declared direction. Any disagreement is a mismatch. The default. */
+  | 'neutral';
+
 export interface DocumentProfileQuestion {
   order: number;
   question: string;
@@ -197,6 +243,13 @@ export interface DocumentProfileQuestion {
    * see.
    */
   check_mode?: QuestionCheckMode;
+  /**
+   * Which way a quantity here moves the risk, for telling an over-declaration
+   * from a non-disclosure. Optional on the wire for the same reason check_mode
+   * is: profiles stored before this existed carry no value, and the reader falls
+   * back to defaultRiskDirection rather than forcing a backfill.
+   */
+  risk_direction?: RiskDirection;
 }
 
 export interface DocumentProfile {
@@ -285,8 +338,15 @@ export interface ReconciliationDashboardSummary {
    * not the flags, that excludes them. See `model_read`.
    */
   match_rate: number | null;
-  /** Items flagged: mismatch, not asked, asked but unanswered, or withdrawn. */
+  /** Items flagged: mismatch, over-declaration, not asked, unanswered, withdrawn. */
   findings: number;
+  /**
+   * Of those, the ones where the application declared MORE than the customer
+   * said on a field carrying a declared risk direction. Reported apart from the
+   * rest because it is the one finding class that cannot void a policy, and
+   * folding it into the headline overstates the non-disclosure count.
+   */
+  over_declarations: number;
   /** Checked sales carrying at least one finding. */
   sales_with_findings: number;
   /** Items we could not establish either way. */
@@ -364,6 +424,8 @@ export interface ReconciliationInsurerRow {
   questions: number;
   match_rate: number | null;
   mismatches: number;
+  /** Application declared more than the customer said. Not a non-disclosure. */
+  over_declarations: number;
   not_asked: number;
   no_answer: number;
   /** Presence-mode fields left blank on the submitted application. */
@@ -386,6 +448,8 @@ export interface ReconciliationFlaggedQuestion {
   /** Sales where the question was compared at all. */
   compared: number;
   mismatches: number;
+  /** Application declared more than the customer said. Not a non-disclosure. */
+  over_declarations: number;
   not_asked: number;
   no_answer: number;
   /** Presence-mode fields left blank on the submitted application. */
@@ -426,6 +490,8 @@ export interface ReconciliationAdviserRow {
   match_rate: number | null;
   findings: number;
   mismatches: number;
+  /** Application declared more than the customer said. Not a non-disclosure. */
+  over_declarations: number;
   not_asked: number;
   no_answer: number;
   missing: number;

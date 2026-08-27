@@ -22,10 +22,14 @@ import {
   deriveAnswerTerms,
   deriveChoiceTerms,
   defaultCheckMode,
+  defaultRiskDirection,
   coincidentalEvidence,
   classifyItem,
+  classifyItemWithTrail,
   classifyAmendment,
   type QuestionCheckMode,
+  type RiskDirection,
+  type ComparisonTrail,
 } from '../../services/reconciliation.js';
 import {
   extractPdfText,
@@ -537,6 +541,7 @@ export async function processReconcile(job: Job<{ runId: string }>) {
           absenceMeaningful:
             typeof q.absence_meaningful === 'boolean' ? q.absence_meaningful : undefined,
           checkMode: q.check_mode,
+          riskDirection: q.risk_direction,
         });
       }
     }
@@ -656,6 +661,11 @@ async function compareAndStore(
     const byRedaction = redactionCheckMode(pair.question, readableCategories);
     const checkMode: QuestionCheckMode =
       ruled === 'reconcile' && byRedaction !== null ? byRedaction : ruled;
+    // Read independently of the mode, for the reason the two rulings above are:
+    // a profile stored before directions existed carries neither, and must not
+    // lose the ruling it does have.
+    const riskDirection: RiskDirection =
+      ruling?.riskDirection ?? defaultRiskDirection(pair.question);
 
     // The question's own wording, plus the options it offered, plus the
     // submitted answer's distinctive values.
@@ -685,6 +695,7 @@ async function compareAndStore(
       pair,
       terms,
       hits,
+      riskDirection,
       // Every place the topic comes up, not just the earliest. The adviser
       // habitually names what they are about to ask before asking it, so the
       // first mention is the one window an answer cannot be in.
@@ -815,7 +826,13 @@ async function compareAndStore(
   const secondPass = new Map<number, ComparedItem>();
   const disputed = located.filter((l) => {
     const outcome = firstPass.get(l.pair.order)?.outcome;
-    return outcome === 'mismatch' || outcome === 'asked_no_answer';
+    // 'over_declaration' is re-checked with the other two: it is still a claim
+    // that the adviser recorded something the customer did not say, reached
+    // from a model's reading of the same passage, and only its consequence is
+    // milder.
+    return (
+      outcome === 'mismatch' || outcome === 'over_declaration' || outcome === 'asked_no_answer'
+    );
   });
   if (disputed.length > 0) {
     try {
@@ -905,13 +922,21 @@ async function compareAndStore(
         : (pair.revisions ?? [])
     ).map((r) => ({ ...r, value: mask(r.value) }));
 
+    // The trail quotes the application answer verbatim and carries the numbers
+    // it converted to, so where the answer itself is masked the trail would be
+    // the one place that value survived. It is dropped whole rather than
+    // partially scrubbed: a conversion trail missing the side it converted
+    // explains nothing anyway.
+    const trail =
+      item.trail === null || applicationAnswer !== pair.answer ? null : item.trail;
+
     await query(
       `INSERT INTO capture_reconciliation_items
          (run_id, sort_order, question, guidance, application_answer, call_answer,
           call_answer_redacted, outcome, evidence, reasoning, source_call_id,
           confidence, application_answered_at, application_recorded_by,
-          answer_amended, amendment_type, revisions)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+          answer_amended, amendment_type, revisions, comparison_trail)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
       [
         run.id,
         pair.order,
@@ -930,6 +955,7 @@ async function compareAndStore(
         revisions.length > 0,
         item.amendmentType,
         JSON.stringify(revisions),
+        trail === null ? null : JSON.stringify(trail),
       ]
     );
   }
@@ -954,6 +980,8 @@ function termList(hits: Array<{ term: string }>): string {
 
 interface ComparedItem {
   outcome: string;
+  /** How the comparison was decided, where one ran. Stored on the item. */
+  trail: ComparisonTrail | null;
   callAnswer: string | null;
   callAnswerRedacted: boolean;
   evidence: string | null;
@@ -972,6 +1000,8 @@ interface ComparedItem {
 interface ProfileRuling {
   absenceMeaningful?: boolean;
   checkMode?: QuestionCheckMode;
+  /** Which way a quantity here moves the risk. See migration 109. */
+  riskDirection?: RiskDirection;
 }
 
 /** One application question, located in the call by the deterministic pass. */
@@ -987,6 +1017,12 @@ interface LocatedQuestion {
   absenceMeaningful: boolean;
   /** How this field is checked — the profile's ruling, or the measured default. */
   checkMode: QuestionCheckMode;
+  /**
+   * Which way a quantity here moves the risk — the profile's ruling, or the
+   * wording-derived default. Only ever downgrades a mismatch to an
+   * over-declaration; it can never create a finding.
+   */
+  riskDirection: RiskDirection;
 }
 
 /**
@@ -1012,6 +1048,10 @@ function corroborate(first: ComparedItem, second: ComparedItem | undefined): Com
   return {
     ...first,
     outcome: 'undetermined',
+    // The trail describes a comparison we are no longer standing behind.
+    // Keeping it would put a canonical conversion on screen underneath a row
+    // that says we could not tell.
+    trail: null,
     actionable: false,
     amendmentType: first.amendmentType,
     confidence: null,
@@ -1029,6 +1069,8 @@ function describeReading(item: ComparedItem): string {
   const label =
     item.outcome === 'mismatch'
       ? 'a mismatch'
+      : item.outcome === 'over_declaration'
+        ? 'more declared than was said'
       : item.outcome === 'asked_no_answer'
         ? 'no answer given'
         : item.outcome.replace(/_/g, ' ');
@@ -1050,7 +1092,7 @@ function comparePair(
   redacted: boolean,
   extracted: ExtractedValue | null
 ): ComparedItem {
-  const { pair, terms, hits, absenceMeaningful, checkMode } = located;
+  const { pair, terms, hits, absenceMeaningful, checkMode, riskDirection } = located;
   const found = hits.length > 0;
   // One generic term matching all over the transcript: we found a word, not the
   // question. See coincidentalEvidence.
@@ -1080,6 +1122,7 @@ function comparePair(
       callAnswer: null,
       callAnswerRedacted: false,
       evidence: null,
+      trail: null,
       reasoning:
         `Answered ${pair.answer ? `"${pair.answer}"` : 'during the application'}` +
         `${pair.answeredAt ? ` at ${pair.answeredAt}` : ''}` +
@@ -1110,6 +1153,7 @@ function comparePair(
     });
     return {
       outcome,
+      trail: null,
       callAnswer: null,
       callAnswerRedacted: false,
       evidence: null,
@@ -1139,7 +1183,7 @@ function comparePair(
       ? extracted.value
       : null;
 
-  const outcome = classifyItem({
+  const { outcome, trail } = classifyItemWithTrail({
     applicationAnswer: pair.answer,
     callAnswer,
     callAnswerRedacted,
@@ -1147,6 +1191,12 @@ function comparePair(
     absenceMeaningful,
     evidenceCoincidental: coincidental,
     redactedTranscript: redacted,
+    // The insurer's own wording carries the unit a bare answer is counted in
+    // ("12" is twelve WEEKS only because the question says so) and, absent a
+    // reviewer's ruling, the direction that separates an over-declaration from
+    // a non-disclosure.
+    question: pair.question,
+    riskDirection,
     // Only the model can assert this, and only when it saw the exchange run
     // past the question. Absent an extraction it stays undefined, so a failed
     // value pass reports 'undetermined' rather than accusing every adviser on
@@ -1183,6 +1233,7 @@ function comparePair(
 
   return {
     outcome,
+    trail,
     callAnswer,
     callAnswerRedacted,
     // The first passage is the display quote; the rest were read but showing
@@ -1194,6 +1245,9 @@ function comparePair(
     amendmentType,
     actionable:
       outcome === 'mismatch' ||
+      // Someone still has to correct the application, so it belongs in the
+      // attention queue — it is only the mismatch COUNT it stays out of.
+      outcome === 'over_declaration' ||
       outcome === 'not_asked' ||
       outcome === 'asked_no_answer' ||
       amendmentType === 'disclosure_withdrawn',

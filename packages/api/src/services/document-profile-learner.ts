@@ -14,7 +14,9 @@ import {
   deriveSearchTerms,
   absenceIsMeaningful,
   defaultCheckMode,
+  defaultRiskDirection,
   type QuestionCheckMode,
+  type RiskDirection,
 } from './reconciliation.js';
 
 // ============================================================
@@ -88,6 +90,14 @@ export interface ProfileQuestion {
    * silently re-decide a format somebody already approved.
    */
   check_mode: QuestionCheckMode;
+  /**
+   * Which way a quantity here moves the risk, for telling an over-declaration
+   * from a non-disclosure. Stamped at proposal time for the same reason
+   * check_mode is: a later change to the heuristic must not silently re-decide a
+   * format somebody already approved — and here the stakes run the other way, so
+   * a widened default could quietly retire findings on live profiles.
+   */
+  risk_direction: RiskDirection;
 }
 
 export interface ValidationProblem {
@@ -685,6 +695,7 @@ export function verifyProposal(rawText: string, proposal: ProfileProposal): Lear
     choices: p.choices,
     absence_meaningful: absenceIsMeaningful(deriveSearchTerms(p.question, p.guidance)),
     check_mode: defaultCheckMode(p.question),
+    risk_direction: defaultRiskDirection(p.question),
   }));
 
   return {

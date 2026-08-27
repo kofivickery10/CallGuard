@@ -20,7 +20,13 @@ import {
   evidenceExcerpts,
   weightInKg,
   compareAnswers,
+  compareAnswersWithTrail,
+  defaultRiskDirection,
+  durationInDays,
+  durationUnitFromQuestion,
+  ACTIONABLE_OUTCOMES,
   classifyItem,
+  classifyItemWithTrail,
   isActionable,
   classifyAmendment,
   isAmendmentActionable,
@@ -1491,5 +1497,384 @@ describe('compareAnswers — two bare numbers one conversion reconciles', () => 
   // A stated unit means compareBareWeight's rules apply instead.
   it('leaves a stated unit to the weight rules', () => {
     expect(compareAnswers('76.2', '12 stone')).toBe('match');
+  });
+});
+
+// ============================================================
+// The August 2026 regression set.
+//
+// Built from the audit of all 107 Trust Point sales on 21 August 2026
+// (docs/trustpoint/review-2026-08-21.html), which is the only place the real
+// values are recorded. It exists so the two failure directions are held apart:
+// the false positives must go, and the void-risk findings must survive them
+// going. Loosening a tolerance until nothing fires would clear Set A and be
+// worse than the state it replaced, which is what Set B is here to prevent.
+//
+// THREE CORRECTIONS TO THE BRIEF THIS SET WAS WRITTEN FROM
+//
+// 1. The brief lists "daily cigarettes: submitted 0, said 20" as a finding that
+//    must survive. On the sale it comes from (291b6fc4) it is a FALSE positive,
+//    and the audit's defect D-16 says so: there is one "20" in that call, the
+//    customer said 20 and then clarified they smoke roll-ups, the adviser
+//    correctly recorded 20 under other tobacco and 0 under cigarettes, and the
+//    comparator consumed the same answer against both fields. That is a
+//    retrieval defect, not a comparison one, and nothing here can fix it — so
+//    the arithmetic is asserted below and labelled, rather than being cited as a
+//    finding this module stands behind.
+//
+// 2. The brief lists "days off work: submitted 7, said 0" as a mismatch that
+//    must fire, and also declares days off work higher-is-riskier. Those
+//    contradict: 7 is more than 0, so under its own rule the application
+//    overstates the risk. It is classified 'over_declaration' here, which is the
+//    consistent reading and still actionable — see the Set C note.
+//
+// 3. The brief's weight case ("86kg / 13st 8lb against 115kg") is not in the
+//    audit and already passed before any of this work. The real weight case is
+//    f5545973 — a form recording 80 against a customer saying "120 to 130
+//    kilograms", which the audit calls one of the two findings the whole review
+//    was for. It is asserted below instead.
+// ============================================================
+
+describe('August 2026 regression — Set A: the false positives must resolve', () => {
+  // Sales 291b6fc4 and 01567418. Both reported 'mismatch', the first at 0.95
+  // confidence with the extraction model's own reasoning ending "so this
+  // matches".
+  it('reads a metric height against a spoken imperial one', () => {
+    expect(compareAnswers('1.83', '6 foot')).toBe('match');
+  });
+
+  // Sale db58546e. The hedge is not what mattered — "just under 6 foot" still
+  // names the figure, and the 3cm tolerance covers the hedge on its own. Kept
+  // as a fixture because the brief proposed replacing the candidate readings
+  // with a parsed interval for this one case, and the interval it proposed
+  // (180.0–182.9cm) would have EXCLUDED the stored 183.
+  it('reads a hedged spoken height', () => {
+    expect(compareAnswers('183cm', 'just under 6 foot')).toBe('match');
+    expect(compareAnswers('183cm', 'about six foot')).toBe('match');
+    expect(compareAnswers('183cm', 'a bit over 6 foot')).toBe('match');
+  });
+
+  // The 24 that filed 'undetermined' on the same tenant, for the same reason.
+  it('reads the heights that used to resolve to nothing at all', () => {
+    expect(compareAnswers('1.70', '5 7')).toBe('match');
+    expect(compareAnswers('1.65', '5 foot 5')).toBe('match');
+    expect(compareAnswers('1.93', '6 foot 4')).toBe('match');
+    expect(compareAnswers('1.57', "5'2")).toBe('match');
+    expect(compareAnswers('1.60', '5 3')).toBe('match');
+  });
+
+  // Sale 2521f88f: "12" weeks of full sick pay against "about 3 months", with
+  // reasoning that said the two were equivalent. The unit for the bare 12 is
+  // nowhere on the answer — it is in the question, which is why the field
+  // context has to reach the comparison.
+  const sickPay = { question: 'How many weeks of full sick pay do you receive?' };
+  it('reads weeks against months', () => {
+    expect(compareAnswers('12', 'about 3 months', null, sickPay)).toBe('match');
+    expect(compareAnswers('12 weeks', '3 months', null, sickPay)).toBe('match');
+    expect(compareAnswers('12', '3 months', null, sickPay)).toBe('match');
+  });
+});
+
+describe('August 2026 regression — Set B: the void-risk findings must survive', () => {
+  // The audit's "mismatches worth checking against the recording ... these
+  // survive scrutiny", as the extraction pass normalises them (rule 6 in
+  // services/reconciliation-values.ts: "yeah, never touched them" is reported
+  // as "No"). The raw quotes are in the audit; what reaches compareAnswers is
+  // the normalised value.
+  it('61190bca — stopped prescribed medication without medical advice', () => {
+    expect(compareAnswers('No', 'Yes')).toBe('mismatch');
+  });
+
+  // The one that proves a direction must not be inferred from "yes is more".
+  // An untested family history is the RISKIER one, so recording a normal test
+  // result understates the risk. It has no declared direction and stays a
+  // mismatch — passed with a question, so a wrongly-widened
+  // defaultRiskDirection would fail here rather than in production.
+  it('e019fe70 — tests for a family history of diabetes', () => {
+    expect(
+      compareAnswers('Yes, results normal', 'No', null, {
+        question: 'Have you had any tests for your family history of diabetes?',
+      })
+    ).toBe('mismatch');
+  });
+
+  it('f5545973 — receives reduced sick pay', () => {
+    expect(compareAnswers('No', 'Yes')).toBe('mismatch');
+  });
+
+  it('cbb71b4b, b18a5f63, b8d5f13b — existing life insurance', () => {
+    expect(compareAnswers('No', 'Yes')).toBe('mismatch');
+  });
+
+  it('042acec4 — lived, worked or travelled outside the UK', () => {
+    expect(compareAnswers('No', 'Yes')).toBe('mismatch');
+  });
+
+  it('22780821 — bank account held in the payer’s name', () => {
+    expect(compareAnswers('Yes', 'No')).toBe('mismatch');
+  });
+
+  // f5545973, filed 'undetermined' at the time of the audit and called there
+  // one of the two findings the whole review was for. The form states no unit;
+  // no reading of 80 reaches 120–130kg, so the missing unit is not what
+  // separates them.
+  it('f5545973 — a weight the form recorded as a bare 80', () => {
+    expect(compareAnswers('80', '120 to 130 kilograms')).toBe('mismatch');
+  });
+
+  // A genuine mis-keying still has to report, or the height work has simply
+  // switched the check off. 20cm apart is a different person, not a unit.
+  it('still reports a real height discrepancy', () => {
+    expect(compareAnswers('1.83', '1.63')).toBe('mismatch');
+  });
+
+  // The same demand of the duration work: converting weeks to months must not
+  // reconcile two periods that are genuinely different.
+  it('still reports a real duration discrepancy', () => {
+    const q = { question: 'How many weeks of full sick pay do you receive?' };
+    expect(compareAnswers('12', '6 months', null, q)).toBe('mismatch');
+    expect(compareAnswers('26 weeks', '3 months', null, q)).toBe('mismatch');
+    expect(compareAnswers('a year', '18 months')).toBe('mismatch');
+  });
+
+  // 291b6fc4 #6. Asserted as arithmetic — 0 against 20 IS a disagreement, and
+  // the application understating consumption is the direction that voids
+  // policies, so it must not become an over-declaration. NOT a finding this
+  // module stands behind on that sale: see D-16 in the header above. Fixing it
+  // means stopping one extracted answer being consumed by two fields, which is
+  // a retrieval change and a separate ticket.
+  it('daily cigarettes: understating consumption stays a mismatch', () => {
+    expect(
+      compareAnswers('0', '20', null, {
+        question: 'What is your average daily consumption of cigarettes?',
+      })
+    ).toBe('mismatch');
+  });
+});
+
+describe('August 2026 regression — Set C: over-declarations reclassify', () => {
+  // The application declared MORE than the customer said. Neither can void a
+  // policy; both still need correcting, so both stay actionable and neither is
+  // counted as a mismatch.
+  it('alcohol units: 2 recorded against a customer who said none', () => {
+    expect(
+      compareAnswers('2', '0', null, {
+        question: 'How many units of alcohol do you drink in a typical week?',
+      })
+    ).toBe('over_declaration');
+  });
+
+  it('other tobacco: 1g recorded against a customer who said none', () => {
+    expect(
+      compareAnswers('1', '0', null, {
+        question: 'What is your average daily consumption of other tobacco, in grams?',
+      })
+    ).toBe('over_declaration');
+  });
+
+  // The brief's own contradiction, resolved consistently. cbb71b4b recorded 7
+  // days off work against a customer who said none — the application overstates
+  // the absence, which cannot void a policy.
+  it('days off work: 7 recorded against a customer who said none', () => {
+    expect(
+      compareAnswers('7', '0', null, {
+        question: 'How many days off work have you had in the last 5 years?',
+      })
+    ).toBe('over_declaration');
+  });
+
+  it('keeps them actionable, and out of the mismatch count', () => {
+    expect(isActionable('over_declaration')).toBe(true);
+    expect(ACTIONABLE_OUTCOMES).toContain('over_declaration');
+    expect(ACTIONABLE_OUTCOMES).toContain('mismatch');
+  });
+
+  // A direction can only ever downgrade, so a field without one must never
+  // produce this outcome however obvious the arithmetic looks.
+  it('never fires without a declared direction', () => {
+    expect(compareAnswers('2', '0')).toBe('mismatch');
+    expect(
+      compareAnswers('2', '0', null, { question: 'How many children are on the policy?' })
+    ).toBe('mismatch');
+  });
+
+  // A reviewer's ruling on the profile outranks the wording.
+  it('takes a reviewer’s ruling over the wording', () => {
+    expect(
+      compareAnswers('2', '0', null, {
+        question: 'How many units of alcohol do you drink in a typical week?',
+        riskDirection: 'neutral',
+      })
+    ).toBe('mismatch');
+  });
+});
+
+describe('defaultRiskDirection', () => {
+  it('declares a direction only where more has one meaning', () => {
+    expect(defaultRiskDirection('How many units of alcohol do you drink a week?')).toBe(
+      'higher_is_riskier'
+    );
+    expect(defaultRiskDirection('Average daily consumption of cigarettes')).toBe(
+      'higher_is_riskier'
+    );
+    expect(defaultRiskDirection('Average daily consumption of other tobacco (in grams)')).toBe(
+      'higher_is_riskier'
+    );
+    expect(defaultRiskDirection('Days off work in the last 5 years')).toBe('higher_is_riskier');
+  });
+
+  // MetLife's "No. of Units" is cover units at £11 each, and the audit's D-07
+  // has it being answered from the alcohol question already. A direction on it
+  // would relabel a real discrepancy as harmless, so the pattern is anchored on
+  // the word alcohol.
+  it('leaves cover units alone', () => {
+    expect(defaultRiskDirection('No. of Units')).toBe('neutral');
+    expect(defaultRiskDirection('Number of units')).toBe('neutral');
+  });
+
+  it('leaves everything else neutral', () => {
+    expect(defaultRiskDirection('Do you smoke?')).toBe('neutral');
+    expect(defaultRiskDirection('How much do you weigh?')).toBe('neutral');
+    expect(defaultRiskDirection('Have you had tests for a family history of diabetes?')).toBe(
+      'neutral'
+    );
+    expect(defaultRiskDirection('What is your annual income?')).toBe('neutral');
+  });
+});
+
+describe('durations', () => {
+  it('reads the periods people actually state', () => {
+    expect(durationInDays('12 weeks')?.days).toBeCloseTo(84, 2);
+    expect(durationInDays('3 months')?.days).toBeCloseTo(91.31, 1);
+    expect(durationInDays('90 days')?.days).toBeCloseTo(90, 2);
+    expect(durationInDays('a year')?.days).toBeCloseTo(365.24, 1);
+    expect(durationInDays('18 months')?.days).toBeCloseTo(547.86, 1);
+    expect(durationInDays('two and a half years')?.days).toBeCloseTo(913.11, 1);
+    expect(durationInDays('2 years 6 months')?.days).toBeCloseTo(913.11, 1);
+    expect(durationInDays('six weeks')?.days).toBeCloseTo(42, 2);
+  });
+
+  it('reads nothing from a bare number', () => {
+    expect(durationInDays('12')).toBeNull();
+    expect(durationInDays('No')).toBeNull();
+  });
+
+  // "Days off work in the last 5 years" counts DAYS. Reading its unit off the
+  // look-back qualifier would turn a mis-keyed 7 into seven years.
+  it('takes the unit from the question, past any look-back qualifier', () => {
+    expect(durationUnitFromQuestion('How many weeks of full sick pay do you receive?')).toBe(
+      'week'
+    );
+    expect(durationUnitFromQuestion('How many days off work in the last 5 years?')).toBe('day');
+    expect(durationUnitFromQuestion('For how many months does full pay continue?')).toBe('month');
+    expect(durationUnitFromQuestion('Do you receive reduced sick pay?')).toBeNull();
+  });
+
+  // Month precision is not day precision. Holding "three months" to the day
+  // reports every one of them.
+  it('tolerates the coarsest unit either side used, and no more', () => {
+    expect(compareAnswers('13 weeks', '3 months')).toBe('match');
+    expect(compareAnswers('4 weeks', '1 month')).toBe('match');
+    expect(compareAnswers('6 weeks', '2 months')).toBe('mismatch');
+    // Half a year is not a tolerance, which is why the cap exists.
+    expect(compareAnswers('1 year', '18 months')).toBe('mismatch');
+    expect(compareAnswers('2 years', '24 months')).toBe('match');
+  });
+
+  // Same judgement bareUnitConfusion makes about two unit-less weights: the
+  // figures being consistent with one reading is not agreement, and it is not a
+  // basis for a finding either way.
+  it('says nothing where a bare number could be any unit', () => {
+    expect(compareAnswers('12', '3 months')).toBe('unclear');
+    expect(compareAnswers('3', '3 months')).toBe('unclear');
+  });
+
+  it('still reports a disagreement no unit reading reconciles', () => {
+    expect(compareAnswers('5', '3 months')).toBe('mismatch');
+  });
+
+  // compareYearToElapsed owns "seven years ago". Reading it as a duration would
+  // undo the fix that rule exists to be.
+  it('leaves elapsed time to the rule that owns it', () => {
+    const callDate = new Date('2026-06-01T00:00:00Z');
+    expect(compareAnswers('2019', '7 years ago', callDate)).toBe('match');
+    expect(compareAnswers('2019', '2 years ago', callDate)).toBe('mismatch');
+  });
+});
+
+describe('comparison trail', () => {
+  // A finding that says "1.83 against 6 foot" and nothing else cannot be
+  // defended in front of the firm it names.
+  it('records the conversion behind a height verdict', () => {
+    const { comparison, trail } = compareAnswersWithTrail('1.83', '6 foot');
+    expect(comparison).toBe('match');
+    expect(trail.rule).toBe('height');
+    expect(trail.dimension).toBe('length');
+    expect(trail.canonicalUnit).toBe('cm');
+    expect(trail.applicationCanonical).toEqual([183]);
+    expect(trail.callCanonical?.[0]).toBeCloseTo(182.88, 2);
+    expect(trail.toleranceApplied).toBe(3);
+    expect(trail.outcome).toBe('match');
+  });
+
+  it('records the conversion behind a duration verdict', () => {
+    const { trail } = compareAnswersWithTrail('12', 'about 3 months', null, {
+      question: 'How many weeks of full sick pay do you receive?',
+    });
+    expect(trail.rule).toBe('duration');
+    expect(trail.canonicalUnit).toBe('days');
+    expect(trail.applicationCanonical?.[0]).toBeCloseTo(84, 2);
+    expect(trail.callCanonical?.[0]).toBeCloseTo(91.31, 1);
+    expect(trail.outcome).toBe('match');
+  });
+
+  it('records the direction that made a gap benign', () => {
+    const { trail } = compareAnswersWithTrail('2', '0', null, {
+      question: 'How many units of alcohol do you drink in a typical week?',
+    });
+    expect(trail.rule).toBe('numeric');
+    expect(trail.riskDirection).toBe('higher_is_riskier');
+    expect(trail.applicationCanonical).toEqual([2]);
+    expect(trail.callCanonical).toEqual([0]);
+    expect(trail.outcome).toBe('over_declaration');
+  });
+
+  // Every outcome carries one, including the ones nobody will dispute — the
+  // undetermined rate is the figure most in need of tuning, and it cannot be
+  // tuned from rows that do not say which rule declined.
+  it('records which rule declined', () => {
+    const { trail } = compareAnswersWithTrail('Raised blood pressure', 'Type 2 diabetes');
+    expect(trail.outcome).toBe('unclear');
+    expect(trail.rule).toBe('undecided');
+  });
+});
+
+describe('classifyItemWithTrail', () => {
+  const base: ClassifyInput = {
+    applicationAnswer: '2',
+    callAnswer: '0',
+    callAnswerRedacted: false,
+    evidenceFound: true,
+    absenceMeaningful: true,
+    redactedTranscript: false,
+    question: 'How many units of alcohol do you drink in a typical week?',
+  };
+
+  it('returns the outcome with the trail that produced it', () => {
+    const { outcome, trail } = classifyItemWithTrail(base);
+    expect(outcome).toBe('over_declaration');
+    expect(trail?.rule).toBe('numeric');
+  });
+
+  // Nothing was compared, so there is nothing to record. A trail on a question
+  // that was never located would read as a comparison that happened.
+  it('records no trail where no comparison ran', () => {
+    const { outcome, trail } = classifyItemWithTrail({
+      ...base,
+      evidenceFound: false,
+      callAnswer: null,
+    });
+    expect(outcome).toBe('not_asked');
+    expect(trail).toBeNull();
   });
 });

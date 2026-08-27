@@ -118,7 +118,9 @@ async function main(): Promise<void> {
     // separately from the total — "6 accusations withdrawn" is the number that
     // matters, not "19 rows deleted".
     const findings = items.filter((i) =>
-      ['mismatch', 'not_asked', 'asked_no_answer', 'missing_from_application'].includes(i.outcome)
+      ['mismatch', 'over_declaration', 'not_asked', 'asked_no_answer', 'missing_from_application'].includes(
+        i.outcome
+      )
     ).length;
 
     repaired++;

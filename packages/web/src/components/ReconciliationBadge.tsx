@@ -9,6 +9,12 @@ import type { ReconciliationOutcome, AmendmentType } from '@callguard/shared';
 const OUTCOME_STYLES: Record<ReconciliationOutcome, { label: string; className: string }> = {
   match: { label: 'Matches', className: 'bg-pass-bg text-pass' },
   mismatch: { label: 'Does not match', className: 'bg-fail-bg text-fail' },
+  // Deliberately not the same red as a mismatch. The application declared MORE
+  // than the customer said, which cannot void a policy — it makes the cover
+  // dearer than it needed to be. Still needs correcting, so it is not neutral
+  // either, and the label says which way round it is rather than relying on the
+  // tone to carry it (§7).
+  over_declaration: { label: 'More declared than said', className: 'bg-review-bg text-review' },
   not_asked: { label: 'Not asked', className: 'bg-fail-bg text-fail' },
   asked_no_answer: { label: 'No answer given', className: 'bg-review-bg text-review' },
   no_application_answer: { label: 'Not on application', className: 'bg-table-header text-text-muted' },

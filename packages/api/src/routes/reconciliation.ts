@@ -49,7 +49,7 @@ type ProfileRow = DocumentProfile;
  * shared constant so the predicate reads as the query it is; if that list
  * changes, this changes with it.
  */
-const ITEM_IS_FINDING = `(i.outcome IN ('mismatch', 'not_asked', 'asked_no_answer', 'missing_from_application')
+const ITEM_IS_FINDING = `(i.outcome IN ('mismatch', 'over_declaration', 'not_asked', 'asked_no_answer', 'missing_from_application')
   OR i.amendment_type = 'disclosure_withdrawn')`;
 
 /**
@@ -62,7 +62,7 @@ const ITEM_IS_FINDING = `(i.outcome IN ('mismatch', 'not_asked', 'asked_no_answe
  * a presence question's failures but not its successes would depress the rate
  * by exactly the fields nobody checked.
  */
-const ITEM_IS_CONCLUSIVE = `i.outcome IN ('match', 'mismatch', 'not_asked', 'asked_no_answer')`;
+const ITEM_IS_CONCLUSIVE = `i.outcome IN ('match', 'mismatch', 'over_declaration', 'not_asked', 'asked_no_answer')`;
 
 /**
  * Match rate over conclusive items, as a percentage. NULL when none were.
@@ -276,6 +276,7 @@ reconciliationRouter.get('/runs', async (req, res, next) => {
               c.name AS customer_name,
               p.insurer, p.product,
               count(i.id) FILTER (WHERE i.outcome = 'mismatch')::int         AS mismatches,
+              count(i.id) FILTER (WHERE i.outcome = 'over_declaration')::int AS over_declarations,
               count(i.id) FILTER (WHERE i.outcome = 'not_asked')::int        AS not_asked,
               count(i.id) FILTER (WHERE i.outcome = 'asked_no_answer')::int  AS no_answer,
               -- A presence-mode field left blank: a finding, and the reason
@@ -685,6 +686,7 @@ reconciliationRouter.get('/dashboard/summary', async (req, res, next) => {
       questions_compared: number;
       findings: number;
       sales_with_findings: number;
+      over_declarations: number;
       undetermined: number;
       recorded: number;
       missing_from_application: number;
@@ -694,6 +696,10 @@ reconciliationRouter.get('/dashboard/summary', async (req, res, next) => {
          count(i.id)::int AS questions_compared,
          count(i.id) FILTER (WHERE ${ITEM_IS_FINDING})::int AS findings,
          count(DISTINCT i.run_id) FILTER (WHERE ${ITEM_IS_FINDING})::int AS sales_with_findings,
+         -- Counted inside findings above, and reported separately as well. An
+         -- over-declaration cannot void a policy, so folding it silently into
+         -- the headline would overstate the non-disclosure count (109).
+         count(i.id) FILTER (WHERE i.outcome = 'over_declaration')::int AS over_declarations,
          count(i.id) FILTER (WHERE i.outcome = 'undetermined')::int AS undetermined,
          count(i.id) FILTER (WHERE i.outcome = 'recorded')::int AS recorded,
          count(i.id) FILTER (WHERE i.outcome = 'missing_from_application')::int AS missing_from_application,
@@ -724,6 +730,7 @@ reconciliationRouter.get('/dashboard/summary', async (req, res, next) => {
       questions_compared: itemStats?.questions_compared ?? 0,
       match_rate: itemStats?.match_rate != null ? parseFloat(itemStats.match_rate) : null,
       findings: itemStats?.findings ?? 0,
+      over_declarations: itemStats?.over_declarations ?? 0,
       sales_with_findings: itemStats?.sales_with_findings ?? 0,
       undetermined: itemStats?.undetermined ?? 0,
       recorded: itemStats?.recorded ?? 0,
@@ -819,6 +826,7 @@ reconciliationRouter.get('/dashboard/by-insurer', async (req, res, next) => {
       questions: number;
       match_rate: string | null;
       mismatches: number;
+      over_declarations: number;
       not_asked: number;
       no_answer: number;
       missing: number;
@@ -833,6 +841,7 @@ reconciliationRouter.get('/dashboard/by-insurer', async (req, res, next) => {
               -- are all model-read, and there is no rate we would stand behind.
               ${matchRateSql('r')}::text AS match_rate,
               count(i.id) FILTER (WHERE i.outcome = 'mismatch')::int        AS mismatches,
+              count(i.id) FILTER (WHERE i.outcome = 'over_declaration')::int AS over_declarations,
               count(i.id) FILTER (WHERE i.outcome = 'not_asked')::int       AS not_asked,
               count(i.id) FILTER (WHERE i.outcome = 'asked_no_answer')::int AS no_answer,
               count(i.id) FILTER (WHERE i.outcome = 'missing_from_application')::int AS missing,
@@ -856,6 +865,7 @@ reconciliationRouter.get('/dashboard/by-insurer', async (req, res, next) => {
       questions: r.questions,
       match_rate: r.match_rate != null ? parseFloat(r.match_rate) : null,
       mismatches: r.mismatches,
+      over_declarations: r.over_declarations,
       not_asked: r.not_asked,
       no_answer: r.no_answer,
       missing: r.missing,
@@ -935,6 +945,7 @@ reconciliationRouter.get('/dashboard/by-adviser', async (req, res, next) => {
       match_rate: string | null;
       findings: number;
       mismatches: number;
+      over_declarations: number;
       not_asked: number;
       no_answer: number;
       missing: number;
@@ -947,6 +958,7 @@ reconciliationRouter.get('/dashboard/by-adviser', async (req, res, next) => {
               ${matchRateSql('r')}::text AS match_rate,
               count(i.id) FILTER (WHERE ${ITEM_IS_FINDING})::int AS findings,
               count(i.id) FILTER (WHERE i.outcome = 'mismatch')::int        AS mismatches,
+              count(i.id) FILTER (WHERE i.outcome = 'over_declaration')::int AS over_declarations,
               count(i.id) FILTER (WHERE i.outcome = 'not_asked')::int       AS not_asked,
               count(i.id) FILTER (WHERE i.outcome = 'asked_no_answer')::int AS no_answer,
               count(i.id) FILTER (WHERE i.outcome = 'missing_from_application')::int AS missing,
@@ -974,6 +986,7 @@ reconciliationRouter.get('/dashboard/by-adviser', async (req, res, next) => {
       match_rate: r.match_rate != null ? parseFloat(r.match_rate) : null,
       findings: r.findings,
       mismatches: r.mismatches,
+      over_declarations: r.over_declarations,
       not_asked: r.not_asked,
       no_answer: r.no_answer,
       missing: r.missing,
@@ -1003,6 +1016,7 @@ reconciliationRouter.get('/dashboard/flagged-questions', async (req, res, next) 
       flagged: number;
       compared: number;
       mismatches: number;
+      over_declarations: number;
       not_asked: number;
       no_answer: number;
       missing: number;
@@ -1018,6 +1032,7 @@ reconciliationRouter.get('/dashboard/flagged-questions', async (req, res, next) 
               (array_agg(DISTINCT jsonb_build_object('journey_id', r.journey_id, 'customer_name', cu.name))
                  FILTER (WHERE ${ITEM_IS_FINDING}))[1:${FLAGGED_SALE_SAMPLE}] AS sales,
               count(i.id) FILTER (WHERE i.outcome = 'mismatch')::int        AS mismatches,
+              count(i.id) FILTER (WHERE i.outcome = 'over_declaration')::int AS over_declarations,
               count(i.id) FILTER (WHERE i.outcome = 'not_asked')::int       AS not_asked,
               count(i.id) FILTER (WHERE i.outcome = 'asked_no_answer')::int AS no_answer,
               count(i.id) FILTER (WHERE i.outcome = 'missing_from_application')::int AS missing
@@ -1042,6 +1057,7 @@ reconciliationRouter.get('/dashboard/flagged-questions', async (req, res, next) 
       flagged: r.flagged,
       compared: r.compared,
       mismatches: r.mismatches,
+      over_declarations: r.over_declarations,
       not_asked: r.not_asked,
       no_answer: r.no_answer,
       missing: r.missing,

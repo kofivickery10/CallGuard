@@ -210,8 +210,10 @@ async function reportOrg(org: {
     await query(
       `SELECT count(*)::int AS items,
               count(DISTINCT i.run_id)::int AS runs_with_items,
-              count(*) FILTER (WHERE i.outcome IN ('mismatch','not_asked','asked_no_answer'))::int
-                AS needing_attention
+              count(*) FILTER (WHERE i.outcome IN ('mismatch','over_declaration','not_asked','asked_no_answer'))::int
+                AS needing_attention,
+              count(*) FILTER (WHERE i.outcome = 'over_declaration')::int
+                AS over_declarations
          FROM capture_reconciliation_items i
          JOIN capture_reconciliation_runs r ON r.id = i.run_id
         WHERE r.organization_id = $1`,
@@ -305,7 +307,7 @@ async function reportOrg(org: {
        LEFT JOIN (
          SELECT run_id, count(*)::int AS total,
                 count(*) FILTER (
-                  WHERE outcome IN ('mismatch', 'not_asked', 'asked_no_answer')
+                  WHERE outcome IN ('mismatch', 'over_declaration', 'not_asked', 'asked_no_answer')
                      OR amendment_type = 'disclosure_withdrawn'
                 )::int AS actionable
            FROM capture_reconciliation_items
@@ -410,6 +412,9 @@ async function reportOrg(org: {
        JOIN capture_reconciliation_runs r ON r.id = i.run_id
       WHERE r.organization_id = $1 AND i.outcome = 'mismatch'
       ORDER BY i.confidence DESC NULLS LAST LIMIT 20`,
+    // Mismatches only, deliberately. An over-declaration is listed by the
+    // dashboard but does not belong in a list a person reads as possible
+    // non-disclosures — that is the whole reason it has its own outcome.
     O
   );
   console.log(`\n— Mismatches (${mismatches.length}) — check each before acting on it —`);
