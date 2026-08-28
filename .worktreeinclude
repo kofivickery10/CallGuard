@@ -1,0 +1,19 @@
+# Gitignored files copied into every worktree Claude Code creates with
+# `claude --worktree`. Gitignore syntax; only files that match AND are
+# gitignored are copied, so tracked files are never duplicated.
+#
+# The `cg` script copies these itself, so this file is for the times you
+# reach for `claude --worktree` directly instead.
+#
+# Note: a worktree created this way inherits .env unchanged, including
+# DATABASE_URL. It does NOT get its own PORT or Redis database the way a
+# `cg task` worktree does, so do not run two dev servers from them.
+
+.env
+
+# custom subagents, saved permission decisions and the preview server
+# config live under .claude/, which is ignored as a whole, so name the
+# directory explicitly rather than relying on a **/ pattern
+.claude/settings.local.json
+.claude/agents/*.md
+.claude/launch.json
