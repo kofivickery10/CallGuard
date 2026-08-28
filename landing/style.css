@@ -22,6 +22,16 @@
   --primary-dark:   #1f5a37;        /* darker for AA contrast on light backgrounds */
   --primary-light:  #e8f0e8;
   --primary-50:     #f1f7f2;
+  --on-primary-dark: #ffffff;       /* knockout ink for text on a --primary-dark FILL */
+
+  /* Cookie-consent banner (analytics.js injects the rules and reads these).
+     The banner is a dark overlay in BOTH themes, so these are deliberately
+     fixed with no dark override — a theme-following token would invert the
+     button off its own surface. --primary cannot serve: mid-green under
+     white text is 3.3:1. */
+  --consent-accept:       #6cc18d;  /* 7.8:1 under --consent-accept-text */
+  --consent-accept-hover: #7fcf9d;
+  --consent-accept-text:  #10201a;
 
   /* Semantic */
   --fail:           #c0392b;
@@ -71,6 +81,7 @@
   --primary-dark:   #8fd3a8;        /* lighter so it reads on dark surfaces */
   --primary-light:  #1f2e24;
   --primary-50:     #16201a;
+  --on-primary-dark: #0b110d;       /* --primary-dark is light here, so the ink inverts */
 
   /* Semantic */
   --fail:           #f0726a;
@@ -480,8 +491,10 @@ h1, h2, h3, h4, h5 { color: var(--text-primary); font-weight: 700; line-height: 
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: var(--primary);
-  color: white;
+  /* --primary under white is 3.3:1 (2.8:1 in dark). --primary-dark already
+     inverts per theme, so this pairing is 8.2:1 light / 11.0:1 dark. */
+  background: var(--primary-dark);
+  color: var(--on-primary-dark);
   display: inline-flex;
   align-items: center;
   justify-content: center;
