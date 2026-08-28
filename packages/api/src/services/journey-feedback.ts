@@ -80,6 +80,17 @@ export interface FeedbackBreach {
   item_label: string;
   severity: string;
   status: string;
+  // Why the checkpoint was not met, as the model put it — the coaching line the
+  // adviser needs to act on the email without signing in.
+  //
+  // `reasoning` and NOT `evidence`, deliberately. Evidence is verbatim customer
+  // speech: across the corpus it averages 163 characters and 622 rows of it
+  // carry source-redaction tags, because it is transcript. Reasoning is the
+  // model's own sentence about the adviser's conduct, averages 92 characters,
+  // and carries a tag in 13 rows. Email is an insecure, persistent channel
+  // outside the platform, so the quoted call goes behind the link and only the
+  // finding travels.
+  reasoning: string | null;
 }
 
 /**
@@ -96,9 +107,12 @@ export async function breachesForFeedback(
 ): Promise<FeedbackBreach[]> {
   return query<FeedbackBreach>(
     `SELECT b.id AS breach_id, b.scorecard_item_id, si.label AS item_label,
-            b.severity, b.status
+            b.severity, b.status, jis.reasoning
        FROM breaches b
        JOIN scorecard_items si ON si.id = b.scorecard_item_id
+       -- LEFT: a breach raised against a per-call score has no journey item
+       -- score, and one missing reason must not drop the whole finding.
+       LEFT JOIN journey_item_scores jis ON jis.id = b.journey_item_score_id
       WHERE b.organization_id = $1
         AND b.journey_id = $2
         AND b.status NOT IN ('resolved', 'noted')
@@ -258,12 +272,29 @@ export async function sendFeedback(input: {
   // Enqueued only after the transaction has committed, and never inside it: a
   // rollback must never be followed by an email pointing at a row that no
   // longer exists.
+  // Read after the commit rather than threaded through it: the score and the
+  // client name are the sale's, not the feedback record's, and re-reading them
+  // here keeps this out of the transaction that must stay short.
+  const sale = await queryOne<{ client_name: string | null; overall_score: number | null }>(
+    `SELECT client_name, overall_score FROM journeys WHERE id = $1 AND organization_id = $2`,
+    [journeyId, organizationId]
+  );
+
   await alertsQueue.add('feedback-email', {
     to: adviser.email,
     adviserName: adviser.name,
     confirmUrl: `${config.appUrl}/feedback/${raw}`,
     message,
-    items: breaches.map((b) => ({ label: b.item_label, severity: b.severity })),
+    clientName: sale?.client_name ?? null,
+    // Null where the sale carries no score — a sale held at nothingAutoScored
+    // has findings worth feeding back but no number, and printing "0%" on one
+    // would be a lie about an adviser whose score has not been decided.
+    score: sale?.overall_score ?? null,
+    items: breaches.map((b) => ({
+      label: b.item_label,
+      severity: b.severity,
+      reasoning: b.reasoning,
+    })),
   });
 
   return { feedbackId, itemCount: breaches.length, adviser };

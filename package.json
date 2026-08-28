@@ -31,7 +31,8 @@
     "audit:a11y": "node scripts/audit-a11y.mjs",
     "audit:links": "linkinator http://localhost:4321 --recurse --silent",
     "audit:html": "html-validate \"landing/**/*.html\"",
-    "audit:perf": "lighthouse http://localhost:4321/ --only-categories=performance,accessibility,seo,best-practices --chrome-flags=\"--headless=new --no-sandbox\" --output=html --output-path=/tmp/lighthouse-landing.html --view"
+    "audit:perf": "lighthouse http://localhost:4321/ --only-categories=performance,accessibility,seo,best-practices --chrome-flags=\"--headless=new --no-sandbox\" --output=html --output-path=/tmp/lighthouse-landing.html --view",
+    "dev:landing": "node scripts/serve-landing.mjs"
   },
   "engines": {
     "node": ">=20.0.0"
