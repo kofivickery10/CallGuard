@@ -46,6 +46,10 @@ interface Reword {
   // Extra scoring guidance, sent to the model separately from the description
   // (scorecard_items.expectation). Usually "this also counts".
   new_expectation?: string;
+  // The grouping heading the client reads in the app. Display only —
+  // services/scoring.ts never sends `section` to the model — so renaming one
+  // changes what the firm reads, not how anything is judged.
+  new_section?: string;
   why: string;
 }
 
@@ -58,6 +62,41 @@ interface Revision {
   retire: Retire[];
   reword: Reword[];
 }
+
+/**
+ * What "clear affirmative consent" means, written once and shared by every
+ * consent gate that carries it.
+ *
+ * One constant rather than six copies on purpose: these six checkpoints are the
+ * same control applied at six moments in the sale, and the half that matters
+ * most is the second half — what must STILL fail. Six copies of that sentence
+ * would drift, and the drift would be invisible until a gate quietly stopped
+ * catching something the others still caught.
+ */
+const AFFIRMATIVE_CONSENT_EXPECTATION =
+  'Any unambiguous agreement counts: "yes", "yeah", "yep", "sure", "correct", ' +
+  '"that\'s fine", "that\'s right", "go ahead", "absolutely", "no problem" and ' +
+  'equivalents are all passes. The test is whether the customer clearly agreed, not ' +
+  'which word they used. Still fail where there is no agreement to read: silence, an ' +
+  'ambiguous or hedged reply, the adviser answering on the customer\'s behalf, a ' +
+  'question met with another question, or consent taken from the call simply ' +
+  'carrying on.';
+
+/**
+ * How documents may be delivered, for the one gate that names a channel.
+ *
+ * Trust Point offer email, and send by post when the customer would rather have
+ * that. Both are the adviser doing the job right, so the checkpoint has to score
+ * the OUTCOME — was a method put to the customer and did they agree to it —
+ * rather than the channel. Mirrors the wording already used on "Told customer
+ * the key facts document will be sent to them" (revision trustpoint-2026-08).
+ */
+const DOCUMENT_DELIVERY_EXPECTATION =
+  'Any delivery route counts — email, post, or a portal. Email offered and agreed ' +
+  'passes; email offered, declined, and post agreed instead passes just as well. ' +
+  'The channel is not the test. Fail only where no delivery method was put to the ' +
+  'customer at all, or where none was agreed. ' +
+  AFFIRMATIVE_CONSENT_EXPECTATION;
 
 // ── Revisions ────────────────────────────────────────────────────────────────
 // Numbers in the rationale are POSITIONS ON THE LIVE CARD at the time the change
@@ -147,6 +186,142 @@ const REVISIONS: Revision[] = [
           'Where the product carried no underwriting decision, confirming acceptance and the start ' +
           'date satisfies the on-risk path — there are no amended or rated terms to explain.',
         why: 'Live 31 — the twin of 30, and it needs the same immediate-acceptance allowance.',
+      },
+    ],
+  },
+  {
+    key: 'trustpoint-2026-08-affirmative-consent',
+    tenant_hint: 'Trust Point',
+    agreed:
+      'Trust Point feedback, Joey Crone, 2026-08-26 — "Can we change all of the wording on the ' +
+      'sections that look for a firm yes to clear affirmative consent - I\'m happy with Yes, or yep ' +
+      'or sure or whatever. Doesn\'t specifically have to be YES."',
+    csv: 'sample_scorecards/trustpoint/trustpoint-protection.csv',
+    retire: [],
+    // Every consent_gate on the live card is here, and that set is exactly the set
+    // whose wording invoked a literal "yes" — three in the label ("a clear 'yes'",
+    // "a firm yes") and the rest through the section heading "(hard yes)". Rewording
+    // only the one that happened to say "firm" would leave the same fault in five
+    // other places, which is what "all of the wording" was asking about.
+    //
+    // The widening lives in each item's expectation rather than in the shared
+    // consent-gate line in services/scoring.ts, which is sent for EVERY consent gate
+    // on every tenant. That line already asks for "an explicit, affirmative response"
+    // and never required the literal word — the literalness came from these labels
+    // being passed through verbatim as `Label:`. Fixing it here keeps the blast
+    // radius to the firm that asked, and keeps the guidance readable next to the
+    // checkpoint it governs.
+    reword: [
+      {
+        label: "Obtained a clear 'yes' to information sharing",
+        new_label: 'Obtained clear affirmative consent to information sharing',
+        new_section: 'Consent (clear affirmative)',
+        new_expectation: AFFIRMATIVE_CONSENT_EXPECTATION,
+        why: 'Label quoted \'yes\' directly — the most literal of the six.',
+      },
+      {
+        label: "Obtained a clear 'yes' to the recommendation",
+        new_label: 'Obtained clear affirmative consent to the recommendation',
+        new_section: 'Consent (clear affirmative)',
+        new_expectation: AFFIRMATIVE_CONSENT_EXPECTATION,
+        why: 'As above. This is the consent gate on the recommendation itself, so a false fail here is the costliest of the set.',
+      },
+      {
+        label: 'Confirmed the recap still matches what the client wanted',
+        new_section: 'Consent (clear affirmative)',
+        new_expectation: AFFIRMATIVE_CONSENT_EXPECTATION,
+        why: 'Label is already neutral; the "(hard yes)" section heading and the missing guidance were doing the narrowing.',
+      },
+      {
+        label: 'Confirmed happy with cover, premium and everything applied for',
+        new_section: 'Consent (clear affirmative)',
+        new_expectation: AFFIRMATIVE_CONSENT_EXPECTATION,
+        why: 'As above.',
+      },
+      {
+        label: 'Confirmed documents by email and got a firm yes',
+        new_label: 'Confirmed documents by email and got clear affirmative consent',
+        new_expectation: AFFIRMATIVE_CONSENT_EXPECTATION,
+        why: 'The item quoted verbatim in the feedback. Its section ("Documents") needs no change.',
+      },
+      {
+        label: 'Confirmed the client is happy with the service',
+        new_section: 'Final close (clear affirmative)',
+        new_expectation: AFFIRMATIVE_CONSENT_EXPECTATION,
+        why: 'Label already neutral; renamed the section for the same reason as the others.',
+      },
+    ],
+  },
+  {
+    key: 'trustpoint-2026-08-documents-and-rubrics',
+    tenant_hint: 'Trust Point',
+    agreed:
+      'Trust Point feedback, Joey Crone, 2026-08-26 — "In practice, we tell people that their docs ' +
+      'will come via email, and ask if this is ok. If they say no, we send them via post, and this ' +
+      'is fine. But at the moment, the AI is failing people for this route because it\'s looking for ' +
+      'consent to email only." Carries the same conversation\'s "clear affirmative consent" point ' +
+      'into the rubrics, which the previous revision left untouched.',
+    csv: 'sample_scorecards/trustpoint/trustpoint-protection.csv',
+    retire: [],
+    // TWO CHANGES, one conversation.
+    //
+    // 1. THE RUBRICS. Revision trustpoint-2026-08-affirmative-consent reworded the
+    //    labels, sections and expectations of all six consent gates and left the
+    //    descriptions alone — but services/scoring.ts sends `description` to the
+    //    model as `Rubric:`, so every gate was still being told to look for "an
+    //    explicit 'yes'" while its expectation said any clear agreement counts.
+    //    Contradictory instructions in the same prompt. All six are corrected here.
+    //
+    // 2. THE POSTAL ROUTE. "Confirmed documents by email" named a channel, so an
+    //    adviser who offered email, was turned down, and posted the documents —
+    //    the correct behaviour — failed a consent gate for it.
+    reword: [
+      {
+        label: 'Obtained clear affirmative consent to information sharing',
+        new_description:
+          'Did the customer clearly agree to the information-sharing statement before the ' +
+          'adviser proceeded?',
+        why: 'Rubric still said "an explicit \'yes\'", contradicting the expectation set in the previous revision.',
+      },
+      {
+        label: 'Obtained clear affirmative consent to the recommendation',
+        new_description:
+          'Did the customer clearly agree to the recommendation before the adviser continued?',
+        why: 'As above.',
+      },
+      {
+        label: 'Confirmed the recap still matches what the client wanted',
+        new_description:
+          'Did the adviser check the recap still matches what the client wanted to achieve, and ' +
+          'did the client clearly agree?',
+        why: 'Rubric still ended "with a firm \'yes\'?".',
+      },
+      {
+        label: 'Confirmed happy with cover, premium and everything applied for',
+        new_description:
+          'Did the adviser check the client is happy with the cover, the premium and everything ' +
+          'applied for, and did the client clearly agree?',
+        why: 'As above.',
+      },
+      {
+        label: 'Confirmed the client is happy with the service',
+        new_description:
+          'Did the adviser check the client is happy with the service and the policy arranged ' +
+          'today, and did the client clearly agree?',
+        why: 'As above.',
+      },
+      {
+        label: 'Confirmed documents by email and got clear affirmative consent',
+        new_label: 'Confirmed how documents will be sent and got clear affirmative consent',
+        new_description:
+          'Did the adviser tell the customer how their policy documents will be sent, and did ' +
+          'the customer clearly agree to that method?',
+        new_expectation: DOCUMENT_DELIVERY_EXPECTATION,
+        why:
+          'The reported bug: the checkpoint named email, so offering email, being declined, and ' +
+          'posting instead — the firm\'s own documented process — failed a consent gate. Now ' +
+          'scores the outcome (a method was offered and agreed) rather than the channel. Its ' +
+          'rubric also still said "obtain a firm \'yes\'? Proceed only on a clear yes."',
       },
     ],
   },
@@ -296,6 +471,9 @@ async function main() {
     if (r.new_description) {
       console.log(`      description: ${r.item.description ?? '(none)'}\n                -> ${r.new_description}`);
     }
+    if (r.new_section) {
+      console.log(`      section:     ${r.item.section ?? '(none)'}\n                -> ${r.new_section}`);
+    }
     if (r.new_expectation) {
       console.log(`      expectation: ${r.item.expectation ?? '(none)'}\n                -> ${r.new_expectation}`);
     }
@@ -348,9 +526,16 @@ async function main() {
         `UPDATE scorecard_items SET
            label       = COALESCE($2, label),
            description = COALESCE($3, description),
-           expectation = COALESCE($4, expectation)
+           expectation = COALESCE($4, expectation),
+           section     = COALESCE($5, section)
          WHERE id = $1`,
-        [r.item.id, r.new_label ?? null, r.new_description ?? null, r.new_expectation ?? null]
+        [
+          r.item.id,
+          r.new_label ?? null,
+          r.new_description ?? null,
+          r.new_expectation ?? null,
+          r.new_section ?? null,
+        ]
       );
     }
     // One bump for the whole revision — it is a single agreed change, and every
