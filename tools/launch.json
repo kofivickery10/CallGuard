@@ -1,0 +1,44 @@
+{
+  "version": "0.0.1",
+
+  // Auto-verify starts a dev server and pokes it after every edit. This repo's
+  // .env DATABASE_URL points at the live Lightsail Postgres, so leave this off
+  // until worktrees have their own database. Ask Claude to preview when you
+  // actually want it instead.
+  "autoVerify": false,
+
+  "configurations": [
+    {
+      // The API must hold 3001: both vite configs hardcode their /api proxy
+      // target to http://localhost:3001. autoPort:false makes a clash fail
+      // loudly rather than silently moving the API somewhere the frontends
+      // cannot reach. Only one session can serve the API at a time until
+      // that proxy target is made configurable.
+      "name": "api",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev:api"],
+      "port": 3001,
+      "autoPort": false
+    },
+    {
+      // Tenant app. Free to move: nothing proxies to it.
+      "name": "web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev:web"],
+      "port": 5173,
+      "autoPort": true
+    },
+    {
+      // Superadmin console.
+      "name": "admin",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev:admin"],
+      "port": 5174,
+      "autoPort": true
+    }
+  ]
+
+  // Deliberately not listed: npm run dev:worker. It has no port, so it is not
+  // a preview server, and it refuses to start against a remote DATABASE_URL
+  // outside production anyway. Run it in the terminal pane when you need it.
+}
