@@ -7,8 +7,15 @@ coverage/
 tmp/
 uploads/
 
-# Claude Code local state (user-specific, do not commit)
-.claude/
+# Claude Code local state. Ignore the contents rather than the directory —
+# git cannot re-include a path whose parent directory is excluded, and the
+# agent briefs below are shared project config, not user-specific state.
+.claude/*
+!.claude/agents/
+
+# Still ignored by the rule above, and deliberately: settings.local.json holds
+# per-user permissions, launch.json holds local ports, and worktrees/ is where
+# the working copies live.
 
 # TypeScript incremental build cache
 *.tsbuildinfo
