@@ -1,7 +1,7 @@
 {
   "name": "callguard",
   "version": "0.1.0",
-  "description": "CallGuard AI — live AI compliance scoring for every sales conversation. Smarter calls, safer business.",
+  "description": "CallGuard AI \u2014 live AI compliance scoring for every sales conversation. Smarter calls, safer business.",
   "license": "UNLICENSED",
   "private": true,
   "workspaces": [
@@ -25,9 +25,21 @@
     "start": "pm2 start ecosystem.config.js",
     "deploy": "bash scripts/deploy.sh",
     "smoke:prod": "node scripts/prod-smoke.mjs",
-    "blog:build": "node scripts/build-blog.mjs"
+    "blog:build": "node scripts/build-blog.mjs",
+    "audit": "npm run audit:onpage; npm run audit:html; npm run audit:a11y; npm run audit:links",
+    "audit:onpage": "node scripts/audit-onpage.mjs",
+    "audit:a11y": "node scripts/audit-a11y.mjs",
+    "audit:links": "linkinator http://localhost:4321 --recurse --silent",
+    "audit:html": "html-validate \"landing/**/*.html\"",
+    "audit:perf": "lighthouse http://localhost:4321/ --only-categories=performance,accessibility,seo,best-practices --chrome-flags=\"--headless=new --no-sandbox\" --output=html --output-path=/tmp/lighthouse-landing.html --view"
   },
   "engines": {
     "node": ">=20.0.0"
+  },
+  "devDependencies": {
+    "html-validate": "^10.0.0",
+    "lighthouse": "^12.8.2",
+    "linkinator": "^7.6.1",
+    "pa11y": "^9.1.1"
   }
 }

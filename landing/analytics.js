@@ -58,7 +58,10 @@
       '.cg-cc-actions{display:flex;gap:10px;flex:0 0 auto;margin-left:auto}' +
       '.cg-cc button{font:inherit;font-size:13.5px;font-weight:600;border:0;border-radius:8px;' +
       'padding:9px 16px;cursor:pointer}' +
-      '.cg-cc-accept{background:#4a9e6e;color:#fff}.cg-cc-accept:hover{background:#3f8a5f}' +
+      // Colours come from the --consent-* tokens in style.css (fixed in both
+      // themes; the banner is a dark overlay in both). Accept was 3.3:1.
+      '.cg-cc-accept{background:var(--consent-accept);color:var(--consent-accept-text)}' +
+      '.cg-cc-accept:hover{background:var(--consent-accept-hover)}' +
       '.cg-cc-decline{background:transparent;color:#d7e0db;border:1px solid #3a4d43}' +
       '.cg-cc-decline:hover{background:#243a30}' +
       '.cg-cookie-prefs{cursor:pointer}' +
