@@ -33,6 +33,13 @@
   --consent-accept-hover: #7fcf9d;
   --consent-accept-text:  #10201a;
 
+  /* Accent for surfaces that are dark in BOTH themes (the footer band).
+     No dark override, for the same reason as the consent tokens: a
+     theme-following green would go dim against --dark-bg in light mode.
+     6.66:1 on the light-theme footer, 8.77:1 on the dark-theme footer, so
+     it clears AA as text and clears 3:1 as a focus ring in both. */
+  --accent-on-dark:       #6cc18d;
+
   /* Semantic */
   --fail:           #c0392b;
   --fail-bg:        #fde8e8;
@@ -1080,6 +1087,19 @@ h1, h2, h3, h4, h5 { color: var(--text-primary); font-weight: 700; line-height: 
 }
 .cta-meta .dot { color: var(--primary); }
 
+/* Dated provenance under a comparison table. These pages assert facts about
+   live competitor products, so an undated claim has no way to age honestly —
+   a visible check date turns a stale claim into a dated observation. */
+.verified-note {
+  margin: 18px 0 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--text-muted);
+  max-width: 78ch;
+}
+.verified-note a { color: var(--text-muted); text-underline-offset: 2px; }
+.verified-note a:hover { color: var(--primary-dark); }
+
 /* ============================================================
    Footer
    ============================================================ */
@@ -1088,10 +1108,16 @@ h1, h2, h3, h4, h5 { color: var(--text-primary); font-weight: 700; line-height: 
   color: rgba(255, 255, 255, 0.75);
   padding: 60px 0 28px;
 }
+/* Brand lockup sits on its own full-width row so the link band can use the
+   whole container. Six equal columns at 1180px are ~169px each — WIDER than
+   the four columns they replace (~141px), because those four were squeezed
+   into the 2fr half of a 1.4fr/2fr split. Six peers in one row is also the
+   point: Compare and Resources are sections, not afterthoughts, and a
+   3-across x 2-row grid would have made the second row read as subordinate. */
 .footer-inner {
   display: grid;
-  grid-template-columns: 1.4fr 2fr;
-  gap: 48px;
+  grid-template-columns: 1fr;
+  gap: 40px;
   padding-bottom: 40px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
@@ -1102,7 +1128,7 @@ h1, h2, h3, h4, h5 { color: var(--text-primary); font-weight: 700; line-height: 
   font-weight: 600;
   letter-spacing: 1.4px;
   text-transform: uppercase;
-  color: #6cc18d;
+  color: var(--accent-on-dark);
 }
 .footer-tag {
   margin: 8px 0 0;
@@ -1113,10 +1139,14 @@ h1, h2, h3, h4, h5 { color: var(--text-primary); font-weight: 700; line-height: 
 }
 .footer-links {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   gap: 24px;
 }
-.footer-col h5 {
+/* An <h2>, not the <h5> this used to be: the footer followed <h3> content on
+   every page, so the old markup was a two-level heading skip on all 33 pages
+   (this is the non-sequential heading Lighthouse flags on the homepage).
+   The class carries the styling so the level can move without a repaint. */
+.footer-col-title {
   font-size: 12px;
   font-weight: 700;
   text-transform: uppercase;
@@ -1132,10 +1162,20 @@ h1, h2, h3, h4, h5 { color: var(--text-primary); font-weight: 700; line-height: 
   transition: color 0.15s ease;
 }
 .footer-col a:hover { color: white; }
+/* 30 links is a keyboard surface. The UA ring is unreliable on a dark band,
+   so the footer states its own — --accent-on-dark is 6.66:1 / 8.77:1 against
+   the footer in the two themes, well past the 3:1 a focus indicator needs. */
+.footer a:focus-visible {
+  outline: 2px solid var(--accent-on-dark);
+  outline-offset: 3px;
+  border-radius: 3px;
+}
 .footer-bottom {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
+  gap: 8px 24px;
   margin-top: 24px;
   font-size: 12.5px;
   color: rgba(255, 255, 255, 0.5);
@@ -1409,7 +1449,8 @@ body.no-scroll { overflow: hidden; }
   .section { padding: 76px 0; }
   .hero { padding: 64px 0 84px; }
   .feature-grid-3 { grid-template-columns: repeat(2, 1fr); }
-  .footer-inner { grid-template-columns: 1fr; gap: 36px; }
+  .footer-inner { gap: 36px; }
+  .footer-links { grid-template-columns: repeat(3, 1fr); gap: 28px 24px; }
 }
 
 @media (max-width: 768px) {
@@ -1450,8 +1491,15 @@ body.no-scroll { overflow: hidden; }
   .cta-buttons .btn { width: 100%; }
 
   .footer { padding: 48px 0 24px; }
-  .footer-links { grid-template-columns: repeat(2, 1fr); gap: 24px 16px; }
+  /* Stays 3-across here. The old 2-across was tuned for four columns; with
+     six groups it left 350px columns holding 14px links, which reads as an
+     accident rather than a layout. Two-across starts at 600px instead. */
+  .footer-links { grid-template-columns: repeat(3, 1fr); gap: 26px 16px; }
   .footer-bottom { flex-direction: column; gap: 8px; align-items: flex-start; margin-top: 20px; }
+}
+
+@media (max-width: 600px) {
+  .footer-links { grid-template-columns: repeat(2, 1fr); gap: 24px 16px; }
 }
 
 @media (max-width: 480px) {

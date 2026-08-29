@@ -1,6 +1,6 @@
 # Accessibility baseline — landing/
 
-**Measured 2026-08-28; contrast errors fixed and re-measured the same day.** pa11y 9.1.1 against WCAG 2.1 AA, 8 representative pages in
+**Measured 2026-08-28; contrast errors and the footer rebuild both fixed and re-measured the same day.** pa11y 9.1.1 against WCAG 2.1 AA, 8 representative pages in
 **both themes** (16 loads), plus html-validate across all 33 pages.
 Regenerate: `npm run audit:a11y` and `npm run audit:html`.
 
@@ -63,6 +63,57 @@ buttons legible and equal-width on mobile.
 referencing pages, including `landing/blog/_template.html` (posts regenerated with
 `npm run blog:build`, never hand-edited).
 
+### Fixed 2026-08-28 (later run) — the footer, and the heading skip under it
+
+The footer was rebuilt as one canonical component and applied to all 33 real pages
+(everything except `og-image.html`, which is a 1200x630 render template and correctly
+has no footer). Before this run there were **nine distinct footer blocks** across the
+site — five near-identical full footers that had drifted apart, and four minimal
+legal-page footers. pa11y stayed at **0 errors, both themes, before and after**;
+html-validate stayed at **62**, none of them in the footer.
+
+Three accessibility things came out of it, none of which a contrast checker would find:
+
+- **Heading skip on all 33 pages.** The footer column headings were `<h5>` following
+  `<h3>` page content — a two-level skip. This is the "non-sequential heading" Lighthouse
+  flags on the homepage; it was actually site-wide. They are now `<h2 class="footer-col-title">`,
+  with the styling on the class so the level can move again without a repaint. Homepage
+  heading order is now `h1 h2 h3 … h2` with no skips.
+- **No visible focus ring on the footer.** The footer had no `:focus-visible` rule and
+  fell back to the UA ring on a dark band. With 30 links it is the largest keyboard
+  surface on the site. Added:
+
+  ```
+  .footer a:focus-visible { outline: 2px solid var(--accent-on-dark); outline-offset: 3px; border-radius: 3px; }
+  ```
+
+- **New token `--accent-on-dark: #6cc18d`** on `:root`, **no dark override** — same
+  reasoning as the consent tokens: the footer band is dark in *both* themes, so a
+  theme-following green would go dim against `--dark-bg` in light mode. Measured against
+  the rendered footer: **6.66:1** light / **8.77:1** dark, so it clears AA as text and
+  clears 3:1 as a focus indicator in both. This closes half of the "two remaining raw
+  hexes" item below — `.footer-strapline` now reads the token. `.cg-cc a` in
+  `analytics.js` still carries the literal; left alone to avoid a second file version bump.
+
+Measured in the browser on the rendered footer, both themes:
+
+| Element | Light | Dark |
+|---|---|---|
+| `.footer-col a` | 6.98:1 | 8.33:1 |
+| `.footer-col-title` | 14.49:1 | 19.09:1 |
+| `.footer-strapline` | 6.66:1 | 8.77:1 |
+| `.footer-tag` | 6.18:1 | 7.23:1 |
+| `.footer-bottom` / cookie prefs | 4.76:1 | 5.33:1 |
+
+Verified at 1280, 768, 700, 605 and 375px in both themes: 6 columns → 3 → 2, tab order
+follows visual order (33 links, no `tabindex`), no horizontal overflow at any width, and
+nothing in the footer carries `.reveal`, so it is readable whether or not the observer
+fires. Drawer re-smoke-tested after the change: Escape closes it, focus returns to the
+trigger, `aria-expanded` and the body scroll lock both reset.
+
+`style.css` went `?v=15 → ?v=16` on all 35 referencing files, including
+`landing/blog/_template.html`; the six posts were regenerated with `npm run blog:build`.
+
 ## Per-page
 
 All 8 audited pages: **0 errors** in both themes.
@@ -74,7 +125,10 @@ All 8 audited pages: **0 errors** in both themes.
   the label is discarded and the mobile drawer is announced as nothing. html-validate
   catches this (`aria-label-misuse`); a contrast checker never will. Fix with a role, or
   a landmark element.
-- **Heading order** — Lighthouse flags a non-sequential heading on the homepage.
+- **Heading order** — ~~Lighthouse flags a non-sequential heading on the homepage.~~
+  **Fixed 2026-08-28**: it was the footer's `<h5>` under `<h3>` content, on all 33 pages.
+  One skip remains and is *not* the footer: the four legal pages open `h1` → `<h3>Contents</h3>`.
+  Pre-existing, confirmed against `HEAD`, out of scope for the footer run.
 - **`<button>` without `type` — 30 instances.** Mostly cosmetic, except inside the demo
   form where the default `type="submit"` can fire an unintended submit.
 
@@ -91,9 +145,34 @@ All 8 audited pages: **0 errors** in both themes.
   which is dark in dark mode, so the design-partner CTA on `.section-coming` becomes a
   dark button on a dark band. Text contrast passes, so no tool flags it, but the button
   loses its prominence. Not in scope for this run.
-- **Two remaining raw hexes on dark surfaces**, `.footer-strapline` and `.cg-cc a`, both
-  `#6cc18d` — now duplicated by `--consent-accept`. Both pass contrast; folding them
-  into a shared token is tidy-up, not a defect.
+- ~~**Two remaining raw hexes on dark surfaces**, `.footer-strapline` and `.cg-cc a`~~ —
+  `.footer-strapline` now reads `--accent-on-dark` (added 2026-08-28). Only `.cg-cc a` in
+  `analytics.js` still carries the literal `#6cc18d`; pointing it at the token means
+  bumping `analytics.js?v=` on 34 pages for a no-op repaint, so it waits for the next
+  change to that file.
+
+### Decided 2026-08-28 during the footer run — needs Kofi to confirm or veto
+
+A single shared footer can only carry one of each string, so canonicalising forced four
+copy calls. Each is a one-line revert if wrong.
+
+- **We set the footer tagline to "AI compliance scoring for every regulated conversation."
+  everywhere, because** 27 of the 29 full-footer pages already said "regulated" and only
+  `index.html` and `404.html` said "customer". The homepage keeps its own "Every customer
+  conversation." in the `<h1>`, so the phrase is not lost from the page.
+- **We put "Smarter calls. Safer business." under the footer logo on every page, because**
+  `BRAND_GUIDELINES.md` calls it the *logo strapline* — it belongs to the lockup, and it
+  was previously on `index.html` only. Dropping it instead would have removed it from the
+  homepage, which is worse.
+- **We made the copyright line "© 2026 CallGuard AI Ltd. Company no. 17279006." site-wide,
+  because** the legal pages already carried the company number and the other 29 pages did
+  not. Companies Act disclosure belongs in the shared footer, not on four pages. Nothing
+  lost anywhere.
+- **We gave the four legal pages the full footer, because** they had no header navigation
+  either — a visitor arriving on `/privacy` from search could reach Home and three other
+  legal pages and nothing else. Side effect: those pages now carry "UK-based ·
+  GDPR-compliant by default", which is a claim and therefore **`claims-auditor`'s call,
+  not mine**. Flagged, not settled.
 
 ## What is already right — protect it
 

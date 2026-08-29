@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 <link rel="manifest" href="/site.webmanifest" />
 <link rel="preload" as="font" type="font/woff2" href="/fonts/InterVariable.woff2" crossorigin>
-<link rel="stylesheet" href="/style.css?v=15" />
+<link rel="stylesheet" href="/style.css?v=17" />
 
 <meta property="og:type" content="article" />
 <meta property="og:site_name" content="CallGuard AI" />
@@ -211,8 +211,8 @@
           <p>List pricing is opaque, contracts are typically multi-year and five-to-six-figure annual minima are normal. For teams who have not yet decided whether AI call QA is the right answer for them, that is a high commitment to make on day one.</p>
         </div>
         <div class="feature">
-          <h3>Pre-LLM scoring engine</h3>
-          <p>CallMiner's scoring core predates large language models. Their scoring is largely keyword categorisation, statistical models and tuned classifiers. Capable, but not the same as having Claude read the transcript and judge against your scorecard one criterion at a time with an evidence quote attached.</p>
+          <h3>Analytics heritage, LLM layer added later</h3>
+          <p>CallMiner built its category on keyterm libraries, acoustic features and tuned classifiers, and has since layered generative and agentic AI on top &mdash; AI Assist launched in October 2024. CallGuard AI was designed LLM-first: the scoring unit is a single criterion judged by Claude, with the transcript quote that decided it attached. Whether &ldquo;LLM-native&rdquo; or &ldquo;LLM-added&rdquo; matters to you is a fair question to put to both of us.</p>
         </div>
         <div class="feature">
           <h3>No per-tenant calibration loop</h3>
@@ -241,7 +241,7 @@
           </thead>
           <tbody>
             <tr><td>Time to first scored call</td><td>Months (services-led implementation)</td><td>Same-day onboarding</td></tr>
-            <tr><td>Scoring engine</td><td>Pre-LLM classifiers + categories</td><td>Claude with per-criterion evidence quotes</td></tr>
+            <tr><td>Scoring engine</td><td>Speech analytics core, generative AI layer from 2024</td><td>Claude with per-criterion evidence quotes</td></tr>
             <tr><td>Per-tenant AI learning</td><td>Analyst-driven configuration</td><td>Compliance corrections feed back automatically</td></tr>
             <tr><td>FCA Consumer Duty framing</td><td>Generic compliance, configurable</td><td>Native ICOBS 5 + four outcomes scorecards</td></tr>
             <tr><td>Live mid-call breach detection</td><td>Available, varies by deployment</td><td>30-second cadence, &gt;75% confidence threshold</td></tr>
@@ -251,6 +251,7 @@
           </tbody>
         </table>
       </div>
+      <p class="verified-note">Claims about CallMiner verified against their published materials on 28&nbsp;August&nbsp;2026. Vendors ship quickly &mdash; if anything here is out of date, <a href="mailto:hello@callguardai.co.uk">tell us</a> and we will correct it.</p>
     </div>
   </section>
 
@@ -308,27 +309,27 @@
 
 </main>
 
-<footer class="footer">
+<footer class="footer" role="contentinfo">
   <div class="container footer-inner">
     <div class="footer-brand">
       <a class="brand brand-footer" href="/" aria-label="CallGuard AI home"><img class="brand-logo brand-logo--footer" src="/brand/svg/callguard-logo-horizontal-dark.svg" alt="CallGuard AI" width="160" height="34" /></a>
+      <p class="footer-strapline">Smarter calls. Safer business.</p>
       <p class="footer-tag">AI compliance scoring for every regulated conversation.</p>
     </div>
-    <div class="footer-links">
+
+    <nav class="footer-links" aria-label="Footer">
       <div class="footer-col">
-        <h5>Product</h5>
+        <h2 class="footer-col-title">Product</h2>
         <a href="/#how-it-works">How it works</a>
         <a href="/#live">Live &amp; embedded</a>
         <a href="/#learning">AI learning</a>
         <a href="/#data-forms">Reconciliation</a>
         <a href="/pricing">Pricing</a>
-        <a href="/compare/">Compare</a>
-        <a href="/about">About</a>
         <a href="/#faq">FAQ</a>
-        <a href="/blog/">Blog</a>
+        <a href="/about">About CallGuard</a>
       </div>
       <div class="footer-col">
-        <h5>Use cases</h5>
+        <h2 class="footer-col-title">Use cases</h2>
         <a href="/use-cases/financial-services">Financial services</a>
         <a href="/use-cases/mortgage-advice">Mortgage advice</a>
         <a href="/use-cases/bpo">Contact centres &amp; BPOs</a>
@@ -336,23 +337,41 @@
         <a href="/use-cases/outbound-sales">Outbound sales</a>
       </div>
       <div class="footer-col">
-        <h5>Integrations</h5>
+        <h2 class="footer-col-title">Integrations</h2>
         <a href="/integrations/twilio">Twilio</a>
         <a href="/integrations/cloudtalk">CloudTalk</a>
         <a href="/integrations/microsoft-teams">Microsoft Teams</a>
         <a href="/integrations/aws-connect">AWS Connect</a>
       </div>
       <div class="footer-col">
-        <h5>Legal</h5>
+        <h2 class="footer-col-title">Compare</h2>
+        <a href="/compare/callminer-alternative">CallMiner alternative</a>
+        <a href="/compare/observe-ai-alternative">Observe.AI alternative</a>
+        <a href="/compare/convin-alternative">Convin alternative</a>
+        <a href="/compare/balto-alternative">Balto alternative</a>
+        <a href="/compare/aveni-alternative">Aveni alternative</a>
+        <a href="/compare/recordsure-alternative">Recordsure alternative</a>
+        <a href="/compare/">All comparisons</a>
+      </div>
+      <div class="footer-col">
+        <h2 class="footer-col-title">Resources</h2>
+        <a href="/blog/">Blog</a>
+        <a href="/templates/">Scorecard templates</a>
+        <a href="/templates/mcob-mortgage-scorecard">MCOB mortgage scorecard</a>
+        <a href="/templates/protection-consent-gate-checklist">Protection consent-gate checklist</a>
+      </div>
+      <div class="footer-col">
+        <h2 class="footer-col-title">Legal</h2>
         <a href="/privacy">Privacy policy</a>
         <a href="/terms">Terms of service</a>
-        <a href="/dpa">DPA</a>
+        <a href="/dpa">Data processing agreement</a>
         <a href="/sub-processors">Sub-processors</a>
       </div>
-    </div>
+    </nav>
   </div>
+
   <div class="container footer-bottom">
-    <span>© 2026 CallGuard AI.</span>
+    <span>© 2026 CallGuard AI Ltd. Company no. 17279006.</span>
     <span>UK-based · GDPR-compliant by default</span>
   </div>
 </footer>
