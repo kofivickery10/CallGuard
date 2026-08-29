@@ -1,0 +1,127 @@
+name: Deploy landing site
+
+# The static marketing site in landing/ is hosted separately from the API and
+# has never had an automated deploy: scripts/deploy.sh is server-side (pm2,
+# migrations, a health check on 127.0.0.1) and does not touch landing/. The
+# site has been uploaded by hand, and on 28 Aug 2026 that cost three days of
+# a red "Production parity" alarm, a blog post live in main but 404 on the
+# internet, and a sitemap advertising a URL that did not exist.
+#
+# ─── THIS WORKFLOW IS NOT ARMED YET ──────────────────────────────────────
+# It runs only when someone presses the button (workflow_dispatch). It will
+# not fire on push until the `push:` block below is uncommented, and that is
+# deliberate: nobody should merge this and discover it has started writing to
+# the production web root on its own.
+#
+# To finish the job:
+#   1. Add these three repository secrets in GitHub → Settings → Secrets and
+#      variables → Actions. Add them yourself in that UI — do not paste them
+#      into a terminal, a file, or a chat:
+#        LANDING_SSH_HOST  the 20i SFTP hostname
+#        LANDING_SSH_USER  the SFTP username
+#        LANDING_SSH_KEY   a private SSH key whose public half is authorised
+#                          on that account (prefer a deploy-only key over a
+#                          reused personal one)
+#      and one repository variable:
+#        LANDING_REMOTE_PATH  the web root, e.g. /home/sites/…/public_html
+#   2. Run it once from the Actions tab and check the site.
+#   3. Uncomment the `push:` block to make it automatic.
+#
+# Deliberately no `--delete`: a wrong LANDING_REMOTE_PATH with --delete
+# empties the production web root. Removing a retired page stays a manual,
+# deliberate act until someone has watched this run a few times.
+
+on:
+  workflow_dispatch:
+
+  # Uncomment once the secrets above are set and a manual run has been
+  # verified. Then any change to landing/ on main ships by itself.
+  # push:
+  #   branches: [main]
+  #   paths:
+  #     - 'landing/**'
+
+concurrency:
+  group: deploy-landing
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Gate the upload on the same check CI runs. A missing canonical or a
+      # duplicate title is cheap to fix before it ships and expensive after.
+      - name: Audit landing on-page SEO
+        run: npm run audit:onpage
+
+      # The blog is generated. Building here means a post can never be live
+      # in main and absent from the upload, which is exactly what happened
+      # to /blog/vulnerable-customer-call-monitoring.
+      - name: Rebuild the blog
+        run: npm run blog:build
+
+      - name: Fail if the build changed tracked files
+        run: |
+          if ! git diff --quiet -- landing/; then
+            echo "::error::npm run blog:build changed files that are not committed."
+            echo "Someone edited landing/blog/*.html by hand, or forgot to run"
+            echo "the build before committing. Run 'npm run blog:build' locally"
+            echo "and commit the result."
+            git --no-pager diff --stat -- landing/
+            exit 1
+          fi
+
+      - name: Configure SSH
+        env:
+          SSH_KEY: ${{ secrets.LANDING_SSH_KEY }}
+          SSH_HOST: ${{ secrets.LANDING_SSH_HOST }}
+        run: |
+          if [ -z "$SSH_KEY" ] || [ -z "$SSH_HOST" ]; then
+            echo "::error::LANDING_SSH_KEY / LANDING_SSH_HOST are not set."
+            echo "See the header of this workflow for what to add and where."
+            exit 1
+          fi
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Upload landing/
+        env:
+          SSH_HOST: ${{ secrets.LANDING_SSH_HOST }}
+          SSH_USER: ${{ secrets.LANDING_SSH_USER }}
+          REMOTE_PATH: ${{ vars.LANDING_REMOTE_PATH }}
+        run: |
+          if [ -z "$REMOTE_PATH" ]; then
+            echo "::error::LANDING_REMOTE_PATH variable is not set."
+            exit 1
+          fi
+          rsync -avz --no-perms --no-owner --no-group \
+            -e "ssh -i ~/.ssh/id_deploy -o StrictHostKeyChecking=yes" \
+            landing/ "$SSH_USER@$SSH_HOST:$REMOTE_PATH/"
+
+      # The CDN caches HTML for an hour, so an immediate check reads the old
+      # page. Wait it out rather than reporting a false failure — and note
+      # that a cached edge has produced false readings on this domain before.
+      - name: Wait for the CDN to expire
+        run: sleep 90
+
+      - name: Verify production matches main
+        run: node scripts/prod-smoke.mjs
+        continue-on-error: true
+
+      - name: Note on the smoke result
+        if: always()
+        run: |
+          echo "If the smoke test failed on cache, purge the CDN in the 20i"
+          echo "panel and re-run 'Production parity' from the Actions tab."

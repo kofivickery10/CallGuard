@@ -24,3 +24,11 @@ jobs:
 
       - name: Run tests
         run: npm test
+
+      # The landing site has no build step, so nothing else would catch a
+      # broken <head> before it reaches production. audit:onpage reads the
+      # files directly — no server needed — and exits non-zero only on
+      # ERROR-level findings (missing/duplicate title, bad canonical, an
+      # orphaned page). Length warnings do not fail the build.
+      - name: Audit landing on-page SEO
+        run: npm run audit:onpage

@@ -32,8 +32,13 @@ RewriteCond %{HTTP:X-Forwarded-Port} !=443
 RewriteRule ^ https://callguardai.co.uk%{REQUEST_URI} [L,R=301]
 
 # ─── Legacy URLs: /alternatives/* moved to /compare/* ────────────────────
-RewriteRule ^alternatives/callminer/?$ /compare/callminer-alternative [R=301,L]
-RewriteRule ^alternatives/observe-ai/?$ /compare/observe-ai-alternative [R=301,L]
+# Absolute https targets, for the same reason the .html rule below uses one:
+# behind the TLS-terminating CDN Apache never sees HTTPS, so a root-relative
+# target makes it rebuild the scheme as http:// — a 301 to plain HTTP that
+# then costs a second 301 to get back. Two hops and a downgrade, pointing at
+# two of the six compare pages that are already short of inbound links.
+RewriteRule ^alternatives/callminer/?$ https://callguardai.co.uk/compare/callminer-alternative [R=301,L]
+RewriteRule ^alternatives/observe-ai/?$ https://callguardai.co.uk/compare/observe-ai-alternative [R=301,L]
 
 # ─── Pretty URLs: /privacy -> /privacy.html ──────────────────────────────
 RewriteCond %{REQUEST_FILENAME} !-d
