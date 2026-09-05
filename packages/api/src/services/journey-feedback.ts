@@ -74,6 +74,75 @@ export async function resolveAdviser(journeyId: string): Promise<AdviserTarget> 
   return { userId: row.agent_id, name, email: row.user_email, problem: null };
 }
 
+export interface FeedbackRecipient {
+  id: string;
+  name: string;
+  email: string | null;
+  role: string;
+  /** False only when there is no address to deliver to. */
+  eligible: boolean;
+}
+
+/**
+ * Everyone in the organisation who could be fed back to.
+ *
+ * Deliberately not GET /api/agents, for two reasons. That router is
+ * requireAdmin (routes/agents.ts) while feeding back is requireActioner, so a
+ * supervisor — the person who actually sends feedback — cannot call it. And it
+ * returns per-adviser scores, pass rates and invite state, none of which a
+ * recipient picker has any business exposing.
+ *
+ * Advisers first, then by name: the answer is almost always an adviser, and the
+ * list should not make the supervisor hunt past three admins to find them.
+ *
+ * login_disabled is NOT filtered out. No-login advisers (061) are precisely who
+ * the tokenised confirmation link was built for — excluding them here would
+ * remove the people this feature exists to reach.
+ *
+ * Users with no address are returned rather than hidden, marked ineligible. A
+ * supervisor who cannot find someone in the list needs to be told why they are
+ * undeliverable, not left to conclude the person is gone.
+ */
+export async function resolveRecipients(organizationId: string): Promise<FeedbackRecipient[]> {
+  const rows = await query<{
+    id: string;
+    name: string;
+    email: string | null;
+    role: string;
+  }>(
+    `SELECT id, name, email, role
+       FROM users
+      WHERE organization_id = $1
+      ORDER BY (role = 'adviser') DESC, name`,
+    [organizationId]
+  );
+  return rows.map((r) => ({ ...r, eligible: r.email !== null && r.email !== '' }));
+}
+
+/**
+ * The recipient a supervisor explicitly chose.
+ *
+ * Scoped by organisation, not looked up by id alone: a user id from another
+ * tenant must not be feedable, and the check belongs here rather than trusting
+ * the route to have done it.
+ */
+export async function resolveChosenRecipient(
+  organizationId: string,
+  userId: string
+): Promise<AdviserTarget> {
+  const row = await queryOne<{ id: string; name: string; email: string | null }>(
+    'SELECT id, name, email FROM users WHERE id = $1 AND organization_id = $2',
+    [userId, organizationId]
+  );
+  if (!row) {
+    throw new Error('That person is no longer on this team, so the feedback was not sent.');
+  }
+  if (!row.email) {
+    return { userId: row.id, name: row.name, email: null, problem: 'no_email' };
+  }
+  return { userId: row.id, name: row.name, email: row.email, problem: null };
+}
+
 export interface FeedbackBreach {
   breach_id: string;
   scorecard_item_id: string;
@@ -137,6 +206,8 @@ export interface FeedbackRow {
   message: string | null;
   confirmed_at: string | null;
   token_expires_at: string;
+  recipient_source: RecipientSource;
+  suggested_adviser_user_id: string | null;
 }
 
 export async function latestFeedback(
@@ -145,7 +216,8 @@ export async function latestFeedback(
 ): Promise<FeedbackRow | null> {
   return queryOne<FeedbackRow>(
     `SELECT id, journey_id, adviser_user_id, adviser_name, adviser_email,
-            sent_by, sent_at, message, confirmed_at, token_expires_at
+            sent_by, sent_at, message, confirmed_at, token_expires_at,
+            recipient_source, suggested_adviser_user_id
        FROM journey_feedback
       WHERE organization_id = $1 AND journey_id = $2
       ORDER BY sent_at DESC LIMIT 1`,
@@ -153,10 +225,16 @@ export async function latestFeedback(
   );
 }
 
+/** Where the recipient came from. Widened, not replaced, if a CRM owner lands. */
+export type RecipientSource = 'default_last_caller' | 'manual';
+
 export interface SendResult {
   feedbackId: string;
   itemCount: number;
   adviser: AdviserTarget;
+  recipientSource: RecipientSource;
+  /** Who resolveAdviser would have picked — null when the sale is unattributed. */
+  suggestedAdviserUserId: string | null;
 }
 
 /**
@@ -173,15 +251,25 @@ export async function sendFeedback(input: {
   journeyId: string;
   sentBy: string;
   message: string | null;
+  /** A recipient the supervisor picked. Omitted means take the sale's own adviser. */
+  adviserUserId?: string | null;
 }): Promise<SendResult> {
-  const { organizationId, journeyId, sentBy, message } = input;
+  const { organizationId, journeyId, sentBy, message, adviserUserId } = input;
 
-  const adviser = await resolveAdviser(journeyId);
+  // Resolved on every send, chosen recipient or not: it is what
+  // suggested_adviser_user_id records, and an override is only evidence of
+  // anything if what was overridden is stored beside it.
+  const suggested = await resolveAdviser(journeyId);
+  const recipientSource: RecipientSource = adviserUserId ? 'manual' : 'default_last_caller';
+  const adviser = adviserUserId
+    ? await resolveChosenRecipient(organizationId, adviserUserId)
+    : suggested;
+
   if (!adviser.email) {
     throw new Error(
       adviser.problem === 'no_adviser'
-        ? 'This sale has no adviser attributed to it, so there is nobody to feed back to.'
-        : `${adviser.name} has no email address on their account, so the feedback cannot be delivered. Add one in Settings → Team first.`
+        ? 'This sale has no adviser attributed to it. Choose who to send the feedback to.'
+        : `${adviser.name} has no email address on their account, so the feedback cannot be delivered. Add one in Settings → Team first, or choose someone else.`
     );
   }
 
@@ -220,8 +308,9 @@ export async function sendFeedback(input: {
     const feedback = await tx.queryOne<{ id: string }>(
       `INSERT INTO journey_feedback
          (organization_id, journey_id, adviser_user_id, adviser_name, adviser_email,
-          sent_by, message, token_hash, token_expires_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+          sent_by, message, token_hash, token_expires_at,
+          recipient_source, suggested_adviser_user_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
        RETURNING id`,
       [
         organizationId,
@@ -233,6 +322,8 @@ export async function sendFeedback(input: {
         message,
         hashFeedbackToken(raw),
         expiresAt.toISOString(),
+        recipientSource,
+        suggested.userId,
       ]
     );
     const id = feedback!.id;
@@ -266,7 +357,13 @@ export async function sendFeedback(input: {
     items: breaches.map((b) => ({ label: b.item_label, severity: b.severity })),
   });
 
-  return { feedbackId, itemCount: breaches.length, adviser };
+  return {
+    feedbackId,
+    itemCount: breaches.length,
+    adviser,
+    recipientSource,
+    suggestedAdviserUserId: suggested.userId,
+  };
 }
 
 export interface ConfirmResult {

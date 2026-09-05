@@ -1,6 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { hashFeedbackToken, lookupFeedback } from './journey-feedback.js';
-import { query, queryOne } from '../db/client.js';
+import {
+  hashFeedbackToken,
+  lookupFeedback,
+  resolveRecipients,
+  resolveChosenRecipient,
+  sendFeedback,
+} from './journey-feedback.js';
+import { query, queryOne, withTransaction } from '../db/client.js';
 
 // The confirmation endpoint is unauthenticated by necessity — a no-login adviser
 // has no session to present — so the token IS the credential. These cover the
@@ -16,6 +22,15 @@ vi.mock('../db/client.js', () => ({
   queryOne: vi.fn(),
   withTransaction: vi.fn(),
 }));
+
+// sendFeedback refuses outright without an API key — deliberately, so a record
+// never claims a send that could not happen. Supplied here so the recipient
+// tests exercise the write path rather than that guard.
+vi.mock('../config.js', () => ({
+  config: { resend: { apiKey: 'test-key' }, appUrl: 'https://app.test' },
+}));
+
+vi.mock('../jobs/queue.js', () => ({ alertsQueue: { add: vi.fn() } }));
 
 describe('hashFeedbackToken', () => {
   it('is deterministic, so a link confirms against the row it was issued for', () => {
@@ -108,5 +123,243 @@ describe('lookupFeedback', () => {
     // The point of the whole split: a GET-driven lookup must never write —
     // no UPDATE on journey_feedback, no breach_events insert.
     expect(query).not.toHaveBeenCalled();
+  });
+});
+
+// ============================================================
+// CG-5 — choosing the recipient.
+//
+// The default (the sale's closing adviser) is right almost every time, and
+// wrong occasionally, which is the dangerous shape: feedback that reaches the
+// wrong adviser and is confirmed by them sets confirmed_at on a record that
+// proves nothing while still looking complete. These pin the properties that
+// stop that — tenant scoping on a chosen recipient, refusal rather than a
+// silent misdelivery, and the override being recorded as an override.
+// ============================================================
+
+describe('resolveRecipients', () => {
+  beforeEach(() => {
+    vi.mocked(query).mockReset();
+    vi.mocked(queryOne).mockReset();
+  });
+
+  it('marks a user with no address ineligible rather than dropping them', async () => {
+    vi.mocked(query).mockResolvedValueOnce([
+      { id: 'u-1', name: 'Jo Adviser', email: 'jo@example.com', role: 'adviser' },
+      { id: 'u-2', name: 'Sam No-Login', email: null, role: 'adviser' },
+    ]);
+
+    const rows = await resolveRecipients('org-1');
+
+    // Listed, not hidden: a supervisor who cannot find someone needs to be told
+    // they are undeliverable, not left to conclude they have left the firm.
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toMatchObject({ id: 'u-1', eligible: true });
+    expect(rows[1]).toMatchObject({ id: 'u-2', eligible: false });
+  });
+
+  it('treats an empty-string address as undeliverable', async () => {
+    vi.mocked(query).mockResolvedValueOnce([
+      { id: 'u-3', name: 'Blank', email: '', role: 'adviser' },
+    ]);
+
+    expect((await resolveRecipients('org-1'))[0].eligible).toBe(false);
+  });
+
+  it('scopes to the organisation and does not exclude no-login advisers', async () => {
+    vi.mocked(query).mockResolvedValueOnce([]);
+
+    await resolveRecipients('org-1');
+
+    const [sql, params] = vi.mocked(query).mock.calls[0];
+    expect(sql).toContain('organization_id = $1');
+    expect(params).toEqual(['org-1']);
+    // 061 no-login advisers are exactly who the tokenised link exists for.
+    // Filtering them out here would remove the people this feature is for.
+    expect(sql).not.toContain('login_disabled');
+  });
+});
+
+describe('resolveChosenRecipient', () => {
+  beforeEach(() => {
+    vi.mocked(query).mockReset();
+    vi.mocked(queryOne).mockReset();
+  });
+
+  it('looks the user up scoped by organisation, not by id alone', async () => {
+    vi.mocked(queryOne).mockResolvedValueOnce({
+      id: 'u-1',
+      name: 'Jo Adviser',
+      email: 'jo@example.com',
+    });
+
+    const target = await resolveChosenRecipient('org-1', 'u-1');
+
+    const [sql, params] = vi.mocked(queryOne).mock.calls[0];
+    expect(sql).toContain('organization_id = $2');
+    expect(params).toEqual(['u-1', 'org-1']);
+    expect(target).toEqual({
+      userId: 'u-1',
+      name: 'Jo Adviser',
+      email: 'jo@example.com',
+      problem: null,
+    });
+  });
+
+  it('refuses a user id that is not in the organisation', async () => {
+    // The org-scoped lookup returns nothing for another tenant's user, so a
+    // guessed or stale id cannot be fed back to.
+    vi.mocked(queryOne).mockResolvedValueOnce(null);
+
+    await expect(resolveChosenRecipient('org-1', 'u-other-tenant')).rejects.toThrow(
+      /no longer on this team/
+    );
+  });
+
+  it('reports a chosen recipient with no address rather than returning them as sendable', async () => {
+    vi.mocked(queryOne).mockResolvedValueOnce({ id: 'u-2', name: 'Sam', email: null });
+
+    expect(await resolveChosenRecipient('org-1', 'u-2')).toEqual({
+      userId: 'u-2',
+      name: 'Sam',
+      email: null,
+      problem: 'no_email',
+    });
+  });
+});
+
+describe('sendFeedback — what gets recorded about the recipient', () => {
+  // sendFeedback is otherwise DB-bound, but the columns it writes are the whole
+  // audit-trail claim of CG-5, so the INSERT parameters are worth pinning.
+  async function capturedInsert(): Promise<unknown[]> {
+    const call = vi
+      .mocked(withTransaction)
+      .mock.calls[0][0] as (tx: {
+        query: (sql: string, params?: unknown[]) => Promise<unknown[]>;
+        queryOne: (sql: string, params?: unknown[]) => Promise<unknown>;
+      }) => Promise<string>;
+
+    let insertParams: unknown[] = [];
+    await call({
+      query: async () => [],
+      queryOne: async (sql: string, params?: unknown[]) => {
+        if (sql.includes('INSERT INTO journey_feedback')) insertParams = params ?? [];
+        return { id: 'fb-new' };
+      },
+    });
+    return insertParams;
+  }
+
+  beforeEach(() => {
+    vi.mocked(query).mockReset();
+    vi.mocked(queryOne).mockReset();
+    vi.mocked(withTransaction).mockReset();
+    vi.mocked(withTransaction).mockResolvedValue('fb-new');
+  });
+
+  it('records a default send as the default, with the adviser it derived', async () => {
+    // resolveAdviser's row, then breachesForFeedback.
+    vi.mocked(queryOne).mockResolvedValueOnce({
+      agent_id: 'u-1',
+      agent_name: 'Jo Adviser',
+      user_email: 'jo@example.com',
+      user_name: 'Jo Adviser',
+    });
+    vi.mocked(query).mockResolvedValueOnce([]);
+
+    const result = await sendFeedback({
+      organizationId: 'org-1',
+      journeyId: 'j-1',
+      sentBy: 'u-sup',
+      message: null,
+    });
+
+    expect(result.recipientSource).toBe('default_last_caller');
+    expect(result.suggestedAdviserUserId).toBe('u-1');
+
+    const params = await capturedInsert();
+    // adviser_user_id ($3) and suggested_adviser_user_id ($11) agree: nobody
+    // overrode anything.
+    expect(params[2]).toBe('u-1');
+    expect(params[9]).toBe('default_last_caller');
+    expect(params[10]).toBe('u-1');
+  });
+
+  it('records a chosen recipient as an override, keeping who it would have gone to', async () => {
+    vi.mocked(queryOne)
+      // resolveAdviser — the last caller.
+      .mockResolvedValueOnce({
+        agent_id: 'u-1',
+        agent_name: 'Jo Adviser',
+        user_email: 'jo@example.com',
+        user_name: 'Jo Adviser',
+      })
+      // resolveChosenRecipient — the person the supervisor actually picked.
+      .mockResolvedValueOnce({ id: 'u-2', name: 'Dana Seller', email: 'dana@example.com' });
+    vi.mocked(query).mockResolvedValueOnce([]);
+
+    const result = await sendFeedback({
+      organizationId: 'org-1',
+      journeyId: 'j-1',
+      sentBy: 'u-sup',
+      message: null,
+      adviserUserId: 'u-2',
+    });
+
+    expect(result.recipientSource).toBe('manual');
+    expect(result.adviser.userId).toBe('u-2');
+    // The override is only evidence of anything if what was overridden is
+    // stored beside it.
+    expect(result.suggestedAdviserUserId).toBe('u-1');
+
+    const params = await capturedInsert();
+    expect(params[2]).toBe('u-2');
+    expect(params[4]).toBe('dana@example.com');
+    expect(params[9]).toBe('manual');
+    expect(params[10]).toBe('u-1');
+  });
+
+  it('lets an unattributed sale be sent to a chosen recipient, with no suggestion recorded', async () => {
+    // No calls attributed to anyone — the case that used to be a dead end.
+    vi.mocked(queryOne)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: 'u-2', name: 'Dana Seller', email: 'dana@example.com' });
+    vi.mocked(query).mockResolvedValueOnce([]);
+
+    const result = await sendFeedback({
+      organizationId: 'org-1',
+      journeyId: 'j-1',
+      sentBy: 'u-sup',
+      message: null,
+      adviserUserId: 'u-2',
+    });
+
+    expect(result.recipientSource).toBe('manual');
+    expect(result.suggestedAdviserUserId).toBeNull();
+    expect((await capturedInsert())[10]).toBeNull();
+  });
+
+  it('refuses a chosen recipient with no address before writing anything', async () => {
+    vi.mocked(queryOne)
+      .mockResolvedValueOnce({
+        agent_id: 'u-1',
+        agent_name: 'Jo Adviser',
+        user_email: 'jo@example.com',
+        user_name: 'Jo Adviser',
+      })
+      .mockResolvedValueOnce({ id: 'u-3', name: 'Sam No-Email', email: null });
+
+    await expect(
+      sendFeedback({
+        organizationId: 'org-1',
+        journeyId: 'j-1',
+        sentBy: 'u-sup',
+        message: null,
+        adviserUserId: 'u-3',
+      })
+    ).rejects.toThrow(/no email address/);
+
+    // A feedback record nobody received is worse than none.
+    expect(withTransaction).not.toHaveBeenCalled();
   });
 });
