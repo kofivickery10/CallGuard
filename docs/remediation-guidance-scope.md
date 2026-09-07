@@ -1,7 +1,7 @@
 # Remediation guidance per finding
 
 **Status:** scope and estimate, not approved
-**Date:** 7 September 2026
+**Date:** 7 September 2026 (estimate revised the same day — see §5)
 **Task:** CG-6 (Dev) — raised by Trust Point, Joey Crone, 26 August 2026
 **Scope:** attaching firm-authored remediation guidance to a scorecard criterion,
 putting it in front of the adviser, and capturing what they did about it.
@@ -74,6 +74,16 @@ hashed single-use time-bound token, an unauthenticated confirm page, and
 history. Remediation is the next link on a chain that is already four links long,
 not a new subsystem.
 
+**And since 7 September it carries real content** (CG-10, migration
+`110_journey_feedback_snapshot.sql`). The email now states the score, the
+pass/fail verdict, the client's name and the model's reason under each finding,
+and `buildFeedbackSend` returns the email payload and the audit snapshot from one
+computation so the record cannot drift from the email it is a record of. Two
+things follow for this scope, and both make it cheaper: the per-finding block in
+the email template already exists, so guidance is one more line in it rather than
+a redesign; and 110 has already set the precedent for how a new travelling field
+is recorded — see §4.3.
+
 **`journey_feedback_items` is the right place to hang an outcome.** It is already
 keyed `(feedback_id, scorecard_item_id)` and deliberately *copies* `item_label`
 and `severity` rather than joining them, so that a re-score cannot retroactively
@@ -108,9 +118,10 @@ And `routes/breaches.ts` already ages open findings with
 `EXTRACT(EPOCH FROM (now() - b.detected_at)) / 86400`, which is exactly the
 arithmetic the "aged open remediations" report needs.
 
-**What does not exist:** any concept of an outcome, any adviser-facing write
-other than the single confirm click, and any surface where an adviser sees *what
-a finding was about*. That last one matters — see §4.3.
+**What does not exist:** any concept of an outcome, and any adviser-facing write
+other than the single confirm click. The adviser can now read what a finding was
+about — but only in the email. `FeedbackConfirm.tsx` was untouched by CG-10 and
+is still a single button, which is where §4.3 starts.
 
 ---
 
@@ -134,10 +145,12 @@ CSV import column.
 
 ### 4.2 Surfaced in the email, and in the platform before it is sent
 
-`jobs/processors/feedback-email.ts` today renders each finding as label plus a
-severity chip. It gains the guidance line underneath the label, for the findings
-that have one. `services/journey-feedback.ts` already assembles the items payload
-in `breachesForFeedback` — it carries one more column.
+`jobs/processors/feedback-email.ts` renders each finding as label, severity and —
+since CG-10 — the model's reason beneath it. Guidance is a second line in that
+same block, distinguished from the reason because it says something different:
+the reason is why this was flagged, the guidance is what to do about it. The
+items payload is assembled by `buildFeedbackSend` in
+`services/journey-feedback.ts`, which carries one more column.
 
 The same guidance appears in the platform, on the feedback panel a supervisor
 already reviews before sending (`packages/web/src/components/FeedbackPanel.tsx`,
@@ -178,8 +191,24 @@ constraint here rather than a formality; see the open questions.
 `remediation_note`, `remediated_at`, `remediated_by`) rather than a new table.
 That row is already the durable per-finding identity and already survives
 re-scores. History does not need a second table either — `breach_events` is
-already the per-finding history and already had its event-type constraint
-widened once by migration 087, which is the precedent to follow.
+already the per-finding history and had its event-type constraint widened once by
+087 and its columns widened again by 110, which is the precedent to follow twice
+over.
+
+**The guidance that travelled must be snapshotted too**, for exactly the reason
+110 snapshots `reasoning`: guidance is authored on `scorecard_items` and can be
+edited afterwards, so a live join would silently rewrite what an adviser was told
+to do. It also inherits 110's three-state discipline — text sent, no text to
+send, and text deliberately withheld are three different facts and a single
+nullable column collapses them into one.
+
+**CG-10 left a gap here that Phase 2 is the natural close for.** On a tenant that
+keeps health unredacted, reasoning is deliberately kept out of the email (DPIA
+R5) and the email tells the adviser the detail is in CallGuard instead. For an
+adviser with no login, that sentence currently points nowhere. The tokenised page
+is a surface inside CallGuard that needs no account, so it is where that detail
+can legitimately land — which turns Phase 2 from a convenience into the answer to
+a live problem.
 
 **Privacy.** The confirm page deliberately reveals nothing beyond the adviser's
 own name and a count — not the sale, not the customer, not what any finding is
@@ -216,22 +245,35 @@ yet closed.
 ## 5. Phasing and estimate
 
 Each phase is independently shippable and independently useful. Estimates are
-dev-weeks including tests, and assume the existing patterns hold.
+dev-weeks including tests.
 
-| Phase | What ships | Estimate |
-|---|---|---|
-| **1** | Guidance on the criterion; guidance in the feedback email | **1 week** |
-| **2** | Outcome capture on the tokenised adviser page | **2–2.5 weeks** |
-| **3** | Audit trail, claims-defence pack, board pack | **1 week** |
-| **4** | Open-remediations reporting, aged, by adviser | **1–1.5 weeks** |
-| | **Total** | **5–7 weeks** |
+Revised 7 September, after CG-10 shipped. The original figures assumed the
+feedback email still had to be restructured to carry per-finding content; it does
+not, and migration 110 has also settled how a travelling field is snapshotted.
+That work is now sunk, so Phases 1 and 3 come down. Phase 2 goes up for a reason
+worth reading rather than a padding factor — see below.
 
-Phase 2 dominates because the confirm page currently shows the adviser nothing
-about the findings themselves — it is a single button. Turning it into a
-per-finding list with guidance, an outcome control, a note field and a
-post-confirmation return path is close to a rewrite of that page, and it is the
-one surface in the product that must work for someone with no account, possibly
-on a phone, possibly weeks after the email arrived.
+| Phase | What ships | Estimate | vs. original |
+|---|---|---|---|
+| **1** | Guidance on the criterion; guidance in the feedback email | **0.5–1 week** | ↓ CG-10 built the per-finding block |
+| **2** | Outcome capture on the tokenised adviser page | **2.5–3 weeks** | ↑ must now handle withheld reasoning |
+| **3** | Audit trail, claims-defence pack, board pack | **0.5–1 week** | ↓ 110 set the snapshot pattern |
+| **4** | Open-remediations reporting, aged, by adviser | **1–1.5 weeks** | — unchanged, pending CG-11 |
+| | **Total** | **4.5–6.5 weeks** | ↓ from 5–7 |
+
+Phase 2 still dominates, and it grew. The confirm page was untouched by CG-10 and
+is still a single button, so turning it into a per-finding list with guidance, an
+outcome control, a note field and a post-confirmation return path remains close
+to a rewrite — of the one surface in the product that must work for someone with
+no account, possibly on a phone, possibly weeks after the email arrived. It now
+also has to render coherently on a tenant whose reasoning was withheld from the
+email, which is more than a conditional: it is the page where that detail is
+supposed to be, so getting it wrong there leaves the adviser with nowhere to go.
+
+**Phase 4 is still costed standalone.** CG-11 builds the same view for feedback
+status — three states, filters, and the age of the oldest unacknowledged item. If
+it lands first, Phase 4 is a fourth state on an existing screen and should come
+in well under this figure. It has not landed, so the estimate does not assume it.
 
 An optional Phase 5 — supervisor sign-off on outcomes, chase reminders for
 overdue remediations — is roughly a further week, and §6 argues part of it may
