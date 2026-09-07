@@ -53,6 +53,38 @@ export async function organisationKeepsUnredacted(organizationId: string): Promi
   return (row?.categories?.length ?? 0) > 0;
 }
 
+/**
+ * Does this organisation keep HEALTH (phi) in the clear?
+ *
+ * Narrower than organisationKeepsUnredacted, deliberately. That one gates a
+ * transcript view inside the platform, where any permitted category is more than
+ * the viewer should get. This gates what LEAVES the platform by email, where the
+ * recipient is the adviser who was on the call and already heard it — so the risk
+ * is the channel, not the audience.
+ *
+ * Drawn on the Article 9 line that migration 079 exists to draw. That migration
+ * replaced a single exemption flag precisely because one flag "made the easier
+ * half of the feature wait on the harder half's paperwork", and re-merging
+ * identity into health here would undo it. It would also be incoherent: the
+ * feedback email names the client in its body by design, so withholding the
+ * model's sentence on the grounds it might contain a name protects nothing.
+ *
+ * DPIA R5 (docs/dpia-data-forms-reconciliation.md): "email is not an appropriate
+ * channel for health data... payloads must carry the question, the fact of a
+ * discrepancy, and a link back into CallGuard, never the answer content." Its
+ * residual rating is conditional on that control being implemented AND covered
+ * by test, so the caller has a test naming R5.
+ */
+export async function organisationKeepsHealthUnredacted(
+  organizationId: string
+): Promise<boolean> {
+  const row = await queryOne<{ categories: string[] | null }>(
+    'SELECT pii_unredacted_categories AS categories FROM organizations WHERE id = $1',
+    [organizationId]
+  );
+  return (row?.categories ?? []).includes('phi');
+}
+
 export interface TranscriptAccess {
   /** May this user be sent transcript content for this organisation? */
   readable: boolean;

@@ -14,6 +14,7 @@ import {
   confirmFeedback,
   hashFeedbackToken,
 } from '../services/journey-feedback.js';
+import { organisationKeepsHealthUnredacted } from '../services/transcript-access.js';
 
 // ============================================================
 // Sale-level adviser feedback.
@@ -58,12 +59,29 @@ feedbackRouter.get('/journeys/:journeyId/feedback', authenticate, requireActione
     );
     if (!journey) throw new AppError(404, 'Sale not found');
 
-    const [adviser, breaches, openReviews, existing] = await Promise.all([
+    const [adviser, breaches, openReviews, existing, keepsHealthUnredacted] = await Promise.all([
       resolveAdviser(journeyId),
       breachesForFeedback(organizationId, journeyId),
       openReviewCount(journeyId),
       latestFeedback(organizationId, journeyId),
+      organisationKeepsHealthUnredacted(organizationId),
     ]);
+
+    // Named client, and whether the reasons will travel. The supervisor is
+    // authorising a client's name to leave the platform next to compliance
+    // findings, and until now they could see neither — only labels and
+    // severities. A supervisor who believes the reasons went and finds they did
+    // not has been misled by their own send button.
+    //
+    // The reasons themselves are still NOT returned here. This says what will
+    // happen, not what it will say; a rendered preview is its own change.
+    const sale = await queryOne<{ client_name: string | null; customer_name: string | null }>(
+      `SELECT j.client_name, cust.name AS customer_name
+         FROM journeys j
+         LEFT JOIN customers cust ON cust.id = j.customer_id
+        WHERE j.id = $1 AND j.organization_id = $2`,
+      [journeyId, organizationId]
+    );
 
     res.json({
       adviser: { name: adviser.name, email: adviser.email, problem: adviser.problem },
@@ -71,6 +89,8 @@ feedbackRouter.get('/journeys/:journeyId/feedback', authenticate, requireActione
       breaches: breaches.map((b) => ({ label: b.item_label, severity: b.severity })),
       open_reviews: openReviews,
       feedback: existing,
+      client_name: sale?.client_name?.trim() || sale?.customer_name?.trim() || null,
+      reasoning_included: !keepsHealthUnredacted && breaches.some((b) => !!b.reasoning),
     });
   } catch (err) {
     next(err);
