@@ -28,6 +28,10 @@ interface FeedbackState {
   breach_count: number;
   breaches: Array<{ label: string; severity: string }>;
   open_reviews: number;
+  /** The sale as it will be named in the email, or null where it has no name. */
+  client_name: string | null;
+  /** Whether the AI's reason travels with each finding, or stays behind the link. */
+  reasoning_included: boolean;
   feedback: {
     id: string;
     adviser_name: string;
@@ -387,6 +391,28 @@ export function FeedbackPanel({
                 </span>
               ))}
             </div>
+          )}
+
+          {/* What the supervisor is actually authorising. They are sending a
+              client's name out of the platform next to compliance findings, and
+              on a tenant that keeps health unredacted the AI's reasons stay
+              behind the link — which they would otherwise have no way of
+              knowing, having pressed a button labelled "Send". */}
+          {data.breach_count > 0 && (
+            <p className="text-table-cell text-text-secondary mt-2.5">
+              {data.client_name ? (
+                <>
+                  The email names{' '}
+                  <span className="text-text-primary font-medium">{data.client_name}</span> and
+                  lists the findings above
+                </>
+              ) : (
+                <>The email lists the findings above</>
+              )}
+              {data.reasoning_included
+                ? ", with the AI's reason under each one."
+                : '. The reasons stay behind the link, because your firm keeps health disclosures unredacted.'}
+            </p>
           )}
 
           {/* Visible, never blocking: the supervisor may have good reason, but

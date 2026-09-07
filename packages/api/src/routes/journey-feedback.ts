@@ -15,6 +15,7 @@ import {
   confirmFeedback,
   hashFeedbackToken,
 } from '../services/journey-feedback.js';
+import { organisationKeepsHealthUnredacted } from '../services/transcript-access.js';
 
 // ============================================================
 // Sale-level adviser feedback.
@@ -59,16 +60,33 @@ feedbackRouter.get('/journeys/:journeyId/feedback', authenticate, requireActione
     );
     if (!journey) throw new AppError(404, 'Sale not found');
 
-    const [adviser, breaches, openReviews, existing, recipients] = await Promise.all([
-      resolveAdviser(journeyId),
-      breachesForFeedback(organizationId, journeyId),
-      openReviewCount(journeyId),
-      latestFeedback(organizationId, journeyId),
-      // Sent with the panel rather than fetched when the picker opens: it is a
-      // handful of rows for a brokerage this size, and one request keeps the
-      // suggested adviser and the list they are chosen from consistent.
-      resolveRecipients(organizationId),
-    ]);
+    const [adviser, breaches, openReviews, existing, recipients, keepsHealthUnredacted, sale] =
+      await Promise.all([
+        resolveAdviser(journeyId),
+        breachesForFeedback(organizationId, journeyId),
+        openReviewCount(journeyId),
+        latestFeedback(organizationId, journeyId),
+        // Sent with the panel rather than fetched when the picker opens: it is a
+        // handful of rows for a brokerage this size, and one request keeps the
+        // suggested adviser and the list they are chosen from consistent.
+        resolveRecipients(organizationId),
+        organisationKeepsHealthUnredacted(organizationId),
+        // Named client, and whether the reasons will travel. The supervisor is
+        // authorising a client's name to leave the platform next to compliance
+        // findings, and until now they could see neither — only labels and
+        // severities. A supervisor who believes the reasons went and finds they did
+        // not has been misled by their own send button.
+        //
+        // The reasons themselves are still NOT returned here. This says what will
+        // happen, not what it will say; a rendered preview is its own change.
+        queryOne<{ client_name: string | null; customer_name: string | null }>(
+          `SELECT j.client_name, cust.name AS customer_name
+             FROM journeys j
+             LEFT JOIN customers cust ON cust.id = j.customer_id
+            WHERE j.id = $1 AND j.organization_id = $2`,
+          [journeyId, organizationId]
+        ),
+      ]);
 
     res.json({
       adviser: {
@@ -82,6 +100,8 @@ feedbackRouter.get('/journeys/:journeyId/feedback', authenticate, requireActione
       open_reviews: openReviews,
       feedback: existing,
       recipients,
+      client_name: sale?.client_name?.trim() || sale?.customer_name?.trim() || null,
+      reasoning_included: !keepsHealthUnredacted && breaches.some((b) => !!b.reasoning),
     });
   } catch (err) {
     next(err);

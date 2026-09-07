@@ -2,6 +2,9 @@ import crypto from 'crypto';
 import { query, queryOne, withTransaction } from '../db/client.js';
 import { config } from '../config.js';
 import { alertsQueue } from '../jobs/queue.js';
+import type { FeedbackEmailJob } from '../jobs/processors/feedback-email.js';
+import { organisationKeepsHealthUnredacted } from './transcript-access.js';
+import { orgHasFeature } from './tenant-settings.js';
 
 // ============================================================
 // Feeding a reviewed sale back to the adviser, and recording that they saw it.
@@ -149,6 +152,17 @@ export interface FeedbackBreach {
   item_label: string;
   severity: string;
   status: string;
+  // Why the checkpoint was not met, as the model put it — the coaching line the
+  // adviser needs to act on the email without signing in.
+  //
+  // `reasoning` and NOT `evidence`, deliberately. Evidence is verbatim customer
+  // speech: across the corpus it averages 163 characters and 622 rows of it
+  // carry source-redaction tags, because it is transcript. Reasoning is the
+  // model's own sentence about the adviser's conduct, averages 92 characters,
+  // and carries a tag in 13 rows. Email is an insecure, persistent channel
+  // outside the platform, so the quoted call goes behind the link and only the
+  // finding travels.
+  reasoning: string | null;
 }
 
 /**
@@ -165,9 +179,12 @@ export async function breachesForFeedback(
 ): Promise<FeedbackBreach[]> {
   return query<FeedbackBreach>(
     `SELECT b.id AS breach_id, b.scorecard_item_id, si.label AS item_label,
-            b.severity, b.status
+            b.severity, b.status, jis.reasoning
        FROM breaches b
        JOIN scorecard_items si ON si.id = b.scorecard_item_id
+       -- LEFT: a breach raised against a per-call score has no journey item
+       -- score, and one missing reason must not drop the whole finding.
+       LEFT JOIN journey_item_scores jis ON jis.id = b.journey_item_score_id
       WHERE b.organization_id = $1
         AND b.journey_id = $2
         AND b.status NOT IN ('resolved', 'noted')
@@ -240,13 +257,128 @@ export interface SendResult {
 }
 
 /**
+ * Everything one send produces: the email payload, and the audit rows that have
+ * to agree with it.
+ *
+ * Returned together, from one computation, deliberately. The snapshot's whole
+ * value is that it records what the adviser was actually told — so it must be
+ * written FROM the payload that was built, never recomputed alongside it. Two
+ * derivations of the same policy can drift, and the moment they do the record
+ * stops being evidence of anything.
+ */
+export interface FeedbackSend {
+  payload: FeedbackEmailJob;
+  snapshot: {
+    clientName: string | null;
+    score: number | null;
+    pass: boolean | null;
+    reasoningWithheld: boolean;
+    items: Array<{
+      scorecardItemId: string;
+      itemLabel: string;
+      severity: string;
+      breachId: string;
+      /** Exactly what travelled. Null where nothing did — see migration 110. */
+      reasoning: string | null;
+    }>;
+  };
+}
+
+/**
+ * Decide what leaves the platform, and record the same decision.
+ *
+ * Pure, so both policy gates can be tested without a database or a queue.
+ *
+ * `includeReasoning` false means the tenant keeps health unredacted, so the
+ * model's sentence may quote a health disclosure in the clear (DPIA R5). The key
+ * is OMITTED rather than nulled: the payload persists in Redis, and a field that
+ * is not there cannot be read out of a completed job.
+ *
+ * `includeVerdict` false is score_only, given the same treatment for the reason
+ * routes/share.ts states — withholding a value from the display while shipping
+ * it in the payload withholds nothing.
+ */
+export function buildFeedbackSend(input: {
+  adviserEmail: string;
+  adviserName: string;
+  confirmUrl: string;
+  message: string | null;
+  clientName: string | null;
+  score: number | null;
+  pass: boolean | null;
+  breaches: FeedbackBreach[];
+  includeReasoning: boolean;
+  includeVerdict: boolean;
+}): FeedbackSend {
+  const {
+    adviserEmail,
+    adviserName,
+    confirmUrl,
+    message,
+    clientName,
+    score,
+    pass,
+    breaches,
+    includeReasoning,
+    includeVerdict,
+  } = input;
+
+  // "Withheld" is an assertion about something that existed. A sale whose
+  // findings carry no reasoning at all has had nothing withheld from it, and
+  // saying otherwise would make the record claim a suppression that never
+  // happened.
+  const reasoningWithheld = !includeReasoning && breaches.some((b) => !!b.reasoning);
+
+  const items = breaches.map((b) => {
+    const sent = includeReasoning ? b.reasoning : null;
+    return sent
+      ? { label: b.item_label, severity: b.severity, reasoning: sent }
+      : { label: b.item_label, severity: b.severity };
+  });
+
+  const payload: FeedbackEmailJob = {
+    to: adviserEmail,
+    adviserName,
+    confirmUrl,
+    message,
+    clientName,
+    score,
+    items,
+    // Tells the template to point the adviser at the platform for the detail
+    // rather than silently dropping it, which would leave a shorter email that
+    // still looked complete. Carries no content of its own.
+    ...(reasoningWithheld ? { reasoningWithheld: true } : {}),
+    ...(includeVerdict ? { pass } : {}),
+  };
+
+  return {
+    payload,
+    snapshot: {
+      clientName,
+      score,
+      // Not asserted under score_only, so the record says nothing rather than
+      // holding a verdict the adviser was never shown.
+      pass: includeVerdict ? pass : null,
+      reasoningWithheld,
+      items: breaches.map((b, i) => ({
+        scorecardItemId: b.scorecard_item_id,
+        itemLabel: b.item_label,
+        severity: b.severity,
+        breachId: b.breach_id,
+        reasoning: items[i].reasoning ?? null,
+      })),
+    },
+  };
+}
+
+/**
  * Record the feedback, snapshot what it covered, and email the adviser a
  * one-click confirmation link.
  *
  * The snapshot is the point. A record saying only "this sale was fed back" is
  * misleading the moment the sale is re-scored and its breach set changes — it
  * would imply the adviser was told about findings that did not exist when the
- * email went out. See migration 087.
+ * email went out. See migrations 087 and 110.
  */
 export async function sendFeedback(input: {
   organizationId: string;
@@ -300,8 +432,58 @@ export async function sendFeedback(input: {
 
   const breaches = await breachesForFeedback(organizationId, journeyId);
 
+  // EVERY read the email needs happens HERE, before the transaction, and never
+  // after it. A read that fails after the commit leaves journey_feedback and a
+  // breach_events 'feedback_sent' row per breach asserting the adviser was told
+  // about findings nobody sent — the exact state the two guards above exist to
+  // prevent. Keeping these reads out of the transaction (which must stay short)
+  // never required running them after it.
+  //
+  // customers.name is the fallback because journeys.client_name is null on every
+  // sale pushed before the CRM backfill. score-journey and score-writeback both
+  // already resolve the name this way; a third reader with its own rule is how a
+  // sale ends up named in the CRM and unnamed in the email.
+  const sale = await queryOne<{
+    client_name: string | null;
+    customer_name: string | null;
+    overall_score: string | null;
+    pass: boolean | null;
+  }>(
+    `SELECT j.client_name, j.overall_score, j.pass, cust.name AS customer_name
+       FROM journeys j
+       LEFT JOIN customers cust ON cust.id = j.customer_id
+      WHERE j.id = $1 AND j.organization_id = $2`,
+    [journeyId, organizationId]
+  );
+
+  // Trimmed: a whitespace-only CRM field is truthy enough to suppress the
+  // "Reviewed sale" fallback while rendering as an empty name.
+  const clientName = sale?.client_name?.trim() || sale?.customer_name?.trim() || null;
+
+  // NUMERIC(5,2) arrives from pg as a string. Coerced once, here, so the
+  // template's NaN guard is checking the type it believes it is checking.
+  const score = sale?.overall_score == null ? null : Number(sale.overall_score);
+
+  const [keepsHealthUnredacted, scoreOnly] = await Promise.all([
+    organisationKeepsHealthUnredacted(organizationId),
+    orgHasFeature(organizationId, 'score_only'),
+  ]);
+
   const raw = crypto.randomBytes(32).toString('base64url');
   const expiresAt = new Date(Date.now() + TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000);
+
+  const { payload, snapshot } = buildFeedbackSend({
+    adviserEmail: adviser.email,
+    adviserName: adviser.name,
+    confirmUrl: `${config.appUrl}/feedback/${raw}`,
+    message,
+    clientName,
+    score,
+    pass: sale?.pass ?? null,
+    breaches,
+    includeReasoning: !keepsHealthUnredacted,
+    includeVerdict: !scoreOnly,
+  });
 
   // The delete-and-replace and every insert it depends on run as one
   // transaction: if the INSERT (or a breach_events insert) fails partway
@@ -320,14 +502,15 @@ export async function sendFeedback(input: {
 
     const feedback = await tx.queryOne<{ id: string }>(
       `INSERT INTO journey_feedback
-         (organization_id, journey_id, adviser_user_id, adviser_name, adviser_email,
-          sent_by, message, token_hash, token_expires_at,
-          recipient_source, suggested_adviser_user_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+        (organization_id, journey_id, adviser_user_id, adviser_name, adviser_email,
+         sent_by, message, token_hash, token_expires_at,
+          recipient_source, suggested_adviser_user_id,
+          client_name, score, pass, reasoning_withheld)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
        RETURNING id`,
       [
-        organizationId,
-        journeyId,
+       organizationId,
+       journeyId,
         adviser.userId,
         adviser.name,
         adviser.email,
@@ -337,22 +520,28 @@ export async function sendFeedback(input: {
         expiresAt.toISOString(),
         recipientSource,
         suggested.userId,
+        // From the snapshot, never recomputed: these are the claims the email
+        // makes, and the record has to be of those exact claims.
+        snapshot.clientName,
+        snapshot.score,
+        snapshot.pass,
+        snapshot.reasoningWithheld,
       ]
     );
     const id = feedback!.id;
 
-    for (const b of breaches) {
+    for (const item of snapshot.items) {
       await tx.query(
         `INSERT INTO journey_feedback_items
-           (feedback_id, scorecard_item_id, item_label, severity, breach_id)
-         VALUES ($1,$2,$3,$4,$5)
+           (feedback_id, scorecard_item_id, item_label, severity, breach_id, reasoning)
+         VALUES ($1,$2,$3,$4,$5,$6)
          ON CONFLICT (feedback_id, scorecard_item_id) DO NOTHING`,
-        [id, b.scorecard_item_id, b.item_label, b.severity, b.breach_id]
+        [id, item.scorecardItemId, item.itemLabel, item.severity, item.breachId, item.reasoning]
       );
       await tx.query(
         `INSERT INTO breach_events (breach_id, user_id, event_type, to_value)
          VALUES ($1, $2, 'feedback_sent', $3)`,
-        [b.breach_id, sentBy, adviser.name]
+        [item.breachId, sentBy, adviser.name]
       );
     }
 
@@ -362,13 +551,12 @@ export async function sendFeedback(input: {
   // Enqueued only after the transaction has committed, and never inside it: a
   // rollback must never be followed by an email pointing at a row that no
   // longer exists.
-  await alertsQueue.add('feedback-email', {
-    to: adviser.email,
-    adviserName: adviser.name,
-    confirmUrl: `${config.appUrl}/feedback/${raw}`,
-    message,
-    items: breaches.map((b) => ({ label: b.item_label, severity: b.severity })),
-  });
+  //
+  // removeOnComplete overrides the queue default of keeping the last 500. This
+  // payload carries a named client next to compliance findings, a materially
+  // different thing to leave sitting in Redis than a zoho-retry, and there is no
+  // operational reason to keep it once it has been sent.
+  await alertsQueue.add('feedback-email', payload, { removeOnComplete: true });
 
   return {
     feedbackId,

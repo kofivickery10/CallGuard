@@ -5,8 +5,11 @@ import {
   MIN_SCOREABLE_WORDS,
   MIN_SCOREABLE_DURATION_SECONDS,
   PASS_THRESHOLD,
+  hasFeature,
 } from '@callguard/shared';
 import type {
+  Plan,
+  FeatureFlag,
   ScoringScope,
   TranscriptionMode,
   MonoFirstSpeaker,
@@ -244,4 +247,28 @@ export function verifyDialerSignature(
 
 export function decryptDialerSecret(encrypted: string): string {
   return decrypt(encrypted);
+}
+
+/**
+ * Is a feature granted to this organisation, by plan tier or superadmin override?
+ *
+ * The plan + feature_overrides pair is read in five other places by hand
+ * (routes/share.ts, routes/stream.ts twice, routes/auth.ts twice). This is the
+ * one place that should own it; those call sites are left alone here rather than
+ * migrated in a change about the feedback email.
+ *
+ * Server-side callers must gate the VALUE, not just its display. routes/share.ts
+ * sets that precedent for score_only: "the client hides the badge, but the value
+ * must not ship in the payload either". An email is the stronger case — there is
+ * no client to hide anything.
+ */
+export async function orgHasFeature(
+  organizationId: string,
+  feature: FeatureFlag
+): Promise<boolean> {
+  const row = await queryOne<{
+    plan: string | null;
+    feature_overrides: Record<string, boolean> | null;
+  }>('SELECT plan, feature_overrides FROM organizations WHERE id = $1', [organizationId]);
+  return hasFeature((row?.plan ?? null) as Plan | null, feature, row?.feature_overrides);
 }

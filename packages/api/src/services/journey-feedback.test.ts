@@ -4,8 +4,10 @@ import {
   lookupFeedback,
   resolveRecipients,
   resolveChosenRecipient,
+  buildFeedbackSend,
   sendFeedback,
 } from './journey-feedback.js';
+import type { FeedbackBreach } from './journey-feedback.js';
 import { query, queryOne, withTransaction } from '../db/client.js';
 
 // The confirmation endpoint is unauthenticated by necessity — a no-login adviser
@@ -28,6 +30,14 @@ vi.mock('../db/client.js', () => ({
 // tests exercise the write path rather than that guard.
 vi.mock('../config.js', () => ({
   config: { resend: { apiKey: 'test-key' }, appUrl: 'https://app.test' },
+}));
+
+vi.mock('./transcript-access.js', () => ({
+  organisationKeepsHealthUnredacted: vi.fn().mockResolvedValue(false),
+}));
+
+vi.mock('./tenant-settings.js', () => ({
+  orgHasFeature: vi.fn().mockResolvedValue(false),
 }));
 
 vi.mock('../jobs/queue.js', () => ({ alertsQueue: { add: vi.fn() } }));
@@ -229,6 +239,13 @@ describe('resolveChosenRecipient', () => {
 });
 
 describe('sendFeedback — what gets recorded about the recipient', () => {
+  const saleRow = {
+    client_name: 'James Whitfield',
+    customer_name: 'James Whitfield',
+    overall_score: '77.8',
+    pass: false,
+  };
+
   // sendFeedback is otherwise DB-bound, but the columns it writes are the whole
   // audit-trail claim of CG-5, so the INSERT parameters are worth pinning.
   async function capturedInsert(): Promise<unknown[]> {
@@ -265,6 +282,7 @@ describe('sendFeedback — what gets recorded about the recipient', () => {
       user_email: 'jo@example.com',
       user_name: 'Jo Adviser',
     });
+    vi.mocked(queryOne).mockResolvedValueOnce(saleRow);
     vi.mocked(query).mockResolvedValueOnce([]);
 
     const result = await sendFeedback({
@@ -299,7 +317,8 @@ describe('sendFeedback — what gets recorded about the recipient', () => {
         user_email: 'jo@example.com',
         user_name: 'Jo Adviser',
       })
-      .mockResolvedValueOnce({ id: 'u-1', name: 'Jo Adviser', email: 'jo@example.com' });
+      .mockResolvedValueOnce({ id: 'u-1', name: 'Jo Adviser', email: 'jo@example.com' })
+      .mockResolvedValueOnce(saleRow);
     vi.mocked(query).mockResolvedValueOnce([]);
 
     const result = await sendFeedback({
@@ -322,7 +341,8 @@ describe('sendFeedback — what gets recorded about the recipient', () => {
         user_email: 'jo@example.com',
         user_name: 'Jo Adviser',
       })
-      .mockResolvedValueOnce({ id: 'u-2', name: 'Dana Seller', email: 'dana@example.com' });
+      .mockResolvedValueOnce({ id: 'u-2', name: 'Dana Seller', email: 'dana@example.com' })
+      .mockResolvedValueOnce(saleRow);
     vi.mocked(query).mockResolvedValueOnce([]);
 
     const result = await sendFeedback({
@@ -341,7 +361,8 @@ describe('sendFeedback — what gets recorded about the recipient', () => {
     // that in an audit line would read as a real person who was passed over.
     vi.mocked(queryOne)
       .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce({ id: 'u-2', name: 'Dana Seller', email: 'dana@example.com' });
+      .mockResolvedValueOnce({ id: 'u-2', name: 'Dana Seller', email: 'dana@example.com' })
+      .mockResolvedValueOnce(saleRow);
     vi.mocked(query).mockResolvedValueOnce([]);
 
     const result = await sendFeedback({
@@ -366,7 +387,8 @@ describe('sendFeedback — what gets recorded about the recipient', () => {
         user_name: 'Jo Adviser',
       })
       // resolveChosenRecipient — the person the supervisor actually picked.
-      .mockResolvedValueOnce({ id: 'u-2', name: 'Dana Seller', email: 'dana@example.com' });
+      .mockResolvedValueOnce({ id: 'u-2', name: 'Dana Seller', email: 'dana@example.com' })
+      .mockResolvedValueOnce(saleRow);
     vi.mocked(query).mockResolvedValueOnce([]);
 
     const result = await sendFeedback({
@@ -394,7 +416,8 @@ describe('sendFeedback — what gets recorded about the recipient', () => {
     // No calls attributed to anyone — the case that used to be a dead end.
     vi.mocked(queryOne)
       .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce({ id: 'u-2', name: 'Dana Seller', email: 'dana@example.com' });
+      .mockResolvedValueOnce({ id: 'u-2', name: 'Dana Seller', email: 'dana@example.com' })
+      .mockResolvedValueOnce(saleRow);
     vi.mocked(query).mockResolvedValueOnce([]);
 
     const result = await sendFeedback({
@@ -432,5 +455,90 @@ describe('sendFeedback — what gets recorded about the recipient', () => {
 
     // A feedback record nobody received is worse than none.
     expect(withTransaction).not.toHaveBeenCalled();
+  });
+});
+
+// ============================================================
+// buildFeedbackSend — the policy layer.
+//
+// Pure, so both gates are testable without a database, a queue or a live
+// tenant. The properties pinned here are the ones that matter if they ever
+// regress: what leaves the platform, and whether the audit record agrees with
+// what left.
+// ============================================================
+
+const REASON = 'The adviser moved on to payment without the customer agreeing.';
+
+const breach = (over: Partial<FeedbackBreach> = {}): FeedbackBreach => ({
+  breach_id: 'b1',
+  scorecard_item_id: 'si1',
+  item_label: 'Obtained clear affirmative consent',
+  severity: 'high',
+  status: 'open',
+  reasoning: REASON,
+  ...over,
+});
+
+const sendInput = (over: Record<string, unknown> = {}) => ({
+  adviserEmail: 'danni@example.test',
+  adviserName: 'Danni Beck',
+  confirmUrl: 'https://app.example.test/feedback/tok',
+  message: null,
+  clientName: 'James Whitfield',
+  score: 77.8,
+  pass: false,
+  breaches: [breach()],
+  includeReasoning: true,
+  includeVerdict: true,
+  ...over,
+});
+
+describe('buildFeedbackSend', () => {
+  it('keeps a model reason out of the email where the tenant keeps health unredacted (DPIA R5)', () => {
+    // The control R5's residual rating is conditional on. Asserted against the
+    // serialised payload, not the object: this is what is handed to BullMQ and
+    // persisted in Redis, so "not in the JSON" is the property with teeth.
+    const { payload } = buildFeedbackSend(sendInput({ includeReasoning: false }));
+    expect(JSON.stringify(payload)).not.toContain(REASON);
+    expect(payload.items[0]).not.toHaveProperty('reasoning');
+  });
+
+  it('still tells the adviser what was missed when the reason is withheld', () => {
+    const { payload } = buildFeedbackSend(sendInput({ includeReasoning: false }));
+    expect(payload.items[0].label).toBe('Obtained clear affirmative consent');
+    expect(payload.items[0].severity).toBe('high');
+    expect(payload.reasoningWithheld).toBe(true);
+  });
+
+  it('claims no suppression when there was no reason to suppress', () => {
+    // "Withheld" asserts something existed. A finding with no reasoning has had
+    // nothing kept from it, and saying otherwise would put a suppression in the
+    // record that never happened.
+    const { payload, snapshot } = buildFeedbackSend(
+      sendInput({ includeReasoning: false, breaches: [breach({ reasoning: null })] })
+    );
+    expect(payload.reasoningWithheld).toBeUndefined();
+    expect(snapshot.reasoningWithheld).toBe(false);
+  });
+
+  it('withholds the verdict from the payload under score_only, not just the render', () => {
+    // routes/share.ts sets the precedent: hiding a value in the client while
+    // shipping it in the payload hides nothing. There is no client here at all.
+    const { payload, snapshot } = buildFeedbackSend(sendInput({ includeVerdict: false }));
+    expect(payload).not.toHaveProperty('pass');
+    expect(payload.score).toBe(77.8);
+    // Never shown, so never recorded as shown.
+    expect(snapshot.pass).toBeNull();
+  });
+
+  it('records exactly what travelled, so the acknowledgement is evidence of it', () => {
+    const sent = buildFeedbackSend(sendInput());
+    expect(sent.snapshot.items[0].reasoning).toBe(REASON);
+    expect(sent.snapshot.clientName).toBe('James Whitfield');
+    expect(sent.snapshot.pass).toBe(false);
+
+    const withheld = buildFeedbackSend(sendInput({ includeReasoning: false }));
+    expect(withheld.snapshot.items[0].reasoning).toBeNull();
+    expect(withheld.snapshot.items[0].breachId).toBe('b1');
   });
 });
