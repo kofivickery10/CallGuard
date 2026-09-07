@@ -8,8 +8,23 @@ import { api } from '../api/client';
 // Sits below the score on a sale, because it is the last step of the review: go
 // through the findings, overturn what is wrong, then tell the adviser what stands.
 
+interface FeedbackRecipient {
+  id: string;
+  name: string;
+  email: string | null;
+  role: string;
+  /** False when there is no address to deliver to — listed, but not selectable. */
+  eligible: boolean;
+}
+
 interface FeedbackState {
-  adviser: { name: string; email: string | null; problem: 'no_adviser' | 'no_email' | null };
+  adviser: {
+    user_id: string | null;
+    name: string;
+    email: string | null;
+    problem: 'no_adviser' | 'no_email' | null;
+  };
+  recipients: FeedbackRecipient[];
   breach_count: number;
   breaches: Array<{ label: string; severity: string }>;
   open_reviews: number;
@@ -122,29 +137,21 @@ export function FeedbackHeaderAction({
     );
   }
 
-  if (data.adviser.problem) {
-    return (
-      <button
-        type="button"
-        onClick={onOpen}
-        className={`${base} bg-card border border-border text-text-muted hover:border-primary`}
-        title={
-          data.adviser.problem === 'no_adviser'
-            ? 'No adviser is attributed to this sale'
-            : `${data.adviser.name} has no email address`
-        }
-      >
-        Feed back
-      </button>
-    );
-  }
-
+  // A sale whose adviser cannot be resolved is still sendable — the panel offers
+  // a recipient picker — so this must not read as "you cannot do this". It says
+  // what is missing and still takes you there.
   return (
     <button
       type="button"
       onClick={onOpen}
       className={`${base} bg-card border border-border text-text-primary hover:border-primary`}
-      title={`Feed this sale back to ${data.adviser.name}`}
+      title={
+        data.adviser.problem === 'no_adviser'
+          ? 'No adviser is attributed to this sale — choose who to feed it back to'
+          : data.adviser.problem === 'no_email'
+            ? `${data.adviser.name} has no email address — choose someone else to feed it back to`
+            : `Feed this sale back to ${data.adviser.name}`
+      }
     >
       Feed back
     </button>
@@ -179,24 +186,40 @@ export function FeedbackPanel({
   const [message, setMessage] = useState('');
   const [composing, setComposing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Whatever the supervisor picked, tagged with the sale it was picked for.
+  // Selection is DERIVED from this rather than seeded into state by an effect:
+  // a stale pick surviving into a different sale is the silent wrong-recipient
+  // failure this whole feature exists to prevent, and deriving it makes that
+  // unrepresentable instead of merely unlikely.
+  const [picked, setPicked] = useState<{ forJourney: string; id: string | null } | null>(null);
 
   const { data, isLoading, isError } = useFeedbackState(journeyId, canAction);
 
+  // problem === null is exactly "resolved, and deliverable". An adviser with no
+  // address is never pre-selected: it would leave the form looking ready to send
+  // and failing on submit, which is the same wrong-looking-right the recipient
+  // picker exists to remove.
+  const suggestedId = data?.adviser.problem === null ? data.adviser.user_id : null;
+  const recipientId = picked?.forJourney === journeyId ? picked.id : suggestedId;
+
   // Opened from the header. Only meaningful before anything has been sent —
-  // afterwards the header just scrolls here to show the state.
+  // afterwards the header just scrolls here to show the state. An unattributed
+  // sale no longer blocks this: choosing a recipient is how it gets sent.
   useEffect(() => {
-    if (composeSignal > 0 && !data?.feedback && !data?.adviser.problem) setComposing(true);
-  }, [composeSignal, data?.feedback, data?.adviser.problem]);
+    if (composeSignal > 0 && !data?.feedback) setComposing(true);
+  }, [composeSignal, data?.feedback]);
 
   const send = useMutation({
     mutationFn: () =>
       api.post<{ id: string; item_count: number }>(`/journeys/${journeyId}/feedback`, {
         message: message.trim() || null,
+        adviser_user_id: recipientId,
       }),
     onSuccess: () => {
       setComposing(false);
       setMessage('');
       setError(null);
+      setPicked(null);
       void qc.invalidateQueries({ queryKey: ['journey-feedback', journeyId] });
     },
     onError: (err: unknown) => {
@@ -294,37 +317,68 @@ export function FeedbackPanel({
   }
 
   // Not yet fed back.
-  const blocked = data.adviser.problem !== null;
+  //
+  // A sale with no attributed adviser, or one whose adviser has no address, is
+  // no longer a dead end — it is the case the picker exists for. The only true
+  // block left is having nobody deliverable in the organisation at all, because
+  // then there is no choice to offer.
+  // Defaulted, not assumed: a bundle that reaches an API which has not restarted
+  // yet gets a 200 with no recipients key, and an unguarded .filter would throw
+  // during render and blank the whole sale page rather than this one panel.
+  const recipients = data.recipients ?? [];
+  const blocked = recipients.filter((r) => r.eligible).length === 0;
+  const chosen = recipients.find((r) => r.id === recipientId) ?? null;
+  const recipientName = chosen?.name ?? null;
+  const overridden = recipientId !== null && recipientId !== data.adviser.user_id;
 
   return shell(
     <div className="px-5 py-5">
       {blocked ? (
         <div>
           <div className="bg-fail-bg text-fail px-3 py-2 rounded-btn text-table-cell inline-block">
-            {data.adviser.problem === 'no_adviser'
-              ? 'No adviser is attributed to this sale'
-              : `${data.adviser.name} has no email address`}
+            Nobody on this team has an email address
           </div>
           <p className="text-xs text-text-muted mt-2 leading-relaxed">
-            {data.adviser.problem === 'no_adviser'
-              ? 'Feedback is sent to the adviser who closed the sale. None of its calls are attributed to anyone, so there is nobody to send it to.'
-              : 'Feedback is delivered by email, so an adviser without one cannot be sent it or confirm it. Add an address on their account in Settings → Team.'}
+            Feedback is delivered by email, and confirmed from a link in it, so it cannot be sent
+            to an account without an address. Add one in Settings → Team.
           </p>
         </div>
       ) : (
         <>
           <p className="text-table-cell text-text-secondary">
             {data.breach_count === 0 ? (
-              <>Nothing was flagged on this sale. Feeding back still records that you reviewed it with{' '}
-                <span className="text-text-primary font-medium">{data.adviser.name}</span>.</>
+              <>Nothing was flagged on this sale. Feeding back still records that you reviewed it
+                {recipientName ? (
+                  <> with <span className="text-text-primary font-medium">{recipientName}</span>.</>
+                ) : (
+                  <>.</>
+                )}
+              </>
             ) : (
               <>
                 <span className="text-text-primary font-medium">{data.breach_count}</span> finding
-                {data.breach_count === 1 ? '' : 's'} will be sent to{' '}
-                <span className="text-text-primary font-medium">{data.adviser.name}</span>.
+                {data.breach_count === 1 ? '' : 's'} will be sent
+                {recipientName ? (
+                  <> to <span className="text-text-primary font-medium">{recipientName}</span>.</>
+                ) : (
+                  <>.</>
+                )}
               </>
             )}
           </p>
+
+          {data.adviser.problem === 'no_adviser' && (
+            <p className="text-xs text-text-muted mt-1.5 leading-relaxed">
+              Feedback normally goes to the adviser who closed the sale. None of these calls are
+              attributed to anyone, so choose who to send it to.
+            </p>
+          )}
+          {data.adviser.problem === 'no_email' && (
+            <p className="text-xs text-text-muted mt-1.5 leading-relaxed">
+              {data.adviser.name} closed this sale but has no email address, so it cannot be
+              delivered or confirmed. Add one in Settings → Team, or choose someone else.
+            </p>
+          )}
 
           {data.breaches.length > 0 && (
             <div className="flex flex-wrap gap-1.5 mt-2.5">
@@ -374,7 +428,36 @@ export function FeedbackPanel({
 
           {composing ? (
             <div className="mt-3">
-              <label htmlFor="feedback-message" className="text-xs text-text-secondary block mb-1">
+              <label htmlFor="feedback-recipient" className="text-xs text-text-secondary block mb-1">
+                Send to
+              </label>
+              <select
+                id="feedback-recipient"
+                aria-label="Who to send this feedback to"
+                value={recipientId ?? ''}
+                onChange={(e) => setPicked({ forJourney: journeyId, id: e.target.value || null })}
+                className="w-full bg-input border border-border rounded-btn px-3 py-2 text-table-cell text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/40"
+              >
+                <option value="">Choose an adviser…</option>
+                {recipients.map((r) => (
+                  // Undeliverable people are shown disabled rather than removed:
+                  // a supervisor who cannot find someone needs to know they have
+                  // no address, not be left guessing whether they still exist.
+                  <option key={r.id} value={r.id} disabled={!r.eligible}>
+                    {r.eligible ? r.name : `${r.name} — no email address`}
+                  </option>
+                ))}
+              </select>
+              {overridden && data.adviser.user_id !== null && (
+                <p className="text-xs text-text-muted mt-1">
+                  The adviser on this sale is {data.adviser.name}.
+                </p>
+              )}
+
+              <label
+                htmlFor="feedback-message"
+                className="text-xs text-text-secondary block mb-1 mt-3"
+              >
                 Anything to add? (optional, included in the email)
               </label>
               <textarea
@@ -389,7 +472,7 @@ export function FeedbackPanel({
               <div className="flex gap-2 mt-2">
                 <button
                   onClick={() => send.mutate()}
-                  disabled={send.isPending}
+                  disabled={send.isPending || recipientId === null}
                   className="bg-primary text-white px-4 py-2 rounded-btn text-table-cell font-medium hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:opacity-50"
                 >
                   {send.isPending ? 'Sending…' : 'Send to adviser'}

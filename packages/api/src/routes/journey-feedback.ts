@@ -6,6 +6,7 @@ import { recordAuditEvent } from '../services/audit.js';
 import { isUuid } from '../services/uuid.js';
 import {
   resolveAdviser,
+  resolveRecipients,
   breachesForFeedback,
   openReviewCount,
   latestFeedback,
@@ -59,36 +60,46 @@ feedbackRouter.get('/journeys/:journeyId/feedback', authenticate, requireActione
     );
     if (!journey) throw new AppError(404, 'Sale not found');
 
-    const [adviser, breaches, openReviews, existing, keepsHealthUnredacted] = await Promise.all([
-      resolveAdviser(journeyId),
-      breachesForFeedback(organizationId, journeyId),
-      openReviewCount(journeyId),
-      latestFeedback(organizationId, journeyId),
-      organisationKeepsHealthUnredacted(organizationId),
-    ]);
-
-    // Named client, and whether the reasons will travel. The supervisor is
-    // authorising a client's name to leave the platform next to compliance
-    // findings, and until now they could see neither — only labels and
-    // severities. A supervisor who believes the reasons went and finds they did
-    // not has been misled by their own send button.
-    //
-    // The reasons themselves are still NOT returned here. This says what will
-    // happen, not what it will say; a rendered preview is its own change.
-    const sale = await queryOne<{ client_name: string | null; customer_name: string | null }>(
-      `SELECT j.client_name, cust.name AS customer_name
-         FROM journeys j
-         LEFT JOIN customers cust ON cust.id = j.customer_id
-        WHERE j.id = $1 AND j.organization_id = $2`,
-      [journeyId, organizationId]
-    );
+    const [adviser, breaches, openReviews, existing, recipients, keepsHealthUnredacted, sale] =
+      await Promise.all([
+        resolveAdviser(journeyId),
+        breachesForFeedback(organizationId, journeyId),
+        openReviewCount(journeyId),
+        latestFeedback(organizationId, journeyId),
+        // Sent with the panel rather than fetched when the picker opens: it is a
+        // handful of rows for a brokerage this size, and one request keeps the
+        // suggested adviser and the list they are chosen from consistent.
+        resolveRecipients(organizationId),
+        organisationKeepsHealthUnredacted(organizationId),
+        // Named client, and whether the reasons will travel. The supervisor is
+        // authorising a client's name to leave the platform next to compliance
+        // findings, and until now they could see neither — only labels and
+        // severities. A supervisor who believes the reasons went and finds they did
+        // not has been misled by their own send button.
+        //
+        // The reasons themselves are still NOT returned here. This says what will
+        // happen, not what it will say; a rendered preview is its own change.
+        queryOne<{ client_name: string | null; customer_name: string | null }>(
+          `SELECT j.client_name, cust.name AS customer_name
+             FROM journeys j
+             LEFT JOIN customers cust ON cust.id = j.customer_id
+            WHERE j.id = $1 AND j.organization_id = $2`,
+          [journeyId, organizationId]
+        ),
+      ]);
 
     res.json({
-      adviser: { name: adviser.name, email: adviser.email, problem: adviser.problem },
+      adviser: {
+        user_id: adviser.userId,
+        name: adviser.name,
+        email: adviser.email,
+        problem: adviser.problem,
+      },
       breach_count: breaches.length,
       breaches: breaches.map((b) => ({ label: b.item_label, severity: b.severity })),
       open_reviews: openReviews,
       feedback: existing,
+      recipients,
       client_name: sale?.client_name?.trim() || sale?.customer_name?.trim() || null,
       reasoning_included: !keepsHealthUnredacted && breaches.some((b) => !!b.reasoning),
     });
@@ -104,6 +115,21 @@ feedbackRouter.post('/journeys/:journeyId/feedback', authenticate, requireAction
     if (!isUuid(journeyId)) throw new AppError(400, 'Invalid sale id');
     const organizationId = req.user!.organizationId;
 
+    const message = typeof req.body?.message === 'string' ? req.body.message.trim() : null;
+
+    // Absent means "use the sale's own adviser". Present but malformed is a
+    // client bug, not a fallback: silently defaulting would send the feedback to
+    // someone other than the person the supervisor picked. Settled before the
+    // journey lookup — shape checks are free, a query is not.
+    const rawRecipient = req.body?.adviser_user_id;
+    const adviserUserId =
+      rawRecipient === undefined || rawRecipient === null || rawRecipient === ''
+        ? null
+        : String(rawRecipient);
+    if (adviserUserId !== null && !isUuid(adviserUserId)) {
+      throw new AppError(400, 'Invalid recipient');
+    }
+
     const journey = await queryOne<{ id: string; status: string }>(
       'SELECT id, status FROM journeys WHERE id = $1 AND organization_id = $2',
       [journeyId, organizationId]
@@ -113,8 +139,6 @@ feedbackRouter.post('/journeys/:journeyId/feedback', authenticate, requireAction
       throw new AppError(400, 'This sale has not been scored yet, so there is nothing to feed back.');
     }
 
-    const message = typeof req.body?.message === 'string' ? req.body.message.trim() : null;
-
     let result;
     try {
       result = await sendFeedback({
@@ -122,6 +146,7 @@ feedbackRouter.post('/journeys/:journeyId/feedback', authenticate, requireAction
         journeyId,
         sentBy: req.user!.userId,
         message: message || null,
+        adviserUserId,
       });
     } catch (err) {
       // resolveAdviser's refusals are the supervisor's problem to fix, not a
@@ -135,11 +160,24 @@ feedbackRouter.post('/journeys/:journeyId/feedback', authenticate, requireAction
       actionType: 'journey.feedback_sent',
       entityType: 'journey',
       entityId: journeyId,
-      summary: `Fed back ${result.itemCount} finding(s) on this sale to ${result.adviser.name}`,
+      // The override is spelled out in the summary, not left in metadata: the
+      // summary is the line a supervisor or an auditor actually reads, and
+      // "someone chose this recipient" is the whole point of the record. It
+      // names who was displaced, because "chosen" without that is a claim an
+      // auditor cannot check. On an unattributed sale nobody was displaced, so
+      // saying "not the sale's own adviser" would invent one.
+      summary:
+        result.recipientSource === 'manual'
+          ? result.suggestedAdviserName
+            ? `Fed back ${result.itemCount} finding(s) on this sale to ${result.adviser.name}, chosen instead of ${result.suggestedAdviserName}`
+            : `Fed back ${result.itemCount} finding(s) on this sale to ${result.adviser.name}, chosen — no adviser is attributed to this sale`
+          : `Fed back ${result.itemCount} finding(s) on this sale to ${result.adviser.name}`,
       metadata: {
         feedback_id: result.feedbackId,
         adviser_user_id: result.adviser.userId,
         item_count: result.itemCount,
+        recipient_source: result.recipientSource,
+        suggested_adviser_user_id: result.suggestedAdviserUserId,
       },
       req,
     });

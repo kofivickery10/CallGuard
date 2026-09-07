@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import type { Server } from 'http';
+import jwt from 'jsonwebtoken';
+import { config } from '../config.js';
 import { lookupFeedback, confirmFeedback } from '../services/journey-feedback.js';
 
 // This test guards a mount-order trap, not just a code path:
@@ -100,5 +102,65 @@ describe('journey feedback routes mounted at the bare /api prefix', () => {
     const body = await res.json();
     expect(body.status).toBe('not_found');
     expect(confirmFeedback).toHaveBeenCalled();
+  });
+});
+
+// ============================================================
+// CG-5 — the chosen recipient is validated before anything is written.
+//
+// A malformed adviser_user_id must be refused outright rather than falling back
+// to the sale's own adviser. Silently defaulting would send the feedback to
+// someone other than the person the supervisor picked, and the acknowledgement
+// that came back would look exactly like a correct one.
+//
+// The check is settled before the journey lookup, so this runs against a live
+// Express app with no database (same pattern as review.resolve.route.test.ts).
+// ============================================================
+
+function signToken(role = 'supervisor'): string {
+  return jwt.sign(
+    {
+      userId: '00000000-0000-0000-0000-0000000000aa',
+      organizationId: '00000000-0000-0000-0000-0000000000bb',
+      role,
+      mfa: true,
+    },
+    config.jwt.secret,
+    { expiresIn: '5m' }
+  );
+}
+
+describe('POST /api/journeys/:journeyId/feedback — recipient validation', () => {
+  const journeyId = '11111111-1111-1111-1111-111111111111';
+
+  async function post(body: unknown, role = 'supervisor'): Promise<Response> {
+    return fetch(`${baseUrl}/api/journeys/${journeyId}/feedback`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${signToken(role)}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+  }
+
+  it('rejects a recipient id that is not a uuid', async () => {
+    const res = await post({ message: null, adviser_user_id: 'not-a-uuid' });
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).message).toBe('Invalid recipient');
+  });
+
+  it('rejects a non-string recipient rather than coercing it', async () => {
+    const res = await post({ message: null, adviser_user_id: 12345 });
+
+    expect(res.status).toBe(400);
+  });
+
+  it('403s a viewer: choosing a recipient is still an actioner-only send', async () => {
+    // The picker widens who feedback can go TO, never who can send it.
+    const res = await post({ message: null, adviser_user_id: null }, 'viewer');
+
+    expect(res.status).toBe(403);
   });
 });
