@@ -285,6 +285,77 @@ describe('sendFeedback — what gets recorded about the recipient', () => {
     expect(params[10]).toBe('u-1');
   });
 
+  it('still records the default when the caller names the adviser it would have picked anyway', async () => {
+    // REGRESSION. The panel pre-fills the picker with the suggestion and always
+    // posts adviser_user_id, so an ordinary send names the same person the
+    // server would have derived. Keying 'manual' off the field's mere presence
+    // marked every send an override, which left the flag distinguishing nothing
+    // and the audit line asserting a choice nobody made — a column that reads as
+    // evidence and is not. An override is a DIFFERENT recipient.
+    vi.mocked(queryOne)
+      .mockResolvedValueOnce({
+        agent_id: 'u-1',
+        agent_name: 'Jo Adviser',
+        user_email: 'jo@example.com',
+        user_name: 'Jo Adviser',
+      })
+      .mockResolvedValueOnce({ id: 'u-1', name: 'Jo Adviser', email: 'jo@example.com' });
+    vi.mocked(query).mockResolvedValueOnce([]);
+
+    const result = await sendFeedback({
+      organizationId: 'org-1',
+      journeyId: 'j-1',
+      sentBy: 'u-sup',
+      message: null,
+      adviserUserId: 'u-1', // exactly what the panel sends when nothing is changed
+    });
+
+    expect(result.recipientSource).toBe('default_last_caller');
+    expect((await capturedInsert())[9]).toBe('default_last_caller');
+  });
+
+  it('names who was displaced, so "chosen" is a claim an auditor can check', async () => {
+    vi.mocked(queryOne)
+      .mockResolvedValueOnce({
+        agent_id: 'u-1',
+        agent_name: 'Jo Adviser',
+        user_email: 'jo@example.com',
+        user_name: 'Jo Adviser',
+      })
+      .mockResolvedValueOnce({ id: 'u-2', name: 'Dana Seller', email: 'dana@example.com' });
+    vi.mocked(query).mockResolvedValueOnce([]);
+
+    const result = await sendFeedback({
+      organizationId: 'org-1',
+      journeyId: 'j-1',
+      sentBy: 'u-sup',
+      message: null,
+      adviserUserId: 'u-2',
+    });
+
+    expect(result.suggestedAdviserName).toBe('Jo Adviser');
+  });
+
+  it('reports no displaced adviser on an unattributed sale, rather than a placeholder name', async () => {
+    // resolveAdviser returns the literal string 'Unknown adviser' here. Putting
+    // that in an audit line would read as a real person who was passed over.
+    vi.mocked(queryOne)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: 'u-2', name: 'Dana Seller', email: 'dana@example.com' });
+    vi.mocked(query).mockResolvedValueOnce([]);
+
+    const result = await sendFeedback({
+      organizationId: 'org-1',
+      journeyId: 'j-1',
+      sentBy: 'u-sup',
+      message: null,
+      adviserUserId: 'u-2',
+    });
+
+    expect(result.recipientSource).toBe('manual');
+    expect(result.suggestedAdviserName).toBeNull();
+  });
+
   it('records a chosen recipient as an override, keeping who it would have gone to', async () => {
     vi.mocked(queryOne)
       // resolveAdviser — the last caller.

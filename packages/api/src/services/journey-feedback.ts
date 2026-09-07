@@ -235,6 +235,8 @@ export interface SendResult {
   recipientSource: RecipientSource;
   /** Who resolveAdviser would have picked — null when the sale is unattributed. */
   suggestedAdviserUserId: string | null;
+  /** Their name, for the audit line. Null when there was no attributed adviser. */
+  suggestedAdviserName: string | null;
 }
 
 /**
@@ -260,10 +262,21 @@ export async function sendFeedback(input: {
   // suggested_adviser_user_id records, and an override is only evidence of
   // anything if what was overridden is stored beside it.
   const suggested = await resolveAdviser(journeyId);
-  const recipientSource: RecipientSource = adviserUserId ? 'manual' : 'default_last_caller';
   const adviser = adviserUserId
     ? await resolveChosenRecipient(organizationId, adviserUserId)
     : suggested;
+
+  // An override is a DIFFERENT recipient, not merely a named one. The panel
+  // always posts adviser_user_id — it pre-fills the picker with the suggestion —
+  // so keying off its presence would mark every ordinary send as manual and
+  // leave the flag distinguishing nothing, which is worse than not recording it:
+  // a column that reads as evidence and is not. A supervisor who opens the
+  // picker, sees the right person already there and sends is accepting the
+  // default, and that is what gets recorded.
+  const recipientSource: RecipientSource =
+    adviserUserId !== null && adviserUserId !== undefined && adviserUserId !== suggested.userId
+      ? 'manual'
+      : 'default_last_caller';
 
   if (!adviser.email) {
     throw new Error(
@@ -363,6 +376,10 @@ export async function sendFeedback(input: {
     adviser,
     recipientSource,
     suggestedAdviserUserId: suggested.userId,
+    // Gated on the id, not the name: resolveAdviser returns the placeholder
+    // 'Unknown adviser' for an unattributed sale, and naming that in an audit
+    // line would read as a real person who was passed over.
+    suggestedAdviserName: suggested.userId ? suggested.name : null,
   };
 }
 

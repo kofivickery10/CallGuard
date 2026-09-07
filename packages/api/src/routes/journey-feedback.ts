@@ -142,10 +142,15 @@ feedbackRouter.post('/journeys/:journeyId/feedback', authenticate, requireAction
       entityId: journeyId,
       // The override is spelled out in the summary, not left in metadata: the
       // summary is the line a supervisor or an auditor actually reads, and
-      // "someone chose this recipient" is the whole point of the record.
+      // "someone chose this recipient" is the whole point of the record. It
+      // names who was displaced, because "chosen" without that is a claim an
+      // auditor cannot check. On an unattributed sale nobody was displaced, so
+      // saying "not the sale's own adviser" would invent one.
       summary:
         result.recipientSource === 'manual'
-          ? `Fed back ${result.itemCount} finding(s) on this sale to ${result.adviser.name} (chosen, not the sale's own adviser)`
+          ? result.suggestedAdviserName
+            ? `Fed back ${result.itemCount} finding(s) on this sale to ${result.adviser.name}, chosen instead of ${result.suggestedAdviserName}`
+            : `Fed back ${result.itemCount} finding(s) on this sale to ${result.adviser.name}, chosen — no adviser is attributed to this sale`
           : `Fed back ${result.itemCount} finding(s) on this sale to ${result.adviser.name}`,
       metadata: {
         feedback_id: result.feedbackId,

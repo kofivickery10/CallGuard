@@ -182,10 +182,12 @@ export function FeedbackPanel({
   const [message, setMessage] = useState('');
   const [composing, setComposing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Null until the state loads, then seeded with the sale's own adviser. An
-  // unattributed sale stays null, so the picker opens on "Choose an adviser…"
-  // rather than quietly pre-selecting whoever happens to sort first.
-  const [recipientId, setRecipientId] = useState<string | null>(null);
+  // Whatever the supervisor picked, tagged with the sale it was picked for.
+  // Selection is DERIVED from this rather than seeded into state by an effect:
+  // a stale pick surviving into a different sale is the silent wrong-recipient
+  // failure this whole feature exists to prevent, and deriving it makes that
+  // unrepresentable instead of merely unlikely.
+  const [picked, setPicked] = useState<{ forJourney: string; id: string | null } | null>(null);
 
   const { data, isLoading, isError } = useFeedbackState(journeyId, canAction);
 
@@ -194,9 +196,7 @@ export function FeedbackPanel({
   // and failing on submit, which is the same wrong-looking-right the recipient
   // picker exists to remove.
   const suggestedId = data?.adviser.problem === null ? data.adviser.user_id : null;
-  useEffect(() => {
-    setRecipientId((current) => current ?? suggestedId);
-  }, [suggestedId]);
+  const recipientId = picked?.forJourney === journeyId ? picked.id : suggestedId;
 
   // Opened from the header. Only meaningful before anything has been sent —
   // afterwards the header just scrolls here to show the state. An unattributed
@@ -215,6 +215,7 @@ export function FeedbackPanel({
       setComposing(false);
       setMessage('');
       setError(null);
+      setPicked(null);
       void qc.invalidateQueries({ queryKey: ['journey-feedback', journeyId] });
     },
     onError: (err: unknown) => {
@@ -317,9 +318,12 @@ export function FeedbackPanel({
   // no longer a dead end — it is the case the picker exists for. The only true
   // block left is having nobody deliverable in the organisation at all, because
   // then there is no choice to offer.
-  const deliverable = data.recipients.filter((r) => r.eligible);
-  const blocked = deliverable.length === 0;
-  const chosen = data.recipients.find((r) => r.id === recipientId) ?? null;
+  // Defaulted, not assumed: a bundle that reaches an API which has not restarted
+  // yet gets a 200 with no recipients key, and an unguarded .filter would throw
+  // during render and blank the whole sale page rather than this one panel.
+  const recipients = data.recipients ?? [];
+  const blocked = recipients.filter((r) => r.eligible).length === 0;
+  const chosen = recipients.find((r) => r.id === recipientId) ?? null;
   const recipientName = chosen?.name ?? null;
   const overridden = recipientId !== null && recipientId !== data.adviser.user_id;
 
@@ -405,11 +409,11 @@ export function FeedbackPanel({
                 id="feedback-recipient"
                 aria-label="Who to send this feedback to"
                 value={recipientId ?? ''}
-                onChange={(e) => setRecipientId(e.target.value || null)}
+                onChange={(e) => setPicked({ forJourney: journeyId, id: e.target.value || null })}
                 className="w-full bg-input border border-border rounded-btn px-3 py-2 text-table-cell text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/40"
               >
                 <option value="">Choose an adviser…</option>
-                {data.recipients.map((r) => (
+                {recipients.map((r) => (
                   // Undeliverable people are shown disabled rather than removed:
                   // a supervisor who cannot find someone needs to know they have
                   // no address, not be left guessing whether they still exist.
