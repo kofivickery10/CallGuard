@@ -1,9 +1,18 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { queryOne } from '../db/client.js';
 import {
   roleMayReadUnredacted,
   withheldTranscript,
+  organisationKeepsUnredacted,
+  organisationKeepsHealthUnredacted,
   type TranscriptAccess,
 } from './transcript-access.js';
+
+// Only the two organisation predicates touch the database; everything else here
+// is pure and unaffected by the mock.
+vi.mock('../db/client.js', () => ({
+  queryOne: vi.fn(),
+}));
 
 const READABLE: TranscriptAccess = { readable: true, restricted: false };
 const WITHHELD: TranscriptAccess = { readable: false, restricted: true };
@@ -85,5 +94,47 @@ describe('withheldTranscript', () => {
     const out = withheldTranscript(row(), { readable: false, restricted: false });
     expect(out.transcript_text).toBeNull();
     expect(out.transcript_restricted).toBeUndefined();
+  });
+});
+
+// The two organisation predicates are deliberately different widths, and the
+// difference is the point: 079 split identity from health so the easier half
+// would stop waiting on the harder half's paperwork. These pin that they stay
+// split.
+
+const withCategories = (categories: string[] | null) =>
+  vi.mocked(queryOne).mockResolvedValueOnce({ categories } as never);
+
+describe('organisationKeepsHealthUnredacted', () => {
+  beforeEach(() => vi.mocked(queryOne).mockReset());
+
+  it('is true only when health itself is kept in the clear (DPIA R5)', async () => {
+    withCategories(['phi', 'numbers', 'dob']);
+    await expect(organisationKeepsHealthUnredacted('org')).resolves.toBe(true);
+  });
+
+  it('is false for a tenant that keeps identity unredacted but not health', async () => {
+    // The feedback email names the client in its body by design, so suppressing
+    // the model's sentence because it might contain a name protects nothing.
+    withCategories(['name', 'dob', 'location_city']);
+    await expect(organisationKeepsHealthUnredacted('org')).resolves.toBe(false);
+  });
+
+  it('fails closed on a fully redacted tenant, an empty column and an unknown org', async () => {
+    withCategories([]);
+    await expect(organisationKeepsHealthUnredacted('org')).resolves.toBe(false);
+    withCategories(null);
+    await expect(organisationKeepsHealthUnredacted('org')).resolves.toBe(false);
+    vi.mocked(queryOne).mockResolvedValueOnce(null as never);
+    await expect(organisationKeepsHealthUnredacted('nope')).resolves.toBe(false);
+  });
+});
+
+describe('organisationKeepsUnredacted', () => {
+  beforeEach(() => vi.mocked(queryOne).mockReset());
+
+  it('stays broader than the health predicate, gating any permitted category', async () => {
+    withCategories(['name']);
+    await expect(organisationKeepsUnredacted('org')).resolves.toBe(true);
   });
 });
