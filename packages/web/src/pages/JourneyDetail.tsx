@@ -9,6 +9,7 @@ import { CoachingPanel } from '../components/CoachingPanel';
 import { CapturePanel } from '../components/CapturePanel';
 import { ReconciliationPanel } from '../components/ReconciliationPanel';
 import { FeedbackPanel, FeedbackHeaderAction, useFeedbackState } from '../components/FeedbackPanel';
+import { CaseNotesPanel } from '../components/CaseNotesPanel';
 import { ItemResultBadge } from '../components/ItemResultBadge';
 import { SeverityBadge } from '../components/BreachBadges';
 import { ScoreCorrectionModal } from '../components/ScoreCorrectionModal';
@@ -730,6 +731,10 @@ export function JourneyDetail() {
       {/* Below Data Capture: capture answers "did we get what the customer
           said", reconciliation answers "does the application match it". */}
       <ReconciliationPanel journeyId={journey.id} isAdmin={isAdmin} />
+      {/* Case notes (CG-9). Above feedback rather than below it: the note is
+          context a reviewer writes or reads while working the sale, and the
+          feedback panel is the end of that job. */}
+      <CaseNotesPanel journeyId={journey.id} canAction={canAction} />
       {/* Last, because it is the last step of the review: go through the
           findings, overturn what is wrong, then tell the adviser what stands. */}
       <FeedbackPanel journeyId={journey.id} canAction={canAction} composeSignal={composeSignal} />

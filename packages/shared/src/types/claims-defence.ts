@@ -119,6 +119,34 @@ export interface ClaimsDefenceCorrection {
   reason: string | null;
 }
 
+// A case-level note as it appears in the pack (CG-9).
+//
+// Carried here rather than left in the UI because the note's whole purpose is
+// to explain the record to a later reader — most often why a score is what it
+// is. A pack that showed the AI's verdicts and the human rulings on them, but
+// not the human's account of the case, would omit the one part written for the
+// person now reading it.
+//
+// Edits are disclosed rather than flattened. `edited_at` non-null tells the
+// reader the text in front of them is not the text originally written, and
+// `previous_versions` gives them what it said before, so nothing about the
+// note's history has to be taken on trust.
+export interface ClaimsDefenceNote {
+  id: string;
+  body: string;
+  author_name: string;
+  created_at: string;
+  edited_by_name: string | null;
+  edited_at: string | null;
+  previous_versions: Array<{
+    body: string;
+    author_name: string;
+    written_at: string;
+    superseded_at: string;
+    superseded_by_name: string;
+  }>;
+}
+
 export interface ClaimsDefenceResponse {
   header: ClaimsDefenceHeader;
   evidence_basis: ClaimsDefenceCall[];
@@ -129,6 +157,9 @@ export interface ClaimsDefenceResponse {
   // yet), not an error.
   reconciliation: ClaimsDefenceReconciliation | null;
   human_review: ClaimsDefenceCorrection[];
+  // Case-level notes, oldest first. Empty on most sales — a note is written
+  // when someone has something to say about the case, which is the exception.
+  notes: ClaimsDefenceNote[];
   // Plain-language limits of what this pack can and cannot say, read
   // alongside the figures above rather than as small print.
   limitations: string[];

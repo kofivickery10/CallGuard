@@ -25,6 +25,13 @@ export type AuditActionType =
   // person happened and was received.
   | 'journey.feedback_sent'
   | 'journey.feedback_confirmed'
+  // Case-level notes on a sale (CG-9). Notes cannot be deleted and every
+  // superseded version is retained in journey_note_revisions, so these lines
+  // record that the record was annotated or amended and by whom — the text
+  // itself is not copied here, because a note the author later corrects must
+  // not leave an uncorrectable second copy in the register.
+  | 'journey.note.add'
+  | 'journey.note.edit'
   // Sales deleted in bulk (scripts/delete-tenant-sales.ts). Distinct from a
   // rescore: this destroys the breaches, the human rulings and the score history
   // rather than replacing them, so it needs its own line in the register.

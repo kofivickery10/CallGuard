@@ -250,3 +250,34 @@ export interface EvidenceLocation {
     is_match: boolean;
   }>;
 }
+
+// ── Case-level notes (CG-9) ───────────────────────────────────────────────────
+
+// A superseded version of a note: what it said before one particular edit.
+// Returned oldest-first, so a note's history reads chronologically and ends at
+// the note's current body.
+export interface JourneyNoteRevision {
+  id: string;
+  body: string;
+  // Who wrote THIS version, and when — not who wrote the note originally. An
+  // edit by a second person must not re-attribute the earlier text to them.
+  author_name: string;
+  written_at: string;
+  superseded_at: string;
+  superseded_by_name: string;
+}
+
+export interface JourneyNote {
+  id: string;
+  // The note as it currently stands. Earlier text is in `revisions`.
+  body: string;
+  author_name: string;
+  created_at: string;
+  // Null on a note that has never been edited — which is how a reader tells
+  // untouched original text from the current version of something amended.
+  edited_by_name: string | null;
+  edited_at: string | null;
+  // Empty on an unedited note. Never trimmed: notes are not deletable and
+  // their history is not prunable, both by design (migration 112).
+  revisions: JourneyNoteRevision[];
+}

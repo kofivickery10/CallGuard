@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { authenticate, requireOrgView, requireActioner, requireAdmin } from '../middleware/auth.js';
-import { query, queryOne } from '../db/client.js';
+import { query, queryOne, withTransaction } from '../db/client.js';
 import { AppError } from '../middleware/errors.js';
 import { assembleJourney } from '../services/journey.js';
 import { recordAuditEvent } from '../services/audit.js';
@@ -15,6 +15,8 @@ import type {
   JourneyStatus,
   JourneyProduct,
   JourneyScoreRun,
+  JourneyNote,
+  JourneyNoteRevision,
   BreachSeverity,
   ClaimsDefenceResponse,
   ClaimsDefenceHeader,
@@ -24,6 +26,7 @@ import type {
   ClaimsDefenceReconciliation,
   ClaimsDefenceReconciliationItem,
   ClaimsDefenceCorrection,
+  ClaimsDefenceNote,
 } from '@callguard/shared';
 
 export const journeysRouter = Router();
@@ -555,7 +558,48 @@ journeysRouter.get('/:id/claims-defence', requireOrgView, async (req, res, next)
       [journey.id]
     );
 
-    // 7. Limitations — read alongside the sections above, not as small print.
+    // 7. Case-level notes (CG-9), oldest first, each with the versions it
+    // replaced. Two queries rather than a join: a note with several revisions
+    // would otherwise repeat its own body once per revision row, and the pack
+    // must not be able to show the same note twice.
+    const noteRows = await query<{
+      id: string;
+      body: string;
+      author_name: string;
+      created_at: string;
+      edited_by_name: string | null;
+      edited_at: string | null;
+    }>(
+      `SELECT id, body, author_name, created_at, edited_by_name, edited_at
+         FROM journey_notes
+        WHERE journey_id = $1
+        ORDER BY created_at ASC`,
+      [journey.id]
+    );
+    const revisionRows = noteRows.length
+      ? await query<{
+          note_id: string;
+          body: string;
+          author_name: string;
+          written_at: string;
+          superseded_at: string;
+          superseded_by_name: string;
+        }>(
+          `SELECT note_id, body, author_name, written_at, superseded_at, superseded_by_name
+             FROM journey_note_revisions
+            WHERE note_id = ANY($1::uuid[])
+            ORDER BY superseded_at ASC`,
+          [noteRows.map((n) => n.id)]
+        )
+      : [];
+    const notes: ClaimsDefenceNote[] = noteRows.map((n) => ({
+      ...n,
+      previous_versions: revisionRows
+        .filter((r) => r.note_id === n.id)
+        .map(({ note_id: _noteId, ...version }) => version),
+    }));
+
+    // 8. Limitations — read alongside the sections above, not as small print.
     const limitations: string[] = [
       "Reconciliation outcomes recorded as 'undetermined' mean the system could not establish an answer (most often health redaction removing the words needed to identify the question). This is deliberately never read as a failure, and never as a pass either.",
       "Questions checked for presence only ('recorded' / 'missing_from_application') are never compared against the call — they are excluded from any match-rate figure by design, because nothing about them was verified against the recording.",
@@ -570,6 +614,14 @@ journeysRouter.get('/:id/claims-defence', requireOrgView, async (req, res, next)
     } else {
       limitations.push(
         'This sale has no reconciliation run: no application document has been matched to it, or the reconciliation module is not in use for this organisation. The findings above rest on the calls alone, with nothing to compare against a submitted application.'
+      );
+    }
+    if (notes.length > 0) {
+      // Said plainly because the notes sit next to machine-derived findings and
+      // could otherwise be read with the same weight. They are one person's
+      // account, not something CallGuard checked.
+      limitations.push(
+        'The case notes in this pack are written by staff at the firm, not produced or verified by CallGuard. They are recorded as stated, cannot be deleted, and any note that was amended shows every version it replaced.'
       );
     }
     // TODO(partial-journey-coverage): once Phase 2 ships (false-positive
@@ -588,6 +640,7 @@ journeysRouter.get('/:id/claims-defence', requireOrgView, async (req, res, next)
       findings,
       reconciliation,
       human_review: humanReview,
+      notes,
       limitations,
       generated_at: new Date().toISOString(),
     };
@@ -963,6 +1016,227 @@ journeysRouter.post('/:id/scores/items/:itemScoreId/correct', requireActioner, a
     void pushJourneyScoreUpdate(orgId, journey.id);
 
     res.json({ message: 'Correction saved', overall_score: newOverall, pass: newPass });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── Case-level notes (CG-9) ───────────────────────────────────────────────────
+//
+// A free-text note about the sale as a whole, rather than a ruling on any one
+// checkpoint. See migration 112 for why this is evidence and not a UI comfort,
+// and for the two rules the endpoints below enforce: every superseded version
+// is kept, and there is no delete.
+
+const NOTE_MAX_LENGTH = 5000;
+
+// Load one note with its full history. Shared by the write endpoints so a
+// caller always gets the same shape back that GET returns, rather than having
+// to re-fetch to see what it just wrote.
+// Who wrote the version an edit is about to supersede, and when they wrote it.
+//
+// Not the note's original author, except on the first edit. Once a second
+// person has amended a note, the text now being replaced is THEIRS — attributing
+// it to whoever opened the note would put words in the original author's mouth,
+// which is precisely the misattribution the retained history exists to prevent.
+// Exported for its own test: the two-editor case is the one that goes wrong,
+// and it is invisible until a second person edits a note in production.
+export function supersededVersionAuthor(note: {
+  author_name: string;
+  created_at: string;
+  edited_by_name: string | null;
+  edited_at: string | null;
+}): { author_name: string; written_at: string } {
+  return {
+    author_name: note.edited_by_name || note.author_name,
+    written_at: note.edited_at || note.created_at,
+  };
+}
+
+async function loadNote(noteId: string): Promise<JourneyNote> {
+  const note = await queryOne<{
+    id: string;
+    body: string;
+    author_name: string;
+    created_at: string;
+    edited_by_name: string | null;
+    edited_at: string | null;
+  }>(
+    `SELECT id, body, author_name, created_at, edited_by_name, edited_at
+       FROM journey_notes WHERE id = $1`,
+    [noteId]
+  );
+  if (!note) throw new AppError(404, 'Note not found');
+
+  const revisions = await query<JourneyNoteRevision>(
+    `SELECT id, body, author_name, written_at, superseded_at, superseded_by_name
+       FROM journey_note_revisions
+      WHERE note_id = $1
+      ORDER BY superseded_at ASC`,
+    [noteId]
+  );
+  return { ...note, revisions };
+}
+
+// Resolve the sale and confirm it belongs to the caller's org. 404 rather than
+// 403 on someone else's sale, matching GET /:id — a probing request must not be
+// able to tell "not yours" from "does not exist".
+async function requireOwnJourney(journeyId: string, organizationId: string): Promise<string> {
+  const journey = await queryOne<{ id: string }>(
+    'SELECT id FROM journeys WHERE id = $1 AND organization_id = $2',
+    [journeyId, organizationId]
+  );
+  if (!journey) throw new AppError(404, 'Sale not found');
+  return journey.id;
+}
+
+// GET /api/journeys/:id/notes — every note on the sale, oldest first, each with
+// its full edit history.
+journeysRouter.get('/:id/notes', requireOrgView, async (req, res, next) => {
+  try {
+    await requireOwnJourney(String(req.params.id), req.user!.organizationId);
+
+    const notes = await query<{ id: string }>(
+      'SELECT id FROM journey_notes WHERE journey_id = $1 ORDER BY created_at ASC',
+      [req.params.id]
+    );
+    res.json({ notes: await Promise.all(notes.map((n) => loadNote(n.id))) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/journeys/:id/notes — add a note. Body: { body }.
+journeysRouter.post('/:id/notes', requireActioner, async (req, res, next) => {
+  try {
+    // Validated before the sale is looked up: a malformed request does not
+    // deserve a database round trip, and answering it costs nothing away —
+    // probing whether a sale exists needs a well-formed body, which still 404s.
+    const body = typeof req.body?.body === 'string' ? req.body.body.trim() : '';
+    if (!body) throw new AppError(400, 'body is required');
+    if (body.length > NOTE_MAX_LENGTH) {
+      throw new AppError(400, `body must be ${NOTE_MAX_LENGTH} characters or fewer`);
+    }
+
+    const journeyId = await requireOwnJourney(String(req.params.id), req.user!.organizationId);
+
+    // Attribution is snapshotted at write time, not joined on read — see
+    // migration 112. Falling back to the email keeps author_name honest if a
+    // user somehow has no name set, since the column cannot be null.
+    const author = await queryOne<{ name: string | null; email: string | null }>(
+      'SELECT name, email FROM users WHERE id = $1',
+      [req.user!.userId]
+    );
+    const authorName = author?.name || author?.email || 'Unknown user';
+
+    const inserted = await queryOne<{ id: string }>(
+      `INSERT INTO journey_notes (organization_id, journey_id, body, author_user_id, author_name)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id`,
+      [req.user!.organizationId, journeyId, body, req.user!.userId, authorName]
+    );
+
+    void recordAuditEvent({
+      organizationId: req.user!.organizationId,
+      userId: req.user!.userId,
+      actionType: 'journey.note.add',
+      entityType: 'journey',
+      entityId: journeyId,
+      summary: `Added a note to sale ${journeyId}`,
+      // The note text is deliberately not copied into the audit metadata: it
+      // lives in journey_notes with its own retained history, and duplicating
+      // free text a user may later correct would leave an uncorrectable second
+      // copy behind.
+      metadata: { note_id: inserted!.id },
+      req,
+    });
+
+    res.status(201).json({ note: await loadNote(inserted!.id) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PATCH /api/journeys/:id/notes/:noteId — amend a note. Body: { body }.
+//
+// The previous text is copied into journey_note_revisions in the same
+// transaction as the update, so there is no window in which a note has been
+// rewritten but its earlier version was never recorded.
+//
+// There is no DELETE counterpart, deliberately — see migration 112.
+journeysRouter.patch('/:id/notes/:noteId', requireActioner, async (req, res, next) => {
+  try {
+    const body = typeof req.body?.body === 'string' ? req.body.body.trim() : '';
+    if (!body) throw new AppError(400, 'body is required');
+    if (body.length > NOTE_MAX_LENGTH) {
+      throw new AppError(400, `body must be ${NOTE_MAX_LENGTH} characters or fewer`);
+    }
+
+    const journeyId = await requireOwnJourney(String(req.params.id), req.user!.organizationId);
+    const noteId = String(req.params.noteId);
+
+    const editor = await queryOne<{ name: string | null; email: string | null }>(
+      'SELECT name, email FROM users WHERE id = $1',
+      [req.user!.userId]
+    );
+    const editorName = editor?.name || editor?.email || 'Unknown user';
+
+    const unchanged = await withTransaction(async (tx) => {
+      // Locked for the duration: two supervisors amending the same note at once
+      // would otherwise both read the same "previous" text, and the second
+      // commit would file a revision that had already been superseded.
+      const [existing] = await tx.query<{
+        id: string;
+        body: string;
+        author_name: string;
+        created_at: string;
+        edited_by_name: string | null;
+        edited_at: string | null;
+      }>(
+        `SELECT id, body, author_name, created_at, edited_by_name, edited_at
+           FROM journey_notes
+          WHERE id = $1 AND journey_id = $2
+          FOR UPDATE`,
+        [noteId, journeyId]
+      );
+      if (!existing) throw new AppError(404, 'Note not found');
+
+      // A no-op save must not manufacture a revision: an edit history full of
+      // entries where nothing changed makes the real amendments harder to find,
+      // and misrepresents how often the note was actually reworded.
+      if (existing.body === body) return true;
+
+      const superseded = supersededVersionAuthor(existing);
+      await tx.query(
+        `INSERT INTO journey_note_revisions
+           (note_id, body, author_name, written_at, superseded_by_name)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [existing.id, existing.body, superseded.author_name, superseded.written_at, editorName]
+      );
+
+      await tx.query(
+        `UPDATE journey_notes
+            SET body = $1, edited_by_user_id = $2, edited_by_name = $3, edited_at = now()
+          WHERE id = $4`,
+        [body, req.user!.userId, editorName, existing.id]
+      );
+      return false;
+    });
+
+    if (!unchanged) {
+      void recordAuditEvent({
+        organizationId: req.user!.organizationId,
+        userId: req.user!.userId,
+        actionType: 'journey.note.edit',
+        entityType: 'journey',
+        entityId: journeyId,
+        summary: `Edited a note on sale ${journeyId}`,
+        metadata: { note_id: noteId },
+        req,
+      });
+    }
+
+    res.json({ note: await loadNote(noteId) });
   } catch (err) {
     next(err);
   }
