@@ -70,6 +70,37 @@ async function resolveScorecard(organizationId: string, scorecardId?: string | n
 }
 
 /**
+ * Every customer row that is the same person as this one (CG-8, migration 114).
+ *
+ * `customers` is keyed per phone NUMBER, so a customer who rings from a second
+ * number is a second row and their calls could never join the sale — the gap
+ * behind Trust Point's Lee Kidd case, where "lots of the calls are missing".
+ * Where someone has linked the numbers, assembly gathers across the whole group.
+ *
+ * Always returns at least the customer asked about, so every caller can use the
+ * result unconditionally and an unlinked customer (the normal case) behaves
+ * exactly as before. Org-scoped: a link must never reach across tenants, even
+ * if an identity_id were somehow shared.
+ */
+export async function identityCustomerIds(
+  organizationId: string,
+  customerId: string
+): Promise<string[]> {
+  const rows = await query<{ id: string }>(
+    `SELECT c.id
+       FROM customers c
+      WHERE c.organization_id = $1
+        AND c.identity_id IS NOT NULL
+        AND c.identity_id = (
+          SELECT identity_id FROM customers WHERE id = $2 AND organization_id = $1
+        )`,
+    [organizationId, customerId]
+  );
+  const ids = rows.map((r) => r.id);
+  return ids.includes(customerId) ? ids : [customerId, ...ids];
+}
+
+/**
  * Gather a customer's calls into a journey and enqueue it for scoring (spec
  * §9). Returns the journey id, or null if there was nothing to score (no
  * calls with a transcript in the window, or no scorecard configured).
@@ -150,10 +181,14 @@ export async function assembleJourney(params: AssembleJourneyParams): Promise<st
   // no existing mechanism in this file to flag that overlap for a human; it
   // is simply silent (the second sale scores on whatever calls remain, or
   // none — see the empty-set handling below).
+  // Every customer row that is the same person as this one (CG-8). Usually just
+  // the one: a group only exists where someone has linked two numbers.
+  const customerIds = await identityCustomerIds(organizationId, customerId);
+
   const calls = await query<Call>(
     `SELECT * FROM calls
        WHERE organization_id = $1
-         AND customer_id = $2
+         AND customer_id = ANY($2::uuid[])
          AND status <> 'failed'
          AND COALESCE(call_date::timestamptz, created_at) >= $3
          AND (
@@ -162,7 +197,7 @@ export async function assembleJourney(params: AssembleJourneyParams): Promise<st
            OR journey_id IN (SELECT id FROM journeys WHERE organization_id = $1 AND zoho_record_id = $4)
          )
        ORDER BY COALESCE(call_date::timestamptz, created_at) ASC`,
-    [organizationId, customerId, windowStart.toISOString(), zohoRecordId ?? null]
+    [organizationId, customerIds, windowStart.toISOString(), zohoRecordId ?? null]
   );
 
   if (calls.length === 0) {

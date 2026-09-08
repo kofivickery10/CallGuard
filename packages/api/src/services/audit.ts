@@ -32,6 +32,11 @@ export type AuditActionType =
   // not leave an uncorrectable second copy in the register.
   | 'journey.note.add'
   | 'journey.note.edit'
+  // Two customer numbers declared the same person, or that claim withdrawn
+  // (CG-8). Logged because a link changes which calls a compliance score is
+  // computed from, so a score can move with no other visible cause.
+  | 'customer.identity_link'
+  | 'customer.identity_unlink'
   // When the Zoho write-back fires changed (CG-4). Logged because it changes
   // what reaches a tenant's CRM, and "records stopped arriving" is otherwise
   // very hard to explain weeks later.

@@ -1,8 +1,9 @@
 import { Router } from 'express';
-import { authenticate, requireOrgView } from '../middleware/auth.js';
-import { query, queryOne } from '../db/client.js';
+import { authenticate, requireOrgView, requireAdmin } from '../middleware/auth.js';
+import { query, queryOne, withTransaction } from '../db/client.js';
 import { AppError } from '../middleware/errors.js';
 import { normalizePhone } from '../services/ingestion.js';
+import { recordAuditEvent } from '../services/audit.js';
 import { hasFeature, effectivePlan } from '@callguard/shared';
 import type { Plan } from '@callguard/shared';
 
@@ -289,6 +290,212 @@ customersRouter.put('/:id', requireOrgView, async (req, res, next) => {
 
     if (!rows.length) throw new AppError(404, 'Customer not found');
     res.json(rows[0]);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── One person, several numbers (CG-8) ────────────────────────────────────────
+//
+// `customers` is keyed per phone number, so a customer who rings from a second
+// number is a second row and their calls can never join the sale. Linking two
+// rows says "these are the same person", and journey assembly then gathers
+// calls across the group (services/journey.ts identityCustomerIds).
+//
+// Admin-only, and it takes a reason. A link changes which calls a compliance
+// score is computed from — it can move a score, add breaches or remove them —
+// so it is an assertion someone has to own, and migration 114 keeps the record
+// of who made it even after it is undone.
+
+// GET /api/customers/:id/identity — the group this customer belongs to, and the
+// history of how it was formed.
+customersRouter.get('/:id/identity', requireOrgView, async (req, res, next) => {
+  try {
+    const orgId = req.user!.organizationId;
+    const customer = await queryOne<{ id: string; identity_id: string | null }>(
+      'SELECT id, identity_id FROM customers WHERE id = $1 AND organization_id = $2',
+      [String(req.params.id), orgId]
+    );
+    if (!customer) throw new AppError(404, 'Customer not found');
+
+    const members = customer.identity_id
+      ? await query<{ id: string; phone_normalized: string; name: string | null; call_count: number }>(
+          `SELECT id, phone_normalized, name, call_count
+             FROM customers
+            WHERE organization_id = $1 AND identity_id = $2
+            ORDER BY first_seen_at ASC`,
+          [orgId, customer.identity_id]
+        )
+      : [];
+
+    const history = customer.identity_id
+      ? await query(
+          `SELECT action, customer_id, actor_name, reason, created_at
+             FROM customer_identity_events
+            WHERE identity_id = $1
+            ORDER BY created_at ASC`,
+          [customer.identity_id]
+        )
+      : [];
+
+    res.json({ identity_id: customer.identity_id, members, history });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * Validate a link request, independent of Express and the database.
+ *
+ * Extracted so the rules can be tested directly: the customers router is plan-
+ * gated by a middleware that queries before any route runs, so a route-level
+ * test of these rules would end up testing that middleware instead.
+ *
+ * `reason` is required here even though migration 114 leaves the column
+ * nullable. The column is nullable so an older row is not retro-invalidated;
+ * the API requires it because a link with no stated basis leaves a moved
+ * compliance score with no explanation, which is what the event table exists
+ * to prevent.
+ */
+export function validateLinkRequest(
+  selfId: string,
+  body: { customer_id?: unknown; reason?: unknown }
+): { customerId: string; reason: string } {
+  const otherId = typeof body?.customer_id === 'string' ? body.customer_id : '';
+  const reason = typeof body?.reason === 'string' ? body.reason.trim() : '';
+  if (!otherId) throw new AppError(400, 'customer_id is required');
+  if (!reason) throw new AppError(400, 'reason is required');
+  if (otherId === selfId) {
+    throw new AppError(400, 'A customer cannot be linked to themselves');
+  }
+  return { customerId: otherId, reason };
+}
+
+// POST /api/customers/:id/identity/link — declare another customer the same
+// person. Body: { customer_id, reason }.
+customersRouter.post('/:id/identity/link', requireAdmin, async (req, res, next) => {
+  try {
+    const orgId = req.user!.organizationId;
+    const { customerId: otherId, reason } = validateLinkRequest(String(req.params.id), req.body ?? {});
+
+    const actor = await queryOne<{ name: string | null; email: string | null }>(
+      'SELECT name, email FROM users WHERE id = $1',
+      [req.user!.userId]
+    );
+    const actorName = actor?.name || actor?.email || 'Unknown user';
+
+    const result = await withTransaction(async (tx) => {
+      // Both locked: two admins linking overlapping pairs at once would
+      // otherwise each read the other's group as unset and split one person
+      // across two identities.
+      const [a] = await tx.query<{ id: string; identity_id: string | null }>(
+        'SELECT id, identity_id FROM customers WHERE id = $1 AND organization_id = $2 FOR UPDATE',
+        [String(req.params.id), orgId]
+      );
+      const [b] = await tx.query<{ id: string; identity_id: string | null }>(
+        'SELECT id, identity_id FROM customers WHERE id = $1 AND organization_id = $2 FOR UPDATE',
+        [otherId, orgId]
+      );
+      if (!a || !b) throw new AppError(404, 'Customer not found');
+      if (a.identity_id && b.identity_id && a.identity_id === b.identity_id) {
+        return { identityId: a.identity_id, alreadyLinked: true, joined: [] as string[] };
+      }
+      // Merging two established groups would silently restate who several other
+      // customers are, on the strength of one reason about two of them. Refused
+      // rather than guessed: unlink one side first, deliberately.
+      if (a.identity_id && b.identity_id) {
+        throw new AppError(
+          409,
+          'Both customers already belong to different linked groups. Unlink one before joining them.'
+        );
+      }
+
+      // Adopt whichever group exists, else start one.
+      const identityId =
+        a.identity_id ?? b.identity_id ?? (await tx.query<{ id: string }>('SELECT uuid_generate_v4() AS id'))[0]!.id;
+
+      const joined = [a, b].filter((c) => c.identity_id !== identityId).map((c) => c.id);
+      await tx.query(
+        'UPDATE customers SET identity_id = $2 WHERE id = ANY($1::uuid[]) AND organization_id = $3',
+        [joined, identityId, orgId]
+      );
+      for (const id of joined) {
+        await tx.query(
+          `INSERT INTO customer_identity_events
+             (organization_id, identity_id, customer_id, action, actor_user_id, actor_name, reason)
+           VALUES ($1, $2, $3, 'linked', $4, $5, $6)`,
+          [orgId, identityId, id, req.user!.userId, actorName, reason]
+        );
+      }
+      return { identityId, alreadyLinked: false, joined };
+    });
+
+    if (!result.alreadyLinked) {
+      void recordAuditEvent({
+        organizationId: orgId,
+        userId: req.user!.userId,
+        actionType: 'customer.identity_link',
+        entityType: 'customer',
+        entityId: [String(req.params.id), otherId],
+        summary: `Linked two customer numbers as the same person: ${reason}`,
+        metadata: { identity_id: result.identityId, joined: result.joined },
+        req,
+      });
+    }
+
+    res.json({ identity_id: result.identityId, already_linked: result.alreadyLinked });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// DELETE /api/customers/:id/identity/link — remove this customer from its group.
+//
+// The group's other members keep their identity_id: removing one number does
+// not dissolve everyone else's link. The event row is written, not deleted —
+// "linked, acted on, then quietly unlinked" is exactly the sequence a reader
+// needs to be able to see.
+customersRouter.delete('/:id/identity/link', requireAdmin, async (req, res, next) => {
+  try {
+    const orgId = req.user!.organizationId;
+    const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim() : '';
+
+    const actor = await queryOne<{ name: string | null; email: string | null }>(
+      'SELECT name, email FROM users WHERE id = $1',
+      [req.user!.userId]
+    );
+    const actorName = actor?.name || actor?.email || 'Unknown user';
+
+    const customer = await queryOne<{ id: string; identity_id: string | null }>(
+      'SELECT id, identity_id FROM customers WHERE id = $1 AND organization_id = $2',
+      [String(req.params.id), orgId]
+    );
+    if (!customer) throw new AppError(404, 'Customer not found');
+    if (!customer.identity_id) throw new AppError(400, 'This customer is not linked to anyone');
+
+    await query(
+      `INSERT INTO customer_identity_events
+         (organization_id, identity_id, customer_id, action, actor_user_id, actor_name, reason)
+       VALUES ($1, $2, $3, 'unlinked', $4, $5, $6)`,
+      [orgId, customer.identity_id, customer.id, req.user!.userId, actorName, reason || null]
+    );
+    await query('UPDATE customers SET identity_id = NULL WHERE id = $1 AND organization_id = $2', [
+      customer.id,
+      orgId,
+    ]);
+
+    void recordAuditEvent({
+      organizationId: orgId,
+      userId: req.user!.userId,
+      actionType: 'customer.identity_unlink',
+      entityType: 'customer',
+      entityId: customer.id,
+      summary: 'Unlinked a customer number from its linked person',
+      metadata: { identity_id: customer.identity_id },
+      req,
+    });
+
+    res.json({ unlinked: true });
   } catch (err) {
     next(err);
   }
