@@ -486,7 +486,58 @@ export function ClaimsDefence() {
           </div>
         </Panel>
 
-        {/* ── 7. Limitations ──────────────────────────────────────────── */}
+        {/* ── 7. Case notes ───────────────────────────────────────────── */}
+        {/* After the human review trail and before the limitations: both are
+            what a person said about the sale, and the notes are the part
+            written in their own words rather than as a verdict. */}
+        <Panel
+          title="Case notes"
+          subtitle="Written by staff at the firm, recorded as stated. Notes cannot be deleted, and any note that was amended shows every version it replaced."
+        >
+          {loading ? (
+            <div className="p-5"><Skeleton className="h-24 w-full" /></div>
+          ) : !p?.notes.length ? (
+            <p className="px-5 py-4 text-table-cell text-text-muted">
+              No case notes were recorded on this sale.
+            </p>
+          ) : (
+            <ol className="px-5 py-4 space-y-5">
+              {p.notes.map((n) => (
+                <li key={n.id}>
+                  <p className="text-table-cell text-text-cell leading-relaxed whitespace-pre-wrap">
+                    {n.body}
+                  </p>
+                  <p className="mt-1 text-xs text-text-muted">
+                    {n.author_name} · {fmtDate(n.created_at)}
+                    {n.edited_at && (
+                      <> · amended by {n.edited_by_name} on {fmtDate(n.edited_at)}</>
+                    )}
+                  </p>
+                  {n.previous_versions.length > 0 && (
+                    // Shown rather than hidden behind a control: this document
+                    // leaves the building, and a reader must not have to ask
+                    // what the note used to say.
+                    <ol className="mt-2 border-l-2 border-border pl-3 space-y-2">
+                      {n.previous_versions.map((v, i) => (
+                        <li key={i}>
+                          <p className="text-table-cell text-text-muted leading-relaxed whitespace-pre-wrap">
+                            {v.body}
+                          </p>
+                          <p className="mt-0.5 text-xs text-text-muted">
+                            {v.author_name} · {fmtDate(v.written_at)} — replaced by{' '}
+                            {v.superseded_by_name} on {fmtDate(v.superseded_at)}
+                          </p>
+                        </li>
+                      ))}
+                    </ol>
+                  )}
+                </li>
+              ))}
+            </ol>
+          )}
+        </Panel>
+
+        {/* ── 8. Limitations ──────────────────────────────────────────── */}
         <Panel title="Limitations" subtitle="Read alongside the sections above, not as small print.">
           {loading ? (
             <div className="p-5"><Skeleton className="h-24 w-full" /></div>
