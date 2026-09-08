@@ -1,6 +1,6 @@
 ---
 title: "What is AI call QA and how does it actually work?"
-ogTitle: "What Is AI Call QA and How Does It Actually Work?"
+ogTitle: "What Is AI Call QA and How Does It Work?"
 breadcrumb: "What is AI call QA"
 description: "A plain-English walkthrough of how AI call quality assurance works: speech recognition, large language models and per-tenant calibration."
 ogDescription: "A plain-English walkthrough of how AI call quality assurance works."

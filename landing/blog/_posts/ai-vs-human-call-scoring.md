@@ -1,6 +1,6 @@
 ---
 title: "AI vs human call scoring: when each makes sense."
-ogTitle: "AI vs Human Call Scoring: When Each Makes Sense"
+ogTitle: "AI vs Human Call Scoring: Which to Use When"
 breadcrumb: "AI vs human call scoring"
 description: "When does AI call scoring make sense, when does human scoring make sense, and when do you need both? An honest comparison from an AI QA vendor."
 ogDescription: "An honest comparison of AI and human call scoring."

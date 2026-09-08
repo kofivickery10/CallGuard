@@ -927,6 +927,56 @@ h1, h2, h3, h4, h5 { color: var(--text-primary); font-weight: 700; line-height: 
   color: var(--primary);
 }
 
+/* ─── Cross-link list ────────────────────────────────────────────────────
+   A shared recipe for "here are the sibling pages" blocks. Added for the
+   compare/ cross-links: those pages each had a single inbound link from
+   their hub, which on a crawl-constrained domain is a thin path to the
+   highest-intent pages on the site. Kept generic and token-only so any
+   section can use it instead of inlining another one-off variant. */
+.link-list {
+  list-style: none;
+  padding: 0;
+  margin: 28px 0 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  column-gap: 32px;
+}
+.link-list li {
+  margin: 0;
+  border-top: 1px solid var(--border-light);
+}
+.link-list a {
+  display: block;
+  padding: 14px 2px;
+  text-decoration: none;
+  color: var(--text-primary);
+  font-size: 16px;
+  font-weight: 600;
+  border-radius: var(--radius-btn);
+  transition: color 0.15s ease;
+}
+.link-list a:hover {
+  color: var(--primary);
+}
+.link-list a:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 3px;
+}
+.link-list a .link-note {
+  display: block;
+  margin-top: 3px;
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+.link-list-all {
+  margin: 24px 0 0;
+}
+
+@media (max-width: 768px) {
+  .link-list { column-gap: 0; }
+}
+
 @media (max-width: 768px) {
   .blog-hero { padding: 48px 0 36px; }
   .article-hero { padding: 44px 0 28px; }

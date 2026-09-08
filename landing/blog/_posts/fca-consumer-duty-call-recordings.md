@@ -18,6 +18,7 @@ related:
   - what-is-ai-call-qa
   - score-100-percent-contact-centre-calls
   - pecr-tps-2026-outbound-compliance
+  - vulnerable-customer-call-monitoring
 ---
 
 Consumer Duty has been in force since July 2023. The compliance question shifted on that day from "did you follow the process" to "can you evidence the outcome was good for the customer". For firms whose primary record of customer interaction is a call recording, that has profound implications. This piece is a checklist of the seven things the FCA expects to be evidenced on those recordings, plus the question they will ask if you cannot.

@@ -35,6 +35,26 @@ RewriteRule ^ https://callguardai.co.uk%{REQUEST_URI} [L,R=301]
 RewriteRule ^alternatives/callminer/?$ /compare/callminer-alternative [R=301,L]
 RewriteRule ^alternatives/observe-ai/?$ /compare/observe-ai-alternative [R=301,L]
 
+# ─── Build sources are not pages: 410 Gone ───────────────────────────────
+# `blog/_posts/*.md` and `blog/_template.html` are inputs to `npm run blog:build`,
+# not published pages. A whole-folder upload put them on the live site, where
+# they served 200: the template advertised itself as index,follow with a
+# canonical of `/blog/{{slug}}`, and each Markdown source was a byte-for-byte
+# duplicate of a published post. On a domain whose binding constraint is crawl
+# budget, that is six duplicates and one placeholder page being crawled instead
+# of real ones.
+#
+# 410 rather than 403 or a robots.txt Disallow, deliberately: 410 is the
+# unambiguous "gone, drop it" signal and Google must be able to CRAWL these to
+# act on it. Disallowing them in robots.txt would block the very fetch that
+# removes them and can strand an already-indexed URL as a title-less entry.
+# Add the Disallow later, once Search Console shows them gone, if at all.
+#
+# Must precede the pretty-URL rewrite below, which would otherwise map
+# /blog/_template to /blog/_template.html and serve it.
+RewriteRule ^blog/_posts(/|$) - [G,L]
+RewriteRule ^blog/_template(\.html)?/?$ - [G,L]
+
 # ─── Pretty URLs: /privacy -> /privacy.html ──────────────────────────────
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteCond %{REQUEST_FILENAME} !-f
