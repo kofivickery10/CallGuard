@@ -5,7 +5,8 @@ import { api } from '../api/client';
 import { JourneyStatusBadge } from '../components/JourneyStatusBadge';
 import { useScoreOnly } from '../context/AuthContext';
 import { formatPhone } from '../lib/format';
-import type { JourneyListItem, JourneyStatus } from '@callguard/shared';
+import type { JourneyListItem, JourneyStatus, FeedbackStatus, FeedbackStatusSummary } from '@callguard/shared';
+import { FeedbackStatusBadge } from '../components/FeedbackStatusBadge';
 
 const STATUS_FILTERS: Array<{ value: '' | JourneyStatus; label: string }> = [
   { value: '', label: 'All' },
@@ -19,12 +20,23 @@ const STATUS_FILTERS: Array<{ value: '' | JourneyStatus; label: string }> = [
   { value: 'skipped', label: 'Not taken up' },
 ];
 
+// Whole days since an ISO timestamp, or null when there isn't one. Floored, so
+// a sale sent this morning reads as 0 (and the badge omits the age) rather than
+// rounding up to a day it has not been waiting.
+function daysSince(iso: string | null): number | null {
+  if (!iso) return null;
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return null;
+  return Math.floor((Date.now() - then) / 86_400_000);
+}
+
 export function Journeys() {
   const scoreOnly = useScoreOnly();
   const [status, setStatus] = useState<'' | JourneyStatus>('');
   const [adviser, setAdviser] = useState('');
   const [branch, setBranch] = useState('');
   const [result, setResult] = useState<'' | 'pass' | 'fail'>('');
+  const [feedback, setFeedback] = useState<'' | FeedbackStatus>('');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [page, setPage] = useState(1);
@@ -56,16 +68,18 @@ export function Journeys() {
   const branches = branchesData?.data ?? [];
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['journeys', status, adviser, branch, result, from, to, page],
+    queryKey: ['journeys', status, adviser, branch, result, feedback, from, to, page],
     queryFn: () =>
       api.get<{
         data: JourneyListItem[]; total: number; page: number; limit: number;
         counts: Record<string, number>;
+        feedback_counts: FeedbackStatusSummary;
       }>(
         `/journeys?page=${page}&limit=50${status ? `&status=${status}` : ''}` +
           (adviser ? `&agent=${encodeURIComponent(adviser)}` : '') +
           (branch ? `&branch=${encodeURIComponent(branch)}` : '') +
           (result ? `&result=${result}` : '') +
+          (feedback ? `&feedback=${feedback}` : '') +
           (from ? `&from=${from}` : '') +
           (to ? `&to=${to}` : '')
       ),
@@ -80,16 +94,17 @@ export function Journeys() {
   const total = data?.total ?? 0;
   const totalPages = data ? Math.ceil(total / data.limit) : 0;
   const counts = data?.counts ?? {};
+  const feedbackCounts = data?.feedback_counts;
   const firstRow = total === 0 ? 0 : (page - 1) * (data?.limit ?? 50) + 1;
   const lastRow = Math.min(page * (data?.limit ?? 50), total);
-  const filtered = !!(status || adviser || branch || result || from || to);
+  const filtered = !!(status || adviser || branch || result || feedback || from || to);
 
   // Score-only tenants don't see the pass/fail verdict, so the Result column is
   // dropped entirely rather than left blank.
   // Two dates, because they answer different questions and used to be conflated:
   // "Sale date" is when it happened (stable, what the list sorts and filters on),
   // "Last scored" is when we last judged it (moves on a re-score).
-  const columns = ['Customer', 'Adviser', ...(scoreOnly ? [] : ['Result']), 'Score', 'Branch', 'Calls', 'Status', 'Sale date', 'Last scored', ''];
+  const columns = ['Customer', 'Adviser', ...(scoreOnly ? [] : ['Result']), 'Score', 'Branch', 'Calls', 'Status', 'Feedback', 'Sale date', 'Last scored', ''];
   const colCount = columns.length;
 
   return (
@@ -128,6 +143,35 @@ export function Journeys() {
           })}
         </div>
       </div>
+
+      {/* The acknowledgement backlog (CG-11). Shown only when something is
+          actually outstanding — a standing banner reading "0 awaiting" is
+          furniture, and the point of this strip is that it appears when there
+          is something to chase. The age is the headline because it is what
+          turns a list into a thing being managed: "fed back 9 days ago, still
+          not confirmed" is the number a principal asks for. */}
+      {feedbackCounts && feedbackCounts.awaiting > 0 && (
+        <div className="mb-5 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-card border border-border bg-review-bg px-4 py-3">
+          <span className="text-table-cell text-text-primary font-semibold">
+            {feedbackCounts.awaiting} {feedbackCounts.awaiting === 1 ? 'sale' : 'sales'} awaiting adviser confirmation
+          </span>
+          {feedbackCounts.oldest_awaiting_days != null && feedbackCounts.oldest_awaiting_days > 0 && (
+            <span className="text-table-cell text-text-secondary">
+              oldest fed back {feedbackCounts.oldest_awaiting_days}{' '}
+              {feedbackCounts.oldest_awaiting_days === 1 ? 'day' : 'days'} ago
+            </span>
+          )}
+          {feedback !== 'awaiting' && (
+            <button
+              type="button"
+              onClick={() => onFilterChange(setFeedback)('awaiting')}
+              className="ml-auto text-table-cell font-semibold text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
+            >
+              Show them
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Secondary filters. Separate row from the status tabs: status is the
           primary axis a compliance manager works along, and mixing six controls
@@ -185,6 +229,34 @@ export function Journeys() {
           </div>
         )}
 
+        {/* The acknowledgement loop (CG-11). A select rather than a second row
+            of tabs: status is the primary axis and already owns the tabs, and
+            two tab rows would read as two competing primary filters. */}
+        <div>
+          <label htmlFor="feedback-filter" className="block text-xs text-text-muted mb-1">Feedback</label>
+          <select
+            id="feedback-filter"
+            value={feedback}
+            onChange={(e) => onFilterChange(setFeedback)(e.target.value as '' | FeedbackStatus)}
+            className={`px-3 py-1.5 rounded-btn text-table-cell font-semibold border bg-card transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
+              feedback ? 'border-primary text-primary' : 'border-border text-text-secondary hover:bg-sidebar-hover'
+            }`}
+          >
+            <option value="">Any feedback state</option>
+            {/* Counts come from the API with the feedback filter itself
+                removed, so each option says what choosing it would return. */}
+            <option value="not_fed_back">
+              Not fed back{feedbackCounts ? ` (${feedbackCounts.not_fed_back})` : ''}
+            </option>
+            <option value="awaiting">
+              Awaiting confirmation{feedbackCounts ? ` (${feedbackCounts.awaiting})` : ''}
+            </option>
+            <option value="acknowledged">
+              Acknowledged{feedbackCounts ? ` (${feedbackCounts.acknowledged})` : ''}
+            </option>
+          </select>
+        </div>
+
         <div>
           <label htmlFor="from-filter" className="block text-xs text-text-muted mb-1">Scored from</label>
           <input
@@ -216,7 +288,7 @@ export function Journeys() {
           <button
             type="button"
             onClick={() => {
-              setStatus(''); setAdviser(''); setBranch(''); setResult(''); setFrom(''); setTo(''); setPage(1);
+              setStatus(''); setAdviser(''); setBranch(''); setResult(''); setFeedback(''); setFrom(''); setTo(''); setPage(1);
             }}
             className="px-3 py-1.5 rounded-btn text-table-cell font-semibold text-text-muted hover:text-text-primary underline transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
           >
@@ -341,6 +413,12 @@ export function Journeys() {
                   <td className="px-5 py-3.5 text-table-cell text-text-secondary">{j.branch || '—'}</td>
                   <td className="px-5 py-3.5 text-table-cell text-text-cell tabular-nums">{j.call_count}</td>
                   <td className="px-5 py-3.5"><JourneyStatusBadge status={j.status} /></td>
+                  <td className="px-5 py-3.5">
+                    <FeedbackStatusBadge
+                      status={j.feedback_status}
+                      waitingDays={daysSince(j.feedback_sent_at)}
+                    />
+                  </td>
                   {/* When it happened. The primary date: stable across a
                       re-score, and what the list is ordered and filtered by. */}
                   <td className="px-5 py-3.5 text-table-cell text-text-cell whitespace-nowrap">

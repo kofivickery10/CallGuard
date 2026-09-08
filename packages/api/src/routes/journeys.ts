@@ -17,6 +17,8 @@ import type {
   JourneyScoreRun,
   JourneyNote,
   JourneyNoteRevision,
+  FeedbackStatus,
+  FeedbackStatusSummary,
   BreachSeverity,
   ClaimsDefenceResponse,
   ClaimsDefenceHeader,
@@ -53,6 +55,77 @@ export const SALE_DATE_SQL = `COALESCE(
           WHERE sjc.journey_id = j.id),
         j.created_at)`;
 
+// Where a sale sits in the acknowledgement loop (CG-11), derived rather than
+// stored so it can never disagree with the journey_feedback rows it describes.
+//
+// The open row wins over history. journey_feedback has a UNIQUE index on
+// journey_id WHERE confirmed_at IS NULL (087), so there is at most one
+// unconfirmed row but there may be several confirmed ones from earlier rounds.
+// A sale fed back, acknowledged, re-scored and fed back again is awaiting
+// confirmation — reading it as acknowledged would hide exactly the item a
+// supervisor is chasing.
+//
+// Fixed SQL with no user input, shared by the list, the counts and the filter
+// so all three agree on what each state means.
+const FEEDBACK_STATUS_SQL = `CASE
+        WHEN EXISTS (SELECT 1 FROM journey_feedback f
+                      WHERE f.journey_id = j.id AND f.confirmed_at IS NULL) THEN 'awaiting'
+        WHEN EXISTS (SELECT 1 FROM journey_feedback f
+                      WHERE f.journey_id = j.id) THEN 'acknowledged'
+        ELSE 'not_fed_back'
+      END`;
+
+// The sent_at that the status above is measured from: the open round while one
+// is outstanding, otherwise the most recent confirmed one.
+const FEEDBACK_SENT_AT_SQL = `(
+        SELECT f.sent_at FROM journey_feedback f
+         WHERE f.journey_id = j.id
+         ORDER BY (f.confirmed_at IS NULL) DESC, f.sent_at DESC
+         LIMIT 1)`;
+
+const FEEDBACK_CONFIRMED_AT_SQL = `(
+        SELECT f.confirmed_at FROM journey_feedback f
+         WHERE f.journey_id = j.id AND f.confirmed_at IS NOT NULL
+         ORDER BY f.confirmed_at DESC
+         LIMIT 1)`;
+
+// One filter on the sales list: a SQL fragment carrying its own parameters,
+// with `?` standing in for each of them rather than a pre-assigned $n.
+//
+// WHY NOT PRE-NUMBERED: the per-tab counts rebuild the WHERE with one filter
+// REMOVED, and a clause numbered at construction time cannot survive that.
+// Dropping `j.status = $2` leaves a statement that references only $1 while two
+// parameters are still bound, and Postgres rejects the bind outright — "bind
+// message supplies 2 parameters, but prepared statement requires 1". That was
+// not theoretical: it made every ?status= request on the sales screen 500, and
+// the code carried a comment asserting Postgres allowed it. Renumbering at
+// render time keeps a statement and its parameters in step no matter which
+// fragment is left out.
+export interface JourneyFilter {
+  // Identifies the filter so a caller can exclude it by name.
+  key: string;
+  sql: string;
+  params: unknown[];
+}
+
+export function buildWhere(
+  filters: JourneyFilter[],
+  excludeKey?: string
+): { sql: string; params: unknown[] } {
+  const params: unknown[] = [];
+  const sql = filters
+    .filter((f) => f.key !== excludeKey)
+    .map((f) => {
+      let i = 0;
+      return f.sql.replace(/\?/g, () => {
+        params.push(f.params[i++]);
+        return `$${params.length}`;
+      });
+    })
+    .join(' AND ');
+  return { sql, params };
+}
+
 // GET /api/journeys — paginated list of journeys for the org, newest first,
 // optionally filtered by status or customer. This is the primary discovery
 // surface for journey-mode tenants (the default scoring_mode).
@@ -62,50 +135,52 @@ journeysRouter.get('/', requireOrgView, async (req, res, next) => {
     const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
     const offset = (page - 1) * limit;
 
-    const parts = ['j.organization_id = $1'];
-    const params: unknown[] = [req.user!.organizationId];
+    const filters: JourneyFilter[] = [
+      { key: 'org', sql: 'j.organization_id = ?', params: [req.user!.organizationId] },
+    ];
     const status = req.query.status as string | undefined;
     // 'skipped' included: NTU sales are a real, filterable state (migration
     // 071). Omitting it here made ?status=skipped silently return everything,
     // which reads as a broken filter rather than an unsupported one.
-    // Recorded by index rather than baked in, so the per-status counts below
-    // can rebuild the same WHERE without it — each tab should show how many
-    // sales you would get by clicking it, which means every OTHER filter
-    // applies but the status itself does not.
-    let statusPartIndex = -1;
+    // Keyed rather than baked in, so the per-status counts below can rebuild
+    // the same WHERE without it — each tab should show how many sales you would
+    // get by clicking it, which means every OTHER filter applies but the status
+    // itself does not.
     if (status && ['pending', 'scoring', 'scored', 'failed', 'skipped'].includes(status)) {
-      params.push(status as JourneyStatus);
-      parts.push(`j.status = $${params.length}`);
-      statusPartIndex = parts.length - 1;
+      filters.push({ key: 'status', sql: 'j.status = ?', params: [status as JourneyStatus] });
     }
     if (typeof req.query.customer_id === 'string') {
-      params.push(req.query.customer_id);
-      parts.push(`j.customer_id = $${params.length}`);
+      filters.push({ key: 'customer', sql: 'j.customer_id = ?', params: [req.query.customer_id] });
     }
     // Branch, so a compliance manager can look at (say) every referred sale.
     // Validated against what is actually in use rather than a fixed list —
     // branches are per-tenant scorecard configuration, not a system enum.
     if (typeof req.query.branch === 'string' && req.query.branch.trim()) {
-      params.push(req.query.branch.trim());
-      parts.push(`j.branch = $${params.length}`);
+      filters.push({ key: 'branch', sql: 'j.branch = ?', params: [req.query.branch.trim()] });
     }
     // Pass/fail. Only meaningful on a scored sale — pass is NULL until then, so
     // this implicitly narrows to scored without needing both filters set.
     const result = typeof req.query.result === 'string' ? req.query.result : '';
     if (result === 'pass' || result === 'fail') {
-      parts.push(`j.pass IS ${result === 'pass' ? 'TRUE' : 'FALSE'}`);
+      filters.push({
+        key: 'result',
+        sql: `j.pass IS ${result === 'pass' ? 'TRUE' : 'FALSE'}`,
+        params: [],
+      });
     }
     // Date range on when the SALE happened, not when it was scored. Filtering on
     // scored_at meant "sales in the first week of July" silently included an
     // April sale re-scored in July and excluded a July sale scored late, which
     // is the opposite of what the filter appears to promise.
     if (typeof req.query.from === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(req.query.from)) {
-      params.push(req.query.from);
-      parts.push(`${SALE_DATE_SQL} >= $${params.length}::date`);
+      filters.push({ key: 'from', sql: `${SALE_DATE_SQL} >= ?::date`, params: [req.query.from] });
     }
     if (typeof req.query.to === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(req.query.to)) {
-      params.push(req.query.to);
-      parts.push(`${SALE_DATE_SQL} < ($${params.length}::date + INTERVAL '1 day')`);
+      filters.push({
+        key: 'to',
+        sql: `${SALE_DATE_SQL} < (?::date + INTERVAL '1 day')`,
+        params: [req.query.to],
+      });
     }
     // Filter by the sale's closing adviser. Matched on the RESOLVED name (the
     // linked user's name where the call is linked, else the raw dialler string)
@@ -115,8 +190,9 @@ journeysRouter.get('/', requireOrgView, async (req, res, next) => {
     // keeps the filter and the list consistent with each other.
     const agent = typeof req.query.agent === 'string' ? req.query.agent.trim() : '';
     if (agent) {
-      params.push(agent);
-      parts.push(`(
+      filters.push({
+        key: 'agent',
+        sql: `(
         SELECT COALESCE(fu.name, fc.agent_name)
           FROM journey_calls fjc
           JOIN calls fc ON fc.id = fjc.call_id
@@ -127,29 +203,77 @@ journeysRouter.get('/', requireOrgView, async (req, res, next) => {
                        THEN COALESCE(fc.call_date, fc.created_at) END ASC,
                   COALESCE(fc.call_date, fc.created_at) DESC
          LIMIT 1
-      ) = $${params.length}`);
+      ) = ?`,
+        params: [agent],
+      });
     }
-    const whereSQL = parts.join(' AND ');
-    const whereWithoutStatus = parts.filter((_, i) => i !== statusPartIndex).join(' AND ');
+    // Where the sale sits in the acknowledgement loop (CG-11). Keyed for the
+    // same reason the status filter is: the per-state counts below apply every
+    // OTHER filter but not this one, so each tab shows how many sales clicking
+    // it would return.
+    const feedback = typeof req.query.feedback === 'string' ? req.query.feedback : '';
+    if (['not_fed_back', 'awaiting', 'acknowledged'].includes(feedback)) {
+      filters.push({ key: 'feedback', sql: `${FEEDBACK_STATUS_SQL} = ?`, params: [feedback] });
+    }
+
+    const all = buildWhere(filters);
+    const withoutStatus = buildWhere(filters, 'status');
+    const withoutFeedback = buildWhere(filters, 'feedback');
 
     const countRow = await queryOne<{ count: string }>(
-      `SELECT COUNT(*)::text AS count FROM journeys j WHERE ${whereSQL}`,
-      params
+      `SELECT COUNT(*)::text AS count FROM journeys j WHERE ${all.sql}`,
+      all.params
     );
 
-    // One grouped scan rather than a query per tab. The status parameter is
-    // still bound (params is shared) but unused by this statement, which
-    // Postgres allows.
+    // One grouped scan rather than a query per tab.
     const statusRows = await query<{ status: JourneyStatus; count: string }>(
       `SELECT j.status, COUNT(*)::text AS count FROM journeys j
-        WHERE ${whereWithoutStatus} GROUP BY j.status`,
-      params
+        WHERE ${withoutStatus.sql} GROUP BY j.status`,
+      withoutStatus.params
     );
     const counts = statusRows.reduce<Record<string, number>>(
       (acc, r) => ({ ...acc, [r.status]: parseInt(r.count, 10) }),
       {}
     );
     counts.all = Object.values(counts).reduce((a, b) => a + b, 0);
+
+    // The acknowledgement backlog (CG-11): how many sales sit in each state,
+    // and how long the oldest outstanding one has been waiting.
+    //
+    // One scan, grouped, rather than three counts and a fourth query for the
+    // age. max(now() - sent_at) is taken over the OPEN rows only — a confirmed
+    // round is not waiting for anything, and including it would report a
+    // backlog age for a tenant with nothing outstanding.
+    const feedbackRows = await query<{
+      feedback_status: FeedbackStatus;
+      count: string;
+      oldest_awaiting_days: string | null;
+    }>(
+      `SELECT ${FEEDBACK_STATUS_SQL} AS feedback_status,
+              COUNT(*)::text AS count,
+              MAX(CASE WHEN NOT EXISTS (
+                    SELECT 1 FROM journey_feedback f2
+                     WHERE f2.journey_id = j.id AND f2.confirmed_at IS NULL)
+                  THEN NULL
+                  ELSE FLOOR(EXTRACT(EPOCH FROM (now() - (${FEEDBACK_SENT_AT_SQL}))) / 86400)
+              END)::text AS oldest_awaiting_days
+         FROM journeys j
+        WHERE ${withoutFeedback.sql}
+        GROUP BY 1`,
+      withoutFeedback.params
+    );
+    const feedbackCounts: FeedbackStatusSummary = {
+      not_fed_back: 0,
+      awaiting: 0,
+      acknowledged: 0,
+      oldest_awaiting_days: null,
+    };
+    for (const row of feedbackRows) {
+      feedbackCounts[row.feedback_status] = parseInt(row.count, 10);
+      if (row.feedback_status === 'awaiting' && row.oldest_awaiting_days != null) {
+        feedbackCounts.oldest_awaiting_days = parseInt(row.oldest_awaiting_days, 10);
+      }
+    }
 
     const rows = await query<JourneyListItem>(
       `SELECT j.*,
@@ -159,6 +283,10 @@ journeysRouter.get('/', requireOrgView, async (req, res, next) => {
               -- matters when the earlier one was already fed back to an adviser.
               (SELECT COUNT(*)::int FROM journey_score_runs jsr
                 WHERE jsr.journey_id = j.id) AS score_runs,
+              -- Where the sale sits in the acknowledgement loop (CG-11).
+              ${FEEDBACK_STATUS_SQL} AS feedback_status,
+              ${FEEDBACK_SENT_AT_SQL} AS feedback_sent_at,
+              ${FEEDBACK_CONFIRMED_AT_SQL} AS feedback_confirmed_at,
               cust.name AS customer_name,
               cust.phone_normalized AS customer_phone,
               sc.name AS scorecard_name,
@@ -195,13 +323,13 @@ journeysRouter.get('/', requireOrgView, async (req, res, next) => {
                      COALESCE(wc.call_date, wc.created_at) DESC
             LIMIT 1
          ) ja ON TRUE
-        WHERE ${whereSQL}
+        WHERE ${all.sql}
         -- By when the sale happened, so a re-score never moves a row and a
         -- backfill lands in its own history rather than on top of today's.
         -- created_at breaks the tie for two sales closed on the same call.
         ORDER BY ${SALE_DATE_SQL} DESC, j.created_at DESC
-        LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
-      [...params, limit, offset]
+        LIMIT $${all.params.length + 1} OFFSET $${all.params.length + 2}`,
+      [...all.params, limit, offset]
     );
 
     // SELECT j.* pulls the server-only trigger_context (raw Zoho payload, can
@@ -210,7 +338,14 @@ journeysRouter.get('/', requireOrgView, async (req, res, next) => {
       ({ trigger_context: _t, ...r }) => r as JourneyListItem
     );
 
-    res.json({ data, total: parseInt(countRow?.count || '0'), page, limit, counts });
+    res.json({
+      data,
+      total: parseInt(countRow?.count || '0'),
+      page,
+      limit,
+      counts,
+      feedback_counts: feedbackCounts,
+    });
   } catch (err) {
     next(err);
   }
