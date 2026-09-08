@@ -109,6 +109,16 @@ export type DeepgramRegion = 'eu' | 'us';
 // outbound calls (the customer answers "Hello?" before the agent speaks).
 export type MonoFirstSpeaker = 'agent' | 'customer';
 
+// When the Zoho write-back fires (CG-4, migration 113).
+//
+// 'on_scoring' is the historic behaviour and the default: the QA record appears
+// as soon as CallGuard scores the sale. 'on_feedback' holds it until a
+// supervisor sends feedback, so nothing an adviser is measured on reaches the
+// CRM without a person having looked at it first.
+//
+// Scoring is unaffected by either — this gates only the write-back.
+export type ZohoWritebackTrigger = 'on_scoring' | 'on_feedback';
+
 export interface OrganizationInfo {
   id: string;
   name: string;

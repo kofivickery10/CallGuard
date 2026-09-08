@@ -896,9 +896,21 @@ export async function processScoreJourney(job: Job<ScoreJourneyJobData>) {
       deliverCallScored(journey.organization_id, payload).catch((err) => {
         console.error(`[ScoreJourney] journey.scored webhook failed for ${journeyId}:`, (err as Error).message);
       });
-      pushJourneyScored(journey.organization_id, payload).catch((err) => {
-        console.error(`[ScoreJourney] Zoho write-back failed for ${journeyId}:`, (err as Error).message);
-      });
+      // The Zoho write-back is gated on the tenant's trigger setting (CG-4);
+      // the webhook above is not. They are different contracts: the webhook is
+      // a machine feed of "this sale was scored", which is true right now,
+      // while the QA record feeds an adviser's commission process and is what
+      // the firm may want a person to release. Holding both would break
+      // integrations that have nothing to do with the review workflow.
+      if (scoringSettings.zohoWritebackTrigger === 'on_feedback') {
+        console.log(
+          `[ScoreJourney] Holding Zoho write-back for ${journeyId} — tenant pushes on feedback, not on scoring`
+        );
+      } else {
+        pushJourneyScored(journey.organization_id, payload).catch((err) => {
+          console.error(`[ScoreJourney] Zoho write-back failed for ${journeyId}:`, (err as Error).message);
+        });
+      }
     }
     // Data capture runs strictly after (and independently of) scoring — a
     // capture failure never affects the journey's score. No-op unless the
