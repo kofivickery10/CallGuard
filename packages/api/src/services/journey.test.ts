@@ -140,7 +140,12 @@ describe('assembleJourney — sale scoping', () => {
     expect(callsQueryInvocation).toBeDefined();
     const [sql, params] = callsQueryInvocation!;
     expect(sql).toContain('zoho_record_id');
-    expect(params).toEqual([ORG, CUSTOMER, expect.any(String), 'sale-b']);
+    // The customer parameter is a LIST since CG-8 (migration 114): a customer
+    // who rings from a second number is a second `customers` row, and assembly
+    // now gathers across every row linked as the same person. An unlinked
+    // customer — the normal case, and this one — is a list of one, so the sale
+    // scoping this test pins is unchanged.
+    expect(params).toEqual([ORG, [CUSTOMER], expect.any(String), 'sale-b']);
 
     // A fresh journey was created (not sale-A's reused) and handed to scoring.
     expect(withTransaction).toHaveBeenCalledTimes(1);

@@ -32,6 +32,11 @@ export type AuditActionType =
   // not leave an uncorrectable second copy in the register.
   | 'journey.note.add'
   | 'journey.note.edit'
+  // Two customer numbers declared the same person, or that claim withdrawn
+  // (CG-8). Logged because a link changes which calls a compliance score is
+  // computed from, so a score can move with no other visible cause.
+  | 'customer.identity_link'
+  | 'customer.identity_unlink'
   // Sales deleted in bulk (scripts/delete-tenant-sales.ts). Distinct from a
   // rescore: this destroys the breaches, the human rulings and the score history
   // rather than replacing them, so it needs its own line in the register.
