@@ -37,6 +37,10 @@ export type AuditActionType =
   // computed from, so a score can move with no other visible cause.
   | 'customer.identity_link'
   | 'customer.identity_unlink'
+  // When the Zoho write-back fires changed (CG-4). Logged because it changes
+  // what reaches a tenant's CRM, and "records stopped arriving" is otherwise
+  // very hard to explain weeks later.
+  | 'zoho.writeback_trigger_changed'
   // Sales deleted in bulk (scripts/delete-tenant-sales.ts). Distinct from a
   // rescore: this destroys the breaches, the human rulings and the score history
   // rather than replacing them, so it needs its own line in the register.

@@ -314,7 +314,11 @@ interface ZohoWriteResult {
   details?: Record<string, unknown>;
 }
 
-async function checkZohoWriteResult(res: Response, action: string): Promise<void> {
+// Returns the id of the record Zoho created or updated, when it names one.
+// Callers that only care whether the write succeeded ignore it; the QA
+// per-feedback-round path (CG-4) needs it to record which record a round wrote,
+// so a retry updates that record instead of creating a second one.
+async function checkZohoWriteResult(res: Response, action: string): Promise<string | null> {
   // Read the body as text first so we can fall back to the raw response when
   // Zoho names no field: a bare "INVALID_DATA / invalid data" with empty
   // details is otherwise undiagnosable.
@@ -339,6 +343,8 @@ async function checkZohoWriteResult(res: Response, action: string): Promise<void
       `${action} failed: ${res.status} ${result?.code ?? ''} ${result?.message ?? ''}${details}`.trim()
     );
   }
+  const id = result?.details?.id;
+  return typeof id === 'string' ? id : null;
 }
 
 // UK-aware phone variants so a +44… call still matches a Zoho record that stores
@@ -998,7 +1004,10 @@ async function pushQARecord(
   apiDomain: string,
   accessToken: string,
   conn: ZohoConnectionRow,
-  payload: ScoredPayload
+  payload: ScoredPayload,
+  // Set when this push is releasing a specific round of adviser feedback
+  // (CG-4). Scopes the QA record to that round instead of the sale.
+  feedbackId?: string
 ): Promise<void> {
   if (!conn.qa_module) return;
   if (!isJourneyPayload(payload)) return;
@@ -1026,6 +1035,44 @@ async function pushQARecord(
   // Owner = the closing agent, if we can resolve them to a Zoho user.
   const ownerId = await resolveZohoUserIdByEmail(conn.organization_id, apiDomain, accessToken, payload.agent_email);
   if (ownerId) record.Owner = { id: ownerId };
+
+  // A push that belongs to a feedback round is scoped to THAT round rather than
+  // to the sale (CG-4). Each round is a separate event — this is what the
+  // adviser was told, on this date, about this version of the score — so
+  // flattening two rounds onto one record would lose the first conversation.
+  //
+  // journey_feedback.zoho_qa_record_id is what keeps that safe. The delivery
+  // layer retries, so "append per round" without it would mean "append per
+  // attempt": one transient Zoho failure and the round has two records,
+  // silently double-counting in the tenant's QA average. With it the rule is
+  // exact — no id recorded yet, create and record it; id present, update it.
+  if (feedbackId) {
+    const round = await queryOne<{ zoho_qa_record_id: string | null }>(
+      'SELECT zoho_qa_record_id FROM journey_feedback WHERE id = $1',
+      [feedbackId]
+    );
+    if (round?.zoho_qa_record_id) {
+      record.id = round.zoho_qa_record_id;
+      const res = await zohoApi(apiDomain, accessToken, `/crm/v8/${conn.qa_module}`, {
+        method: 'PUT',
+        body: JSON.stringify({ data: [record] }),
+      });
+      await checkZohoWriteResult(res, 'Zoho QA record update (feedback round)');
+      return;
+    }
+    const res = await zohoApi(apiDomain, accessToken, `/crm/v8/${conn.qa_module}`, {
+      method: 'POST',
+      body: JSON.stringify({ data: [record] }),
+    });
+    const createdId = await checkZohoWriteResult(res, 'Zoho QA record create (feedback round)');
+    if (createdId) {
+      await query('UPDATE journey_feedback SET zoho_qa_record_id = $2 WHERE id = $1', [
+        feedbackId,
+        createdId,
+      ]);
+    }
+    return;
+  }
 
   const existingId = await findQARecordByCustomer(
     apiDomain,
@@ -1111,12 +1158,14 @@ async function startZohoDelivery(params: {
   kind: ZohoDeliveryKind;
   target: string;
   payload: ScoredPayload;
+  // The feedback round this delivery releases, so a retry stays scoped to it.
+  feedbackId?: string;
 }): Promise<string | null> {
   try {
     const row = await queryOne<{ id: string }>(
       `INSERT INTO zoho_deliveries
-         (organization_id, call_id, journey_id, kind, target, payload, status)
-       VALUES ($1, $2, $3, $4, $5, $6, 'pending')
+         (organization_id, call_id, journey_id, kind, target, payload, status, feedback_id)
+       VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7)
        RETURNING id`,
       [
         params.organizationId,
@@ -1125,6 +1174,7 @@ async function startZohoDelivery(params: {
         params.kind,
         params.target,
         JSON.stringify(params.payload),
+        params.feedbackId ?? null,
       ]
     );
     return row?.id ?? null;
@@ -1241,10 +1291,11 @@ async function attemptQAWriteBack(
   accessToken: string,
   conn: ZohoConnectionRow,
   payload: ScoredPayload,
-  label: string
+  label: string,
+  feedbackId?: string
 ): Promise<ZohoDeliveryOutcome> {
   try {
-    await pushQARecord(apiDomain, accessToken, conn, payload);
+    await pushQARecord(apiDomain, accessToken, conn, payload, feedbackId);
     return { status: 'delivered', target: conn.qa_module ?? 'qa', retryable: false };
   } catch (err) {
     const message = (err as Error).message;
@@ -1281,8 +1332,9 @@ export async function retryZohoDelivery(deliveryId: string, attempt: number): Pr
     kind: ZohoDeliveryKind;
     status: string;
     payload: ScoredPayload;
+    feedback_id: string | null;
   }>(
-    `SELECT id, organization_id, call_id, journey_id, kind, status, payload
+    `SELECT id, organization_id, call_id, journey_id, kind, status, payload, feedback_id
        FROM zoho_deliveries WHERE id = $1`,
     [deliveryId]
   );
@@ -1319,7 +1371,7 @@ export async function retryZohoDelivery(deliveryId: string, attempt: number): Pr
   const outcome =
     row.kind === 'record'
       ? await attemptRecordWriteBack(apiDomain, accessToken, conn, row.payload, label)
-      : await attemptQAWriteBack(apiDomain, accessToken, conn, row.payload, label);
+      : await attemptQAWriteBack(apiDomain, accessToken, conn, row.payload, label, row.feedback_id ?? undefined);
 
   await finishZohoDelivery(deliveryId, outcome);
 
@@ -1337,7 +1389,11 @@ export async function retryZohoDelivery(deliveryId: string, attempt: number): Pr
  * recent problem) and, per target, on zoho_deliveries (every attempt, not
  * just the latest — see the section above). Never throws to the caller.
  */
-async function pushScoredPayload(organizationId: string, payload: ScoredPayload): Promise<void> {
+async function pushScoredPayload(
+  organizationId: string,
+  payload: ScoredPayload,
+  feedbackId?: string
+): Promise<void> {
   const conn = await getConnectionRow(organizationId);
   if (!conn || conn.status !== 'active') return;
 
@@ -1392,11 +1448,14 @@ async function pushScoredPayload(organizationId: string, payload: ScoredPayload)
       callId,
       journeyId,
       kind: 'qa',
-      target: `${conn.qa_module} (customer ${qaZohoRecordId})`,
+      target: feedbackId
+        ? `${conn.qa_module} (feedback round ${feedbackId})`
+        : `${conn.qa_module} (customer ${qaZohoRecordId})`,
       payload,
+      feedbackId,
     });
 
-    const outcome = await attemptQAWriteBack(apiDomain, accessToken, conn, payload, label);
+    const outcome = await attemptQAWriteBack(apiDomain, accessToken, conn, payload, label, feedbackId);
     await finishZohoDelivery(deliveryId, outcome);
     if (outcome.errorMessage) errors.push(`qa: ${outcome.errorMessage}`);
     if (outcome.status === 'failed' && outcome.retryable && deliveryId) {
@@ -1421,8 +1480,15 @@ export async function pushCallScored(organizationId: string, payload: WebhookCal
   return pushScoredPayload(organizationId, payload);
 }
 
-export async function pushJourneyScored(organizationId: string, payload: WebhookJourneyScoredPayload): Promise<void> {
-  return pushScoredPayload(organizationId, payload);
+export async function pushJourneyScored(
+  organizationId: string,
+  payload: WebhookJourneyScoredPayload,
+  // The feedback round being released, on a tenant that pushes on feedback
+  // rather than on scoring (CG-4). Omitted for every other caller, which keeps
+  // the historic one-record-per-sale upsert.
+  feedbackId?: string
+): Promise<void> {
+  return pushScoredPayload(organizationId, payload, feedbackId);
 }
 
 // Lightweight credential check for the UI: refresh the token and hit a cheap

@@ -8,6 +8,7 @@ import { AppError } from '../middleware/errors.js';
 import { encrypt } from '../services/crypto.js';
 import { recordAuditEvent } from '../services/audit.js';
 import { normalizePhone, pickField } from '../services/ingestion.js';
+import { getScoringSettings } from '../services/tenant-settings.js';
 import { ingestionQueue } from '../jobs/queue.js';
 import {
   buildAuthorizeUrl,
@@ -254,7 +255,47 @@ zohoRouter.get('/', async (req, res, next) => {
       `SELECT ${ZOHO_PUBLIC_COLUMNS} FROM zoho_connections WHERE organization_id = $1`,
       [req.user!.organizationId]
     );
-    res.json({ data: conn });
+    // The write-back trigger (CG-4) lives on organizations, not on the
+    // connection row, because it is a policy about when CallGuard pushes rather
+    // than a credential. Returned alongside the connection because that is the
+    // one screen where an admin is thinking about Zoho at all.
+    const settings = await getScoringSettings(req.user!.organizationId);
+    res.json({ data: conn, writeback_trigger: settings.zohoWritebackTrigger });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// When the write-back fires (CG-4). Admin-set, not superadmin-set: it changes
+// the tenant's own review workflow, carries no cost, retention or data-residency
+// consequence, and is the kind of decision a compliance lead should be able to
+// make without raising a ticket.
+zohoRouter.put('/writeback-trigger', async (req, res, next) => {
+  try {
+    const trigger = req.body?.trigger;
+    if (trigger !== 'on_scoring' && trigger !== 'on_feedback') {
+      throw new AppError(400, "trigger must be 'on_scoring' or 'on_feedback'");
+    }
+    await query('UPDATE organizations SET zoho_writeback_trigger = $2 WHERE id = $1', [
+      req.user!.organizationId,
+      trigger,
+    ]);
+    // Worth an audit line: it changes what reaches a tenant's CRM, and "records
+    // stopped arriving" is otherwise a hard thing to explain after the fact.
+    void recordAuditEvent({
+      organizationId: req.user!.organizationId,
+      userId: req.user!.userId,
+      actionType: 'zoho.writeback_trigger_changed',
+      entityType: 'organization',
+      entityId: req.user!.organizationId,
+      summary:
+        trigger === 'on_feedback'
+          ? 'Zoho write-back now waits for a supervisor to send feedback'
+          : 'Zoho write-back now fires automatically when a sale is scored',
+      metadata: { trigger },
+      req,
+    });
+    res.json({ trigger });
   } catch (err) {
     next(err);
   }
