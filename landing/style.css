@@ -1234,11 +1234,18 @@ h1, h2, h3, h4, h5 { color: var(--text-primary); font-weight: 700; line-height: 
   padding: 22px 28px;
   margin-bottom: 40px;
 }
+/* The TOC heading is an <h2> so the legal pages descend h1 -> h2 without a
+   skip; it must not pick up the section-heading size or spacing from
+   `.legal-body h2`, hence the explicit margin/padding reset. h3 kept in the
+   selector so an older page that still uses one is not restyled. */
+.legal-body .toc h2,
 .legal-body .toc h3 {
   font-size: 13px;
   text-transform: uppercase;
   letter-spacing: 0.6px;
+  margin-top: 0;
   margin-bottom: 12px;
+  padding-top: 0;
   color: var(--text-muted);
   font-weight: 700;
 }
