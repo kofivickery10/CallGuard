@@ -32,6 +32,10 @@ export type AuditActionType =
   // not leave an uncorrectable second copy in the register.
   | 'journey.note.add'
   | 'journey.note.edit'
+  // When the Zoho write-back fires changed (CG-4). Logged because it changes
+  // what reaches a tenant's CRM, and "records stopped arriving" is otherwise
+  // very hard to explain weeks later.
+  | 'zoho.writeback_trigger_changed'
   // Sales deleted in bulk (scripts/delete-tenant-sales.ts). Distinct from a
   // rescore: this destroys the breaches, the human rulings and the score history
   // rather than replacing them, so it needs its own line in the register.

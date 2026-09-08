@@ -1,6 +1,7 @@
 import { query, queryOne } from '../db/client.js';
 import { deliverCallScored } from './webhook-delivery.js';
 import { pushCallScored, pushJourneyScored } from './zoho.js';
+import { getScoringSettings } from './tenant-settings.js';
 import type { WebhookCallScoredPayload, WebhookJourneyScoredPayload } from '@callguard/shared';
 
 /**
@@ -40,7 +41,19 @@ async function resolveWrapUpAgent(
   return { agent_name: wrapUp.agent_name, agent_email: agent?.email ?? null };
 }
 
-export async function pushJourneyScoreUpdate(organizationId: string, journeyId: string): Promise<void> {
+// Rebuild the journey.scored payload from persisted state. Shared by the
+// score-correction path and the feedback release below so both describe the
+// sale identically — a CRM record that disagreed with itself depending on which
+// action produced it would be worse than either.
+//
+// Returns null when there is nothing honest to push: the sale is gone, or every
+// applicable checkpoint is still with a reviewer so there is no score. The
+// payload's score is non-nullable and a missing one coerces to 0/fail, which
+// would put a 0% QA record in the client's CRM for a sale nobody has judged.
+async function buildJourneyPayload(
+  organizationId: string,
+  journeyId: string
+): Promise<WebhookJourneyScoredPayload | null> {
   const journey = await queryOne<{
     scorecard_id: string;
     branch: string | null;
@@ -54,14 +67,13 @@ export async function pushJourneyScoreUpdate(organizationId: string, journeyId: 
        FROM journeys WHERE id = $1 AND organization_id = $2`,
     [journeyId, organizationId]
   );
-  if (!journey) return;
+  if (!journey) return null;
   // No score yet — every applicable checkpoint is still with a reviewer (see
-  // jobs/processors/score-journey.ts). The payload's score is non-nullable and
-  // a missing one would coerce to 0/fail, so holding is the only honest option:
-  // the next resolution recomputes a real score and pushes then.
+  // jobs/processors/score-journey.ts). Holding is the only honest option: the
+  // next resolution recomputes a real score and pushes then.
   if (journey.overall_score === null) {
     console.log(`[ScoreWriteback] Holding journey ${journeyId} — no score yet, all checkpoints await review`);
-    return;
+    return null;
   }
 
   const customer = await queryOne<{
@@ -108,10 +120,40 @@ export async function pushJourneyScoreUpdate(organizationId: string, journeyId: 
       evidence: b.evidence ?? '',
     })),
   };
+  return payload;
+}
+
+export async function pushJourneyScoreUpdate(organizationId: string, journeyId: string): Promise<void> {
+  const payload = await buildJourneyPayload(organizationId, journeyId);
+  if (!payload) return;
 
   deliverCallScored(organizationId, payload).catch((err) => {
     console.error(`[ScoreWriteback] journey.scored webhook failed for ${journeyId}:`, (err as Error).message);
   });
+
+  // A human's corrected verdict reaches Zoho only if a record for this sale is
+  // already there to correct (CG-4).
+  //
+  // This path fires when a reviewer resolves a checkpoint or overturns a score.
+  // On a tenant that pushes on feedback, the sale may never have been sent — and
+  // creating the QA record here would defeat the whole point of the setting:
+  // the record would appear in the CRM off the back of an internal review step,
+  // before anyone pressed Feedback. Once a round HAS been sent, the same edit is
+  // exactly what should be reflected, so the update goes through.
+  const settings = await getScoringSettings(organizationId);
+  if (settings.zohoWritebackTrigger === 'on_feedback') {
+    const sent = await queryOne<{ id: string }>(
+      'SELECT id FROM journey_feedback WHERE journey_id = $1 LIMIT 1',
+      [journeyId]
+    );
+    if (!sent) {
+      console.log(
+        `[ScoreWriteback] Holding Zoho write-back for journey ${journeyId} — tenant pushes on feedback and none has been sent`
+      );
+      return;
+    }
+  }
+
   pushJourneyScored(organizationId, payload).catch((err) => {
     console.error(`[ScoreWriteback] Zoho write-back failed for journey ${journeyId}:`, (err as Error).message);
   });
@@ -191,4 +233,51 @@ export async function pushCallScoreUpdate(organizationId: string, callId: string
   pushCallScored(organizationId, payload).catch((err) => {
     console.error(`[ScoreWriteback] Zoho write-back failed for call ${callId}:`, (err as Error).message);
   });
+}
+
+/**
+ * Release a scored sale to Zoho because a supervisor has just fed it back
+ * (CG-4).
+ *
+ * This is the write-back trigger Trust Point asked for: on a tenant set to
+ * `on_feedback`, the scoring job holds the push, and this is what lets it go —
+ * so nothing reaches the CRM, and nothing reaches an adviser's commission
+ * process, that a person has not reviewed and released.
+ *
+ * No-op on the default `on_scoring` tenant. There the record went out when the
+ * sale was scored, and pushing again here would either duplicate it or restate
+ * a score nothing has changed. Feedback is not a scoring event.
+ *
+ * Scoped to `feedbackId`, so each round writes its own QA record: a second
+ * round is a second conversation with the adviser, not a correction of the
+ * first. The delivery layer retries against that same round (migration 113),
+ * so a transient failure re-updates rather than duplicating.
+ *
+ * Best-effort, like every write-back here: never throws to the caller. The
+ * feedback email has already gone out by this point and a Zoho outage must not
+ * turn that into a failed request.
+ */
+export async function pushJourneyFeedbackRelease(
+  organizationId: string,
+  journeyId: string,
+  feedbackId: string
+): Promise<void> {
+  try {
+    const settings = await getScoringSettings(organizationId);
+    if (settings.zohoWritebackTrigger !== 'on_feedback') return;
+
+    const payload = await buildJourneyPayload(organizationId, journeyId);
+    if (!payload) return;
+
+    // Deliberately no webhook here. The `journey.scored` webhook already fired
+    // when the sale was scored — that event was true then and re-firing it on
+    // feedback would tell every integration a sale had been re-scored when
+    // nothing about the score changed.
+    await pushJourneyScored(organizationId, payload, feedbackId);
+  } catch (err) {
+    console.error(
+      `[ScoreWriteback] Zoho feedback release failed for journey ${journeyId}:`,
+      (err as Error).message
+    );
+  }
 }

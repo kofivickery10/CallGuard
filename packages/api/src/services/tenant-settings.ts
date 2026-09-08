@@ -16,6 +16,7 @@ import type {
   DeepgramRegion,
   DialerProvider,
   DialerFieldMap,
+  ZohoWritebackTrigger,
 } from '@callguard/shared';
 
 // ============================================================
@@ -59,6 +60,9 @@ export interface ScoringSettings {
   monoFirstSpeaker: MonoFirstSpeaker;
   deepgramRegion: DeepgramRegion;
   deepgramMipOptOut: boolean;
+  // When the Zoho write-back fires (CG-4). Gates the CRM push only — scoring
+  // runs automatically off the sale trigger either way.
+  zohoWritebackTrigger: ZohoWritebackTrigger;
 }
 
 interface ScoringSettingsRow {
@@ -73,6 +77,7 @@ interface ScoringSettingsRow {
   deepgram_mip_opt_out: boolean;
   scoring_samples: number;
   review_confidence_floor: string;
+  zoho_writeback_trigger: ZohoWritebackTrigger;
 }
 
 const FALLBACK: ScoringSettings = {
@@ -87,6 +92,9 @@ const FALLBACK: ScoringSettings = {
   monoFirstSpeaker: 'agent',
   deepgramRegion: 'eu',
   deepgramMipOptOut: true,
+  // Matches migration 113's column default: the historic behaviour, so a
+  // missing org row never silently stops a tenant's records reaching Zoho.
+  zohoWritebackTrigger: 'on_scoring',
 };
 
 /**
@@ -98,7 +106,8 @@ export async function getScoringSettings(organizationId: string): Promise<Scorin
   const row = await queryOne<ScoringSettingsRow>(
     `SELECT scoring_scope, min_scoreable_seconds, min_scoreable_words, pass_threshold,
             retention_days, transcription_mode, mono_first_speaker, deepgram_region,
-            deepgram_mip_opt_out, scoring_samples, review_confidence_floor
+            deepgram_mip_opt_out, scoring_samples, review_confidence_floor,
+            zoho_writeback_trigger
        FROM organizations WHERE id = $1`,
     [organizationId]
   );
@@ -122,6 +131,10 @@ export async function getScoringSettings(organizationId: string): Promise<Scorin
     deepgramRegion: row.deepgram_region,
     // Floor: never let a bad row value disable the opt-out.
     deepgramMipOptOut: row.deepgram_mip_opt_out !== false,
+    // Anything unrecognised falls back to the historic behaviour rather than
+    // holding the write-back: a bad value must not quietly stop a tenant's
+    // records reaching their CRM.
+    zohoWritebackTrigger: row.zoho_writeback_trigger === 'on_feedback' ? 'on_feedback' : 'on_scoring',
   };
 }
 

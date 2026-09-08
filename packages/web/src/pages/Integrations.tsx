@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { api } from '../api/client';
 import { useDialog } from '../components/DialogProvider';
 import type {
+  ZohoWritebackTrigger,
   ApiKey,
   ApiKeyWithPlaintext,
   SFTPSource,
@@ -811,9 +812,21 @@ function ZohoSection() {
 
   const { data } = useQuery({
     queryKey: ['zoho-connection'],
-    queryFn: () => api.get<{ data: ZohoConnection | null }>('/integrations/zoho'),
+    queryFn: () =>
+      api.get<{ data: ZohoConnection | null; writeback_trigger: ZohoWritebackTrigger }>(
+        '/integrations/zoho'
+      ),
   });
   const conn = data?.data ?? null;
+  const writebackTrigger = data?.writeback_trigger ?? 'on_scoring';
+
+  // When the QA write-back fires (CG-4). Invalidates the connection query so
+  // the radio reflects what the server stored, not what was clicked.
+  const setTrigger = useMutation({
+    mutationFn: (trigger: ZohoWritebackTrigger) =>
+      api.put<{ trigger: ZohoWritebackTrigger }>('/integrations/zoho/writeback-trigger', { trigger }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['zoho-connection'] }),
+  });
 
   // Surface the result of the OAuth round-trip (Zoho redirects back with ?zoho=…).
   useEffect(() => {
@@ -898,6 +911,52 @@ function ZohoSection() {
               <button onClick={handleDisconnect} className="text-text-muted hover:text-fail">Disconnect</button>
             </div>
           </div>
+
+          {/* When the QA write-back fires (CG-4). Sits on the connection panel
+              because this is the one screen where an admin is thinking about
+              what CallGuard sends Zoho at all. */}
+          <fieldset className="mb-4 border-t border-border-light pt-4">
+            <legend className="sr-only">When to write back to Zoho</legend>
+            <p className="text-table-cell font-semibold text-text-primary mb-1">Write the QA record</p>
+            <p className="text-xs text-text-muted mb-2.5">
+              Scoring is automatic either way — this decides when the score reaches Zoho.
+            </p>
+            <div className="space-y-2">
+              {([
+                {
+                  value: 'on_scoring' as const,
+                  label: 'As soon as a sale is scored',
+                  hint: 'The QA record appears in Zoho without anyone reviewing it first.',
+                },
+                {
+                  value: 'on_feedback' as const,
+                  label: 'When a supervisor sends feedback',
+                  hint: 'Nothing reaches Zoho until a person has reviewed the sale and released it. Each round of feedback writes its own QA record.',
+                },
+              ]).map((opt) => (
+                <label key={opt.value} className="flex items-start gap-2.5 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="zoho-writeback-trigger"
+                    value={opt.value}
+                    checked={writebackTrigger === opt.value}
+                    disabled={setTrigger.isPending}
+                    onChange={() => setTrigger.mutate(opt.value)}
+                    className="mt-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                  />
+                  <span>
+                    <span className="block text-table-cell text-text-primary">{opt.label}</span>
+                    <span className="block text-xs text-text-muted">{opt.hint}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+            {setTrigger.isError && (
+              <p role="alert" className="mt-2 text-table-cell text-fail">
+                Could not save that. Try again.
+              </p>
+            )}
+          </fieldset>
 
           <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-table-cell">
             <div className="flex justify-between border-b border-border-light py-1">

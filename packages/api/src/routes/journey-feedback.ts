@@ -3,6 +3,7 @@ import { authenticate, requireActioner } from '../middleware/auth.js';
 import { queryOne } from '../db/client.js';
 import { AppError } from '../middleware/errors.js';
 import { recordAuditEvent } from '../services/audit.js';
+import { pushJourneyFeedbackRelease } from '../services/score-writeback.js';
 import { isUuid } from '../services/uuid.js';
 import {
   resolveAdviser,
@@ -153,6 +154,19 @@ feedbackRouter.post('/journeys/:journeyId/feedback', authenticate, requireAction
       // server fault: surface the reason rather than a 500.
       throw new AppError(400, (err as Error).message);
     }
+
+    // Release the sale to Zoho, on a tenant that pushes on feedback (CG-4).
+    //
+    // This is the trigger Trust Point asked for: nothing reaches the CRM — and
+    // so nothing reaches the adviser's commission process — until a person has
+    // reviewed the sale and pressed this button. Scoped to this feedback round,
+    // so a second round appends its own QA record rather than overwriting what
+    // the adviser was told the first time.
+    //
+    // Best-effort and after the send, exactly like every other write-back: a
+    // Zoho outage must not fail a feedback email that has already gone out, and
+    // the delivery row it creates carries its own retry.
+    void pushJourneyFeedbackRelease(organizationId, journeyId, result.feedbackId);
 
     await recordAuditEvent({
       organizationId,
