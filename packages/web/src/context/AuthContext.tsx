@@ -22,6 +22,9 @@ interface AuthUser {
   // Whether the user has completed 2FA enrolment. 2FA is mandatory, so a false
   // value forces the enrolment flow before the app is usable.
   totp_enabled?: boolean;
+  // True when the account is exempt from mandatory 2FA (internal/setup logins).
+  // Overrides the totp_enabled gate — see PrivateRoute in App.tsx.
+  two_factor_exempt?: boolean;
   // True when a superadmin is impersonating this user for support.
   impersonated?: boolean;
 }

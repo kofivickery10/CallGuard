@@ -12,6 +12,9 @@ interface AdminUser {
   name: string;
   role: string;
   totp_enabled?: boolean;
+  // True when the account is exempt from mandatory 2FA (internal/setup logins).
+  // Overrides the totp_enabled gate — see the enrolment redirect in App.tsx.
+  two_factor_exempt?: boolean;
 }
 
 export type LoginResult =

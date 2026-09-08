@@ -56,6 +56,11 @@ export interface SessionResponse {
     // Per-tenant feature grants/denials beyond the plan tier (e.g. score_only).
     feature_overrides: Record<string, boolean>;
     totp_enabled: boolean;
+    // Exempt from mandatory 2FA. Sent to the client so its enrolment gate can
+    // agree with the session this endpoint already issued — an exempt user gets
+    // a full mfa-satisfied token, so a client that routed them to enrolment
+    // anyway would loop against endpoints the API considers already satisfied.
+    two_factor_exempt: boolean;
   };
 }
 
@@ -73,9 +78,11 @@ export async function issueSession(userId: string, mfa: boolean): Promise<Sessio
     organization_id: string | null;
     plan_override: string | null;
     totp_enabled: boolean;
+    two_factor_exempt: boolean;
     login_disabled: boolean;
   }>(
-    `SELECT id, email, name, role, is_staff, organization_id, plan_override, totp_enabled, login_disabled
+    `SELECT id, email, name, role, is_staff, organization_id, plan_override, totp_enabled,
+            two_factor_exempt, login_disabled
        FROM users WHERE id = $1`,
     [userId]
   );
@@ -119,6 +126,7 @@ export async function issueSession(userId: string, mfa: boolean): Promise<Sessio
       organization_plan,
       feature_overrides: org?.feature_overrides ?? {},
       totp_enabled: user.totp_enabled,
+      two_factor_exempt: user.two_factor_exempt,
     },
   };
 }
@@ -375,8 +383,11 @@ authRouter.get('/me', authenticate, async (req, res, next) => {
       organization_id: string;
       plan_override: string | null;
       totp_enabled: boolean;
+      two_factor_exempt: boolean;
     }>(
-      'SELECT id, email, name, role, is_staff, organization_id, plan_override, totp_enabled FROM users WHERE id = $1',
+      `SELECT id, email, name, role, is_staff, organization_id, plan_override, totp_enabled,
+              two_factor_exempt
+         FROM users WHERE id = $1`,
       [req.user!.userId]
     );
 

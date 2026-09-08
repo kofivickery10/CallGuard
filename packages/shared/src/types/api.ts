@@ -35,6 +35,11 @@ export interface AuthResponse {
     organization_name: string;
     organization_plan: 'core' | 'professional' | 'enterprise' | null;
     totp_enabled?: boolean;
+    // True when the account is exempt from mandatory 2FA (internal/setup logins).
+    // The client must treat this as satisfying the enrolment gate: the API has
+    // already issued a full mfa-satisfied session for these users, so routing
+    // them to enrolment traps them in a loop the API will not let them complete.
+    two_factor_exempt?: boolean;
   };
 }
 

@@ -89,7 +89,9 @@ function AppLayout() {
   if (loading) return <div className="flex items-center justify-center min-h-screen text-text-muted text-sm">Loading…</div>;
   if (!user) return <Navigate to="/login" replace />;
   // 2FA is mandatory — bounce unenrolled superadmins into enrolment first.
-  if (user.totp_enabled === false) return <Navigate to="/enroll-2fa" replace />;
+  // Exempt accounts are the exception: /auth/login already issued them a full
+  // mfa-satisfied session, so bouncing them here would loop forever.
+  if (user.totp_enabled === false && !user.two_factor_exempt) return <Navigate to="/enroll-2fa" replace />;
 
   return (
     <div className="flex min-h-screen">

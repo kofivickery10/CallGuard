@@ -63,7 +63,9 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
   if (loading) return <div className="flex items-center justify-center h-screen">Loading...</div>;
   if (!user) return <Navigate to="/login" />;
   // 2FA is mandatory — unenrolled users are sent to enrolment before any page.
-  if (user.totp_enabled === false) return <Navigate to="/enroll-2fa" />;
+  // Exempt accounts are the exception: /auth/login already issued them a full
+  // mfa-satisfied session, so bouncing them here would loop forever.
+  if (user.totp_enabled === false && !user.two_factor_exempt) return <Navigate to="/enroll-2fa" />;
   return <>{children}</>;
 }
 
