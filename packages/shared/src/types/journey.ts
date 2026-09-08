@@ -187,6 +187,14 @@ export interface JourneyListItem extends Journey {
   // replaced an earlier one — which matters when the earlier one was already
   // fed back to an adviser.
   score_runs: number;
+  // Where this sale sits in the acknowledgement loop (CG-11).
+  feedback_status: FeedbackStatus;
+  // When the feedback that decides the status above was sent. Null on a sale
+  // never fed back. On 'awaiting' this is what the waiting time is measured
+  // from; on 'acknowledged' it is the most recent round.
+  feedback_sent_at: string | null;
+  // When the adviser confirmed. Null unless the status is 'acknowledged'.
+  feedback_confirmed_at: string | null;
 }
 
 // A checkpoint awaiting human review (item_type='manual' or a consent gate
@@ -280,4 +288,41 @@ export interface JourneyNote {
   // Empty on an unedited note. Never trimmed: notes are not deletable and
   // their history is not prunable, both by design (migration 112).
   revisions: JourneyNoteRevision[];
+}
+
+// ── Feedback status on a sale (CG-11) ─────────────────────────────────────────
+
+// Where a sale sits in the acknowledgement loop.
+//
+// Derived, never stored: it is a reading of journey_feedback rows, so it cannot
+// drift from them. `journey_feedback` carries a UNIQUE index on journey_id WHERE
+// confirmed_at IS NULL (087), so a sale has at most one OPEN feedback but may
+// have several confirmed ones from earlier rounds — which is why an open row
+// wins over any history. A sale fed back, acknowledged, re-scored and fed back
+// again is awaiting confirmation, not acknowledged.
+export type FeedbackStatus =
+  // No feedback has ever been sent for this sale.
+  | 'not_fed_back'
+  // Sent, and the adviser has not yet confirmed. This is the backlog.
+  | 'awaiting'
+  // Every feedback sent for this sale has been confirmed by the adviser.
+  | 'acknowledged';
+
+export const FEEDBACK_STATUS_LABELS: Record<FeedbackStatus, string> = {
+  not_fed_back: 'Not fed back',
+  awaiting: 'Awaiting confirmation',
+  acknowledged: 'Acknowledged',
+};
+
+// How many sales sit in each state, plus the age of the oldest one still
+// waiting. The counts describe the current filter set with the feedback filter
+// itself removed, so each tab shows what clicking it would return.
+export interface FeedbackStatusSummary {
+  not_fed_back: number;
+  awaiting: number;
+  acknowledged: number;
+  // Whole days since the oldest still-unconfirmed feedback was sent. Null when
+  // nothing is awaiting. "Fed back 9 days ago, still not confirmed" is the
+  // number a supervisor is actually managing, and the one a principal asks for.
+  oldest_awaiting_days: number | null;
 }
