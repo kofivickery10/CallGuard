@@ -60,18 +60,71 @@ describe('renderFeedbackEmail', () => {
     }
   });
 
-  it('says where the detail went when reasoning was withheld, rather than dropping it', () => {
+  it('sends an adviser WITH a login to CallGuard for the withheld detail', () => {
     // DPIA R5: for a tenant that keeps health unredacted the reasons stay behind
     // the link. A silently shorter email is indistinguishable from a complete
     // one, so the email has to say so.
     const { html, text } = renderFeedbackEmail({
       ...base,
       reasoningWithheld: true,
+      recipientCanSignIn: true,
       items: [{ label: 'Obtained clear affirmative consent', severity: 'high' }],
     });
     expect(html).toContain('is in CallGuard rather than this email');
     expect(text).toContain('is in CallGuard rather than this email');
     expect(html).toContain('Obtained clear affirmative consent');
+  });
+
+  // The case that made this a branch. Advisers commonly have no login at all
+  // (061), and on the tenants this note fires for — the ones keeping health
+  // unredacted — Trust Point's have none. Telling them the detail "is in
+  // CallGuard" points them at a sign-in page they cannot get past, and the
+  // confirm link is no answer either: that page shows a name and a button,
+  // never the findings. So the email must not send them anywhere.
+  it('points an adviser with NO login at their supervisor, not at CallGuard', () => {
+    const { html, text } = renderFeedbackEmail({
+      ...base,
+      reasoningWithheld: true,
+      recipientCanSignIn: false,
+      items: [{ label: 'Obtained clear affirmative consent', severity: 'high' }],
+    });
+    for (const part of [html, text]) {
+      expect(part).toContain('not in this email');
+      expect(part).toContain('supervisor');
+      // The promise that could not be kept.
+      expect(part).not.toContain('is in CallGuard rather than this email');
+      expect(part).not.toContain('Sign in to CallGuard');
+    }
+    expect(html).toContain('Obtained clear affirmative consent');
+  });
+
+  // Absent must read as "cannot sign in": that branch sends the reader to a
+  // person rather than to a page they may not be able to open, so it is the
+  // safe default for a payload written before this field existed — a job can
+  // sit in Redis across the deploy that introduces it.
+  it('treats a missing recipientCanSignIn as no login', () => {
+    const { html } = renderFeedbackEmail({
+      ...base,
+      reasoningWithheld: true,
+      items: [{ label: 'Obtained clear affirmative consent', severity: 'high' }],
+    });
+    expect(html).toContain('supervisor');
+    expect(html).not.toContain('is in CallGuard rather than this email');
+  });
+
+  // Nothing was withheld, so neither sentence belongs — the adviser has the
+  // reasons in front of them.
+  it('says nothing about withheld detail when nothing was withheld', () => {
+    const { html, text } = renderFeedbackEmail({
+      ...base,
+      recipientCanSignIn: false,
+      items: [{ label: 'Obtained clear affirmative consent', severity: 'high', reasoning: 'The adviser did not ask.' }],
+    });
+    for (const part of [html, text]) {
+      expect(part).not.toContain('not in this email');
+      expect(part).not.toContain('is in CallGuard rather than this email');
+    }
+    expect(html).toContain('The adviser did not ask.');
   });
 
   it('renders no score for a non-numeric value rather than "NaN%"', () => {
