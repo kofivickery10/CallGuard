@@ -309,6 +309,16 @@ export function buildFeedbackSend(input: {
   breaches: FeedbackBreach[];
   includeReasoning: boolean;
   includeVerdict: boolean;
+  // Can this adviser actually sign in to CallGuard?
+  //
+  // Only consulted when reasoning is withheld, and then it decides which true
+  // sentence the email carries. Advisers commonly have no login at all (061),
+  // and Trust Point's have none: telling them the detail "is in CallGuard" sends
+  // them somewhere they cannot reach. The tokenised confirm link is not an
+  // answer either — lookupFeedback returns a name and a status, never the
+  // findings — so for those advisers the honest pointer is their supervisor,
+  // who has just been through it with them.
+  recipientCanSignIn: boolean;
 }): FeedbackSend {
   const {
     adviserEmail,
@@ -321,6 +331,7 @@ export function buildFeedbackSend(input: {
     breaches,
     includeReasoning,
     includeVerdict,
+    recipientCanSignIn,
   } = input;
 
   // "Withheld" is an assertion about something that existed. A sale whose
@@ -344,10 +355,13 @@ export function buildFeedbackSend(input: {
     clientName,
     score,
     items,
-    // Tells the template to point the adviser at the platform for the detail
-    // rather than silently dropping it, which would leave a shorter email that
-    // still looked complete. Carries no content of its own.
-    ...(reasoningWithheld ? { reasoningWithheld: true } : {}),
+    // Tells the template that reasoning existed and policy kept it out, rather
+    // than silently dropping it and leaving a shorter email that still looked
+    // complete. Carries no content of its own.
+    //
+    // `recipientCanSignIn` rides with it because it changes where the template
+    // sends the reader, and only matters when something was withheld.
+    ...(reasoningWithheld ? { reasoningWithheld: true, recipientCanSignIn } : {}),
     ...(includeVerdict ? { pass } : {}),
   };
 
@@ -469,6 +483,20 @@ export async function sendFeedback(input: {
     orgHasFeature(organizationId, 'score_only'),
   ]);
 
+  // Whether this adviser could open CallGuard if the email told them to.
+  //
+  // An email address is not a login: an adviser row can carry one and still have
+  // no password set, or have had login revoked (061). Both are the same thing to
+  // a reader standing in front of a sign-in page they cannot get past.
+  const recipientCanSignIn = adviser.userId
+    ? !!(await queryOne<{ id: string }>(
+        `SELECT id FROM users
+          WHERE id = $1 AND organization_id = $2
+            AND login_disabled = false AND password_hash IS NOT NULL`,
+        [adviser.userId, organizationId]
+      ))
+    : false;
+
   const raw = crypto.randomBytes(32).toString('base64url');
   const expiresAt = new Date(Date.now() + TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000);
 
@@ -483,6 +511,7 @@ export async function sendFeedback(input: {
     breaches,
     includeReasoning: !keepsHealthUnredacted,
     includeVerdict: !scoreOnly,
+    recipientCanSignIn,
   });
 
   // The delete-and-replace and every insert it depends on run as one

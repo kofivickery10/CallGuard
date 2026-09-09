@@ -38,6 +38,13 @@ export interface FeedbackEmailJob {
   // tenant keeps health unredacted — DPIA R5). The template says so, rather than
   // dropping the reasons and leaving a shorter email that still looks complete.
   reasoningWithheld?: boolean;
+  // Whether the recipient can sign in to CallGuard. Only read when
+  // `reasoningWithheld` is set, where it decides which true sentence the email
+  // carries: an adviser with no login (061) cannot be sent to the platform, and
+  // the tokenised confirm page never shows the findings. Absent is treated as
+  // false — the cautious reading, since it points at a person rather than at a
+  // page the reader may not be able to open.
+  recipientCanSignIn?: boolean;
 }
 
 const SEVERITY_COLOR: Record<string, string> = {
@@ -89,7 +96,17 @@ export function renderFeedbackEmail(data: Omit<FeedbackEmailJob, 'to'>): {
   html: string;
   text: string;
 } {
-  const { adviserName, confirmUrl, message, items, clientName, score, pass, reasoningWithheld } =
+  const {
+    adviserName,
+    confirmUrl,
+    message,
+    items,
+    clientName,
+    score,
+    pass,
+    reasoningWithheld,
+    recipientCanSignIn,
+  } =
     data;
 
   const scoreText = formatScore(score);
@@ -120,13 +137,27 @@ export function renderFeedbackEmail(data: Omit<FeedbackEmailJob, 'to'>): {
   // Said, not silently omitted. An adviser who gets a list of checkpoints with
   // no reasons should be told the reasons exist and where they are, otherwise a
   // deliberately reduced email is indistinguishable from a complete one.
+  //
+  // Where they are depends on whether this adviser has a login. Most do not
+  // (061), and on the tenants this note fires for — the ones keeping health
+  // unredacted — none of Trust Point's do. Sending them to CallGuard would point
+  // them at a sign-in page they cannot get past, and the confirm link below is
+  // not the answer either: it opens a page that shows their name and a button,
+  // never the findings. For them the supervisor is the honest pointer, and a
+  // true one, because the supervisor has just been through it with them.
   const withheldNote =
     reasoningWithheld && items.length
-      ? `<p style="color: #5a6e5a; font-size: 13px; line-height: 1.6; margin: 12px 0 0;">
-           The detail behind each point is in CallGuard rather than this email,
-           because your firm keeps health disclosures unredacted. Open the link
-           below to read it.
-         </p>`
+      ? recipientCanSignIn
+        ? `<p style="color: #5a6e5a; font-size: 13px; line-height: 1.6; margin: 12px 0 0;">
+             The detail behind each point is in CallGuard rather than this email,
+             because your firm keeps health disclosures unredacted. Sign in to
+             CallGuard to read it.
+           </p>`
+        : `<p style="color: #5a6e5a; font-size: 13px; line-height: 1.6; margin: 12px 0 0;">
+             The detail behind each point is not in this email, because your firm
+             keeps health disclosures unredacted. Your supervisor has been through
+             it with you and can go over it again.
+           </p>`
       : '';
 
   const itemRows = items
@@ -215,11 +246,18 @@ export function renderFeedbackEmail(data: Omit<FeedbackEmailJob, 'to'>): {
       i.reasoning ? [`  - ${i.label} (${i.severity})`, `      ${i.reasoning}`] : [`  - ${i.label} (${i.severity})`]
     ),
     ...(reasoningWithheld && items.length
-      ? [
-          '',
-          'The detail behind each point is in CallGuard rather than this email, because',
-          'your firm keeps health disclosures unredacted. Open the link below to read it.',
-        ]
+      ? recipientCanSignIn
+        ? [
+            '',
+            'The detail behind each point is in CallGuard rather than this email, because',
+            'your firm keeps health disclosures unredacted. Sign in to CallGuard to read it.',
+          ]
+        : [
+            '',
+            'The detail behind each point is not in this email, because your firm keeps',
+            'health disclosures unredacted. Your supervisor has been through it with you',
+            'and can go over it again.',
+          ]
       : []),
     ...(message ? ['', message] : []),
     '',
