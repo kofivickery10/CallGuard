@@ -38,13 +38,16 @@ export interface FeedbackEmailJob {
   // tenant keeps health unredacted — DPIA R5). The template says so, rather than
   // dropping the reasons and leaving a shorter email that still looks complete.
   reasoningWithheld?: boolean;
-  // Whether the recipient can sign in to CallGuard. Only read when
-  // `reasoningWithheld` is set, where it decides which true sentence the email
-  // carries: an adviser with no login (061) cannot be sent to the platform, and
-  // the tokenised confirm page never shows the findings. Absent is treated as
-  // false — the cautious reading, since it points at a person rather than at a
-  // page the reader may not be able to open.
-  recipientCanSignIn?: boolean;
+  // Whether the recipient can actually READ the withheld detail in CallGuard.
+  // Only consulted when `reasoningWithheld` is set, where it decides which true
+  // sentence the email carries.
+  //
+  // Not merely "can they sign in". Reasoning is served only behind
+  // requireOrgView, so an adviser-role user with a working password sees none of
+  // it, and the tokenised confirm page never shows the findings either. Absent
+  // is treated as false — the cautious reading, since it points at a person
+  // rather than at a page the reader may not be able to use.
+  recipientCanSeeDetail?: boolean;
 }
 
 const SEVERITY_COLOR: Record<string, string> = {
@@ -105,7 +108,7 @@ export function renderFeedbackEmail(data: Omit<FeedbackEmailJob, 'to'>): {
     score,
     pass,
     reasoningWithheld,
-    recipientCanSignIn,
+    recipientCanSeeDetail,
   } =
     data;
 
@@ -147,7 +150,7 @@ export function renderFeedbackEmail(data: Omit<FeedbackEmailJob, 'to'>): {
   // true one, because the supervisor has just been through it with them.
   const withheldNote =
     reasoningWithheld && items.length
-      ? recipientCanSignIn
+      ? recipientCanSeeDetail
         ? `<p style="color: #5a6e5a; font-size: 13px; line-height: 1.6; margin: 12px 0 0;">
              The detail behind each point is in CallGuard rather than this email,
              because your firm keeps health disclosures unredacted. Sign in to
@@ -246,7 +249,7 @@ export function renderFeedbackEmail(data: Omit<FeedbackEmailJob, 'to'>): {
       i.reasoning ? [`  - ${i.label} (${i.severity})`, `      ${i.reasoning}`] : [`  - ${i.label} (${i.severity})`]
     ),
     ...(reasoningWithheld && items.length
-      ? recipientCanSignIn
+      ? recipientCanSeeDetail
         ? [
             '',
             'The detail behind each point is in CallGuard rather than this email, because',
