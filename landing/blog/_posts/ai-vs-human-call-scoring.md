@@ -97,7 +97,7 @@ The answers usually point to "AI does the volume, humans do the judgement, and t
 
 ## What CallGuard AI thinks the right shape is
 
-We build for the model where AI scores 100% of calls and humans calibrate the edge cases that matter. The product is designed around that division of labour: every AI verdict can be one-click corrected by a compliance officer, every correction feeds back into the next batch of scoring, and the dashboard surfaces the calls that need human attention rather than burying them in volume.
+We build for the model where AI scores 100% of the calls you select and humans calibrate the edge cases that matter. The product is designed around that division of labour: every AI verdict can be one-click corrected by a compliance officer, every correction feeds back into the next batch of scoring, and the dashboard surfaces the calls that need human attention rather than burying them in volume.
 
 If that division of labour matches how your QA team wants to work, we are probably the right tool. If you want a fully autonomous QA solution that needs no human input, we are not, and we would rather tell you that on the discovery call than after a deployment that drifts. If you are weighing us against other options, see [how CallGuard compares to other call QA tools](/compare/).
 
