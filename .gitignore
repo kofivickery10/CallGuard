@@ -42,6 +42,12 @@ fca-prospects*.csv
 # Local direnv / Claude tooling config (machine-specific)
 .envrc
 
+# Written by scripts/deploy.sh on a successful deploy, on whichever box ran it.
+# Machine-specific by definition, and it must not dirty the working tree there —
+# a deploy that leaves the checkout modified makes the next one harder to reason
+# about. The durable, shared record is the `deployed/*` and `live` git tags.
+.deployed
+
 # Generated document renders — the markdown is the master, rebuild with docs/dpia/build.mjs
 docs/dpia/*.generated.html
 docs/dpia/.body.*
