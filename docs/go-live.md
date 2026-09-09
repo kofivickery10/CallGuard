@@ -83,6 +83,33 @@ pm2 save
   `ready`, and the worker finishes in-flight jobs before exiting (PM2
   `kill_timeout` is set generously in `ecosystem.config.js`).
 
+### What is live, and when it went live
+
+On a successful deploy — and only after the readiness check passes — the script
+records what it deployed. A deploy that never became healthy leaves no mark.
+
+| Where | What it answers |
+| --- | --- |
+| `.deployed` (on the box, gitignored) | commit, UTC timestamp, hostname |
+| `deployed/<timestamp>` tag | the history: one immutable tag per deploy |
+| `live` tag (moves) | what is on the box right now |
+
+```bash
+cat .deployed                       # on the box
+git tag --list 'deployed/*' | tail  # recent deploys
+git rev-parse live                  # the live commit
+git log live..main --oneline        # merged but NOT yet deployed
+```
+
+That last one is the question worth having an answer to: it lists exactly what
+is sitting in main waiting to go out.
+
+Tag pushing is best-effort. A deploy box often has no push credentials, and that
+must not read as a failure — the local tags and `.deployed` still answer the
+question. None of this recording can fail the deploy: by the time it runs the
+new code is already serving traffic, so a missing tag is a bookkeeping problem,
+not a deployment one.
+
 ---
 
 ## 5. Reverse proxy & TLS
