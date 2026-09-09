@@ -5,6 +5,7 @@ import { alertsQueue } from '../jobs/queue.js';
 import type { FeedbackEmailJob } from '../jobs/processors/feedback-email.js';
 import { organisationKeepsHealthUnredacted } from './transcript-access.js';
 import { orgHasFeature } from './tenant-settings.js';
+import { ORG_WIDE_ROLES } from '@callguard/shared';
 
 // ============================================================
 // Feeding a reviewed sale back to the adviser, and recording that they saw it.
@@ -309,16 +310,17 @@ export function buildFeedbackSend(input: {
   breaches: FeedbackBreach[];
   includeReasoning: boolean;
   includeVerdict: boolean;
-  // Can this adviser actually sign in to CallGuard?
+  // Can this recipient actually READ the withheld detail in CallGuard?
   //
   // Only consulted when reasoning is withheld, and then it decides which true
-  // sentence the email carries. Advisers commonly have no login at all (061),
-  // and Trust Point's have none: telling them the detail "is in CallGuard" sends
-  // them somewhere they cannot reach. The tokenised confirm link is not an
-  // answer either — lookupFeedback returns a name and a status, never the
-  // findings — so for those advisers the honest pointer is their supervisor,
-  // who has just been through it with them.
-  recipientCanSignIn: boolean;
+  // sentence the email carries. It is not "can they sign in": reasoning lives
+  // only behind requireOrgView, so an adviser-role user can hold a working
+  // password and still see nothing. Advisers commonly have no login at all
+  // (061), and Trust Point's have none. The tokenised confirm link is no answer
+  // either — lookupFeedback returns a name and a status, never the findings — so
+  // for those recipients the honest pointer is their supervisor, who has just
+  // been through it with them.
+  recipientCanSeeDetail: boolean;
 }): FeedbackSend {
   const {
     adviserEmail,
@@ -331,7 +333,7 @@ export function buildFeedbackSend(input: {
     breaches,
     includeReasoning,
     includeVerdict,
-    recipientCanSignIn,
+    recipientCanSeeDetail,
   } = input;
 
   // "Withheld" is an assertion about something that existed. A sale whose
@@ -359,9 +361,9 @@ export function buildFeedbackSend(input: {
     // than silently dropping it and leaving a shorter email that still looked
     // complete. Carries no content of its own.
     //
-    // `recipientCanSignIn` rides with it because it changes where the template
-    // sends the reader, and only matters when something was withheld.
-    ...(reasoningWithheld ? { reasoningWithheld: true, recipientCanSignIn } : {}),
+    // `recipientCanSeeDetail` rides with it because it changes where the
+    // template sends the reader, and only matters when something was withheld.
+    ...(reasoningWithheld ? { reasoningWithheld: true, recipientCanSeeDetail } : {}),
     ...(includeVerdict ? { pass } : {}),
   };
 
@@ -483,17 +485,28 @@ export async function sendFeedback(input: {
     orgHasFeature(organizationId, 'score_only'),
   ]);
 
-  // Whether this adviser could open CallGuard if the email told them to.
+  // Whether this recipient could actually READ the withheld detail in CallGuard
+  // if the email told them to. Two conditions, and both are load-bearing.
   //
-  // An email address is not a login: an adviser row can carry one and still have
-  // no password set, or have had login revoked (061). Both are the same thing to
-  // a reader standing in front of a sign-in page they cannot get past.
-  const recipientCanSignIn = adviser.userId
+  // They must be able to sign in. An email address is not a login: a row can
+  // carry one and still have no password set, or have had login revoked (061).
+  //
+  // And they must hold a role that can see reasoning at all. Every surface
+  // carrying it — GET /journeys/:id, the claims-defence pack, the whole
+  // breaches router — sits behind requireOrgView, and ORG_WIDE_ROLES is
+  // ['admin', 'supervisor', 'viewer']. `adviser` is excluded, and calls.ts, the
+  // one adviser-scoped surface, selects reasoning nowhere. So an adviser-role
+  // recipient with a working password can sign in and still find nothing:
+  // testing the login alone would send them to an app that shows them the
+  // detail does not exist for them, which is the same broken promise in a
+  // different place.
+  const recipientCanSeeDetail = adviser.userId
     ? !!(await queryOne<{ id: string }>(
         `SELECT id FROM users
           WHERE id = $1 AND organization_id = $2
-            AND login_disabled = false AND password_hash IS NOT NULL`,
-        [adviser.userId, organizationId]
+            AND login_disabled = false AND password_hash IS NOT NULL
+            AND role = ANY($3::text[])`,
+        [adviser.userId, organizationId, ORG_WIDE_ROLES]
       ))
     : false;
 
@@ -511,7 +524,7 @@ export async function sendFeedback(input: {
     breaches,
     includeReasoning: !keepsHealthUnredacted,
     includeVerdict: !scoreOnly,
-    recipientCanSignIn,
+    recipientCanSeeDetail,
   });
 
   // The delete-and-replace and every insert it depends on run as one

@@ -60,14 +60,14 @@ describe('renderFeedbackEmail', () => {
     }
   });
 
-  it('sends an adviser WITH a login to CallGuard for the withheld detail', () => {
+  it('sends a recipient who CAN see the detail to CallGuard', () => {
     // DPIA R5: for a tenant that keeps health unredacted the reasons stay behind
     // the link. A silently shorter email is indistinguishable from a complete
     // one, so the email has to say so.
     const { html, text } = renderFeedbackEmail({
       ...base,
       reasoningWithheld: true,
-      recipientCanSignIn: true,
+      recipientCanSeeDetail: true,
       items: [{ label: 'Obtained clear affirmative consent', severity: 'high' }],
     });
     expect(html).toContain('is in CallGuard rather than this email');
@@ -75,17 +75,19 @@ describe('renderFeedbackEmail', () => {
     expect(html).toContain('Obtained clear affirmative consent');
   });
 
-  // The case that made this a branch. Advisers commonly have no login at all
-  // (061), and on the tenants this note fires for — the ones keeping health
-  // unredacted — Trust Point's have none. Telling them the detail "is in
-  // CallGuard" points them at a sign-in page they cannot get past, and the
-  // confirm link is no answer either: that page shows a name and a button,
-  // never the findings. So the email must not send them anywhere.
-  it('points an adviser with NO login at their supervisor, not at CallGuard', () => {
+  // The case that made this a branch, and it is wider than "no login".
+  // Advisers commonly have none at all (061) and Trust Point's have none. But
+  // an adviser-role user WITH a working password sees no reasoning either:
+  // every surface serving it sits behind requireOrgView, and ORG_WIDE_ROLES
+  // excludes advisers, while calls.ts — the one adviser-scoped surface —
+  // selects reasoning nowhere. The confirm link is no answer either: that page
+  // shows a name and a button, never the findings. So the email must not send
+  // any of them to the platform.
+  it('points a recipient who cannot see the detail at their supervisor', () => {
     const { html, text } = renderFeedbackEmail({
       ...base,
       reasoningWithheld: true,
-      recipientCanSignIn: false,
+      recipientCanSeeDetail: false,
       items: [{ label: 'Obtained clear affirmative consent', severity: 'high' }],
     });
     for (const part of [html, text]) {
@@ -102,7 +104,7 @@ describe('renderFeedbackEmail', () => {
   // person rather than to a page they may not be able to open, so it is the
   // safe default for a payload written before this field existed — a job can
   // sit in Redis across the deploy that introduces it.
-  it('treats a missing recipientCanSignIn as no login', () => {
+  it('treats a missing recipientCanSeeDetail as cannot see it', () => {
     const { html } = renderFeedbackEmail({
       ...base,
       reasoningWithheld: true,
@@ -117,7 +119,7 @@ describe('renderFeedbackEmail', () => {
   it('says nothing about withheld detail when nothing was withheld', () => {
     const { html, text } = renderFeedbackEmail({
       ...base,
-      recipientCanSignIn: false,
+      recipientCanSeeDetail: false,
       items: [{ label: 'Obtained clear affirmative consent', severity: 'high', reasoning: 'The adviser did not ask.' }],
     });
     for (const part of [html, text]) {
