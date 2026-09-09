@@ -38,6 +38,7 @@ const AIInsights = lazyWithRetry(() => import('./pages/AIInsights').then((m) => 
 const ReviewQueue = lazyWithRetry(() => import('./pages/ReviewQueue').then((m) => ({ default: m.ReviewQueue })));
 const AuditLog = lazyWithRetry(() => import('./pages/AuditLog').then((m) => ({ default: m.AuditLog })));
 const Calibration = lazyWithRetry(() => import('./pages/Calibration').then((m) => ({ default: m.Calibration })));
+const Overrides = lazyWithRetry(() => import('./pages/Overrides').then((m) => ({ default: m.Overrides })));
 const SupportInbox = lazyWithRetry(() => import('./pages/SupportInbox').then((m) => ({ default: m.SupportInbox })));
 const Customers = lazyWithRetry(() => import('./pages/Customers'));
 const CustomerProfile = lazyWithRetry(() => import('./pages/CustomerProfile'));
@@ -141,6 +142,7 @@ export function App() {
                     <Route path="/review-queue" element={<ReviewQueue />} />
                     <Route path="/audit-log" element={<AuditLog />} />
                     <Route path="/calibration" element={<Calibration />} />
+                    <Route path="/overrides" element={<Overrides />} />
                     <Route path="/support-inbox" element={<SupportInbox />} />
                     <Route path="/customers" element={<Customers />} />
                     <Route path="/customers/:id" element={<CustomerProfile />} />
