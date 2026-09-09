@@ -57,6 +57,7 @@ function parseStructuredCSV(lines: string[], header: string[]): ItemForm[] {
   const branchIdx = idx('branch');
   const expectationIdx = idx('expectation');
   const aiCheckIdx = idx('ai_check');
+  const guidanceIdx = idx('remediation_guidance');
   const consentIdx = idx('consent_gate');
   // Both OPTIONAL — a CSV without them (every scorecard imported before this
   // feature) must still import exactly as before, with every item unmapped.
@@ -89,6 +90,7 @@ function parseStructuredCSV(lines: string[], header: string[]): ItemForm[] {
       branch: branchIdx >= 0 ? cols[branchIdx]?.trim() || '' : '',
       expectation: expectationIdx >= 0 ? cols[expectationIdx]?.trim() || '' : '',
       ai_check: aiCheckIdx >= 0 ? cols[aiCheckIdx]?.trim() || '' : '',
+      remediation_guidance: guidanceIdx >= 0 ? cols[guidanceIdx]?.trim() || '' : '',
       consent_gate: consentIdx >= 0 ? TRUTHY.includes(cols[consentIdx]?.trim().toLowerCase() || '') : false,
       applies_to_products: [],
       consumer_duty_outcome: VALID_CONSUMER_DUTY_OUTCOMES.includes(rawConsumerDuty as ConsumerDutyOutcome)
@@ -161,7 +163,7 @@ function parseFreeform(lines: string[]): ItemForm[] {
     }
   }
 
-  if (items.length === 0) throw new Error('Could not find any criteria in this file. Use a CSV with columns: label, description, score_type, weight, severity, section, item_type, branch, expectation, ai_check, consent_gate, consumer_duty_outcome, vulnerability_related');
+  if (items.length === 0) throw new Error('Could not find any criteria in this file. Use a CSV with columns: label, description, score_type, weight, severity, section, item_type, branch, expectation, ai_check, remediation_guidance, consent_gate, consumer_duty_outcome, vulnerability_related');
   return items;
 }
 
@@ -198,6 +200,7 @@ interface ItemForm {
   branch: string;
   expectation: string;
   ai_check: string;
+  remediation_guidance: string;
   consent_gate: boolean;
   // Product ids this criterion is required for. Empty = applies to every
   // product (the default).
@@ -222,6 +225,7 @@ function emptyItem(sortOrder: number): ItemForm {
     branch: '',
     expectation: '',
     ai_check: '',
+    remediation_guidance: '',
     consent_gate: false,
     applies_to_products: [],
     consumer_duty_outcome: '',
@@ -362,6 +366,7 @@ export function ScorecardEditor() {
             branch: branchToString(item.applies_when),
             expectation: item.expectation || '',
             ai_check: item.ai_check || '',
+            remediation_guidance: item.remediation_guidance || '',
             consent_gate: !!item.consent_gate,
             applies_to_products: item.applies_to_products ?? [],
             consumer_duty_outcome: (item.consumer_duty_outcome as ItemForm['consumer_duty_outcome']) || '',
@@ -487,6 +492,7 @@ export function ScorecardEditor() {
           applies_when: stringToAppliesWhen(item.branch),
           expectation: item.expectation || null,
           ai_check: item.ai_check || null,
+          remediation_guidance: item.remediation_guidance || null,
           consent_gate: item.consent_gate,
           applies_to_products: item.applies_to_products.length ? item.applies_to_products : null,
           consumer_duty_outcome: item.consumer_duty_outcome || null,
@@ -534,7 +540,7 @@ export function ScorecardEditor() {
         if (filterSeverity === 'none' ? !!item.severity : item.severity !== filterSeverity) return false;
       }
       if (q) {
-        const hay = [item.label, item.section, item.description, item.expectation, item.ai_check]
+        const hay = [item.label, item.section, item.description, item.expectation, item.ai_check, item.remediation_guidance]
           .join(' ')
           .toLowerCase();
         if (!hay.includes(q)) return false;
@@ -855,6 +861,30 @@ export function ScorecardEditor() {
                         </div>
                       </>
                     )}
+                    {/* Outside the AI-only block on purpose: a manual checkpoint
+                        can need putting right just as much as a scored one, and
+                        guidance is an instruction to a person either way. It is
+                        never sent to the model. */}
+                    <div>
+                      <label className={labelClass}>
+                        What to do about it{' '}
+                        <span className="text-text-muted">
+                          (optional — included when a supervisor feeds a sale back)
+                        </span>
+                      </label>
+                      <textarea
+                        value={item.remediation_guidance}
+                        onChange={(e) => updateItem(index, 'remediation_guidance', e.target.value)}
+                        placeholder="e.g. Call the customer back, confirm the exclusion applies and record their acknowledgement on the file."
+                        className={inputClass}
+                        rows={2}
+                      />
+                      <p className="mt-1 text-xs text-text-muted">
+                        Your firm's words, not the AI's. Leave blank and this checkpoint has no
+                        remediation step. Whatever you write here is emailed to the adviser, so
+                        keep it a general instruction and out of any one customer's details.
+                      </p>
+                    </div>
                     {item.item_type === 'manual' && (
                       <p className="text-xs text-text-muted">
                         Manual items are never sent to the AI — they land in the review queue and are excluded from the AI score until a reviewer marks them.

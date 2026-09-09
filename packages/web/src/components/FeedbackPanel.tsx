@@ -26,7 +26,9 @@ interface FeedbackState {
   };
   recipients: FeedbackRecipient[];
   breach_count: number;
-  breaches: Array<{ label: string; severity: string }>;
+  breaches: Array<{ label: string; severity: string; remediation_guidance?: string | null }>;
+  reasoning_withheld?: boolean;
+  guidance_included?: boolean;
   open_reviews: number;
   /** The sale as it will be named in the email, or null where it has no name. */
   client_name: string | null;
@@ -381,16 +383,42 @@ export function FeedbackPanel({
           )}
 
           {data.breaches.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 mt-2.5">
-              {data.breaches.map((b, i) => (
-                <span
-                  key={i}
-                  className={`px-2.5 py-[3px] rounded-full text-badge font-semibold ${SEVERITY_CLASS[b.severity] ?? SEVERITY_CLASS.low}`}
-                >
-                  {b.label}
-                </span>
-              ))}
-            </div>
+            // Findings that carry guidance are listed rather than tiled: the
+            // guidance is a sentence, and a sentence inside a pill is
+            // unreadable. Those without it keep the compact pill, so a
+            // scorecard with no guidance anywhere looks exactly as it did.
+            data.breaches.some((b) => b.remediation_guidance) ? (
+              <ul className="mt-2.5 space-y-2">
+                {data.breaches.map((b, i) => (
+                  <li key={i}>
+                    <span
+                      className={`inline-block px-2.5 py-[3px] rounded-full text-badge font-semibold ${SEVERITY_CLASS[b.severity] ?? SEVERITY_CLASS.low}`}
+                    >
+                      {b.label}
+                    </span>
+                    {b.remediation_guidance && (
+                      // Labelled, matching the email, so the supervisor is
+                      // checking the same words the adviser will read.
+                      <p className="mt-1 text-table-cell text-text-secondary">
+                        <span className="font-semibold text-text-primary">What to do:</span>{' '}
+                        {b.remediation_guidance}
+                      </p>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div className="flex flex-wrap gap-1.5 mt-2.5">
+                {data.breaches.map((b, i) => (
+                  <span
+                    key={i}
+                    className={`px-2.5 py-[3px] rounded-full text-badge font-semibold ${SEVERITY_CLASS[b.severity] ?? SEVERITY_CLASS.low}`}
+                  >
+                    {b.label}
+                  </span>
+                ))}
+              </div>
+            )
           )}
 
           {/* What the supervisor is actually authorising. They are sending a
@@ -409,9 +437,16 @@ export function FeedbackPanel({
               ) : (
                 <>The email lists the findings above</>
               )}
-              {data.reasoning_included
-                ? ", with the AI's reason under each one."
-                : '. The reasons stay behind the link, because your firm keeps health disclosures unredacted.'}
+              {data.reasoning_included && ", with the AI's reason under each one."}
+              {/* Not "behind the link": the tokenised confirm page shows a name,
+                  a status and a button, never the findings — and the adviser
+                  may have no login at all. The email now tells them to come to
+                  you, so the panel must say the same thing. */}
+              {data.reasoning_withheld &&
+                ". The AI's reasons are held back, because your firm keeps health disclosures unredacted — the adviser is told to ask you for them."}
+              {!data.reasoning_included && !data.reasoning_withheld && '.'}
+              {data.guidance_included &&
+                ' Findings with remediation guidance also carry what to do about them.'}
             </p>
           )}
 
