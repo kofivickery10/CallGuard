@@ -1,12 +1,12 @@
 # SEO baseline — landing/
 
-**Measured 2026-09-08** against the local preview and, where marked, the live site.
+**Measured 2026-09-09** against the local preview and, where marked, the live site.
 Regenerate: `npm run audit:onpage` (files, no server needed) and `npm run audit:links`
 (needs the preview running).
 
 ## Shape of the site
 
-33 indexable pages, hand-maintained `<head>` on every one. `404.html` and
+34 indexable pages, hand-maintained `<head>` on every one. `404.html` and
 `og-image.html` are excluded from the audit — the first is noindex, the second is a
 render source for the social card, not a page. `blog/_template.html` is a build input,
 not a page; see "Build sources were being served" below.
@@ -17,6 +17,7 @@ not a page; see "Build sources were being served" below.
   1  about                       4  integrations/*
   4  legal (privacy, terms,      2  templates/*
        dpa, sub-processors)      6  blog/* + index
+  1  trust
 ```
 
 ## On-page audit — clean
@@ -59,6 +60,25 @@ for u in /blog/_template /blog/_posts/what-is-ai-call-qa.md; do
     "https://callguardai.co.uk$u"
 done   # both should be 410
 ```
+
+## /trust — added 2026-09-09
+
+The one new URL added deliberately against the "add nothing" rule, because it is a
+conversion asset rather than a ranking play: it consolidates content already scattered
+across `privacy`, `dpa` and `sub-processors` into a single page a compliance officer can
+forward to their own risk function. Linked from the footer of all 34 pages.
+
+Every claim on it is verified against the code or an existing page — hosting region and
+sub-processors from `sub-processors.html`, AES-256-GCM and TLS 1.2+ from `privacy.html`,
+the five-year retention default from `tenant-settings.ts`, and the redaction behaviour
+(including the non-negotiable `pci`/`numbers` floor and the DPIA-gated exemption) from
+`services/transcription.ts` and migration `065_pii_redaction_exemption.sql`.
+
+**It states plainly that CallGuard holds no ISO 27001, Cyber Essentials Plus or SOC 2.**
+That is the competitive gap the September 2026 research identified — Callytics publishes
+all five trust signals — and the page argues the specific-and-checkable case instead.
+Whether to publish that admission is a commercial decision, not an SEO one: it is one
+section and trivially removable if the answer is no.
 
 ## Internal linking — was the problem, now fixed
 
