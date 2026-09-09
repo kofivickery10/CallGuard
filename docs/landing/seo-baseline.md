@@ -74,11 +74,20 @@ the five-year retention default from `tenant-settings.ts`, and the redaction beh
 (including the non-negotiable `pci`/`numbers` floor and the DPIA-gated exemption) from
 `services/transcription.ts` and migration `065_pii_redaction_exemption.sql`.
 
-**It states plainly that CallGuard holds no ISO 27001, Cyber Essentials Plus or SOC 2.**
-That is the competitive gap the September 2026 research identified — Callytics publishes
-all five trust signals — and the page argues the specific-and-checkable case instead.
-Whether to publish that admission is a commercial decision, not an SEO one: it is one
-section and trivially removable if the answer is no.
+**Decided 2026-09-09, Kofi: the page does not mention accreditations at all.** A draft
+carried a section stating plainly that CallGuard holds no ISO 27001, Cyber Essentials
+Plus or SOC 2, on the reasoning that a compliance officer finds out regardless. That was
+removed on request. Do not reintroduce it as an "honesty" argument without asking — the
+call has been made once.
+
+The closing section now makes the assurance case positively instead: the controls are
+described precisely enough to verify against your own recordings during a trial. That
+keeps the strongest half of the removed section and the `security@` contact.
+
+The underlying gap is real and still open: Callytics publishes ISO 27001, ISO 9001,
+Cyber Essentials Plus, an ICO number and a trust centre. CallGuard now publishes the
+last of those five. Whether to pursue the certifications is a commercial decision that
+has not been taken.
 
 ## Internal linking — was the problem, now fixed
 
