@@ -1452,6 +1452,26 @@ async function pushScoredPayload(
     await organisationKeepsHealthUnredacted(organizationId)
   );
 
+  // NO score_only FILTER HERE, AND THAT IS DELIBERATE — it looks like an
+  // omission and is not, so it is written down.
+  //
+  // `score_only` is a DISPLAY mode. Its definition says so in the same breath
+  // that it grants itself: "the verdict is still computed and stored
+  // server-side (alerts, Zoho write-back and reporting are unchanged)"
+  // (packages/shared/src/types/coaching.ts). That sentence and routes/share.ts's
+  // "the value must not ship in the payload either" were written in the SAME
+  // commit (d049235), so they are one decision rather than two that drifted:
+  // withhold the verdict from anything CallGuard renders AND from the payload
+  // directly behind that render, and leave the firm's own integrations alone.
+  //
+  // Every site honouring the flag is on the render side of that line — the
+  // share link, the feedback email, the session flag, the web app. Not one
+  // integration path, across three separate rounds of work.
+  //
+  // Changing it here is a product decision, not a bug fix, and the blast
+  // radius is real: a tenant's Zoho formula reads the field this writes, and
+  // `AI_Result` going empty could silently alter a commission calculation.
+
   const label = isJourneyPayload(payload) ? `journey ${payload.journey_id}` : `call ${payload.call_id}`;
   const { callId, journeyId } = deliveryCallAndJourneyIds(payload);
 
