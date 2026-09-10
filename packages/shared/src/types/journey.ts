@@ -193,8 +193,19 @@ export interface JourneyListItem extends Journey {
   // never fed back. On 'awaiting' this is what the waiting time is measured
   // from; on 'acknowledged' it is the most recent round.
   feedback_sent_at: string | null;
-  // When the adviser confirmed. Null unless the status is 'acknowledged'.
+  // When the adviser confirmed. Null unless the sale has been acknowledged —
+  // which now includes 'awaiting_remediation', where the acknowledgement
+  // happened and the work behind it did not.
   feedback_confirmed_at: string | null;
+  // Findings on this sale where the firm asked for something and the adviser
+  // has not said what they did (CG-27). 0 on every sale that was never fed
+  // back, and on every tenant that has never written guidance.
+  open_remediations: number;
+  // Whole days since the oldest of those was acknowledged. Null when there are
+  // none. Not derived from feedback_confirmed_at above: a checkpoint asked
+  // about in July and dropped from August's re-scored round is still open from
+  // July, while the row's own confirmed_at says August.
+  oldest_remediation_days: number | null;
 }
 
 // A checkpoint awaiting human review (item_type='manual' or a consent gate
@@ -305,12 +316,23 @@ export type FeedbackStatus =
   | 'not_fed_back'
   // Sent, and the adviser has not yet confirmed. This is the backlog.
   | 'awaiting'
-  // Every feedback sent for this sale has been confirmed by the adviser.
+  // Acknowledged, and the firm asked for something on at least one finding that
+  // the adviser has not answered (CG-27). A subdivision of 'acknowledged', not a
+  // state beside it: the adviser has confirmed, so nothing is outstanding in the
+  // acknowledgement loop — what is outstanding is the work.
+  //
+  // Only counts checkpoints the firm wrote guidance for. A checkpoint with no
+  // guidance has no remediation step at all (migration 115), so it cannot have
+  // an outstanding one, and a firm that has never written any guidance never
+  // sees this state.
+  | 'awaiting_remediation'
+  // Confirmed by the adviser, with nothing outstanding behind it.
   | 'acknowledged';
 
 export const FEEDBACK_STATUS_LABELS: Record<FeedbackStatus, string> = {
   not_fed_back: 'Not fed back',
   awaiting: 'Awaiting confirmation',
+  awaiting_remediation: 'Awaiting outcome',
   acknowledged: 'Acknowledged',
 };
 
@@ -372,9 +394,17 @@ export const REMEDIATION_NOTE_MAX = 2000;
 export interface FeedbackStatusSummary {
   not_fed_back: number;
   awaiting: number;
+  awaiting_remediation: number;
   acknowledged: number;
   // Whole days since the oldest still-unconfirmed feedback was sent. Null when
   // nothing is awaiting. "Fed back 9 days ago, still not confirmed" is the
   // number a supervisor is actually managing, and the one a principal asks for.
   oldest_awaiting_days: number | null;
+  // The same number for the other backlog (CG-27): whole days since the oldest
+  // unanswered ask was ACKNOWLEDGED, not since it was sent. The days before
+  // acknowledgement are already counted by oldest_awaiting_days above, and an
+  // outcome cannot be recorded before acknowledgement anyway (migration 116) —
+  // so measuring from sent_at would bill the same delay to two backlogs and
+  // overstate this one. Null when nothing is outstanding.
+  oldest_remediation_days: number | null;
 }

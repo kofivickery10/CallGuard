@@ -4,6 +4,7 @@ import { query, queryOne, withTransaction } from '../db/client.js';
 import { AppError } from '../middleware/errors.js';
 import { assembleJourney } from '../services/journey.js';
 import { recordAuditEvent } from '../services/audit.js';
+import { latestConfirmedAskSql, openRemediationExistsSql, OPEN_ASK_PREDICATE } from './remediations.js';
 import { getScoringSettings } from '../services/tenant-settings.js';
 import { pushJourneyScoreUpdate } from '../services/score-writeback.js';
 import { deriveSeverity, isItemPass, callPasses } from '@callguard/shared';
@@ -68,9 +69,18 @@ export const SALE_DATE_SQL = `COALESCE(
 //
 // Fixed SQL with no user input, shared by the list, the counts and the filter
 // so all three agree on what each state means.
+//
+// The third branch (CG-27) splits what used to be one 'acknowledged' state in
+// two, and the order matters: a sale with an unconfirmed round is still
+// 'awaiting' even if an earlier round left an ask open, because the thing to
+// chase is the acknowledgement and chasing an answer from someone who has not
+// confirmed is chasing the wrong thing. 'acknowledged' now means acknowledged
+// with nothing outstanding behind it, which is what a reader always took it to
+// mean and what it did not previously say.
 const FEEDBACK_STATUS_SQL = `CASE
         WHEN EXISTS (SELECT 1 FROM journey_feedback f
                       WHERE f.journey_id = j.id AND f.confirmed_at IS NULL) THEN 'awaiting'
+        WHEN ${openRemediationExistsSql('j')} THEN 'awaiting_remediation'
         WHEN EXISTS (SELECT 1 FROM journey_feedback f
                       WHERE f.journey_id = j.id) THEN 'acknowledged'
         ELSE 'not_fed_back'
@@ -83,6 +93,24 @@ const FEEDBACK_SENT_AT_SQL = `(
          WHERE f.journey_id = j.id
          ORDER BY (f.confirmed_at IS NULL) DESC, f.sent_at DESC
          LIMIT 1)`;
+
+// How much is outstanding on this sale, and how long the oldest of it has been
+// (CG-27). Off the same rule as the status above, so a sale badged 'awaiting
+// outcome' can never show a count of zero beside it.
+//
+// The age runs from acknowledgement rather than from FEEDBACK_CONFIRMED_AT_SQL
+// below, and the two genuinely differ: a checkpoint asked about in July and
+// dropped from August's re-scored round is outstanding from July, while the
+// sale's most recent confirmation says August.
+const OPEN_REMEDIATIONS_SQL = `(
+        SELECT COUNT(*)::int
+          FROM (${latestConfirmedAskSql('f.journey_id = j.id')}) latest_ask
+         WHERE ${OPEN_ASK_PREDICATE})`;
+
+const OLDEST_REMEDIATION_DAYS_SQL = `(
+        SELECT FLOOR(EXTRACT(EPOCH FROM (now() - MIN(latest_ask.confirmed_at))) / 86400)::int
+          FROM (${latestConfirmedAskSql('f.journey_id = j.id', 'fi.remediation_outcome, fi.remediation_guidance, f.confirmed_at')}) latest_ask
+         WHERE ${OPEN_ASK_PREDICATE})`;
 
 const FEEDBACK_CONFIRMED_AT_SQL = `(
         SELECT f.confirmed_at FROM journey_feedback f
@@ -213,7 +241,7 @@ journeysRouter.get('/', requireOrgView, async (req, res, next) => {
     // OTHER filter but not this one, so each tab shows how many sales clicking
     // it would return.
     const feedback = typeof req.query.feedback === 'string' ? req.query.feedback : '';
-    if (['not_fed_back', 'awaiting', 'acknowledged'].includes(feedback)) {
+    if (['not_fed_back', 'awaiting', 'awaiting_remediation', 'acknowledged'].includes(feedback)) {
       filters.push({ key: 'feedback', sql: `${FEEDBACK_STATUS_SQL} = ?`, params: [feedback] });
     }
 
@@ -249,6 +277,7 @@ journeysRouter.get('/', requireOrgView, async (req, res, next) => {
       feedback_status: FeedbackStatus;
       count: string;
       oldest_awaiting_days: string | null;
+      oldest_remediation_days: string | null;
     }>(
       `SELECT ${FEEDBACK_STATUS_SQL} AS feedback_status,
               COUNT(*)::text AS count,
@@ -257,7 +286,12 @@ journeysRouter.get('/', requireOrgView, async (req, res, next) => {
                      WHERE f2.journey_id = j.id AND f2.confirmed_at IS NULL)
                   THEN NULL
                   ELSE FLOOR(EXTRACT(EPOCH FROM (now() - (${FEEDBACK_SENT_AT_SQL}))) / 86400)
-              END)::text AS oldest_awaiting_days
+              END)::text AS oldest_awaiting_days,
+              -- The same figure for the other backlog (CG-27). Taken over every
+              -- row in the group rather than only the 'awaiting_remediation'
+              -- ones for the same reason as above: NULL everywhere else, so the
+              -- max is the group's answer where the group has one.
+              MAX(${OLDEST_REMEDIATION_DAYS_SQL})::text AS oldest_remediation_days
          FROM journeys j
         WHERE ${withoutFeedback.sql}
         GROUP BY 1`,
@@ -266,13 +300,18 @@ journeysRouter.get('/', requireOrgView, async (req, res, next) => {
     const feedbackCounts: FeedbackStatusSummary = {
       not_fed_back: 0,
       awaiting: 0,
+      awaiting_remediation: 0,
       acknowledged: 0,
       oldest_awaiting_days: null,
+      oldest_remediation_days: null,
     };
     for (const row of feedbackRows) {
       feedbackCounts[row.feedback_status] = parseInt(row.count, 10);
       if (row.feedback_status === 'awaiting' && row.oldest_awaiting_days != null) {
         feedbackCounts.oldest_awaiting_days = parseInt(row.oldest_awaiting_days, 10);
+      }
+      if (row.feedback_status === 'awaiting_remediation' && row.oldest_remediation_days != null) {
+        feedbackCounts.oldest_remediation_days = parseInt(row.oldest_remediation_days, 10);
       }
     }
 
@@ -288,6 +327,9 @@ journeysRouter.get('/', requireOrgView, async (req, res, next) => {
               ${FEEDBACK_STATUS_SQL} AS feedback_status,
               ${FEEDBACK_SENT_AT_SQL} AS feedback_sent_at,
               ${FEEDBACK_CONFIRMED_AT_SQL} AS feedback_confirmed_at,
+              -- What is still owed on this sale, and since when (CG-27).
+              ${OPEN_REMEDIATIONS_SQL} AS open_remediations,
+              ${OLDEST_REMEDIATION_DAYS_SQL} AS oldest_remediation_days,
               cust.name AS customer_name,
               cust.phone_normalized AS customer_phone,
               sc.name AS scorecard_name,

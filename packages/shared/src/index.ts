@@ -20,5 +20,6 @@ export * from './types/reconciliation.js';
 export * from './types/product.js';
 export * from './types/board-pack.js';
 export * from './types/claims-defence.js';
+export * from './types/remediation.js';
 export * from './constants.js';
 export * from './scoring.js';

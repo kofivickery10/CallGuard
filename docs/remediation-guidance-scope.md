@@ -272,6 +272,37 @@ Open remediations, aged, by adviser — the aging arithmetic is already in
 places. Presented as a supervisor-facing view of what has been asked for and not
 yet closed.
 
+**Shipped as CG-27**, and well under the figure below, because CG-11 landed
+first and this became a fourth state on a screen that already existed — exactly
+as §5 predicted. Two of the three assumptions above did not survive the build:
+
+- **The attribution is the feedback recipient, not the closing adviser.** §4.5
+  assumed `JOURNEY_AGENT_JOIN`, the join breaches, review and the Zoho write-back
+  share. Migration 111 is the reason it is wrong here: a supervisor can override
+  the derived recipient before sending, because the last person to call is
+  occasionally not the person who sold. The obligation to answer sits with
+  whoever was asked, and `journey_feedback` snapshots that at send time.
+- **An open remediation requires the checkpoint to carry the firm's guidance.**
+  Migration 115 is explicit that a checkpoint with no guidance has no remediation
+  step, so it cannot have an outstanding one. Without that condition the backlog
+  would have opened with every finding fed back before CG-24 existed — on links
+  that have since expired, so nothing anybody could ever close. The board pack's
+  broader "awaiting outcome" figure (CG-26) counts unanswered findings whether or
+  not a step was set; it is a different measure for a different reader and is
+  left as it is, but the two should not be read as the same number.
+
+The ask ages from **acknowledgement**, not from when the feedback was sent. The
+wait before acknowledgement is the feedback backlog CG-11 already reports, and
+counting it in both places would bill one delay to two backlogs. One shared rule
+decides what is outstanding — one ask per checkpoint per sale, off the most
+recent acknowledged round — factored out of the board pack's version so the sales
+list, the pack and the backlog cannot drift into three definitions of the word.
+
+The sale-level state is a **subdivision of `acknowledged`**, not a state beside
+it: a sale with an unconfirmed round stays "awaiting confirmation" even when an
+older round left an ask open, because chasing an answer from somebody who has not
+acknowledged is chasing the wrong thing.
+
 ---
 
 ## 5. Phasing and estimate
@@ -290,7 +321,7 @@ worth reading rather than a padding factor — see below.
 | **1** | Guidance on the criterion; guidance in the feedback email | **0.5–1 week** | ↓ CG-10 built the per-finding block |
 | **2** | Outcome capture on the tokenised adviser page | **2.5–3 weeks** | ✅ **shipped (CG-25)**, less the withheld-reasoning half |
 | **3** | Audit trail, claims-defence pack, board pack | **0.5–1 week** | ✅ **shipped (CG-26)**, less the sign-off event |
-| **4** | Open-remediations reporting, aged, by adviser | **1–1.5 weeks** | — unchanged, pending CG-11 |
+| **4** | Open-remediations reporting, aged, by adviser | **1–1.5 weeks** | ✅ **shipped (CG-27)**, well under — CG-11 landed first |
 | | **Total** | **4.5–6.5 weeks** | ↓ from 5–7 |
 
 Phase 2 still dominates, and it grew. The confirm page was untouched by CG-10 and
@@ -302,10 +333,12 @@ also has to render coherently on a tenant whose reasoning was withheld from the
 email, which is more than a conditional: it is the page where that detail is
 supposed to be, so getting it wrong there leaves the adviser with nowhere to go.
 
-**Phase 4 is still costed standalone.** CG-11 builds the same view for feedback
-status — three states, filters, and the age of the oldest unacknowledged item. If
-it lands first, Phase 4 is a fourth state on an existing screen and should come
-in well under this figure. It has not landed, so the estimate does not assume it.
+**Phase 4 was costed standalone and did not need to be.** CG-11 shipped first
+(#179) and built the same view for feedback status — three states, filters, and
+the age of the oldest unacknowledged item — so Phase 4 was a fourth state on that
+screen plus the by-adviser view, and came in well under this figure. The estimate
+above is left as it was written, unadjusted, because it is the record of what was
+quoted.
 
 An optional Phase 5 — supervisor sign-off on outcomes, chase reminders for
 overdue remediations — is roughly a further week, and §6 argues part of it may
