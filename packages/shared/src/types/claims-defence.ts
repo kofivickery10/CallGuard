@@ -1,6 +1,6 @@
 import type { BreachSeverity, BreachStatus, BreachEvidenceCaveat } from './breaches.js';
 import type { ItemResult } from './scorecard.js';
-import type { JourneyCallRole, JourneyStatus } from './journey.js';
+import type { JourneyCallRole, JourneyStatus, RemediationOutcome } from './journey.js';
 import type { ReconciliationOutcome, AmendmentType, AnswerRevision } from './reconciliation.js';
 
 // A per-sale evidence pack for a claim declinature or a complaint: what was
@@ -59,6 +59,52 @@ export interface ClaimsDefenceCheckpoint {
   source_timestamp: number | null;
 }
 
+// What was asked of the adviser about one finding, and what they said they did
+// about it (CG-26). The sixth step of the evidence chain: reviewed → evidenced →
+// verified → communicated → acknowledged → remediated.
+//
+// Every field here is either the firm's own text, the adviser's own words about
+// their own conduct, or a timestamp. The adviser's note is free text and is
+// exported for the same reason case notes are (see ClaimsDefenceNote): it is
+// written by a person at the firm to explain the record to whoever reads it
+// next, and a pack that showed the instruction but not the answer would omit
+// the half the reader came for. It is disclosed as unverified in the pack's
+// limitations, never presented as something CallGuard checked.
+export interface ClaimsDefenceRemediation {
+  // The firm's instruction as it was sent to the adviser, snapshotted at send
+  // time — not the wording the scorecard carries today. Null where the
+  // checkpoint had no guidance and the adviser was simply told what was found.
+  guidance: string | null;
+  // Who was told, as recorded on the feedback itself. Durable and never null:
+  // most advisers have no user row to resolve a name from later, and some have
+  // no login at all.
+  adviser_name: string;
+  told_at: string;
+  // When the adviser acknowledged the feedback. Null cannot occur alongside a
+  // recorded outcome — an outcome cannot be written before acknowledgement —
+  // but can where they were told and have said nothing since.
+  acknowledged_at: string | null;
+  // Null means no answer has been given. It never means "no action was needed":
+  // that is `not_needed`, and the difference is the whole point of the field.
+  outcome: RemediationOutcome | null;
+  // The adviser's own account. Carries the substance for
+  // 'customer_unreachable', where the attempts and their dates are the evidence.
+  note: string | null;
+  // When the answer was RECORDED, not when the work was done. An adviser may be
+  // describing a call they made the previous week; the note is where a date for
+  // the work itself can be stated.
+  recorded_at: string | null;
+  // Answers this adviser gave before the current one, oldest first. An adviser
+  // who says "couldn't reach them" and later says "put right" has told the
+  // reader something a single value cannot, so the earlier answers are shown
+  // rather than overwritten. Empty on the ordinary case of one answer.
+  //
+  // The note that accompanied an earlier answer is not recoverable — only the
+  // answer itself and when it was given — and nor is any answer given against a
+  // finding that a later re-score replaced. Both are disclosed in limitations.
+  earlier_answers: Array<{ outcome: RemediationOutcome; recorded_at: string }>;
+}
+
 export interface ClaimsDefenceFinding {
   id: string;
   scorecard_item_label: string;
@@ -71,6 +117,9 @@ export interface ClaimsDefenceFinding {
   confirmed_by_name: string | null;
   confirmed_at: string | null;
   detected_at: string;
+  // Null where this finding was never fed back to the adviser — a normal case
+  // (feedback is sent per sale, when a supervisor sends it), not a gap.
+  remediation: ClaimsDefenceRemediation | null;
 }
 
 export interface ClaimsDefenceReconciliationItem {

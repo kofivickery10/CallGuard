@@ -5,8 +5,9 @@ import { SeverityBadge, StatusBadge } from '../components/BreachBadges';
 import { ItemResultBadge } from '../components/ItemResultBadge';
 import { ReconciliationBadge, AmendmentBadge } from '../components/ReconciliationBadge';
 import { formatDuration, formatPhone } from '../lib/format';
-import { BREACH_CAVEAT_LABELS } from '@callguard/shared';
-import type { ClaimsDefenceResponse } from '@callguard/shared';
+import { RemediationOutcomeBadge, AwaitingOutcomeBadge } from '../components/RemediationBadge';
+import { BREACH_CAVEAT_LABELS, REMEDIATION_OUTCOME_REPORT_LABELS } from '@callguard/shared';
+import type { ClaimsDefenceResponse, ClaimsDefenceRemediation } from '@callguard/shared';
 
 // ============================================================
 // Small shared pieces (mirrors BoardPack.tsx's local helpers — no shared
@@ -99,6 +100,76 @@ function humanizeStatus(status: string): string {
 function evidenceLink(sourceCallId: string | null, sourceTimestamp: number | null): string | null {
   if (!sourceCallId) return null;
   return `/calls/${sourceCallId}${sourceTimestamp != null ? `?t=${Math.floor(sourceTimestamp)}` : ''}`;
+}
+
+/**
+ * What was asked of the adviser about one finding, and what they said they did
+ * about it (CG-26) — the last step of the evidence chain, and the only part of
+ * this pack a person asserted about their own conduct.
+ *
+ * Written so the reader can never mistake whose statement this is. The heading
+ * says the firm asked; the answer is attributed to the adviser by name and
+ * dated; the note is quoted rather than paraphrased. The limitations section of
+ * the pack carries the rest — that CallGuard has not verified any of it, and
+ * that nobody signs it off.
+ */
+function Remediation({ r }: { r: ClaimsDefenceRemediation }) {
+  return (
+    <div className="mt-3 pt-3 border-t border-border-light print:break-inside-avoid">
+      {r.guidance && (
+        <div className="mb-2.5">
+          <div className="text-xs font-semibold text-text-secondary uppercase tracking-wide">
+            What the firm asked the adviser to do
+          </div>
+          <div className="text-table-cell text-text-cell leading-relaxed mt-1 whitespace-pre-wrap">
+            {r.guidance}
+          </div>
+        </div>
+      )}
+
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div className="min-w-0 flex-1">
+          <div className="text-xs font-semibold text-text-secondary uppercase tracking-wide">
+            What the adviser said they did
+          </div>
+          <div className="text-xs text-text-muted mt-1">
+            Fed back to {r.adviser_name} on {fmtDate(r.told_at)}
+            {r.acknowledged_at
+              ? `, acknowledged ${fmtDate(r.acknowledged_at)}`
+              : ', not yet acknowledged'}
+          </div>
+          {r.recorded_at && (
+            <div className="text-xs text-text-muted mt-0.5">
+              Answer recorded {fmtDate(r.recorded_at)} — the date it was recorded, not the date
+              the work was done.
+            </div>
+          )}
+        </div>
+        <div className="flex-shrink-0">
+          {r.outcome ? <RemediationOutcomeBadge outcome={r.outcome} /> : <AwaitingOutcomeBadge />}
+        </div>
+      </div>
+
+      {r.note && (
+        <blockquote className="mt-2 pl-3 border-l-2 border-border text-table-cell text-text-cell leading-relaxed whitespace-pre-wrap">
+          {r.note}
+        </blockquote>
+      )}
+
+      {r.earlier_answers.length > 0 && (
+        <div className="mt-2">
+          <div className="text-xs text-text-muted">Earlier answers on this finding</div>
+          <ul className="mt-1 space-y-0.5 list-disc list-outside ml-4">
+            {r.earlier_answers.map((a, i) => (
+              <li key={i} className="text-xs text-text-muted leading-relaxed">
+                {REMEDIATION_OUTCOME_REPORT_LABELS[a.outcome]} — recorded {fmtDate(a.recorded_at)}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ============================================================
@@ -300,7 +371,7 @@ export function ClaimsDefence() {
         {/* ── 4. Findings ─────────────────────────────────────────────── */}
         <Panel
           title={`Findings${p ? ` (${p.findings.length})` : ''}`}
-          subtitle="Every finding on this sale, with why it may not be fully settled and who, if anyone, has confirmed it."
+          subtitle="Every finding on this sale, with why it may not be fully settled, who — if anyone — has confirmed it, and what the adviser said they did about it."
         >
           {loading ? (
             <div className="p-5"><Skeleton className="h-24 w-full" /></div>
@@ -336,6 +407,7 @@ export function ClaimsDefence() {
                       <StatusBadge status={f.status} />
                     </div>
                   </div>
+                  {f.remediation && <Remediation r={f.remediation} />}
                 </div>
               ))}
             </div>

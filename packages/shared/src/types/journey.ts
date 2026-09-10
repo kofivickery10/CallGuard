@@ -343,6 +343,18 @@ export const REMEDIATION_OUTCOME_LABELS: Record<RemediationOutcome, string> = {
   customer_unreachable: "Couldn't reach them",
 };
 
+// The same three answers written for someone who was not in the conversation
+// (CG-26). The labels above are addressed to the adviser and read as a reply to
+// a question they were just asked; in a claims-defence pack or a board pack the
+// reader is an insurer, the Ombudsman or a board, and "Sorted" is neither their
+// register nor a statement of who did what. These say what was asserted, in the
+// third person, and they are the only labels those documents use.
+export const REMEDIATION_OUTCOME_REPORT_LABELS: Record<RemediationOutcome, string> = {
+  done: 'Put right',
+  not_needed: 'No action needed',
+  customer_unreachable: 'Customer could not be reached',
+};
+
 export const REMEDIATION_OUTCOMES: RemediationOutcome[] = [
   'done',
   'not_needed',

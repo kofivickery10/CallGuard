@@ -5,6 +5,7 @@ import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { SeverityBadge, StatusBadge } from '../components/BreachBadges';
 import { RiskLevelBadge } from '../components/RiskLevelBadge';
+import { RemediationOutcomeBadge } from '../components/RemediationBadge';
 import type { BoardPackResponse, BreachStatus, Product } from '@callguard/shared';
 
 // ============================================================
@@ -612,6 +613,71 @@ export function BoardPack() {
               )}
             </div>
           </div>
+        </Panel>
+
+        {/* ── 8. Remediation ───────────────────────────────────────────── */}
+        <Panel
+          title="Remediation"
+          subtitle="What advisers were asked to put right, and what they said they did about it."
+        >
+          <div className="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-border-light">
+            <div className="px-5 py-4">
+              <div className="text-xs font-semibold text-text-secondary uppercase tracking-wide mb-2">
+                Fed back in the period
+              </div>
+              {loading ? (
+                <Skeleton className="h-16 w-full" />
+              ) : (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <div className="text-card-value text-text-primary font-mono">{p?.remediation.findings_fed_back ?? 0}</div>
+                    <div className="text-xs text-text-muted mt-0.5">Findings sent</div>
+                  </div>
+                  <div>
+                    <div className="text-card-value text-text-primary font-mono">{p?.remediation.fed_back_with_guidance ?? 0}</div>
+                    <div className="text-xs text-text-muted mt-0.5">With an instruction</div>
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="px-5 py-4">
+              <div className="text-xs font-semibold text-text-secondary uppercase tracking-wide mb-2">
+                Answers recorded in the period
+              </div>
+              {loading ? (
+                <Skeleton className="h-16 w-full" />
+              ) : !p?.remediation.outcomes_recorded.length ? (
+                <div className="text-table-cell text-text-muted">No answers were recorded in this period.</div>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {p.remediation.outcomes_recorded.map((row) => (
+                    <div key={row.outcome} className="flex items-center gap-1.5">
+                      <RemediationOutcomeBadge outcome={row.outcome} />
+                      <span className="text-table-cell font-mono text-text-cell">{row.count}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="px-5 py-4">
+              <div className="text-xs font-semibold text-text-secondary uppercase tracking-wide mb-2">
+                Open today
+              </div>
+              {loading ? (
+                <Skeleton className="h-16 w-full" />
+              ) : (
+                <>
+                  <div className="text-card-value text-text-primary font-mono">{p?.remediation.awaiting_outcome ?? 0}</div>
+                  <div className="text-xs text-text-muted mt-0.5">
+                    Acknowledged, no answer recorded — as at today, not a figure for this period.
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+          {!loading && p && (
+            <p className="px-5 pb-4 text-xs text-text-muted leading-relaxed">{p.remediation.note}</p>
+          )}
         </Panel>
 
         {/* ── Methodology & limitations ────────────────────────────────── */}

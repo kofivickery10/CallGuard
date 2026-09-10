@@ -239,6 +239,26 @@ Two new `breach_events` types (`remediation_recorded`, and
 fields added to `ClaimsDefenceFinding` in the claims-defence pack, and a
 remediation line in the board pack.
 
+**Shipped as CG-26**, smaller than costed, because Phase 2 turned out to need
+the audit half of this to be correct at all: `remediation_recorded` and
+`journey.remediation_recorded` both landed with CG-25, which could not append an
+event without them. What was left was the two documents.
+
+Two things named above did not ship, both deliberately:
+
+- `remediation_accepted` and its audit line wait on §6's sign-off question. It
+  is a compliance judgement about whether a self-attested outcome is evidence
+  enough, and building the event before the answer would decide it by
+  implementation.
+- The **claims-defence pack joins the answer to the finding by checkpoint**
+  (`journey_feedback_items.scorecard_item_id`), never by `breach_id`. That
+  column is `ON DELETE SET NULL` and a re-score deletes and recreates every
+  breach on the sale, so a join through it would have dropped the adviser's
+  answer out of the pack the first time anyone re-scored — silently, with the
+  answer still sitting in the database. The same re-score does cascade away the
+  `breach_events` history, so a revised answer's earlier versions are lost where
+  the current one survives; the pack discloses that rather than hiding it.
+
 The claims-defence pack is where this pays off. It already goes to insurers,
 compliance officers and the Ombudsman, and it already carries "what was found"
 and "who ruled on it". Adding "and here is what was done about it, when, by whom,
@@ -269,7 +289,7 @@ worth reading rather than a padding factor — see below.
 |---|---|---|---|
 | **1** | Guidance on the criterion; guidance in the feedback email | **0.5–1 week** | ↓ CG-10 built the per-finding block |
 | **2** | Outcome capture on the tokenised adviser page | **2.5–3 weeks** | ✅ **shipped (CG-25)**, less the withheld-reasoning half |
-| **3** | Audit trail, claims-defence pack, board pack | **0.5–1 week** | ↓ 110 set the snapshot pattern |
+| **3** | Audit trail, claims-defence pack, board pack | **0.5–1 week** | ✅ **shipped (CG-26)**, less the sign-off event |
 | **4** | Open-remediations reporting, aged, by adviser | **1–1.5 weeks** | — unchanged, pending CG-11 |
 | | **Total** | **4.5–6.5 weeks** | ↓ from 5–7 |
 

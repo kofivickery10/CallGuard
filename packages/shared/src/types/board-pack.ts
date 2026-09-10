@@ -1,6 +1,7 @@
 import type { BreachSeverity } from './breaches.js';
 import type { AdviserRisk } from './risk.js';
 import type { ConsumerDutyOutcome } from './scorecard.js';
+import type { RemediationOutcome } from './journey.js';
 
 // A single evidence pack for a compliance committee / board sign-off over a
 // period, optionally narrowed to one product. See GET /api/board-pack.
@@ -132,6 +133,30 @@ export interface BoardPackActionTaken {
   };
 }
 
+// Whether what was asked of advisers actually got done (CG-26).
+//
+// Three separate populations, deliberately not arranged as a funnel: the first
+// two are things that happened during the period, the third is where the firm
+// stands today. Dividing one by another would produce a completion rate that
+// looks authoritative and means nothing, because an outcome recorded this month
+// usually answers a finding fed back last month.
+export interface BoardPackRemediation {
+  // Findings sent to an adviser in the period, and how many of those carried the
+  // firm's own instruction on what to do about them. The rest were told what was
+  // found without being told what to do — a gap in the scorecard's guidance
+  // rather than in the adviser's response.
+  findings_fed_back: number;
+  fed_back_with_guidance: number;
+  // Answers recorded in the period, whenever the finding itself was sent.
+  // Outcomes with no answers in the period are omitted rather than shown as zero.
+  outcomes_recorded: { outcome: RemediationOutcome; count: number }[];
+  // As at generation, not a period figure: findings the adviser has acknowledged
+  // and not yet answered. This is the backlog the board is being asked to look
+  // at. Aging it by adviser is the open-remediations report, not this pack.
+  awaiting_outcome: number;
+  note: string;
+}
+
 export interface BoardPackResponse {
   organization_name: string;
   period: BoardPackPeriod;
@@ -149,6 +174,7 @@ export interface BoardPackResponse {
   human_oversight: BoardPackHumanOversight;
   advisers_needing_attention: AdviserRisk[];
   action_taken: BoardPackActionTaken;
+  remediation: BoardPackRemediation;
 
   // Plain-language limits of what this pack can and cannot say. Required
   // reading alongside the figures, not small print.

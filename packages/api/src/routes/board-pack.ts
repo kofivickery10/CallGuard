@@ -11,6 +11,7 @@ import type {
   BoardPackConsumerDutyOutcomeCount,
   BreachSeverity,
   ConsumerDutyOutcome,
+  RemediationOutcome,
 } from '@callguard/shared';
 
 export const boardPackRouter = Router();
@@ -442,6 +443,77 @@ boardPackRouter.get('/', requireOrgView, async (req, res, next) => {
       [orgId, from, to, ...journeyProductParams]
     );
 
+    // ── 8. Remediation ──────────────────────────────────────────────────
+    //
+    // Whether what was asked of advisers actually got done (CG-26). The FCA's
+    // outcomes-monitoring criticism of firms is that they collect management
+    // information and cannot show it changed anything; this section is the part
+    // of the pack that can.
+    //
+    // Product scoping goes through journey_feedback.journey_id, which is NOT
+    // NULL — feedback is per sale, so unlike the findings queries above there is
+    // no call-level population to exclude when a product filter is on.
+    const feedbackProductClause = (paramIdx: number) =>
+      productId
+        ? ` AND EXISTS (SELECT 1 FROM journey_products jp WHERE jp.journey_id = jf.journey_id AND jp.product_id = $${paramIdx})`
+        : '';
+
+    // Flow: findings sent to an adviser during the period.
+    const fedBackRow = await queryOne<{ total: string; with_guidance: string }>(
+      `SELECT COUNT(*)::text AS total,
+              COUNT(*) FILTER (WHERE fi.remediation_guidance IS NOT NULL)::text AS with_guidance
+         FROM journey_feedback_items fi
+         JOIN journey_feedback jf ON jf.id = fi.feedback_id
+        WHERE jf.organization_id = $1
+          AND jf.sent_at >= $2::date AND jf.sent_at < ($3::date + interval '1 day')
+          ${feedbackProductClause(4)}`,
+      [orgId, from, to, ...journeyProductParams]
+    );
+
+    // Flow: answers recorded during the period, whenever the finding was sent.
+    // Deliberately anchored to remediated_at rather than to the same send window
+    // above — most answers in a month belong to findings fed back in the one
+    // before, and pretending otherwise would make this look like a completion
+    // rate. The note on the response says so.
+    const outcomeRows = await query<{ outcome: RemediationOutcome; count: string }>(
+      `SELECT fi.remediation_outcome AS outcome, COUNT(*)::text AS count
+         FROM journey_feedback_items fi
+         JOIN journey_feedback jf ON jf.id = fi.feedback_id
+        WHERE jf.organization_id = $1
+          AND fi.remediation_outcome IS NOT NULL
+          AND fi.remediated_at >= $2::date AND fi.remediated_at < ($3::date + interval '1 day')
+          ${feedbackProductClause(4)}
+        GROUP BY fi.remediation_outcome
+        ORDER BY COUNT(*) DESC`,
+      [orgId, from, to, ...journeyProductParams]
+    );
+
+    // Stock, not flow: where the firm stands as this pack is generated.
+    // Acknowledged and unanswered — an unacknowledged finding is a feedback
+    // backlog, which is a different problem with a different owner, and an
+    // outcome cannot be recorded before acknowledgement anyway (116).
+    //
+    // Counted once per checkpoint per sale, not once per row, and read off the
+    // most recent time that checkpoint was fed back. Rows would be wrong in both
+    // directions on a sale that was re-scored and fed back again: the same
+    // unanswered ask sent twice is one thing outstanding, not two, and a
+    // checkpoint answered in July and asked about again in August is
+    // outstanding again rather than closed by the older answer.
+    const awaitingRow = await queryOne<{ n: string }>(
+      `SELECT COUNT(*)::text AS n
+         FROM (
+           SELECT DISTINCT ON (jf.journey_id, fi.scorecard_item_id) fi.remediation_outcome
+             FROM journey_feedback_items fi
+             JOIN journey_feedback jf ON jf.id = fi.feedback_id
+            WHERE jf.organization_id = $1
+              AND jf.confirmed_at IS NOT NULL
+              ${feedbackProductClause(2)}
+            ORDER BY jf.journey_id, fi.scorecard_item_id, jf.sent_at DESC
+         ) latest_ask
+        WHERE latest_ask.remediation_outcome IS NULL`,
+      [orgId, ...journeyProductParams]
+    );
+
     // ── Methodology / limitations ───────────────────────────────────────
     const methodology: string[] = [
       "Findings are grouped under the firm's own scorecard sections (this scorecard's own headings, e.g. Disclosure, Suitability, Affordability) in findings_by_theme — not an FCA or Consumer Duty outcomes taxonomy, and CallGuard never renames or infers one onto these headings. A separate grouping, findings_by_consumer_duty, uses the Consumer Duty outcome (products and services; price and value; consumer understanding; consumer support) explicitly tagged on each checkpoint by an admin. That tagging is opt-in per checkpoint: any checkpoint nobody has tagged appears under an explicit \"Unmapped\" bucket there rather than being guessed at, dropped, or folded into an outcome it was not assigned.",
@@ -449,6 +521,7 @@ boardPackRouter.get('/', requireOrgView, async (req, res, next) => {
       'The pass threshold in force at the time of scoring is not stored against each individual score. If the threshold has changed since a score was produced, that score\'s pass/fail cannot be re-derived at the old or the new threshold — the pass/fail shown is the one recorded at scoring time.',
       'Per-call scores are replaced on re-score, not versioned, so call-level figures reflect current verdicts, not necessarily the verdict a customer conversation or coaching session was originally based on. Sale (journey) scores keep a full run history and do not share this limitation.',
       "Reconciliation outcomes recorded as 'undetermined' mean the system could not establish an answer (most often redaction removing the words needed to identify a question) — deliberately not counted as a failure.",
+      "Remediation records what an adviser said they did about a finding they were fed back, on the tokenised link in their feedback email. It is self-attested: CallGuard does not verify it and there is no supervisor sign-off step, so these figures show what advisers report, not what was independently established. A finding with no answer means the adviser has not answered — 'no action needed' is one of the three answers they can give and is counted as an answer. Findings can only be answered once the adviser has acknowledged the feedback, so a large awaiting-outcome figure alongside a feedback backlog is one problem, not two.",
       // TODO(partial-journey-coverage): once Phase 2 ships (false-positive
       // measurement approved per docs/partial-journey-detection.md §6), add a
       // limitations bullet here disclosing journeys.coverage — how many
@@ -534,6 +607,15 @@ boardPackRouter.get('/', requireOrgView, async (req, res, next) => {
       },
 
       advisers_needing_attention: advisersNeedingAttention,
+
+      remediation: {
+        findings_fed_back: parseInt(fedBackRow?.total || '0', 10),
+        fed_back_with_guidance: parseInt(fedBackRow?.with_guidance || '0', 10),
+        outcomes_recorded: outcomeRows.map((r) => ({ outcome: r.outcome, count: parseInt(r.count, 10) })),
+        awaiting_outcome: parseInt(awaitingRow?.n || '0', 10),
+        note:
+          "An outcome is the adviser's own account of what they did, recorded by them and not verified by CallGuard or signed off by anyone at the firm. The three figures are three different populations and must not be divided into one another: findings fed back and outcomes recorded are both counted within this period, and most answers recorded in a period belong to findings fed back in an earlier one. Awaiting an outcome is where the firm stands today, not a figure for this period.",
+      },
 
       action_taken: {
         by_status: statusRows.map((r) => ({ status: r.status, count: parseInt(r.count, 10) })),
