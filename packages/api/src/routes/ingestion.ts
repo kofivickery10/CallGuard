@@ -14,6 +14,7 @@ import { encrypt } from '../services/crypto.js';
 import { ingestCall, fetchRemoteAudio, captureCallMetadata, pickField } from '../services/ingestion.js';
 import { resolveCloudTalkCallId } from '../services/cloudtalk.js';
 import { recordAuditEvent } from '../services/audit.js';
+import { organisationKeepsUnredacted } from '../services/transcript-access.js';
 import * as sftp from '../services/sftp.js';
 import {
   getDialerConnection,
@@ -655,6 +656,19 @@ ingestionRouter.get(
         [call.id]
       );
 
+      // DPIA R5, action 8 — and the reason the control would otherwise be
+      // decorative. This endpoint is the documented polling companion to the
+      // `call.scored` webhook (docs/API.md) and is reached with the SAME api
+      // key. Without this, a partner who stopped receiving `evidence` in the
+      // push could retrieve the identical string with one GET, and `reasoning`
+      // — which the feedback email withholds from these same tenants — with it.
+      // A control bypassable at the boundary it defends is not a control.
+      //
+      // Broad gate: an api key's holder is a system we cannot see, so the
+      // "their CRM already has their name" argument does not apply. See
+      // services/transcript-access.ts.
+      const withholdTranscriptText = await organisationKeepsUnredacted(orgId);
+
       res.json({
         id: call.id,
         external_id: call.external_id,
@@ -678,16 +692,20 @@ ingestionRouter.get(
               description: it.description,
               normalized_score: normalized,
               pass: normalized == null ? null : isItemPass(normalized),
-              evidence: it.evidence,
-              reasoning: it.reasoning,
+              evidence: withholdTranscriptText ? null : it.evidence,
+              reasoning: withholdTranscriptText ? null : it.reasoning,
             };
           }),
           breaches: breaches.map((b) => ({
             scorecard_item_id: b.scorecard_item_id,
             label: b.label,
             severity: b.severity,
-            evidence: b.evidence,
+            evidence: withholdTranscriptText ? null : b.evidence,
           })),
+          // Machine-readable counterpart of the sentence the CRM write-back
+          // renders: a consumer must be able to tell "withheld" from "the AI
+          // quoted nothing".
+          ...(withholdTranscriptText ? { evidence_withheld: true } : {}),
           coaching: score.coaching,
         },
       });

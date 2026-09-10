@@ -5,6 +5,7 @@ import {
   withheldTranscript,
   organisationKeepsUnredacted,
   organisationKeepsHealthUnredacted,
+  withheldBreachEvidence,
   type TranscriptAccess,
 } from './transcript-access.js';
 
@@ -136,5 +137,92 @@ describe('organisationKeepsUnredacted', () => {
   it('stays broader than the health predicate, gating any permitted category', async () => {
     withCategories(['name']);
     await expect(organisationKeepsUnredacted('org')).resolves.toBe(true);
+  });
+});
+
+// ── withheldBreachEvidence (DPIA R5, action 8) ────────────────────────────────
+//
+// `evidence` is a verbatim transcript quote, not a paraphrase — services/
+// scoring.ts asks the model for "a direct quote from the transcript". These
+// tests pin what may leave the platform in a scored payload and what may not.
+
+describe('withheldBreachEvidence', () => {
+  const quote = 'I was diagnosed with atrial fibrillation in 2019.';
+  const payload = () => ({
+    event: 'journey.scored' as const,
+    journey_id: 'j-1',
+    breaches: [
+      { scorecard_item_id: 'i-1', scorecard_item_label: 'Health disclosure taken', severity: 'high', evidence: quote },
+      { scorecard_item_id: 'i-2', scorecard_item_label: 'Exclusion explained', severity: 'low', evidence: '' },
+    ],
+  });
+
+  it('removes every quote and says so, on a tenant keeping health unredacted', () => {
+    const out = withheldBreachEvidence(payload(), true);
+    expect(out.breaches.map((b) => b.evidence)).toEqual(['', '']);
+    expect(out.evidence_withheld).toBe(true);
+    // The question and the fact of the breach still travel — that is the shape
+    // R5 prescribes, and a payload stripped of them would be useless.
+    expect(out.breaches.map((b) => b.scorecard_item_label)).toEqual([
+      'Health disclosure taken',
+      'Exclusion explained',
+    ]);
+    expect(out.breaches.map((b) => b.severity)).toEqual(['high', 'low']);
+  });
+
+  it('changes nothing for a tenant whose transcripts were redacted at source', () => {
+    const input = payload();
+    const out = withheldBreachEvidence(input, false);
+    expect(out).toBe(input);
+    expect(out.evidence_withheld).toBeUndefined();
+  });
+
+  it('does not mutate the caller, so a retry cannot resurrect the quote', () => {
+    const input = payload();
+    withheldBreachEvidence(input, true);
+    expect(input.breaches[0]!.evidence).toBe(quote);
+  });
+
+  it('claims no restriction where there was no quote to remove', () => {
+    // Same rule as withheldTranscript: a sale the AI quoted nothing on must not
+    // read as one where something was suppressed.
+    const out = withheldBreachEvidence(
+      { breaches: [{ scorecard_item_id: 'i-1', scorecard_item_label: 'A checkpoint', severity: 'low', evidence: '' }] },
+      true
+    );
+    expect(out.evidence_withheld).toBeUndefined();
+  });
+
+  it('claims no restriction on a clean sale with no breaches at all', () => {
+    const out = withheldBreachEvidence({ breaches: [] }, true);
+    expect(out.evidence_withheld).toBeUndefined();
+  });
+});
+
+// The live-session breach frame (WebhookBreachPayload) carries its quote at the
+// TOP LEVEL, not inside breaches[]. A filter that only walked breaches[] would
+// let that whole event through untouched — which is what a gate placed in
+// deliverCallScored rather than deliverWebhook would have done.
+describe('withheldBreachEvidence — the top-level evidence shape', () => {
+  const quote = 'I was diagnosed with atrial fibrillation in 2019.';
+
+  it('removes a top-level quote and says so', () => {
+    const out = withheldBreachEvidence(
+      { event: 'session.breach_detected', scorecard_item_label: 'A checkpoint', evidence: quote },
+      true
+    );
+    expect(out.evidence).toBe('');
+    expect(out.evidence_withheld).toBe(true);
+    expect(out.scorecard_item_label).toBe('A checkpoint');
+  });
+
+  it('claims no restriction on a top-level quote that was already empty', () => {
+    const out = withheldBreachEvidence({ evidence: '' }, true);
+    expect(out.evidence_withheld).toBeUndefined();
+  });
+
+  it('leaves a top-level quote alone for a tenant redacted at source', () => {
+    const input = { evidence: quote };
+    expect(withheldBreachEvidence(input, false)).toBe(input);
   });
 });

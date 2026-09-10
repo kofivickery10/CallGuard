@@ -5,6 +5,7 @@ import { AppError } from '../middleware/errors.js';
 import { recordAuditEvent } from '../services/audit.js';
 import { scoringQueue } from '../jobs/queue.js';
 import { getCaptureForm } from '../services/capture-runs.js';
+import { organisationKeepsUnredacted } from '../services/transcript-access.js';
 import type {
   CaptureForm,
   CaptureFormField,
@@ -482,6 +483,16 @@ captureRouter.get('/runs/:id/export.csv', async (req, res, next) => {
       if (/^[=+\-@\t\r]/.test(trimmed) && !isNumeric) s = `'${s}`;
       return `"${s.replace(/"/g, '""')}"`;
     };
+    // DPIA R5, action 8. The Answer column above already substitutes
+    // '[confirmed — personal data]' for a redacted value — and then the
+    // Evidence cell beside it shipped the transcript text that rule exists to
+    // suppress. `evidence` is a verbatim quote (migration 060: "Verbatim
+    // transcript quote supporting the answer"), so on a tenant keeping any
+    // category in the clear it carries exactly what the Answer cell withheld.
+    //
+    // Broad gate, as for every export: a downloaded file goes wherever files go.
+    const withholdEvidence = await organisationKeepsUnredacted(req.user!.organizationId);
+
     const lines = [
       ['Question', 'Asked', 'Answered', 'Answer', 'Result', 'Confidence', 'Evidence'].join(','),
       ...answers.map((a) =>
@@ -492,7 +503,9 @@ captureRouter.get('/runs/:id/export.csv', async (req, res, next) => {
           esc(a.value_redacted || a.result === 'confirmed_only' ? '[confirmed — personal data]' : a.captured_value),
           esc(a.result),
           a.confidence != null ? String(a.confidence) : '',
-          esc(a.evidence),
+          // Empty stays empty — an answer with no quote must not read as one
+          // where something was suppressed.
+          esc(withholdEvidence && a.evidence ? '[withheld — read it in CallGuard]' : a.evidence),
         ].join(',')
       ),
     ];
