@@ -136,21 +136,60 @@ said and what you changed, if anything.〕
 ⚠ **Decide, and only if health data actually arises.**
 
 If your calls contain health disclosures, an Article 6 basis is **not enough**.
-You need a condition under Article 9(2), and for most insurance intermediaries
-the relevant route runs through the Data Protection Act 2018's substantial
-public interest conditions — the insurance condition in particular.
+You need a separate condition under Article 9(2). For an insurance intermediary
+the route is normally Article 9(2)(g), substantial public interest — and **DPA
+2018 s.10(3)** provides that Article 9(2)(g) is met "only if it meets a
+condition in Part 2 of Schedule 1".
 
-**If you rely on a Schedule 1 Part 2 condition you must also have an
-appropriate policy document in place.** Most small intermediaries either do not
-have one, or have one that says nothing about call recording. We provide a model
-you can adapt: `appropriate-policy-document-template.md`.
+**The insurance condition, DPA 2018 Schedule 1 Part 2 paragraph 20**, is met
+where the processing:
+
+> "(a) is necessary for an insurance purpose, (b) is of personal data revealing
+> racial or ethnic origin, religious or philosophical beliefs or trade union
+> membership, genetic data or data concerning health, and (c) is necessary for
+> reasons of substantial public interest"
+
+**"Insurance purpose" is a closed list** (para 20(5)): advising on, arranging,
+underwriting or administering an insurance contract; administering a claim; or
+exercising a right or complying with an obligation arising in connection with
+one.
+
+⚠ **Two traps, both of which catch firms doing mixed business.**
+
+- **Mortgage advice is not an insurance purpose.** If you do both mortgage and
+  protection business, paragraph 20 covers the protection side only. You need a
+  separate analysis for mortgage calls — do not let one condition carry both.
+- **Paragraph 20 does not cover criminal-offence data** (Article 10). Its
+  limb (b) lists Article 9 categories only. If your calls capture criminal
+  convictions — a general insurance application may — the route is **Schedule 1
+  Part 3 paragraph 37**, "Extension of insurance conditions", cited separately.
+
+There is **no general "consent is not required" dispensation** in paragraph 20,
+and it is sometimes described as though there were. Sub-paragraphs (2)–(4) deal
+with a narrower situation — third parties who have no rights or obligations
+under the contract — and there they *add* a requirement that the processing "can
+reasonably be carried out without the consent of the data subject". That is an
+extra hurdle, not a licence.
+
+### 4.2.1 You must have an appropriate policy document
+
+**Schedule 1 Part 2 paragraph 5(1):**
+
+> "Except as otherwise provided, a condition in this Part of this Schedule is met
+> only if, when the processing is carried out, the controller has an appropriate
+> policy document in place (see paragraph 39 in Part 4 of this Schedule)."
+
+Paragraph 20 contains no exception, so **if you rely on it and you do not have an
+APD, the condition is not met and the processing is unlawful.** Most small
+intermediaries either have no APD or have one that says nothing about call
+recording.
+
+We provide a model you can adapt: `appropriate-policy-document-template.md`. It
+is yours to complete — the APD is a **controller** obligation under paragraphs
+39–41, and CallGuard as your processor has no APD duty of its own.
 
 〔State the condition relied on, and attach or reference your appropriate policy
 document.〕
-
-*The precise statutory wording and its requirements are being confirmed from
-primary sources and will be cited here. Do not rely on this section until that
-citation is present — check it against the legislation or take advice.*
 
 ### 4.3 If you have asked for reduced redaction
 
@@ -260,19 +299,44 @@ feedback email is not adequate notice.〕
 
 ## 8. Automated decision-making
 
-CallGuard's findings are **decision support**, not automated decisions:
+> If you have seen this section in an older template citing **Article 22**, it is
+> out of date. Article 22 was replaced by **Articles 22A–22D**, fully in force
+> **5 February 2026**.
+
+**Article 22A(1)(a)** defines the test: a decision is based solely on automated
+processing "if there is **no meaningful human involvement** in the taking of the
+decision". The question is not whether software was involved — it is whether a
+person meaningfully was.
+
+CallGuard's findings are built to be decision support:
 
 - Every finding carries the evidence behind it, so a person can check it.
 - Uncertain items go to a human queue rather than being scored automatically.
 - Sending feedback to an adviser is a person pressing a button.
 
-⚠ **Decide and record:** confirm that **no action affecting an adviser's pay,
-performance record or employment follows from a finding without a human
-reviewing it first.** CallGuard supports this but cannot enforce it inside your
-firm — the safeguard is your process, and if you do not have one written down,
-you do not have one.
+⚠ **Decide and record — and this one is not optional if health data is
+involved.**
 
-〔Describe your process. Who reviews? What can an adviser do if they disagree?〕
+**Article 22B** prohibits a significant decision based entirely or partly on
+Article 9 data being taken solely by automated means, except on explicit consent
+or a contract/legal route plus Article 9(2)(g). Compliance scoring of protection
+calls processes health data. So if a finding drives a consequence for an adviser
+with no meaningful human involvement, you are in a **stricter** prohibition than
+for ordinary data, not a looser one.
+
+Confirm that **no action affecting an adviser's pay, performance record or
+employment follows from a finding without meaningful human review**. CallGuard
+supports this and cannot enforce it inside your firm. The safeguard is your
+process, and if it is not written down you do not have one.
+
+Note also that "meaningful" is undefined in the Act — Article 22D allows it to
+be defined by regulations, and none are yet in force. A supervisor who
+rubber-stamps a list is unlikely to satisfy it.
+
+〔Describe your process. Who reviews? What can an adviser do if they disagree?
+Article 22C(2), which applies where a decision *is* solely automated, is a useful
+model even where it does not bite: information about the decision, the ability
+to make representations, to obtain human intervention, and to contest it.〕
 
 ---
 

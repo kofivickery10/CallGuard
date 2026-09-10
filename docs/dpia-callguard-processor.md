@@ -33,26 +33,37 @@ honest.
 
 ## 1. Why an assessment is required
 
-Article 35(1) requires a DPIA where processing is likely to result in a high
-risk to individuals. Article 35(3) makes it mandatory in three specific cases.
-This processing engages the ICO's high-risk screening criteria on at least three
-counts, any one of which would point to a DPIA:
+Article 35(1) UK GDPR requires a DPIA where a type of processing "is likely to
+result in a high risk to the rights and freedoms of natural persons". Article
+35(3) makes one mandatory in three listed cases. **Two of the three apply
+squarely here**, and it is worth being precise about which, because the third is
+commonly and wrongly claimed:
 
-- **Special category data.** Protection and health insurance calls contain
-  health disclosures — conditions, medication, smoking status, alcohol
-  consumption, family history. That is Article 9 data, and it is the core
-  subject matter of the call rather than an incidental mention.
-- **Systematic monitoring of employees.** Every call an adviser takes is
-  transcribed and scored, and the result attaches to them by name. That is
-  workplace monitoring at scale, and the data subject is an employee who cannot
-  meaningfully refuse.
-- **Innovative technology.** Large language models score the calls and generate
-  the findings.
+- **Article 35(3)(b) — "processing on a large scale of special categories of
+  data referred to in Article 9(1)".** Protection and health cover calls contain
+  health disclosures: conditions, medication, smoking status, alcohol
+  consumption, family history. That is Article 9 data and it is the subject
+  matter of the call, not an incidental mention.
+- **Article 35(3)(a) — "a systematic and extensive evaluation of personal
+  aspects relating to natural persons which is based on automated processing,
+  including profiling, and on which decisions are based..."** Every call an
+  adviser takes is transcribed, scored and attributed to them by name.
 
-Two further ICO criteria are engaged more weakly but should not be waved away:
-the processing produces **evaluation or scoring** of individuals, and it can
-lead to **denial of an opportunity or a detriment** (a compliance finding can
-affect an adviser's commission, their coaching, or in the extreme their job).
+**Article 35(3)(c) does not apply.** It covers "systematic monitoring of a
+**publicly accessible area** on a large scale". Employee monitoring is not that,
+and citing (c) for it is an error a compliance officer will find immediately.
+The employee-monitoring argument is a high-risk argument under Article 35(1) and
+ICO guidance, not a 35(3) case.
+
+Beyond the mandatory cases, the processing is high risk under 35(1) on several
+further grounds: it produces **evaluation and scoring** of individuals; it can
+lead to a **detriment** for an adviser (commission, coaching, in the extreme
+their job); it uses **innovative technology**; and the adviser is arguably a
+**vulnerable data subject** by virtue of the employer/worker power imbalance.
+
+*ICO's published high-risk criteria are referred to here in substance rather
+than quoted. ICO's site blocks automated retrieval, so nothing attributed to ICO
+in this document has been verified verbatim — see section 12.*
 
 ---
 
@@ -241,20 +252,48 @@ section 7 governs what we write.
 
 ### 6.2 Transfers
 
-- **Deepgram** is called at its **EU endpoint by default**, so audio does not
-  leave the EU. A per-tenant setting can move a firm to the US endpoint; a
-  controller who selects it is authorising an international transfer and should
-  record it in their own assessment. *Confirm before publication: the correct
-  transfer mechanism for the EU endpoint, given a UK controller.*
-- **Anthropic** is US-based and has no regional option in our integration.
-  Transfers to it happen for every scored call.
-- **AWS** region for the managed database — **stated in section 12 as
-  unverified.** It must be confirmed and named before this document is relied
-  on. The go-live runbook records the provider but not the region.
+> **The transfer regime changed on 5 February 2026.** Article 45 UK GDPR was
+> **omitted** by the Data (Use and Access) Act 2025 (s.142(1), Sch. 7 para. 3).
+> Adequacy now runs through the new **Articles 45A and 45B**. Article 45B(1)
+> sets the test: the standard of protection in the third country must be **"not
+> materially lower"** than the UK standard — which is a deliberate divergence
+> from the EU's "essentially equivalent" test and should not be described as
+> the same thing.
 
-*The lawful transfer mechanism relied on for each US recipient is to be stated
-here once verified — see section 12.* It is deliberately left blank rather than
-filled with a plausible answer.
+**Where the data goes:**
+
+- **Deepgram** is called at its **EU endpoint by default**, so audio is sent to
+  the EU rather than the US. A per-tenant setting can move a firm to the US
+  endpoint; a controller who selects it is authorising a transfer to the US and
+  must record it in their own assessment.
+- **Anthropic** is US-based with no regional option in our integration.
+  Transcript text is transferred for every scored call.
+- **AWS** — region unverified, see section 12.
+
+**The route we expect to rely on for the US, and what it requires of us.** The
+UK–US Data Bridge remains in force: the Data Protection (Adequacy) (United
+States of America) Regulations 2023 were made under DPA 2018 s.17A, and DUAA
+2025 **Sch. 9 para. 26** provides that such regulations are treated as if made
+under Article 45A. So the repeal of Article 45 did not take the data bridge with
+it.
+
+But **adequacy is not country-wide, and this is where firms get it wrong.** It
+covers only transfers to organisations on the Data Privacy Framework List that
+participate in the **UK Extension** specifically. A US company can be
+DPF-certified for the EU alone. So for each US recipient we must confirm, and
+re-confirm at each annual recertification:
+
+1. the certification is active;
+2. it **expressly includes the UK Extension**, not the EU framework only;
+3. it covers the relevant data categories.
+
+**That check has not been done for Deepgram or Anthropic.** Until it has, the
+transfer position is unestablished rather than satisfied — action 2 in section
+12. The fallback routes if a recipient is not UK-Extension certified are the
+Commissioner's standard clauses under DPA 2018 s.119A (the IDTA and the UK
+Addendum, both preserved by Article 46(2)) or binding corporate rules, and
+either would require our own assessment against the "not materially lower"
+standard.
 
 ### 6.3 The no-training position
 
@@ -340,9 +379,19 @@ it removes the need for a human to listen to calls that turn out to be fine.
 
 ### 8.2 The model does not decide anything about a person
 
-Compliance findings are **decision support**, not automated decisions in the
-Article 22 sense. Three things hold that line, and all three are in the product
-rather than in policy:
+> **Article 22 no longer exists.** It was omitted and replaced by Articles
+> 22A–22D (Chapter 3, Section 4A) by the Data (Use and Access) Act 2025 s.80(1),
+> fully in force **5 February 2026**. Any document still citing "Article 22(1)"
+> is out of date. The change helps us: what used to be a guidance gloss is now
+> statutory text.
+
+**Article 22A(1)(a)** defines the term directly: *"a decision is based solely on
+automated processing if there is no meaningful human involvement in the taking
+of the decision"*. So the test is not whether software was involved. It is
+whether a person meaningfully was.
+
+Compliance findings are **decision support**. Three things hold that line, and
+all three are in the product rather than in policy:
 
 - Every finding carries its evidence — the criterion, a quote, the source call
   and the point in the recording — so a person can check it.
@@ -352,9 +401,31 @@ rather than in policy:
 - The action that affects an adviser — feeding a finding back to them — is a
   supervisor pressing a button, not an automatic consequence of the score.
 
+**Two limits on that argument, stated because they are load-bearing.**
+
+*"Meaningful" is doing all the work, and it is undefined.* Article 22D(1) lets
+the Secretary of State define meaningful human involvement by regulations, and
+none are in force. A human who rubber-stamps a list of findings is not
+meaningful involvement, and no amount of product design makes it so.
+
+*Article 22B bites harder than the old Article 22 did.* Where a significant
+decision is based entirely or partly on Article 9(1) data, it **may not** be
+taken solely by automated means except on explicit consent or a contract/legal
+route plus Article 9(2)(g). Our scoring routinely processes health data. So on a
+firm that lets a finding drive a consequence without human involvement, the
+prohibition is stricter here than for ordinary data — not looser.
+
+**This is therefore a contractual requirement on the controller, not a fact
+about our software.** The product supports human review and cannot enforce it
+inside a firm.
+
 **Action for the controller:** confirm and document that no action affecting an
-adviser's employment or pay follows from a finding without a human reviewing it.
-The product supports that. It cannot enforce it inside the firm.
+adviser's employment or pay follows from a finding without meaningful human
+review.
+
+*ICO's guidance on automated decision-making is currently in draft
+(consultation closed 29 May 2026, final due Winter 2026). It is deliberately not
+relied on here.*
 
 ### 8.3 The risk of being wrong about an adviser
 
@@ -495,7 +566,7 @@ is worse than one that says where it stops.
 | # | Not established | Needed before |
 |---|---|---|
 | 1 | Anthropic's current commercial terms on training and retention, quoted from source | Giving this to any customer |
-| 2 | The lawful transfer mechanism relied on for each US sub-processor | Same |
+| 2 | Whether Deepgram and Anthropic are on the DPF List **participating in the UK Extension** — not the EU framework alone (6.2) | Same |
 | 3 | The AWS region holding the database | Same |
 | 4 | Whether the Deepgram EU endpoint keeps data in the EU end to end, or only at the point of ingress | Same |
 | 5 | What call content reached CRMs, webhooks and downloads before the section 7 control existed | A conversation with any affected firm |
@@ -504,9 +575,19 @@ is worse than one that says where it stops.
 | 8 | Whether subject access includes scoring output (9.5) | Sign-off |
 | 9 | Verified tenant isolation (P6) | Sign-off |
 
-Statutory citations are deliberately absent from this draft rather than written
-from memory. They are being verified from primary sources and will be added with
-provenance.
+**On citations.** Every statutory reference in this document has been checked
+against the primary text on legislation.gov.uk and is recorded with its URL in
+`regulatory-citations-verified.md`. That check found four errors in the working
+draft, three of them the kind a compliance officer finds in the first
+five minutes: Article 22 has been replaced by Articles 22A–22D, Article 45 has
+been omitted in favour of 45A/45B, Article 35(3)(c) is about publicly accessible
+areas rather than employee monitoring, and the insurance condition does not
+reach criminal-offence data.
+
+**Nothing attributed to the ICO in this document has been verified verbatim.**
+ICO's site blocks automated retrieval, so ICO positions are stated in substance
+and should be read against the source before any of them is quoted to a
+customer.
 
 ---
 
