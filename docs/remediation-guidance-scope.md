@@ -202,6 +202,18 @@ to do. It also inherits 110's three-state discipline — text sent, no text to
 send, and text deliberately withheld are three different facts and a single
 nullable column collapses them into one.
 
+**SHIPPED as CG-25, with one half deliberately left out.** Outcome capture is
+built: the page lists each finding with the firm's guidance, collects
+`done` / `not needed` / `customer unreachable` and a note, gates every write on
+`confirmed_at`, and appends a `remediation_recorded` event per write. What is
+NOT built is the part this section argues for hardest — putting the *withheld
+reasoning* on the page. That is a disclosure of health-derived text to an
+unauthenticated URL, and 4.11 of the DPIA now puts it to the controller as open
+action 13 rather than shipping it as a side effect. So the gap described below
+is narrowed, not closed: a no-login adviser now has somewhere to read the firm's
+instruction and record what they did, and still has nowhere to read the model's
+reason.
+
 **CG-10 left a gap here that Phase 2 is the natural close for.** On a tenant that
 keeps health unredacted, reasoning is deliberately kept out of the email (DPIA
 R5) and the email tells the adviser the detail is in CallGuard instead. For an
@@ -256,7 +268,7 @@ worth reading rather than a padding factor — see below.
 | Phase | What ships | Estimate | vs. original |
 |---|---|---|---|
 | **1** | Guidance on the criterion; guidance in the feedback email | **0.5–1 week** | ↓ CG-10 built the per-finding block |
-| **2** | Outcome capture on the tokenised adviser page | **2.5–3 weeks** | ↑ must now handle withheld reasoning |
+| **2** | Outcome capture on the tokenised adviser page | **2.5–3 weeks** | ✅ **shipped (CG-25)**, less the withheld-reasoning half |
 | **3** | Audit trail, claims-defence pack, board pack | **0.5–1 week** | ↓ 110 set the snapshot pattern |
 | **4** | Open-remediations reporting, aged, by adviser | **1–1.5 weeks** | — unchanged, pending CG-11 |
 | | **Total** | **4.5–6.5 weeks** | ↓ from 5–7 |
