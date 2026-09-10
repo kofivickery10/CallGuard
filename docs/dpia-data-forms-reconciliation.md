@@ -7,13 +7,25 @@
 | **Assessment covers** | The CallGuard AI Data Forms module, specifically the reconciliation feature that compares what a customer said on a recorded call against the application submitted to an insurer, and the change to transcript redaction that makes it possible. |
 | **Prepared by** | CallGuard AI (processor) |
 | **Controller** | Trust Point (first deploying firm) |
-| **Version** | 0.4, draft for controller review |
+| **Version** | 0.5, draft for controller review |
 | **Date** | 10 September 2026 |
 | **Status** | **DRAFT. Not signed. The processing described here must not be enabled in production until this assessment is completed and signed by the controller.** |
 | **Review due** | 12 months from sign-off, or on any material change to the processing |
 
 ### Change log
 
+- **0.5** — One new disclosure, and one new open decision, both in **section
+  4.11**. The tokenised page an adviser opens from their feedback email — no
+  login, the URL is the credential — used to show that adviser's own name and a
+  count of findings. It now names each finding and carries the firm's own
+  remediation guidance for it, because the same page has been given the job of
+  collecting what the adviser did about each one. Assessed as acceptable: the
+  recipient is the named adviser, the content is an assessment of their own
+  conduct, the guidance was written by the firm against a checkpoint rather than
+  derived from any call, and the page still names no customer and links to no
+  sale. The model's `reasoning` is **not** included, on the same test that keeps
+  it out of the email for firms holding health in the clear — new **action 13**
+  puts that question to the controller rather than answering it in a build.
 - **0.4** — Action 8 closes. The control R5 was conditional on now exists and is
   covered by test (new section 4.10). It is worth recording plainly that when
   this control was built the field it governs was **already leaving**: a breach's
@@ -386,6 +398,47 @@ which is a question of fact to be established from the delivery records and is
 for the controller and CallGuard to settle together, not for this section to
 assert either way.
 
+### 4.11 The adviser's confirmation page now names the findings *(new in 0.5)*
+
+Recorded here because it is a deliberate widening of a disclosure, it is
+**not** covered by the R5 control above, and it should be a decision rather
+than something the controller discovers.
+
+**What changed.** The link in the adviser feedback email opens a page that
+requires no login — the token in the URL is the credential, because a large
+share of advisers have no account and this firm's have none. Until now that page
+showed the recipient's own name and a count of findings, and nothing else. It now
+lists each finding by name, the firm's own remediation guidance for it, and
+collects what the adviser did about it. The reason is that the page has been
+given a job it cannot do while anonymous: an adviser cannot honestly confirm
+they have seen feedback that is not shown to them, and cannot record an outcome
+against a finding it will not name.
+
+**Why this is assessed as acceptable.** The recipient is the named adviser who
+handled the sale, reached at an address the firm holds for them. The content is
+an assessment of **their own conduct**, not the customer's data: a checkpoint
+label the firm wrote, and guidance the firm authored in advance against that
+checkpoint without seeing any customer. The page names no customer, states no
+client name, shows no score, links to no sale, and carries no transcript.
+
+**What is still withheld, and this is the part to check.** On a firm that keeps
+health unredacted — this firm — the model's `reasoning` is already kept out of
+the feedback email, because it is derived from the call and can carry a health
+disclosure in the clear. **The same test is applied to this page**, which is
+unauthenticated and therefore no safer a destination than the email: where
+reasoning was withheld from the email it is withheld here, the page says so, and
+it points the adviser to their supervisor. The evidence quote governed by 4.10
+has never been on this page and is not added to it.
+
+**The open question this creates.** The design argues the opposite: that because
+this page is inside CallGuard and reachable without an account, it is precisely
+where the withheld detail *should* land, and that a no-login adviser currently
+being told "the detail is in CallGuard" is being pointed at nothing. That may
+well be right, and it would close a real gap. It is a controller decision about
+disclosing health-derived text to an unauthenticated URL, not an engineering
+one, so it has been left unbuilt and recorded as action 13. Relaxing it is one
+condition in one function.
+
 ---
 
 ## 5. Data categories
@@ -570,6 +623,12 @@ Recording that plainly matters more than a tidy table.
 One route remains open by design, the claims-defence pack, and it is now stated
 rather than assumed — see 4.10.
 
+*Updated in 0.5.* A new destination exists and is deliberately held to this same
+rule: the unauthenticated adviser confirmation page, which now names findings and
+carries firm-authored guidance but not the model's reasoning — **section 4.11**,
+open action 13. It is not an export, but it is reachable without a login, so
+treating it as one is the safer reading.
+
 **Residual: low likelihood, medium impact**, for every route except the
 claims-defence pack, whose export is a controller decision taken per sale.
 
@@ -640,6 +699,7 @@ firm. Each tenant is a separate controller and cannot be enabled by default.
 | 10 | ~~Do **not** permit the number category until in-house digit-run redaction is in place and verified (R7)~~ **Done, 3 August 2026.** The control is described in 4.9 and validated against the firm's real transcripts. Permitting the category for this firm remains conditional on actions 6 and 12. | CallGuard |
 | 11 | ~~Decide and implement who can read an unredacted transcript within a firm (R3)~~ **Done, 3 August 2026: the `admin` role only**, enforced at the API for firms keeping any category in the clear. Transcript content is withheld from every other role rather than partially masked; see R3. | Controller + CallGuard |
 | 12 | ~~Run the verification script against a real call under the proposed category list and record the output~~ **Done, 3 August 2026.** A real 20 minute sale re-transcribed with every category permitted; no bank-length digit run survived. Output recorded in 4.9. To be repeated on any change to the category list. | CallGuard |
+| 13 | **Decide whether the model's reasoning may be shown on the unauthenticated adviser page (4.11).** Two things follow from it either way, and both are live now: an adviser with no login currently has nowhere to read the detail the email tells them is in CallGuard, and the page has just started naming findings and firm guidance without it. Withheld pending this decision, which is a disclosure judgement rather than a technical one. | Controller |
 
 ---
 

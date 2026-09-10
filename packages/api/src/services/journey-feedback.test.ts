@@ -6,9 +6,11 @@ import {
   resolveChosenRecipient,
   buildFeedbackSend,
   sendFeedback,
+  recordRemediationOutcome,
 } from './journey-feedback.js';
 import type { FeedbackBreach } from './journey-feedback.js';
 import { query, queryOne, withTransaction } from '../db/client.js';
+import { REMEDIATION_NOTE_MAX } from '@callguard/shared';
 
 // The confirmation endpoint is unauthenticated by necessity — a no-login adviser
 // has no session to present — so the token IS the credential. These cover the
@@ -72,10 +74,44 @@ describe('hashFeedbackToken', () => {
   });
 });
 
+/**
+ * Every statement a call issued, so the read side can be pinned on what its SQL
+ * DOES rather than on how many times it ran.
+ *
+ * `expect(query).not.toHaveBeenCalled()` was the original pin and stopped being
+ * available when the lookup began returning the findings themselves (CG-25) —
+ * those are a SELECT, so the call count no longer distinguishes a read from a
+ * write. This is the stronger property anyway: it fails on a write introduced
+ * through any code path, including one that reuses an existing call.
+ */
+function expectReadOnly() {
+  const statements = [
+    ...vi.mocked(query).mock.calls.map((c) => String(c[0])),
+    ...vi.mocked(queryOne).mock.calls.map((c) => String(c[0])),
+  ];
+  for (const sql of statements) {
+    expect(sql).not.toMatch(/\b(INSERT|UPDATE|DELETE)\b/i);
+  }
+  expect(withTransaction).not.toHaveBeenCalled();
+}
+
+/** One finding as journey_feedback_items holds it, unanswered. */
+const itemRow = {
+  id: 'it-1',
+  item_label: 'Attitude to risk not evidenced',
+  severity: 'high',
+  reasoning: 'The adviser did not ask about risk tolerance.',
+  remediation_guidance: 'Call the client and re-send the fact-find.',
+  remediation_outcome: null,
+  remediation_note: null,
+  remediated_at: null,
+};
+
 describe('lookupFeedback', () => {
   beforeEach(() => {
     vi.mocked(query).mockReset();
     vi.mocked(queryOne).mockReset();
+    vi.mocked(withTransaction).mockReset();
   });
 
   it('returns not_found for an unrecognised token, and issues no write', async () => {
@@ -84,55 +120,334 @@ describe('lookupFeedback', () => {
     const result = await lookupFeedback('some-token');
 
     expect(result).toEqual({ status: 'not_found' });
+    // Nothing is read either: a dead token must not cause a findings query.
     expect(query).not.toHaveBeenCalled();
+    expectReadOnly();
   });
 
-  it('returns already_confirmed with the adviser name and item count, and issues no write', async () => {
-    vi.mocked(queryOne)
-      .mockResolvedValueOnce({
-        id: 'fb-1',
-        adviser_name: 'Jo Adviser',
-        confirmed_at: '2026-01-01T00:00:00.000Z',
-        token_expires_at: '2026-06-01T00:00:00.000Z',
-      })
-      .mockResolvedValueOnce({ n: '3' });
-
-    const result = await lookupFeedback('some-token');
-
-    expect(result).toEqual({ status: 'already_confirmed', adviserName: 'Jo Adviser', itemCount: 3 });
-    expect(query).not.toHaveBeenCalled();
-  });
-
-  it('returns expired for a token past its TTL, and issues no write', async () => {
+  it('returns expired for a token past its TTL — with no findings, because the credential is dead', async () => {
     vi.mocked(queryOne).mockResolvedValueOnce({
       id: 'fb-2',
       adviser_name: 'Jo Adviser',
       confirmed_at: null,
       token_expires_at: '2000-01-01T00:00:00.000Z',
+      reasoning_withheld: false,
     });
 
     const result = await lookupFeedback('some-token');
 
     expect(result).toEqual({ status: 'expired', adviserName: 'Jo Adviser' });
+    // The expiry would be cosmetic if a dead link still disclosed the findings.
     expect(query).not.toHaveBeenCalled();
+    expectReadOnly();
   });
 
-  it('returns pending — with the adviser name and item count, never a confirmation — for a live token', async () => {
-    vi.mocked(queryOne)
-      .mockResolvedValueOnce({
-        id: 'fb-3',
-        adviser_name: 'Jo Adviser',
-        confirmed_at: null,
-        token_expires_at: '2099-01-01T00:00:00.000Z',
-      })
-      .mockResolvedValueOnce({ n: '2' });
+  it('returns pending with the findings, and never a confirmation, for a live unconfirmed token', async () => {
+    vi.mocked(queryOne).mockResolvedValueOnce({
+      id: 'fb-3',
+      adviser_name: 'Jo Adviser',
+      confirmed_at: null,
+      token_expires_at: '2099-01-01T00:00:00.000Z',
+      reasoning_withheld: false,
+    });
+    vi.mocked(query).mockResolvedValueOnce([itemRow]);
 
     const result = await lookupFeedback('some-token');
 
-    expect(result).toEqual({ status: 'pending', adviserName: 'Jo Adviser', itemCount: 2 });
-    // The point of the whole split: a GET-driven lookup must never write —
-    // no UPDATE on journey_feedback, no breach_events insert.
-    expect(query).not.toHaveBeenCalled();
+    expect(result.status).toBe('pending');
+    expect(result.itemCount).toBe(1);
+    // Shown before confirmation on purpose: "confirm you have seen this" is not
+    // something a person can honestly click on a page that will not say what it
+    // was.
+    expect(result.items?.[0]).toMatchObject({
+      label: 'Attitude to risk not evidenced',
+      remediationGuidance: 'Call the client and re-send the fact-find.',
+      outcome: null,
+    });
+    // But writing waits for the click.
+    expect(result.canRecordOutcome).toBe(false);
+    expectReadOnly();
+  });
+
+  it('unlocks outcome capture once the feedback is confirmed', async () => {
+    vi.mocked(queryOne).mockResolvedValueOnce({
+      id: 'fb-1',
+      adviser_name: 'Jo Adviser',
+      confirmed_at: '2026-01-01T00:00:00.000Z',
+      token_expires_at: '2099-06-01T00:00:00.000Z',
+      reasoning_withheld: false,
+    });
+    vi.mocked(query).mockResolvedValueOnce([itemRow]);
+
+    const result = await lookupFeedback('some-token');
+
+    expect(result.status).toBe('already_confirmed');
+    expect(result.canRecordOutcome).toBe(true);
+    expectReadOnly();
+  });
+
+  it('still shows a confirmed feedback after expiry, but refuses further writing', async () => {
+    // The findings were emailed to this person and they acknowledged them;
+    // re-reading is not a new assertion. Recording a fresh outcome is, and the
+    // credential has run out.
+    vi.mocked(queryOne).mockResolvedValueOnce({
+      id: 'fb-4',
+      adviser_name: 'Jo Adviser',
+      confirmed_at: '2026-01-01T00:00:00.000Z',
+      token_expires_at: '2000-01-01T00:00:00.000Z',
+      reasoning_withheld: false,
+    });
+    vi.mocked(query).mockResolvedValueOnce([itemRow]);
+
+    const result = await lookupFeedback('some-token');
+
+    expect(result.status).toBe('already_confirmed');
+    expect(result.items).toHaveLength(1);
+    expect(result.canRecordOutcome).toBe(false);
+  });
+
+  it('withholds the model reasoning on a tenant that withheld it from the email, and says so', async () => {
+    vi.mocked(queryOne).mockResolvedValueOnce({
+      id: 'fb-5',
+      adviser_name: 'Jo Adviser',
+      confirmed_at: '2026-01-01T00:00:00.000Z',
+      token_expires_at: '2099-01-01T00:00:00.000Z',
+      reasoning_withheld: true,
+    });
+    vi.mocked(query).mockResolvedValueOnce([itemRow]);
+
+    const result = await lookupFeedback('some-token');
+
+    // The row still holds a reason (a re-score can populate it), so this is a
+    // policy decision at the boundary rather than an absence of data. This page
+    // is unauthenticated, and a sentence that was not safe to email is not safe
+    // here either (DPIA R5).
+    expect(result.items?.[0].reasoning).toBeNull();
+    // The firm's own instruction is unaffected: it was written against the
+    // criterion without seeing any customer, so it cannot quote a disclosure.
+    expect(result.items?.[0].remediationGuidance).toBe('Call the client and re-send the fact-find.');
+    // Flagged rather than silently short, so the page can explain the gap.
+    expect(result.reasoningWithheld).toBe(true);
+  });
+});
+
+// ============================================================
+// CG-25 — what the adviser did about each finding.
+//
+// An unauthenticated write, so the gates are the whole design. These pin the
+// three that matter: it cannot run before acknowledgement (a re-send would
+// destroy the row), it cannot run on a dead link, and a valid token cannot be
+// aimed at a finding belonging to someone else.
+// ============================================================
+
+describe('recordRemediationOutcome', () => {
+  const confirmedRow = {
+    id: 'fb-1',
+    organization_id: 'org-1',
+    journey_id: 'j-1',
+    adviser_name: 'Jo Adviser',
+    adviser_user_id: 'u-1',
+    confirmed_at: '2026-01-01T00:00:00.000Z',
+    token_expires_at: '2099-01-01T00:00:00.000Z',
+    reasoning_withheld: false,
+  };
+
+  beforeEach(() => {
+    vi.mocked(query).mockReset();
+    vi.mocked(queryOne).mockReset();
+    vi.mocked(withTransaction).mockReset();
+  });
+
+  it('rejects an outcome outside the three, rather than storing the nearest one', async () => {
+    const result = await recordRemediationOutcome('some-token', 'it-1', 'probably_fine', null);
+
+    expect(result.status).toBe('invalid_outcome');
+    // Refused before the token is even hashed: coercing this would put words in
+    // an adviser's mouth about a customer's position.
+    expect(queryOne).not.toHaveBeenCalled();
+    expect(withTransaction).not.toHaveBeenCalled();
+  });
+
+  it('refuses before the feedback has been acknowledged', async () => {
+    vi.mocked(queryOne).mockResolvedValueOnce({ ...confirmedRow, confirmed_at: null });
+
+    const result = await recordRemediationOutcome('some-token', 'it-1', 'done', null);
+
+    // Not a workflow preference: sendFeedback DELETEs an unconfirmed feedback
+    // when a supervisor re-sends, cascading to its items, so an outcome stored
+    // here could vanish with nothing said to the adviser who wrote it.
+    expect(result.status).toBe('not_confirmed');
+    expect(withTransaction).not.toHaveBeenCalled();
+  });
+
+  it('refuses on an expired link even though the feedback was confirmed', async () => {
+    vi.mocked(queryOne).mockResolvedValueOnce({
+      ...confirmedRow,
+      token_expires_at: '2000-01-01T00:00:00.000Z',
+    });
+
+    const result = await recordRemediationOutcome('some-token', 'it-1', 'done', null);
+
+    expect(result.status).toBe('expired');
+    expect(withTransaction).not.toHaveBeenCalled();
+  });
+
+  it("scopes the write to the token's own feedback, so a valid token cannot answer someone else's finding", async () => {
+    vi.mocked(queryOne).mockResolvedValueOnce(confirmedRow);
+
+    let updateSql = '';
+    let updateParams: unknown[] = [];
+    vi.mocked(withTransaction).mockImplementation((async (fn: (tx: {
+      query: (sql: string, params?: unknown[]) => Promise<unknown[]>;
+      queryOne: (sql: string, params?: unknown[]) => Promise<unknown>;
+    }) => Promise<unknown>) =>
+      fn({
+        query: async () => [],
+        queryOne: async (sql: string, params?: unknown[]) => {
+          updateSql = sql;
+          updateParams = params ?? [];
+          return { id: 'it-1', breach_id: 'b-1', item_label: 'Attitude to risk not evidenced' };
+        },
+      })) as never);
+    vi.mocked(query).mockResolvedValueOnce([
+      { ...itemRow, remediation_outcome: 'done', remediation_note: 'Called them back.' },
+    ]);
+
+    const result = await recordRemediationOutcome('some-token', 'it-1', 'done', 'Called them back.');
+
+    expect(result.status).toBe('recorded');
+    // feedback_id is the authorisation, not a filter. Without it in the WHERE,
+    // any live token could write onto any item id it was handed.
+    expect(updateSql).toContain('feedback_id = $2');
+    expect(updateParams[0]).toBe('it-1');
+    expect(updateParams[1]).toBe('fb-1');
+    expect(updateParams[2]).toBe('done');
+    expect(result.item?.outcome).toBe('done');
+  });
+
+  it('appends a breach event per write, so a revised answer keeps both', async () => {
+    vi.mocked(queryOne).mockResolvedValueOnce(confirmedRow);
+
+    const events: Array<{ sql: string; params: unknown[] }> = [];
+    vi.mocked(withTransaction).mockImplementation((async (fn: (tx: {
+      query: (sql: string, params?: unknown[]) => Promise<unknown[]>;
+      queryOne: (sql: string, params?: unknown[]) => Promise<unknown>;
+    }) => Promise<unknown>) =>
+      fn({
+        query: async (sql: string, params?: unknown[]) => {
+          if (sql.includes('breach_events')) events.push({ sql, params: params ?? [] });
+          return [];
+        },
+        queryOne: async () => ({ id: 'it-1', breach_id: 'b-1', item_label: 'A finding' }),
+      })) as never);
+    vi.mocked(query).mockResolvedValueOnce([{ ...itemRow, remediation_outcome: 'done' }]);
+
+    await recordRemediationOutcome('some-token', 'it-1', 'done', null);
+
+    expect(events).toHaveLength(1);
+    // INSERT, never UPDATE: "said unreachable, then said done" is a fact a
+    // claims file needs and a single mutable column cannot hold.
+    expect(events[0].sql).toMatch(/INSERT INTO breach_events/);
+    expect(events[0].sql).toContain('remediation_recorded');
+    // (breach_id, user_id, to_value) — event_type is inline in the statement.
+    expect(events[0].params[0]).toBe('b-1');
+    expect(events[0].params[2]).toBe('done');
+  });
+
+  it('records the outcome even where a re-score has left the finding with no breach row', async () => {
+    vi.mocked(queryOne).mockResolvedValueOnce(confirmedRow);
+
+    const events: unknown[][] = [];
+    vi.mocked(withTransaction).mockImplementation((async (fn: (tx: {
+      query: (sql: string, params?: unknown[]) => Promise<unknown[]>;
+      queryOne: (sql: string, params?: unknown[]) => Promise<unknown>;
+    }) => Promise<unknown>) =>
+      fn({
+        query: async (sql: string, params?: unknown[]) => {
+          if (sql.includes('breach_events')) events.push(params ?? []);
+          return [];
+        },
+        // breach_id nulled by ON DELETE SET NULL when the sale was re-scored.
+        queryOne: async () => ({ id: 'it-1', breach_id: null, item_label: 'A finding' }),
+      })) as never);
+    vi.mocked(query).mockResolvedValueOnce([
+      { ...itemRow, remediation_outcome: 'customer_unreachable' },
+    ]);
+
+    const result = await recordRemediationOutcome(
+      'some-token',
+      'it-1',
+      'customer_unreachable',
+      'Tried three times.'
+    );
+
+    // The outcome survives on the snapshot row, which is what the snapshot is
+    // for. Only the breach's own history entry is skipped, because there is no
+    // longer a breach to hang it on.
+    expect(result.status).toBe('recorded');
+    expect(events).toHaveLength(0);
+  });
+
+  it('reports not_found when the item does not belong to this feedback', async () => {
+    vi.mocked(queryOne).mockResolvedValueOnce(confirmedRow);
+    vi.mocked(withTransaction).mockImplementation((async (fn: (tx: {
+      query: (sql: string, params?: unknown[]) => Promise<unknown[]>;
+      queryOne: (sql: string, params?: unknown[]) => Promise<unknown>;
+    }) => Promise<unknown>) =>
+      fn({
+        query: async () => [],
+        // The UPDATE matched nothing — the id is real but hangs off another
+        // adviser's feedback.
+        queryOne: async () => null,
+      })) as never);
+
+    const result = await recordRemediationOutcome('some-token', 'it-9', 'done', null);
+
+    expect(result.status).toBe('not_found');
+  });
+
+  it('trims a whitespace-only note to null, so "no note" has one representation', async () => {
+    vi.mocked(queryOne).mockResolvedValueOnce(confirmedRow);
+
+    let noteParam: unknown = 'unset';
+    vi.mocked(withTransaction).mockImplementation((async (fn: (tx: {
+      query: (sql: string, params?: unknown[]) => Promise<unknown[]>;
+      queryOne: (sql: string, params?: unknown[]) => Promise<unknown>;
+    }) => Promise<unknown>) =>
+      fn({
+        query: async () => [],
+        queryOne: async (_sql: string, params?: unknown[]) => {
+          noteParam = params?.[3];
+          return { id: 'it-1', breach_id: null, item_label: 'A finding' };
+        },
+      })) as never);
+    vi.mocked(query).mockResolvedValueOnce([{ ...itemRow, remediation_outcome: 'done' }]);
+
+    await recordRemediationOutcome('some-token', 'it-1', 'done', '   \n  ');
+
+    expect(noteParam).toBeNull();
+  });
+
+  it('truncates an over-long note rather than losing the whole account', async () => {
+    vi.mocked(queryOne).mockResolvedValueOnce(confirmedRow);
+
+    let noteParam = '';
+    vi.mocked(withTransaction).mockImplementation((async (fn: (tx: {
+      query: (sql: string, params?: unknown[]) => Promise<unknown[]>;
+      queryOne: (sql: string, params?: unknown[]) => Promise<unknown>;
+    }) => Promise<unknown>) =>
+      fn({
+        query: async () => [],
+        queryOne: async (_sql: string, params?: unknown[]) => {
+          noteParam = String(params?.[3] ?? '');
+          return { id: 'it-1', breach_id: null, item_label: 'A finding' };
+        },
+      })) as never);
+    vi.mocked(query).mockResolvedValueOnce([{ ...itemRow, remediation_outcome: 'done' }]);
+
+    await recordRemediationOutcome('some-token', 'it-1', 'done', 'x'.repeat(5000));
+
+    expect(noteParam).toHaveLength(REMEDIATION_NOTE_MAX);
   });
 });
 

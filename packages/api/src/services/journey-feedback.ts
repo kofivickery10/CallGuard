@@ -5,7 +5,8 @@ import { alertsQueue } from '../jobs/queue.js';
 import type { FeedbackEmailJob } from '../jobs/processors/feedback-email.js';
 import { organisationKeepsHealthUnredacted } from './transcript-access.js';
 import { orgHasFeature } from './tenant-settings.js';
-import { ORG_WIDE_ROLES } from '@callguard/shared';
+import { ORG_WIDE_ROLES, REMEDIATION_OUTCOMES, REMEDIATION_NOTE_MAX } from '@callguard/shared';
+import type { RemediationOutcome } from '@callguard/shared';
 
 // ============================================================
 // Feeding a reviewed sale back to the adviser, and recording that they saw it.
@@ -328,10 +329,17 @@ export function buildFeedbackSend(input: {
   // sentence the email carries. It is not "can they sign in": reasoning lives
   // only behind requireOrgView, so an adviser-role user can hold a working
   // password and still see nothing. Advisers commonly have no login at all
-  // (061), and Trust Point's have none. The tokenised confirm link is no answer
-  // either — lookupFeedback returns a name and a status, never the findings — so
-  // for those recipients the honest pointer is their supervisor, who has just
-  // been through it with them.
+  // (061), and Trust Point's have none.
+  //
+  // The tokenised confirm link is not the answer either, though the reason
+  // narrowed with CG-25. That page now DOES name the findings and carry the
+  // firm's guidance — but it deliberately does not carry the model's reasoning,
+  // on this same withholding test, because it is reachable without a login and
+  // so is no safer a destination than the email (DPIA 4.11, open action 13).
+  // Reasoning is the detail this sentence is about, so for these recipients the
+  // honest pointer remains their supervisor, who has just been through it with
+  // them. If action 13 lands the other way, this is one of the two places to
+  // revisit; the other is `remediationItems`.
   recipientCanSeeDetail: boolean;
 }): FeedbackSend {
   const {
@@ -661,10 +669,93 @@ export interface ConfirmResult {
   itemCount?: number;
 }
 
+/**
+ * One finding as the ADVISER sees it on the tokenised page.
+ *
+ * Everything here either was already in their email or is firm-authored text
+ * about their own conduct. Deliberately absent, and it must stay absent: the
+ * customer, the client name, the sale, the breach id, the transcript, and the
+ * quoted evidence. The page is unauthenticated, so this shape is the whole of
+ * the disclosure — see the note on `remediationItems`.
+ */
+export interface RemediationItemView {
+  /** The row's own id, so the page can post an outcome against it. Opaque and
+   *  useless on its own: every write is still gated on the token. */
+  id: string;
+  label: string;
+  severity: string;
+  /** The model's sentence, ONLY where it travelled in the email. Null here does
+   *  not mean there was none — read `reasoningWithheld` on the result. */
+  reasoning: string | null;
+  /** The firm's instruction, as it was sent. Null where the checkpoint had none. */
+  remediationGuidance: string | null;
+  outcome: RemediationOutcome | null;
+  note: string | null;
+  recordedAt: string | null;
+}
+
 export interface LookupResult {
   status: 'pending' | 'already_confirmed' | 'expired' | 'not_found';
   adviserName?: string;
   itemCount?: number;
+  /** The findings themselves. Present on 'pending' and 'already_confirmed';
+   *  omitted for a dead link, which must learn nothing. */
+  items?: RemediationItemView[];
+  /** The findings had reasons and policy kept them out of the email (DPIA R5).
+   *  The page says so rather than showing a list with silent gaps in it. */
+  reasoningWithheld?: boolean;
+  /** Whether outcomes can be written yet. False before acknowledgement — see
+   *  `recordRemediationOutcome` for why that ordering is load-bearing. */
+  canRecordOutcome?: boolean;
+}
+
+/**
+ * The findings on one feedback, with whatever outcome has been recorded.
+ *
+ * `reasoning` is returned only when it actually travelled in the email, which
+ * is the same test migration 110 records on the parent row. On a tenant that
+ * keeps health unredacted the model's sentence may quote a health disclosure in
+ * the clear, and this page is unauthenticated — so the sentence that is not
+ * safe to email is not safe to put here either. The email's own pointer (ask
+ * your supervisor) remains the honest one for those tenants until the DPIA
+ * signs the wider disclosure off; §4.3 of the scope argues it should, and when
+ * it does this is the single condition to relax.
+ */
+async function remediationItems(
+  feedbackId: string,
+  reasoningWithheld: boolean
+): Promise<RemediationItemView[]> {
+  const rows = await query<{
+    id: string;
+    item_label: string;
+    severity: string;
+    reasoning: string | null;
+    remediation_guidance: string | null;
+    remediation_outcome: RemediationOutcome | null;
+    remediation_note: string | null;
+    remediated_at: string | null;
+  }>(
+    `SELECT id, item_label, severity, reasoning, remediation_guidance,
+            remediation_outcome, remediation_note, remediated_at
+       FROM journey_feedback_items
+      WHERE feedback_id = $1
+      ORDER BY CASE severity
+                 WHEN 'critical' THEN 0 WHEN 'high' THEN 1
+                 WHEN 'medium' THEN 2 ELSE 3 END,
+               item_label`,
+    [feedbackId]
+  );
+
+  return rows.map((r) => ({
+    id: r.id,
+    label: r.item_label,
+    severity: r.severity,
+    reasoning: reasoningWithheld ? null : r.reasoning,
+    remediationGuidance: r.remediation_guidance,
+    outcome: r.remediation_outcome,
+    note: r.remediation_note,
+    recordedAt: r.remediated_at,
+  }));
 }
 
 /**
@@ -682,33 +773,190 @@ export async function lookupFeedback(rawToken: string): Promise<LookupResult> {
     adviser_name: string;
     confirmed_at: string | null;
     token_expires_at: string;
+    reasoning_withheld: boolean;
   }>(
-    `SELECT id, adviser_name, confirmed_at, token_expires_at
+    `SELECT id, adviser_name, confirmed_at, token_expires_at, reasoning_withheld
        FROM journey_feedback WHERE token_hash = $1`,
     [hashFeedbackToken(rawToken)]
   );
 
   if (!row) return { status: 'not_found' };
-  if (row.confirmed_at) {
-    const n = await queryOne<{ n: string }>(
-      'SELECT count(*) AS n FROM journey_feedback_items WHERE feedback_id = $1',
-      [row.id]
-    );
-    return {
-      status: 'already_confirmed',
-      adviserName: row.adviser_name,
-      itemCount: Number(n?.n ?? 0),
-    };
-  }
-  if (new Date(row.token_expires_at).getTime() < Date.now()) {
+
+  // An expired link is answered before the findings are read, and returns none
+  // of them. The link is the credential and it has stopped being one; a dead
+  // token that still discloses the findings would make the expiry cosmetic.
+  if (!row.confirmed_at && new Date(row.token_expires_at).getTime() < Date.now()) {
     return { status: 'expired', adviserName: row.adviser_name };
   }
 
-  const n = await queryOne<{ n: string }>(
-    'SELECT count(*) AS n FROM journey_feedback_items WHERE feedback_id = $1',
-    [row.id]
+  const items = await remediationItems(row.id, row.reasoning_withheld);
+
+  // The findings are shown BEFORE confirmation as well as after, and that is
+  // the point of showing them at all: "confirm you have seen this feedback" is
+  // not a thing a person can honestly click on a page that will not tell them
+  // what the feedback was. Writing an outcome is what waits for the click.
+  //
+  // Writing also stops at expiry, even on a confirmed feedback: the link has
+  // ceased to be a credential, and an outcome is a new assertion rather than a
+  // re-read of an old one. The adviser can still read what they were told.
+  const expired = new Date(row.token_expires_at).getTime() < Date.now();
+
+  return {
+    status: row.confirmed_at ? 'already_confirmed' : 'pending',
+    adviserName: row.adviser_name,
+    itemCount: items.length,
+    items,
+    reasoningWithheld: row.reasoning_withheld,
+    canRecordOutcome: !!row.confirmed_at && !expired,
+  };
+}
+
+export interface RecordOutcomeResult {
+  status: 'recorded' | 'not_confirmed' | 'expired' | 'not_found' | 'invalid_outcome';
+  item?: RemediationItemView;
+}
+
+/**
+ * The adviser's answer to "what did you do about this one?".
+ *
+ * Unauthenticated, like the confirmation beside it, and for the same reason:
+ * the people this exists for have no account to sign into. The token is the
+ * credential, and it authorises exactly the findings hanging off its own
+ * feedback row — `feedback_id` is part of the UPDATE's WHERE clause, so a valid
+ * token cannot be pointed at another adviser's item by editing the id in the
+ * request.
+ *
+ * THREE GATES, EACH FOR A DIFFERENT FAILURE
+ *
+ * `confirmed_at IS NOT NULL` — sendFeedback DELETEs a previous *unconfirmed*
+ * feedback when a supervisor re-sends, cascading to its items. An outcome
+ * written before acknowledgement could therefore be destroyed by a re-send with
+ * nothing said to anyone. A confirmed row is outside that DELETE's reach, so
+ * requiring confirmation first removes the failure mode rather than mitigating
+ * it. It is also the right order of events: see it, acknowledge it, then act.
+ *
+ * `token_expires_at` — the credential has a life, and a write is where that has
+ * to bite. Reading what you were already told is not the same act.
+ *
+ * The outcome must be one of the three. Rejected rather than coerced: a
+ * malformed value is a client bug, and quietly storing the nearest valid answer
+ * would put words in an adviser's mouth about a customer.
+ *
+ * Re-answerable on purpose. An adviser who records 'customer_unreachable' on
+ * Monday and reaches the customer on Thursday must be able to say so, and the
+ * revision is not a loss of information: every write appends its own
+ * breach_events row, so the trail keeps both answers and their order.
+ */
+export async function recordRemediationOutcome(
+  rawToken: string,
+  itemId: string,
+  outcome: string,
+  note: string | null
+): Promise<RecordOutcomeResult> {
+  if (!REMEDIATION_OUTCOMES.includes(outcome as RemediationOutcome)) {
+    return { status: 'invalid_outcome' };
+  }
+
+  const row = await queryOne<{
+    id: string;
+    organization_id: string;
+    journey_id: string;
+    adviser_name: string;
+    adviser_user_id: string | null;
+    confirmed_at: string | null;
+    token_expires_at: string;
+    reasoning_withheld: boolean;
+  }>(
+    `SELECT id, organization_id, journey_id, adviser_name, adviser_user_id,
+            confirmed_at, token_expires_at, reasoning_withheld
+       FROM journey_feedback WHERE token_hash = $1`,
+    [hashFeedbackToken(rawToken)]
   );
-  return { status: 'pending', adviserName: row.adviser_name, itemCount: Number(n?.n ?? 0) };
+
+  if (!row) return { status: 'not_found' };
+  if (new Date(row.token_expires_at).getTime() < Date.now()) return { status: 'expired' };
+  if (!row.confirmed_at) return { status: 'not_confirmed' };
+
+  // Trimmed to null rather than kept as an empty string, so "no note" is one
+  // fact with one representation. Truncated rather than rejected: an adviser
+  // who has typed past the limit should not lose the account they just wrote.
+  // The page sets the same value as its textarea's maxLength, so this is
+  // unreachable from the UI and exists for a direct POST.
+  const trimmed = note?.trim() ? note.trim().slice(0, REMEDIATION_NOTE_MAX) : null;
+
+  const updated = await withTransaction(async (tx) => {
+    // feedback_id in the WHERE is the authorisation, not a filter: without it
+    // any valid token could write an outcome onto any item id it was handed.
+    const item = await tx.queryOne<{ id: string; breach_id: string | null; item_label: string }>(
+      `UPDATE journey_feedback_items
+          SET remediation_outcome = $3,
+              remediation_note    = $4,
+              remediated_at       = now(),
+              remediated_by       = $5
+        WHERE id = $1 AND feedback_id = $2
+        RETURNING id, breach_id, item_label`,
+      [itemId, row.id, outcome, trimmed, row.adviser_user_id]
+    );
+    if (!item) return null;
+
+    // Appended, never updated. "Said done, then said unreachable" is a fact a
+    // claims file needs, and it is the reason this history is a table of events
+    // rather than a column.
+    //
+    // Skipped where breach_id is null — a re-score can null it (ON DELETE SET
+    // NULL, 087) — because there is no longer a breach to hang the event on.
+    // The outcome itself is already safe on the snapshot row above, which is
+    // exactly what that snapshot exists for.
+    if (item.breach_id) {
+      await tx.query(
+        `INSERT INTO breach_events (breach_id, user_id, event_type, to_value)
+         VALUES ($1, $2, 'remediation_recorded', $3)`,
+        [item.breach_id, row.adviser_user_id, outcome]
+      );
+    }
+    return item;
+  });
+
+  if (!updated) return { status: 'not_found' };
+
+  const items = await remediationItems(row.id, row.reasoning_withheld);
+  return {
+    status: 'recorded',
+    item: items.find((i) => i.id === updated.id),
+  };
+}
+
+/**
+ * The context an audit line needs about an outcome, read back by the route.
+ *
+ * Separate from the write so that `recordRemediationOutcome` returns only what
+ * the adviser's page is allowed to see: the sale id and the organisation are
+ * needed to file the audit event and must not travel to an unauthenticated
+ * client.
+ */
+export async function feedbackAuditContext(rawToken: string): Promise<{
+  organizationId: string;
+  journeyId: string;
+  adviserName: string;
+  adviserUserId: string | null;
+} | null> {
+  const row = await queryOne<{
+    organization_id: string;
+    journey_id: string;
+    adviser_name: string;
+    adviser_user_id: string | null;
+  }>(
+    `SELECT organization_id, journey_id, adviser_name, adviser_user_id
+       FROM journey_feedback WHERE token_hash = $1`,
+    [hashFeedbackToken(rawToken)]
+  );
+  if (!row) return null;
+  return {
+    organizationId: row.organization_id,
+    journeyId: row.journey_id,
+    adviserName: row.adviser_name,
+    adviserUserId: row.adviser_user_id,
+  };
 }
 
 /**

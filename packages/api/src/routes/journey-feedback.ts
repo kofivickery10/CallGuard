@@ -14,8 +14,12 @@ import {
   sendFeedback,
   lookupFeedback,
   confirmFeedback,
+  recordRemediationOutcome,
+  feedbackAuditContext,
   hashFeedbackToken,
 } from '../services/journey-feedback.js';
+import { REMEDIATION_OUTCOME_LABELS } from '@callguard/shared';
+import type { RemediationOutcome } from '@callguard/shared';
 import { organisationKeepsHealthUnredacted } from '../services/transcript-access.js';
 
 // ============================================================
@@ -291,6 +295,81 @@ publicFeedbackRouter.post('/:token/confirm', async (req, res, next) => {
           entityId: row.journey_id,
           summary: `${result.adviserName} confirmed they received feedback on this sale`,
           metadata: { item_count: result.itemCount },
+          req,
+        });
+      }
+    }
+
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * What the adviser did about one finding (CG-25).
+ *
+ * Unauthenticated for the same unavoidable reason as the confirmation above,
+ * and behind the same limiter. The token authorises only the findings on its
+ * own feedback row — the service puts `feedback_id` in the UPDATE's WHERE
+ * clause, so a valid token handed someone else's item id writes nothing.
+ *
+ * Answers with a status rather than an error code wherever the cause is the
+ * link's own state, because a person in a mail client is reading this. A
+ * malformed outcome is different: that is a client bug and gets a 400, since
+ * nothing sensible can be rendered for it and silently storing the nearest
+ * valid answer would put words in an adviser's mouth about a customer.
+ */
+publicFeedbackRouter.post('/:token/items/:itemId/outcome', async (req, res, next) => {
+  try {
+    const token = req.params.token;
+    if (!token || token.length < 20 || token.length > 200) {
+      res.json({ status: 'not_found' });
+      return;
+    }
+    // Shape-checked before the token is hashed: a malformed id cannot match
+    // anything, and rejecting it here keeps a junk value out of a UUID column
+    // comparison.
+    if (!isUuid(req.params.itemId)) {
+      res.json({ status: 'not_found' });
+      return;
+    }
+
+    const outcome = typeof req.body?.outcome === 'string' ? req.body.outcome : '';
+    const note = typeof req.body?.note === 'string' ? req.body.note : null;
+
+    const result = await recordRemediationOutcome(token, req.params.itemId, outcome, note);
+
+    if (result.status === 'invalid_outcome') {
+      throw new AppError(400, 'Unrecognised outcome');
+    }
+
+    if (result.status === 'recorded') {
+      // Filed against the sale, so it sits with the rest of that sale's
+      // history. userId is frequently null here and that is not a gap in the
+      // record: the token is the credential and many advisers have no account
+      // at all (061), so the summary names the person from the snapshot on the
+      // feedback row rather than relying on a join that would come back empty.
+      const ctx = await feedbackAuditContext(token);
+      if (ctx) {
+        const label = REMEDIATION_OUTCOME_LABELS[outcome as RemediationOutcome];
+        await recordAuditEvent({
+          organizationId: ctx.organizationId,
+          userId: ctx.adviserUserId,
+          actionType: 'journey.remediation_recorded',
+          entityType: 'journey',
+          entityId: ctx.journeyId,
+          // The finding is named and the answer is spelled out, because this is
+          // the line a compliance officer reads a year later. The adviser's own
+          // note is NOT copied here: it can be revised, and a revised account
+          // must not leave an uncorrectable second copy in the register — the
+          // same rule journey.note.add follows.
+          summary: `${ctx.adviserName} recorded "${label}" on ${result.item?.label ?? 'a finding'} for this sale`,
+          metadata: {
+            feedback_item_id: req.params.itemId,
+            outcome,
+            note_given: !!result.item?.note,
+          },
           req,
         });
       }

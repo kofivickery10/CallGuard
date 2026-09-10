@@ -25,6 +25,12 @@ export type AuditActionType =
   // person happened and was received.
   | 'journey.feedback_sent'
   | 'journey.feedback_confirmed'
+  // The adviser said what they did about one finding (CG-25). Its own line
+  // rather than a variant of feedback_confirmed, because it asserts something
+  // about a customer's position rather than about a message being read — and
+  // because it is written by a token holder who may hold no account, so the
+  // register's user_id is frequently null here and the reader needs to know why.
+  | 'journey.remediation_recorded'
   // Case-level notes on a sale (CG-9). Notes cannot be deleted and every
   // superseded version is retained in journey_note_revisions, so these lines
   // record that the record was annotated or amended and by whom — the text

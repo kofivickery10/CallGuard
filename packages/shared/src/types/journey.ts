@@ -314,6 +314,46 @@ export const FEEDBACK_STATUS_LABELS: Record<FeedbackStatus, string> = {
   acknowledged: 'Acknowledged',
 };
 
+// ── What the adviser did about a finding (CG-25) ──────────────────────────────
+
+// Recorded per finding by the adviser, on the tokenised page from their email.
+//
+// Absent (null on the row) means unanswered. It is NOT `not_needed`: "nobody has
+// told us yet" and "we looked and no action was required" are different facts,
+// and the whole value of this record to a claims file rests on not collapsing
+// them.
+export type RemediationOutcome =
+  // Put right. What that meant in practice is in the note, if the adviser wrote
+  // one — the outcome alone is an assertion, not evidence.
+  | 'done'
+  // Looked at, judged to need nothing. A deliberate answer, and the one that
+  // stops an adviser recording `done` for something they correctly did nothing
+  // about.
+  | 'not_needed'
+  // Tried and could not reach the customer. The case that would otherwise be
+  // filed as one of the other two, or left blank forever — and the only one
+  // where the note carries the substance rather than the colour.
+  | 'customer_unreachable';
+
+// Written in the second person because the only place they are shown is the
+// adviser's own page, addressed to them.
+export const REMEDIATION_OUTCOME_LABELS: Record<RemediationOutcome, string> = {
+  done: 'Sorted',
+  not_needed: 'Not needed',
+  customer_unreachable: "Couldn't reach them",
+};
+
+export const REMEDIATION_OUTCOMES: RemediationOutcome[] = [
+  'done',
+  'not_needed',
+  'customer_unreachable',
+];
+
+/** Cap on the adviser's note. Generous for an account of three phone calls, and
+ *  a bound on an unauthenticated write. Enforced server-side; the page counts
+ *  down to it so the limit is never a surprise on submit. */
+export const REMEDIATION_NOTE_MAX = 2000;
+
 // How many sales sit in each state, plus the age of the oldest one still
 // waiting. The counts describe the current filter set with the feedback filter
 // itself removed, so each tab shows what clicking it would return.
