@@ -270,10 +270,15 @@ also has to render coherently on a tenant whose reasoning was withheld from the
 email, which is more than a conditional: it is the page where that detail is
 supposed to be, so getting it wrong there leaves the adviser with nowhere to go.
 
-**Phase 4 is still costed standalone.** CG-11 builds the same view for feedback
-status — three states, filters, and the age of the oldest unacknowledged item. If
-it lands first, Phase 4 is a fourth state on an existing screen and should come
-in well under this figure. It has not landed, so the estimate does not assume it.
+**Phase 4 should now come in under its figure.** CG-11 built the same view for
+feedback status — three states, filters, and the age of the oldest unacknowledged
+item — and it shipped and was deployed on 9 September. The table above was
+written while it was still outstanding, so its 1–1.5 weeks does not assume it.
+
+With CG-11 live, Phase 4 is a fourth state on an existing screen rather than a
+new one: the `Journeys` list, its filter fragments (`buildWhere`) and the
+`FeedbackStatusBadge` recipe are all in place and reusable. Re-estimate before
+quoting it rather than carrying 1–1.5 weeks into a commercial conversation.
 
 An optional Phase 5 — supervisor sign-off on outcomes, chase reminders for
 overdue remediations — is roughly a further week, and §6 argues part of it may
