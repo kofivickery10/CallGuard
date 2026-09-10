@@ -33,7 +33,16 @@ export interface FeedbackEmailJob {
   // `reasoning` is the model's sentence about what the adviser did; the verbatim
   // transcript (`evidence`) is deliberately NOT sent — see FeedbackBreach in
   // services/journey-feedback.ts for why the line is drawn there.
-  items: Array<{ label: string; severity: string; reasoning?: string | null }>;
+  items: Array<{
+    label: string;
+    severity: string;
+    reasoning?: string | null;
+    // The firm's standing instruction for this checkpoint (CG-24). Unlike
+    // `reasoning` it is never withheld: the firm wrote it in advance against the
+    // criterion, so it cannot quote a customer's disclosure the way a
+    // call-derived sentence can. See buildFeedbackSend.
+    remediationGuidance?: string | null;
+  }>;
   // Set where findings HAD reasons and policy kept them out of this email (the
   // tenant keeps health unredacted — DPIA R5). The template says so, rather than
   // dropping the reasons and leaving a shorter email that still looks complete.
@@ -152,12 +161,12 @@ export function renderFeedbackEmail(data: Omit<FeedbackEmailJob, 'to'>): {
     reasoningWithheld && items.length
       ? recipientCanSeeDetail
         ? `<p style="color: #5a6e5a; font-size: 13px; line-height: 1.6; margin: 12px 0 0;">
-             The detail behind each point is in CallGuard rather than this email,
+             The AI's reason for each point is in CallGuard rather than this email,
              because your firm keeps health disclosures unredacted. Sign in to
              CallGuard to read it.
            </p>`
         : `<p style="color: #5a6e5a; font-size: 13px; line-height: 1.6; margin: 12px 0 0;">
-             The detail behind each point is not in this email, because your firm
+             The AI's reason for each point is not in this email, because your firm
              keeps health disclosures unredacted. Your supervisor has been through
              it with you and can go over it again.
            </p>`
@@ -168,25 +177,43 @@ export function renderFeedbackEmail(data: Omit<FeedbackEmailJob, 'to'>): {
       // The reason sits under its checkpoint rather than in its own column:
       // it is a sentence, and a sentence in a table cell next to a severity
       // badge wraps into an unreadable column on a phone.
+      //
+      // Guidance is a second line under the same checkpoint (CG-24), and it is
+      // labelled, because the two say different things and an adviser skimming
+      // on a phone must not read the firm's instruction as more of the model's
+      // explanation: the reason is why this was flagged, the guidance is what to
+      // do about it. Only the guidance is actionable, so it carries the emphasis.
+      const guidance = i.remediationGuidance;
+      // Whichever line is last owns the row separator, so a finding with no
+      // reason but with guidance still closes cleanly.
+      const hasTail = !!(i.reasoning || guidance);
       const reasonRow = i.reasoning
         ? `
       <tr>
-        <td colspan="2" style="padding: 0 0 10px; border-bottom: 1px solid #e2e8e2; color: #5a6e5a; font-size: 13px; line-height: 1.5;">
+        <td colspan="2" style="padding: 0 0 ${guidance ? '4px' : '10px'}; ${guidance ? '' : 'border-bottom: 1px solid #e2e8e2;'} color: #5a6e5a; font-size: 13px; line-height: 1.5;">
           ${escapeHtml(i.reasoning)}
+        </td>
+      </tr>`
+        : '';
+      const guidanceRow = guidance
+        ? `
+      <tr>
+        <td colspan="2" style="padding: 0 0 10px; border-bottom: 1px solid #e2e8e2; color: #3a4e3a; font-size: 13px; line-height: 1.5;">
+          <span style="font-weight: 600;">What to do:</span> ${escapeHtml(guidance)}
         </td>
       </tr>`
         : '';
       return `
       <tr>
-        <td style="padding: 8px 0 ${i.reasoning ? '2px' : '8px'}; ${i.reasoning ? '' : 'border-bottom: 1px solid #e2e8e2;'} color: #3a4e3a; font-size: 14px; font-weight: 600;">
+        <td style="padding: 8px 0 ${hasTail ? '2px' : '8px'}; ${hasTail ? '' : 'border-bottom: 1px solid #e2e8e2;'} color: #3a4e3a; font-size: 14px; font-weight: 600;">
           ${escapeHtml(i.label)}
         </td>
-        <td style="padding: 8px 0 ${i.reasoning ? '2px' : '8px'}; ${i.reasoning ? '' : 'border-bottom: 1px solid #e2e8e2;'} text-align: right; vertical-align: top;">
+        <td style="padding: 8px 0 ${hasTail ? '2px' : '8px'}; ${hasTail ? '' : 'border-bottom: 1px solid #e2e8e2;'} text-align: right; vertical-align: top;">
           <span style="color: ${SEVERITY_COLOR[i.severity] ?? '#8a9e8a'}; font-size: 12px; font-weight: 600; text-transform: uppercase;">
             ${escapeHtml(i.severity)}
           </span>
         </td>
-      </tr>${reasonRow}`;
+      </tr>${reasonRow}${guidanceRow}`;
     })
     .join('');
 
@@ -245,19 +272,21 @@ export function renderFeedbackEmail(data: Omit<FeedbackEmailJob, 'to'>): {
     items.length
       ? 'Your supervisor has reviewed a sale and gone through the points below with you.'
       : 'Your supervisor has reviewed a sale. Nothing was flagged against you on it.',
-    ...items.flatMap((i) =>
-      i.reasoning ? [`  - ${i.label} (${i.severity})`, `      ${i.reasoning}`] : [`  - ${i.label} (${i.severity})`]
-    ),
+    ...items.flatMap((i) => [
+      `  - ${i.label} (${i.severity})`,
+      ...(i.reasoning ? [`      ${i.reasoning}`] : []),
+      ...(i.remediationGuidance ? [`      What to do: ${i.remediationGuidance}`] : []),
+    ]),
     ...(reasoningWithheld && items.length
       ? recipientCanSeeDetail
         ? [
             '',
-            'The detail behind each point is in CallGuard rather than this email, because',
+            "The AI's reason for each point is in CallGuard rather than this email, because",
             'your firm keeps health disclosures unredacted. Sign in to CallGuard to read it.',
           ]
         : [
             '',
-            'The detail behind each point is not in this email, because your firm keeps',
+            "The AI's reason for each point is not in this email, because your firm keeps",
             'health disclosures unredacted. Your supervisor has been through it with you',
             'and can go over it again.',
           ]

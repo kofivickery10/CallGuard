@@ -97,12 +97,29 @@ feedbackRouter.get('/journeys/:journeyId/feedback', authenticate, requireActione
         problem: adviser.problem,
       },
       breach_count: breaches.length,
-      breaches: breaches.map((b) => ({ label: b.item_label, severity: b.severity })),
+      // Guidance travels with the label so the supervisor can see what the
+      // adviser will be told to DO, not merely what was flagged (CG-24). A
+      // panel that exists to show what is about to be sent is worth nothing if
+      // it omits the only actionable line in the email.
+      breaches: breaches.map((b) => ({
+        label: b.item_label,
+        severity: b.severity,
+        remediation_guidance: b.remediation_guidance?.trim() || null,
+      })),
       open_reviews: openReviews,
       feedback: existing,
       recipients,
       client_name: sale?.client_name?.trim() || sale?.customer_name?.trim() || null,
       reasoning_included: !keepsHealthUnredacted && breaches.some((b) => !!b.reasoning),
+      // Distinguishes "the reasons were suppressed by policy" from "there were
+      // no reasons to send". The panel previously blamed the tenant's redaction
+      // setting for both, telling a firm that does NOT keep health unredacted
+      // that it does.
+      reasoning_withheld: keepsHealthUnredacted && breaches.some((b) => !!b.reasoning),
+      // Whether any finding carries an instruction the adviser will be asked to
+      // act on (CG-24) — the panel says so, because it changes what the
+      // acknowledgement means.
+      guidance_included: breaches.some((b) => !!b.remediation_guidance?.trim()),
     });
   } catch (err) {
     next(err);

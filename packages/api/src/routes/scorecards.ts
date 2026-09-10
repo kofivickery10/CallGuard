@@ -176,8 +176,9 @@ scorecardRouter.post('/', requireAdmin, async (req, res, next) => {
         `INSERT INTO scorecard_items
            (scorecard_id, label, description, score_type, weight, sort_order,
             severity, section, item_type, applies_when, expectation, ai_check, consent_gate,
-            applies_to_products, consumer_duty_outcome, vulnerability_related)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::uuid[], $15, $16) RETURNING *`,
+            applies_to_products, consumer_duty_outcome, vulnerability_related,
+            remediation_guidance)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::uuid[], $15, $16, $17) RETURNING *`,
         [
           scorecard.id,
           item.label,
@@ -195,6 +196,7 @@ scorecardRouter.post('/', requireAdmin, async (req, res, next) => {
           item.applies_to_products?.length ? item.applies_to_products : null,
           item.consumer_duty_outcome || null,
           item.vulnerability_related ?? false,
+          item.remediation_guidance?.trim() || null,
         ]
       );
       createdItems.push(itemRows[0]);
@@ -297,7 +299,8 @@ scorecardRouter.put('/:id', requireAdmin, async (req, res, next) => {
                  sort_order = $6, severity = $7, section = $8, item_type = $9,
                  applies_when = $10, expectation = $11, ai_check = $12,
                  consent_gate = $13, applies_to_products = $14::uuid[], archived_at = NULL,
-                 consumer_duty_outcome = $15, vulnerability_related = $16
+                 consumer_duty_outcome = $15, vulnerability_related = $16,
+                 remediation_guidance = $17
                WHERE id = $1 RETURNING *`,
               [
                 existing.id,
@@ -316,6 +319,10 @@ scorecardRouter.put('/:id', requireAdmin, async (req, res, next) => {
                 item.applies_to_products?.length ? item.applies_to_products : null,
                 item.consumer_duty_outcome || null,
                 item.vulnerability_related ?? false,
+                // Trimmed to null so an editor field cleared to whitespace
+                // removes the remediation step rather than leaving a checkpoint
+                // whose guidance renders as a blank line in an adviser's email.
+                item.remediation_guidance?.trim() || null,
               ]
             );
             result.push(rows[0]!);
@@ -324,8 +331,9 @@ scorecardRouter.put('/:id', requireAdmin, async (req, res, next) => {
               `INSERT INTO scorecard_items
                  (scorecard_id, label, description, score_type, weight, sort_order,
                   severity, section, item_type, applies_when, expectation, ai_check, consent_gate,
-                  applies_to_products, consumer_duty_outcome, vulnerability_related)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::uuid[], $15, $16) RETURNING *`,
+                  applies_to_products, consumer_duty_outcome, vulnerability_related,
+                  remediation_guidance)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::uuid[], $15, $16, $17) RETURNING *`,
               [
                 scorecard.id,
                 item.label,
@@ -343,6 +351,10 @@ scorecardRouter.put('/:id', requireAdmin, async (req, res, next) => {
                 item.applies_to_products?.length ? item.applies_to_products : null,
                 item.consumer_duty_outcome || null,
                 item.vulnerability_related ?? false,
+                // Trimmed to null so an editor field cleared to whitespace
+                // removes the remediation step rather than leaving a checkpoint
+                // whose guidance renders as a blank line in an adviser's email.
+                item.remediation_guidance?.trim() || null,
               ]
             );
             result.push(rows[0]!);

@@ -542,3 +542,66 @@ describe('buildFeedbackSend', () => {
     expect(withheld.snapshot.items[0].breachId).toBe('b1');
   });
 });
+
+describe('buildFeedbackSend — remediation guidance (CG-24)', () => {
+  const breach = {
+    breach_id: 'b1',
+    scorecard_item_id: 'si1',
+    item_label: 'Explained the pre-existing conditions exclusion',
+    severity: 'high',
+    status: 'open',
+    reasoning: 'The adviser did not mention the exclusion.',
+    remediation_guidance: 'Call the customer back and confirm the exclusion applies.',
+  };
+  const input = {
+    adviserEmail: 'a@example.test',
+    adviserName: 'Danni Beck',
+    confirmUrl: 'https://app.example.test/feedback/tok',
+    message: null,
+    clientName: 'James Whitfield',
+    score: 77.8,
+    pass: false,
+    breaches: [breach],
+    includeReasoning: true,
+    includeVerdict: true,
+    recipientCanSeeDetail: true,
+  };
+
+  it('carries guidance into the payload and freezes it in the snapshot', () => {
+    const { payload, snapshot } = buildFeedbackSend(input);
+    expect(payload.items[0]!.remediationGuidance).toBe(breach.remediation_guidance);
+    expect(snapshot.items[0]!.remediationGuidance).toBe(breach.remediation_guidance);
+  });
+
+  // The decision this phase turns on. Reasoning is withheld because the MODEL
+  // derived it from the call and it can quote a health disclosure. Guidance was
+  // written by the firm in advance against the criterion, so that rule does not
+  // reach it — and on exactly these tenants it is the only actionable content
+  // the adviser receives.
+  it('keeps guidance when reasoning is withheld', () => {
+    const { payload, snapshot } = buildFeedbackSend({ ...input, includeReasoning: false });
+    expect(payload.items[0]!.reasoning).toBeUndefined();
+    expect(snapshot.items[0]!.reasoning).toBeNull();
+    expect(payload.items[0]!.remediationGuidance).toBe(breach.remediation_guidance);
+    expect(snapshot.items[0]!.remediationGuidance).toBe(breach.remediation_guidance);
+  });
+
+  it('omits guidance entirely on a checkpoint that has none', () => {
+    const { payload, snapshot } = buildFeedbackSend({
+      ...input,
+      breaches: [{ ...breach, remediation_guidance: null }],
+    });
+    expect(payload.items[0]!.remediationGuidance).toBeUndefined();
+    expect(snapshot.items[0]!.remediationGuidance).toBeNull();
+  });
+
+  // Whitespace is not an instruction. A checkpoint whose guidance is a stray
+  // space must not render "What to do:" followed by nothing.
+  it('treats whitespace-only guidance as none', () => {
+    const { payload } = buildFeedbackSend({
+      ...input,
+      breaches: [{ ...breach, remediation_guidance: '   \n ' }],
+    });
+    expect(payload.items[0]!.remediationGuidance).toBeUndefined();
+  });
+});

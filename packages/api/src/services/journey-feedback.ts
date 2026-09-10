@@ -164,6 +164,16 @@ export interface FeedbackBreach {
   // outside the platform, so the quoted call goes behind the link and only the
   // finding travels.
   reasoning: string | null;
+  // What the firm wants done about it, in the firm's own words (CG-24).
+  //
+  // Read live from the criterion rather than from the score, because unlike
+  // `reasoning` it is not a property of this sale — it is the firm's standing
+  // instruction for this checkpoint, and the current wording is the one to act
+  // on. It is frozen only at send time, onto journey_feedback_items.
+  //
+  // Null on most checkpoints: guidance is opt-in per criterion, so a firm turns
+  // this on one checkpoint at a time.
+  remediation_guidance: string | null;
 }
 
 /**
@@ -180,7 +190,7 @@ export async function breachesForFeedback(
 ): Promise<FeedbackBreach[]> {
   return query<FeedbackBreach>(
     `SELECT b.id AS breach_id, b.scorecard_item_id, si.label AS item_label,
-            b.severity, b.status, jis.reasoning
+            b.severity, b.status, jis.reasoning, si.remediation_guidance
        FROM breaches b
        JOIN scorecard_items si ON si.id = b.scorecard_item_id
        -- LEFT: a breach raised against a per-call score has no journey item
@@ -281,6 +291,8 @@ export interface FeedbackSend {
       breachId: string;
       /** Exactly what travelled. Null where nothing did — see migration 110. */
       reasoning: string | null;
+      /** The firm's instruction as sent. Null where the checkpoint had none. */
+      remediationGuidance: string | null;
     }>;
   };
 }
@@ -342,11 +354,28 @@ export function buildFeedbackSend(input: {
   // happened.
   const reasoningWithheld = !includeReasoning && breaches.some((b) => !!b.reasoning);
 
+  // Guidance travels even where reasoning does not, and that is deliberate.
+  //
+  // `includeReasoning` is false on a tenant that keeps health unredacted,
+  // because the MODEL's sentence is derived from the call and can quote a health
+  // disclosure in the clear (DPIA R5). Guidance is not derived from the call at
+  // all: the firm wrote it in advance, against the criterion, without seeing any
+  // customer. It cannot contain a disclosure it was never exposed to, so the
+  // rule that withholds reasoning has nothing to say about it.
+  //
+  // This matters most for exactly the tenants that trigger the withholding.
+  // Trust Point's advisers receive no reasons; guidance is then the only
+  // actionable content in the email, and withholding it too would leave them a
+  // list of labels and nothing to do about them.
   const items = breaches.map((b) => {
     const sent = includeReasoning ? b.reasoning : null;
-    return sent
-      ? { label: b.item_label, severity: b.severity, reasoning: sent }
-      : { label: b.item_label, severity: b.severity };
+    const guidance = b.remediation_guidance?.trim() || null;
+    return {
+      label: b.item_label,
+      severity: b.severity,
+      ...(sent ? { reasoning: sent } : {}),
+      ...(guidance ? { remediationGuidance: guidance } : {}),
+    };
   });
 
   const payload: FeedbackEmailJob = {
@@ -382,6 +411,10 @@ export function buildFeedbackSend(input: {
         severity: b.severity,
         breachId: b.breach_id,
         reasoning: items[i].reasoning ?? null,
+        // Frozen from what travelled, not re-read from the criterion: guidance
+        // is editable, and a live join would make every past acknowledgement
+        // assert the adviser was told today's wording.
+        remediationGuidance: items[i].remediationGuidance ?? null,
       })),
     },
   };
@@ -575,10 +608,19 @@ export async function sendFeedback(input: {
     for (const item of snapshot.items) {
       await tx.query(
         `INSERT INTO journey_feedback_items
-           (feedback_id, scorecard_item_id, item_label, severity, breach_id, reasoning)
-         VALUES ($1,$2,$3,$4,$5,$6)
+           (feedback_id, scorecard_item_id, item_label, severity, breach_id, reasoning,
+            remediation_guidance)
+         VALUES ($1,$2,$3,$4,$5,$6,$7)
          ON CONFLICT (feedback_id, scorecard_item_id) DO NOTHING`,
-        [id, item.scorecardItemId, item.itemLabel, item.severity, item.breachId, item.reasoning]
+        [
+          id,
+          item.scorecardItemId,
+          item.itemLabel,
+          item.severity,
+          item.breachId,
+          item.reasoning,
+          item.remediationGuidance,
+        ]
       );
       await tx.query(
         `INSERT INTO breach_events (breach_id, user_id, event_type, to_value)

@@ -70,8 +70,8 @@ describe('renderFeedbackEmail', () => {
       recipientCanSeeDetail: true,
       items: [{ label: 'Obtained clear affirmative consent', severity: 'high' }],
     });
-    expect(html).toContain('is in CallGuard rather than this email');
-    expect(text).toContain('is in CallGuard rather than this email');
+    expect(html).toContain("The AI's reason for each point is in CallGuard");
+    expect(text).toContain("The AI's reason for each point is in CallGuard");
     expect(html).toContain('Obtained clear affirmative consent');
   });
 
@@ -127,6 +127,94 @@ describe('renderFeedbackEmail', () => {
       expect(part).not.toContain('is in CallGuard rather than this email');
     }
     expect(html).toContain('The adviser did not ask.');
+  });
+
+  // ── Remediation guidance (CG-24) ──────────────────────────────────────────
+
+  it('renders guidance under its checkpoint, labelled, in both parts', () => {
+    const { html, text } = renderFeedbackEmail({
+      ...base,
+      items: [
+        {
+          label: 'Explained the pre-existing conditions exclusion',
+          severity: 'high',
+          reasoning: 'The adviser did not mention the exclusion.',
+          remediationGuidance: 'Call the customer back and confirm the exclusion applies.',
+        },
+      ],
+    });
+    for (const part of [html, text]) {
+      expect(part).toContain('What to do:');
+      expect(part).toContain('Call the customer back and confirm the exclusion applies.');
+      // Both lines present, and distinguishable: the reason is why it was
+      // flagged, the guidance is what to do about it.
+      expect(part).toContain('The adviser did not mention the exclusion.');
+    }
+  });
+
+  // The decision this phase turns on. `includeReasoning` is false on a tenant
+  // that keeps health unredacted, because the MODEL's sentence is derived from
+  // the call. Guidance is not: the firm wrote it in advance against the
+  // criterion, without seeing any customer, so the rule that withholds
+  // reasoning has nothing to say about it. On exactly those tenants it is the
+  // only actionable content the adviser gets.
+  it('still sends guidance when the model reasoning was withheld', () => {
+    const { html, text } = renderFeedbackEmail({
+      ...base,
+      reasoningWithheld: true,
+      recipientCanSeeDetail: false,
+      items: [
+        {
+          label: 'Explained the pre-existing conditions exclusion',
+          severity: 'high',
+          remediationGuidance: 'Call the customer back and confirm the exclusion applies.',
+        },
+      ],
+    });
+    for (const part of [html, text]) {
+      expect(part).toContain('Call the customer back and confirm the exclusion applies.');
+      // The withheld note still fires, and names the reason specifically — it
+      // sits directly under a visible "What to do" line, so "the detail" would
+      // read as though the guidance had been withheld too.
+      expect(part).toContain("The AI's reason for each point is not in this email");
+    }
+  });
+
+  it('says nothing about guidance on a checkpoint that has none', () => {
+    const { html, text } = renderFeedbackEmail({
+      ...base,
+      items: [{ label: 'Obtained clear affirmative consent', severity: 'high' }],
+    });
+    for (const part of [html, text]) {
+      expect(part).not.toContain('What to do:');
+    }
+  });
+
+  it('escapes guidance, which is firm-authored free text', () => {
+    const { html } = renderFeedbackEmail({
+      ...base,
+      items: [
+        {
+          label: 'A checkpoint',
+          severity: 'low',
+          remediationGuidance: '<script>alert(1)</script> Ring & confirm',
+        },
+      ],
+    });
+    expect(html).not.toContain('<script>');
+    expect(html).toContain('&lt;script&gt;');
+    expect(html).toContain('&amp;');
+  });
+
+  it('renders guidance with no reason, and still closes the row', () => {
+    // A finding can carry guidance without a reason — on a withholding tenant,
+    // or where the model gave none. The separator must not go missing.
+    const { html } = renderFeedbackEmail({
+      ...base,
+      items: [{ label: 'A checkpoint', severity: 'low', remediationGuidance: 'Do the thing.' }],
+    });
+    expect(html).toContain('Do the thing.');
+    expect(html).toContain('border-bottom: 1px solid #e2e8e2;');
   });
 
   it('renders no score for a non-numeric value rather than "NaN%"', () => {

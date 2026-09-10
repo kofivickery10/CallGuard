@@ -87,6 +87,13 @@ export interface ScorecardItem {
   expectation?: string | null;
   // Presence-and-meaning check instruction for regulatory statements.
   ai_check?: string | null;
+  // What the firm wants an adviser to DO when this checkpoint is failed, in
+  // their own words (CG-24). Never sent to the model and never AI-written: it
+  // is an instruction to a person, not an input to scoring.
+  //
+  // Null is the normal case and the gate — a checkpoint with no guidance has no
+  // remediation step, so a firm opts in one checkpoint at a time.
+  remediation_guidance?: string | null;
   // Requires an explicit customer affirmative — the scorer may not infer
   // consent from context, and low-confidence speaker attribution on the
   // evidence utterance routes the item to manual_review instead of a score.
@@ -135,6 +142,7 @@ export interface ScorecardItemInput {
   applies_when?: AppliesWhen | null;
   expectation?: string | null;
   ai_check?: string | null;
+  remediation_guidance?: string | null;
   consent_gate?: boolean;
   applies_to_products?: string[] | null;
   consumer_duty_outcome?: ConsumerDutyOutcome | null;
