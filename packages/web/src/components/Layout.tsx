@@ -112,6 +112,11 @@ const NAV_SECTIONS: NavSection[] = [
       { path: '/review-queue', label: 'Review Queue', icon: 'M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11', roles: ORG_VIEW },
       { path: '/breaches', label: 'Breaches', icon: 'M12 2L3 7v5c0 5 3.5 9.5 9 11 5.5-1.5 9-6 9-11V7l-9-5z', roles: ORG_VIEW },
       { path: '/adviser-risk', label: 'Adviser Risk', icon: 'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z', roles: ORG_VIEW },
+      // Open remediations, aged, by adviser (CG-27). Next to Breaches and
+      // Adviser Risk rather than under Compliance: those two say what was
+      // found, this says what was asked for and is still owed, and they are
+      // read in the same sitting.
+      { path: '/remediation', label: 'Remediation', icon: 'M9 11l3 3L22 4M12 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-6', roles: ORG_VIEW },
       { path: '/insights', label: 'AI Insights', icon: 'M12 2l2.39 7.36H22l-6.19 4.5L18.2 22 12 17.27 5.8 22l2.39-8.14L2 9.36h7.61z', roles: ORG_VIEW },
       // The override register sits next to Calibration deliberately: one is the
       // rate, the other is the record behind it. Org-view, not plan-gated —

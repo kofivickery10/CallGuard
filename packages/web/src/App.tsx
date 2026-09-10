@@ -50,6 +50,7 @@ const Settings = lazyWithRetry(() => import('./pages/Settings'));
 const Products = lazyWithRetry(() => import('./pages/Products'));
 const BoardPack = lazyWithRetry(() => import('./pages/BoardPack').then((m) => ({ default: m.BoardPack })));
 const ClaimsDefence = lazyWithRetry(() => import('./pages/ClaimsDefence').then((m) => ({ default: m.ClaimsDefence })));
+const RemediationBacklog = lazyWithRetry(() => import('./pages/RemediationBacklog').then((m) => ({ default: m.RemediationBacklog })));
 
 function PageLoader() {
   return (
@@ -135,6 +136,7 @@ export function App() {
                     <Route path="/notifications" element={<Notifications />} />
                     <Route path="/breaches" element={<Breaches />} />
                     <Route path="/adviser-risk" element={<AdviserRiskPage />} />
+                    <Route path="/remediation" element={<RemediationBacklog />} />
                     <Route path="/compliance-docs" element={<ComplianceDocs />} />
                     <Route path="/settings" element={<Settings />} />
                     <Route path="/settings/organization" element={<OrganizationSettings />} />

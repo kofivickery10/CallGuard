@@ -173,6 +173,46 @@ export function Journeys() {
         </div>
       )}
 
+      {/* The remediation backlog (CG-27), on the same footing as the strip
+          above and for the same reason — it only appears when there is
+          something to chase. Deliberately a second strip rather than a second
+          clause in the first: they are two different backlogs with two
+          different owners, and a sale can be in one without being in the other.
+          The link out goes to the by-adviser view, because "who is sitting on
+          this?" is the next question and this screen cannot answer it. */}
+      {feedbackCounts && feedbackCounts.awaiting_remediation > 0 && (
+        <div className="mb-5 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-card border border-border bg-review-bg px-4 py-3">
+          <span className="text-table-cell text-text-primary font-semibold">
+            {feedbackCounts.awaiting_remediation}{' '}
+            {feedbackCounts.awaiting_remediation === 1 ? 'sale has' : 'sales have'} an unanswered
+            remediation
+          </span>
+          {feedbackCounts.oldest_remediation_days != null && feedbackCounts.oldest_remediation_days > 0 && (
+            <span className="text-table-cell text-text-secondary">
+              oldest acknowledged {feedbackCounts.oldest_remediation_days}{' '}
+              {feedbackCounts.oldest_remediation_days === 1 ? 'day' : 'days'} ago
+            </span>
+          )}
+          <div className="ml-auto flex items-center gap-4">
+            {feedback !== 'awaiting_remediation' && (
+              <button
+                type="button"
+                onClick={() => onFilterChange(setFeedback)('awaiting_remediation')}
+                className="text-table-cell font-semibold text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
+              >
+                Show them
+              </button>
+            )}
+            <Link
+              to="/remediation"
+              className="text-table-cell font-semibold text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
+            >
+              By adviser
+            </Link>
+          </div>
+        </div>
+      )}
+
       {/* Secondary filters. Separate row from the status tabs: status is the
           primary axis a compliance manager works along, and mixing six controls
           into one row buries it. */}
@@ -250,6 +290,11 @@ export function Journeys() {
             </option>
             <option value="awaiting">
               Awaiting confirmation{feedbackCounts ? ` (${feedbackCounts.awaiting})` : ''}
+            </option>
+            {/* Between the two (CG-27): the adviser has confirmed, and the
+                firm is still owed the work. */}
+            <option value="awaiting_remediation">
+              Awaiting outcome{feedbackCounts ? ` (${feedbackCounts.awaiting_remediation})` : ''}
             </option>
             <option value="acknowledged">
               Acknowledged{feedbackCounts ? ` (${feedbackCounts.acknowledged})` : ''}
@@ -416,8 +461,21 @@ export function Journeys() {
                   <td className="px-5 py-3.5">
                     <FeedbackStatusBadge
                       status={j.feedback_status}
-                      waitingDays={daysSince(j.feedback_sent_at)}
+                      // Two clocks, and the badge shows whichever one this row
+                      // is on: waiting to be acknowledged is measured from the
+                      // send, waiting for the work is measured from the
+                      // acknowledgement (CG-27).
+                      waitingDays={
+                        j.feedback_status === 'awaiting_remediation'
+                          ? j.oldest_remediation_days
+                          : daysSince(j.feedback_sent_at)
+                      }
                     />
+                    {j.feedback_status === 'awaiting_remediation' && j.open_remediations > 0 && (
+                      <span className="block mt-1 text-xs text-text-muted">
+                        {j.open_remediations} unanswered
+                      </span>
+                    )}
                   </td>
                   {/* When it happened. The primary date: stable across a
                       re-score, and what the list is ordered and filtered by. */}
