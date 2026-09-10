@@ -4,6 +4,7 @@ import { query, queryOne } from '../db/client.js';
 import { AppError } from '../middleware/errors.js';
 import { recordAuditEvent } from '../services/audit.js';
 import { notifyBreachAssigned, notifyBreachEscalated } from '../services/breach-notifications.js';
+import { organisationKeepsUnredacted } from '../services/transcript-access.js';
 import {
   BREACH_SEVERITIES,
   BREACH_STATUSES,
@@ -327,6 +328,24 @@ breachesRouter.get('/export.csv', async (req, res, next) => {
       params
     );
 
+    // DPIA R5, action 8: a CSV is an export, and R5 names exports first. Both
+    // of these columns are transcript-derived — `evidence` is a verbatim quote
+    // (services/scoring.ts asks the model for "a direct quote from the
+    // transcript") and `reasoning` is the model's sentence about the call, the
+    // one the feedback email already withholds from these same tenants.
+    //
+    // A downloaded file goes wherever files go, so this uses the broad gate:
+    // any permitted category, not health alone. See services/transcript-access.ts.
+    //
+    // The COLUMNS stay, with a marker in the cell — the same convention the
+    // capture export already uses for a redacted answer. Dropping the columns
+    // would break every spreadsheet and script built on this file, and would
+    // read as "no evidence was recorded" rather than "it is not in this file".
+    // Whoever downloaded this is a requireOrgView user of CallGuard, so unlike
+    // the CRM note this one can safely say where to look.
+    const withholdTranscriptText = await organisationKeepsUnredacted(req.user!.organizationId);
+    const WITHHELD_CELL = '[withheld — read it in CallGuard]';
+
     const header = [
       'Detected',
       'Call ID',
@@ -357,8 +376,11 @@ breachesRouter.get('/export.csv', async (req, res, next) => {
           r.status,
           r.normalized_score != null ? String(r.normalized_score) : '',
           r.assigned_to_name || '',
-          r.evidence || '',
-          r.reasoning || '',
+          // Empty stays empty: a breach the AI quoted nothing on must not read
+          // as one where something was suppressed (same rule as
+          // withheldTranscript / withheldBreachEvidence).
+          withholdTranscriptText && r.evidence ? WITHHELD_CELL : r.evidence || '',
+          withholdTranscriptText && r.reasoning ? WITHHELD_CELL : r.reasoning || '',
           r.notes || '',
           r.resolved_at || '',
         ]

@@ -323,6 +323,7 @@ describe('pushCallScored — zoho_deliveries tracking + retry', () => {
 
     vi.mocked(queryOne)
       .mockResolvedValueOnce(connRow(organizationId)) // getConnectionRow
+      .mockResolvedValueOnce({ categories: null }) // organisationKeepsHealthUnredacted (DPIA R5)
       .mockResolvedValueOnce({ id: 'delivery-ok-1' }); // zoho_deliveries INSERT ... RETURNING id
 
     fetchMock
@@ -335,7 +336,8 @@ describe('pushCallScored — zoho_deliveries tracking + retry', () => {
 
     // The delivery row was opened before the attempt and carries the payload
     // that was (about to be) written.
-    const insertCall = vi.mocked(queryOne).mock.calls[1]!;
+    // [0] getConnectionRow, [1] the R5 redaction lookup, [2] the delivery INSERT.
+    const insertCall = vi.mocked(queryOne).mock.calls[2]!;
     expect(String(insertCall[0])).toContain('INSERT INTO zoho_deliveries');
     const insertParams = insertCall[1] as unknown[];
     expect(insertParams[3]).toBe('record'); // kind
@@ -358,6 +360,7 @@ describe('pushCallScored — zoho_deliveries tracking + retry', () => {
 
     vi.mocked(queryOne)
       .mockResolvedValueOnce(connRow(organizationId)) // getConnectionRow
+      .mockResolvedValueOnce({ categories: null }) // organisationKeepsHealthUnredacted (DPIA R5)
       .mockResolvedValueOnce({ id: 'delivery-retry-1' }); // zoho_deliveries INSERT ... RETURNING id
 
     // The search call never gets a response at all — a network-level failure,
@@ -392,6 +395,7 @@ describe('pushCallScored — zoho_deliveries tracking + retry', () => {
 
     vi.mocked(queryOne)
       .mockResolvedValueOnce(connRow(organizationId)) // getConnectionRow
+      .mockResolvedValueOnce({ categories: null }) // organisationKeepsHealthUnredacted (DPIA R5)
       .mockResolvedValueOnce({ id: 'delivery-ambiguous-1' }); // zoho_deliveries INSERT ... RETURNING id
 
     fetchMock.mockResolvedValueOnce(jsonResponse(200, { data: [{ id: 'lead-1' }, { id: 'lead-2' }] }));
@@ -416,5 +420,160 @@ describe('pushCallScored — zoho_deliveries tracking + retry', () => {
     // Never retried — see findRecordByPhone for why guessing would be worse
     // than doing nothing.
     expect(alertsQueue.add).not.toHaveBeenCalled();
+  });
+});
+
+// ── DPIA R5, action 8: what reaches the CRM ──────────────────────────────────
+//
+// A breach's `evidence` is a verbatim transcript quote. Zoho is outside the
+// controlled environment and is not assessed anywhere in the DPIA as a
+// recipient of health data — its sub-processor list names Deepgram and
+// Anthropic, not a CRM.
+//
+// These assert on the HTTP bodies rather than on the payload object, because
+// the control has to hold at the wire, not merely in the shape we pass around.
+// R5's residual rating is conditional on exactly that.
+describe('pushCallScored — DPIA R5: transcript quotes do not reach the CRM', () => {
+  const fetchMock = vi.fn();
+  const QUOTE = 'I was diagnosed with atrial fibrillation in 2019.';
+
+  const fieldMap: ZohoFieldMap = {
+    score: 'AI_Score',
+    result: 'AI_Result',
+    last_scored: 'AI_Last_Scored',
+    link: 'AI_Review_Link',
+  };
+
+  function connRow(organizationId: string) {
+    return {
+      id: 'conn-r5',
+      organization_id: organizationId,
+      dc_region: 'eu',
+      client_id: 'client-id',
+      client_secret_encrypted: encrypt('secret'),
+      refresh_token_encrypted: encrypt('refresh'),
+      access_token_encrypted: encrypt('access'),
+      token_expires_at: new Date(Date.now() + 3600_000).toISOString(),
+      api_domain: 'https://www.zohoapis.eu',
+      module: 'Leads' as const,
+      field_map: fieldMap,
+      inbound_secret_encrypted: null,
+      sale_phone_field: 'Phone',
+      qa_module: null,
+      qa_field_map: {
+        score: 'AI_Call_Score',
+        client_name: 'Client_Name',
+        customer_lookup: 'Customer',
+      } as ZohoQAFieldMap,
+      sale_module: null,
+      policies_related_list: null,
+      policy_product_field: null,
+      policy_stage_field: null,
+      policies_module: null,
+      status: 'active' as const,
+    };
+  }
+
+  function breachPayload(callId: string): WebhookCallScoredPayload {
+    return {
+      event: 'call.scored',
+      call_id: callId,
+      external_id: null,
+      agent_name: 'Jo Adviser',
+      scorecard_id: 'sc-1',
+      overall_score: 61,
+      pass: false,
+      scored_at: new Date().toISOString(),
+      customer_id: null,
+      customer_phone: '+447700900123',
+      customer_external_crm_id: null,
+      breaches: [
+        {
+          scorecard_item_id: 'i-1',
+          scorecard_item_label: 'Pre-existing conditions explored',
+          severity: 'high',
+          evidence: QUOTE,
+        },
+      ],
+    };
+  }
+
+  /** Every request body this test sent to Zoho, concatenated. */
+  function everythingSent(): string {
+    return fetchMock.mock.calls.map(([, init]) => String(init?.body ?? '')).join('\n');
+  }
+
+  beforeEach(() => {
+    vi.mocked(query).mockReset();
+    vi.mocked(queryOne).mockReset();
+    vi.mocked(recipientsByRole).mockReset();
+    vi.mocked(alertsQueue.add).mockReset();
+    fetchMock.mockReset();
+    vi.stubGlobal('fetch', fetchMock);
+    vi.mocked(query).mockResolvedValue([]);
+    vi.mocked(recipientsByRole).mockResolvedValue([]);
+    vi.mocked(alertsQueue.add).mockResolvedValue(undefined as never);
+  });
+
+  function arrange(organizationId: string, categories: string[] | null) {
+    vi.mocked(queryOne)
+      .mockResolvedValueOnce(connRow(organizationId)) // getConnectionRow
+      .mockResolvedValueOnce({ categories }) // organisationKeepsHealthUnredacted
+      .mockResolvedValueOnce({ id: 'delivery-r5' }); // zoho_deliveries INSERT
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(200, { data: [{ id: 'lead-1', Owner: { id: 'owner-1' } }] })) // search
+      .mockResolvedValueOnce(jsonResponse(200, { data: [{ status: 'success' }] })) // PUT score
+      .mockResolvedValueOnce(jsonResponse(200, { data: [{ status: 'success' }] })); // POST breach task
+  }
+
+  it('sends no quote to Zoho for a tenant keeping health unredacted, and says why', async () => {
+    const organizationId = `org-r5-phi-${Date.now()}`;
+    arrange(organizationId, ['phi']);
+
+    await pushCallScored(organizationId, breachPayload('call-r5-1'));
+
+    const sent = everythingSent();
+    expect(sent).not.toContain(QUOTE);
+    expect(sent).not.toContain('atrial fibrillation');
+    // The question and the fact of the breach still go — R5 asks for those.
+    expect(sent).toContain('Pre-existing conditions explored');
+    expect(sent).toContain('HIGH');
+    // Said, not silently dropped: a quote-less list is otherwise
+    // indistinguishable from a call the AI found nothing to quote on.
+    expect(sent).toContain('The supporting quote for some points is not in this record');
+    // Names no destination at all. The Task's Owner is set to the matched CRM
+    // record's owner — normally the adviser who sold the policy — and every
+    // surface holding the quote is shut to an adviser (#185, #186). "the sale"
+    // would also be false here: this is a per-call payload, and the Review line
+    // below points at /calls/.
+    expect(sent).not.toContain('Sign in');
+    expect(sent).not.toContain('on the sale in CallGuard');
+    expect(sent).not.toContain('for each point');
+  });
+
+  it('stores the withheld payload on the delivery row, so a retry cannot resend the quote', async () => {
+    const organizationId = `org-r5-retry-${Date.now()}`;
+    arrange(organizationId, ['phi']);
+
+    await pushCallScored(organizationId, breachPayload('call-r5-2'));
+
+    // [0] getConnectionRow, [1] the redaction lookup, [2] the delivery INSERT.
+    const insertParams = vi.mocked(queryOne).mock.calls[2]![1] as unknown[];
+    const stored = JSON.parse(insertParams[5] as string) as WebhookCallScoredPayload;
+    expect(stored.breaches[0]!.evidence).toBe('');
+    expect(stored.evidence_withheld).toBe(true);
+  });
+
+  it('still sends the quote for a tenant whose transcripts were redacted at source', async () => {
+    // Nothing changes for the other tenants: the quote there carries typed
+    // placeholders, having never held personal data in the first place.
+    const organizationId = `org-r5-default-${Date.now()}`;
+    arrange(organizationId, null);
+
+    await pushCallScored(organizationId, breachPayload('call-r5-3'));
+
+    const sent = everythingSent();
+    expect(sent).toContain('atrial fibrillation');
+    expect(sent).not.toContain('The supporting quote for some points is not in this record');
   });
 });

@@ -4,6 +4,10 @@ import { encrypt, decrypt } from './crypto.js';
 import { config } from '../config.js';
 import { notify, recipientsByRole } from './notify.js';
 import { alertsQueue } from '../jobs/queue.js';
+import {
+  organisationKeepsHealthUnredacted,
+  withheldBreachEvidence,
+} from './transcript-access.js';
 import type {
   WebhookCallScoredPayload,
   WebhookJourneyScoredPayload,
@@ -836,6 +840,34 @@ function toZohoDateTime(iso: string): string {
 
 // Where the "review this in CallGuard" link on a Zoho record should point —
 // a single call, or the journey it belongs to (spec §9/§11).
+// Said, not implied. A breach list that silently lost its quotes reads as a
+// call the AI found nothing to quote on — the CG-10 mistake, which shipped a
+// shorter email that was indistinguishable from a complete one.
+//
+// STATES WHAT IS MISSING AND WHY, AND STOPS THERE. Two earlier drafts of this
+// sentence ended "the quotes are on the sale in CallGuard", and both halves of
+// that were a problem:
+//
+//   * "the sale" is journey vocabulary, and createBreachTask runs for per-call
+//     payloads too (the Task's own Review: line points at /calls/<id>). On any
+//     tenant that is not sales_only there is no sale to look at.
+//   * The Task's owner is set to the matched CRM record's owner, which on a
+//     Leads/Contacts CRM is normally the adviser who sold the policy. Advisers
+//     are excluded from ORG_WIDE_ROLES, so every surface holding the quote is
+//     shut to them whether or not they have a password — the #185/#186 finding,
+//     one layer further out.
+//
+// The Review: link a few lines below already offers the destination to the
+// people who can use it. Repeating it as a claim only creates a promise we
+// cannot keep for the reader most likely to be holding this Task.
+//
+// "some points" rather than "each point": the note fires when ANY breach had a
+// quote, and a list can mix breaches that had one with breaches that never did.
+const EVIDENCE_WITHHELD_NOTE =
+  'The supporting quote for some points is not in this record. CallGuard withholds ' +
+  'quotes from the call when a firm keeps health disclosures unredacted, because ' +
+  'this record sits outside CallGuard.';
+
 function reviewLink(payload: ScoredPayload): string {
   return isJourneyPayload(payload)
     ? `${config.appUrl}/journeys/${payload.journey_id}`
@@ -879,6 +911,7 @@ async function createBreachTask(
   const lines = payload.breaches.map(
     (b) => `• [${b.severity.toUpperCase()}] ${b.scorecard_item_label}${b.evidence ? ` — ${b.evidence}` : ''}`
   );
+  if (payload.evidence_withheld) lines.push('', EVIDENCE_WITHHELD_NOTE);
   const subject = isJourneyPayload(payload)
     ? `Compliance breach on journey${payload.agent_name ? ` (${payload.agent_name})` : ''} — ${payload.breaches.length} issue${payload.breaches.length === 1 ? '' : 's'}`
     : `Compliance breach on call${payload.agent_name ? ` (${payload.agent_name})` : ''} — ${payload.breaches.length} issue${payload.breaches.length === 1 ? '' : 's'}`;
@@ -989,6 +1022,7 @@ function buildQASummary(payload: WebhookJourneyScoredPayload): string {
   const lines = payload.breaches.map(
     (b) => `• [${b.severity.toUpperCase()}] ${b.scorecard_item_label}${b.evidence ? ` — ${b.evidence}` : ''}`
   );
+  if (payload.evidence_withheld) lines.push('', EVIDENCE_WITHHELD_NOTE);
   return [header, '', 'Breaches:', ...lines, '', review].join('\n');
 }
 
@@ -1368,10 +1402,21 @@ export async function retryZohoDelivery(deliveryId: string, attempt: number): Pr
     return;
   }
 
+  // DPIA R5 again, and not redundant. Rows written after this deploy already
+  // hold the withheld payload, so for them this is a no-op. Rows that were
+  // ALREADY sitting in zoho_deliveries when it shipped hold the raw quote and
+  // would otherwise replay it verbatim on their next backoff tick. Re-applying
+  // here makes the property true of the code rather than true of the deploy
+  // ordering, which is the only version of it worth writing in an assessment.
+  const payload = withheldBreachEvidence(
+    row.payload,
+    await organisationKeepsHealthUnredacted(row.organization_id)
+  );
+
   const outcome =
     row.kind === 'record'
-      ? await attemptRecordWriteBack(apiDomain, accessToken, conn, row.payload, label)
-      : await attemptQAWriteBack(apiDomain, accessToken, conn, row.payload, label, row.feedback_id ?? undefined);
+      ? await attemptRecordWriteBack(apiDomain, accessToken, conn, payload, label)
+      : await attemptQAWriteBack(apiDomain, accessToken, conn, payload, label, row.feedback_id ?? undefined);
 
   await finishZohoDelivery(deliveryId, outcome);
 
@@ -1391,11 +1436,41 @@ export async function retryZohoDelivery(deliveryId: string, attempt: number): Pr
  */
 async function pushScoredPayload(
   organizationId: string,
-  payload: ScoredPayload,
+  rawPayload: ScoredPayload,
   feedbackId?: string
 ): Promise<void> {
   const conn = await getConnectionRow(organizationId);
   if (!conn || conn.status !== 'active') return;
+
+  // DPIA R5, action 8. Before anything else touches it, and in particular
+  // before startZohoDelivery persists a copy for retry: a breach's `evidence`
+  // is a verbatim transcript quote, and this CRM is outside the controlled
+  // environment. See services/transcript-access.ts for why this gates on
+  // health specifically.
+  const payload = withheldBreachEvidence(
+    rawPayload,
+    await organisationKeepsHealthUnredacted(organizationId)
+  );
+
+  // NO score_only FILTER HERE, AND THAT IS DELIBERATE — it looks like an
+  // omission and is not, so it is written down.
+  //
+  // `score_only` is a DISPLAY mode. Its definition says so in the same breath
+  // that it grants itself: "the verdict is still computed and stored
+  // server-side (alerts, Zoho write-back and reporting are unchanged)"
+  // (packages/shared/src/types/coaching.ts). That sentence and routes/share.ts's
+  // "the value must not ship in the payload either" were written in the SAME
+  // commit (d049235), so they are one decision rather than two that drifted:
+  // withhold the verdict from anything CallGuard renders AND from the payload
+  // directly behind that render, and leave the firm's own integrations alone.
+  //
+  // Every site honouring the flag is on the render side of that line — the
+  // share link, the feedback email, the session flag, the web app. Not one
+  // integration path, across three separate rounds of work.
+  //
+  // Changing it here is a product decision, not a bug fix, and the blast
+  // radius is real: a tenant's Zoho formula reads the field this writes, and
+  // `AI_Result` going empty could silently alter a commission calculation.
 
   const label = isJourneyPayload(payload) ? `journey ${payload.journey_id}` : `call ${payload.call_id}`;
   const { callId, journeyId } = deliveryCallAndJourneyIds(payload);

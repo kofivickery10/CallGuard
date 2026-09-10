@@ -7,13 +7,25 @@
 | **Assessment covers** | The CallGuard AI Data Forms module, specifically the reconciliation feature that compares what a customer said on a recorded call against the application submitted to an insurer, and the change to transcript redaction that makes it possible. |
 | **Prepared by** | CallGuard AI (processor) |
 | **Controller** | Trust Point (first deploying firm) |
-| **Version** | 0.3, draft for controller review |
-| **Date** | 3 August 2026 |
+| **Version** | 0.4, draft for controller review |
+| **Date** | 10 September 2026 |
 | **Status** | **DRAFT. Not signed. The processing described here must not be enabled in production until this assessment is completed and signed by the controller.** |
 | **Review due** | 12 months from sign-off, or on any material change to the processing |
 
 ### Change log
 
+- **0.4** — Action 8 closes. The control R5 was conditional on now exists and is
+  covered by test (new section 4.10). It is worth recording plainly that when
+  this control was built the field it governs was **already leaving**: a breach's
+  `evidence` is a verbatim quote from the call, and it was travelling
+  ungated to the tenant's CRM, to outbound webhooks including the live-session
+  events, to two CSV downloads, and to the partner pull endpoint. Nothing in this
+  document had ever said it was safe to send; the control simply had not been
+  built, and 0.3 listed action 8 as open. The controller should treat the
+  question of what has already reached those destinations as a separate matter
+  from the control now being in place — see 4.10. Section 4.10 also records the
+  one place the quote is still exported deliberately, the claims-defence pack,
+  which was previously an implicit carve-out and is now a written one.
 - **0.3** — Two of the three open risks close, and both remaining CallGuard
   preconditions are met. The control R7 was conditional on now exists: an in-house
   bank-detail redaction running on every transcript before it is stored or sent
@@ -305,6 +317,75 @@ regardless of context; and the verification script fails a run if a bank-length
 run survives anywhere in a transcript, which is action 12 and is to be run against
 real calls under the proposed category list before enablement.
 
+### 4.10 Quotes from the call do not leave the platform *(new in 0.4)*
+
+R5 required that exports and notifications carry the question, the fact of a
+discrepancy and a link back into CallGuard, never the answer content, and rated
+its residual **conditional on that control being implemented and covered by
+test** (action 8). This section records the control, and is written to be checked
+rather than believed.
+
+**What is governed.** A compliance finding carries an `evidence` field. It is not
+a summary: the scoring instruction asks the model for "a direct quote from the
+transcript", so on a firm keeping health in the clear that field holds the
+customer's disclosure in their own words. It is a more exposing artefact than the
+model's `reasoning`, which is already withheld from the adviser feedback email
+for these firms. The reconciliation record's `call_answer` and `evidence` are the
+same kind of thing from the same source.
+
+**Where it was going.** All of these were carrying the quote with no gate:
+
+| Destination | What it wrote |
+|---|---|
+| The firm's CRM — breach task | The finding, then the quote |
+| The firm's CRM — QA record notes | The finding, then the quote |
+| Outbound webhooks, batch scoring | The quote in the event body |
+| Outbound webhooks, live sessions | The same, on a separate code path |
+| Breaches CSV download | The quote and the model's reasoning, as columns |
+| Data Forms CSV download | The quote, beside an answer cell that was already redacted |
+| Partner pull endpoint | The quote and the reasoning, on the same API key as the webhook |
+
+**What now happens.** The quote is removed at each point of exit rather than at
+the point the payload is assembled, so a path added later inherits the control
+instead of having to remember it. The copy kept for delivery retry is the removed
+one, and the retry re-applies the filter in any case, so a delivery queued before
+this shipped cannot replay a quote. What still travels is the checkpoint, its
+severity, and the link — R5's prescribed shape. Where anything was removed the
+payload says so, in words on the CRM surfaces and as a field for machine
+consumers, so a shortened list cannot be mistaken for a call with nothing to
+quote. Where a finding never had a quote nothing is claimed.
+
+**Two gates, and the difference is the destination.** For the firm's own CRM the
+test is whether the firm keeps **health** in the clear: the CRM is the firm's
+customer record and already holds the name and address, so withholding a quote
+there because it might contain a name would protect nothing. For every other
+destination — a webhook endpoint, a downloaded file, an API key's holder — the
+test is whether the firm keeps **any** category in the clear, because none of
+those is a system this assessment can say anything about.
+
+**Where a quote still leaves, deliberately.** The claims-defence pack
+(`GET /journeys/:id/claims-defence`) exports the quote and the reconciliation
+answers, and continues to. It is the artefact produced when an insurer declines
+a claim or a customer complains, and what the customer disclosed is its subject
+matter; a pack without it would not do the job it exists for. It is org-scoped,
+restricted to admin, supervisor and viewer, and generated per sale on request
+rather than pushed anywhere. **This was previously an implicit exception and is
+now a stated one**, so that closing action 8 does not read as a claim that no
+quote ever leaves. The controller should note it as the one route where a
+readable health disclosure is exported by design, under their own decision to
+send such a pack.
+
+**The reconciliation panel is unchanged**, and R3's operational-consequence
+paragraph already contemplates it: a supervisor working a finding sees the flag,
+the question, the application answer and the evidence quote inside the platform.
+That is in-platform, not an export, and nothing here narrows it.
+
+**What this control does not tell you.** It stops the quote leaving from now on.
+It says nothing about what already reached those destinations before it existed,
+which is a question of fact to be established from the delivery records and is
+for the controller and CallGuard to settle together, not for this section to
+assert either way.
+
 ---
 
 ## 5. Data categories
@@ -476,8 +557,21 @@ Exports and email or Slack alerts are routes out of the controlled environment,
 and email is not an appropriate channel for health data.
 Mitigations: exports and alert payloads must carry the question, the fact of a
 discrepancy, and a link back into CallGuard, never the answer content.
-**Residual: low likelihood, medium impact, conditional on that control being
-implemented and covered by test.**
+
+*Updated in 0.4.* That control now exists and is covered by test — **section
+4.10**, action 8 closed. Two things the earlier rating did not say, and should
+have. First, the exposure was wider than the word "export" suggests: the same
+quote was reaching the firm's CRM, outbound webhooks on two separate code paths,
+two file downloads and a partner API, and it was a verbatim quote rather than a
+model's paraphrase. Second, the rating was written as though the control existed;
+it did not, so between 0.2 and 0.4 the operative residual was the inherent one.
+Recording that plainly matters more than a tidy table.
+
+One route remains open by design, the claims-defence pack, and it is now stated
+rather than assumed — see 4.10.
+
+**Residual: low likelihood, medium impact**, for every route except the
+claims-defence pack, whose export is a controller decision taken per sale.
 
 ### R6. Data subject rights are harder to satisfy
 
@@ -540,7 +634,8 @@ firm. Each tenant is a separate controller and cannot be enabled by default.
 | 5 | Decide whether the residual risk in 4.7 and section 11 is acceptable, or whether to revert to the two-tier design of 0.1 | Controller + CallGuard |
 | 6 | Sign this assessment | Controller |
 | 7 | Confirm and record the current retention position of both sub-processors, and add them to the controller-facing sub-processor list | CallGuard |
-| 8 | Implement and test the control that exports and alerts carry no answer content (R5) | CallGuard |
+| 8 | ~~Implement and test the control that exports and alerts carry no answer content (R5)~~ **Done, 10 September 2026.** Described in 4.10 and covered by test at each exit. Two things the controller should read rather than take on trust: the quote had been leaving ungated until this was built, so what already reached those destinations is a separate question of fact (4.10); and the claims-defence pack still exports it deliberately, which is now stated rather than implied. | CallGuard |
+| 8b | Establish, from the delivery records, what call content has already been written to the CRM, to outbound webhooks and to downloaded files for firms keeping a category in the clear — and decide together what, if anything, follows | Controller + CallGuard |
 | 9 | Confirm subject access export includes the reconciliation record (R6) | CallGuard |
 | 10 | ~~Do **not** permit the number category until in-house digit-run redaction is in place and verified (R7)~~ **Done, 3 August 2026.** The control is described in 4.9 and validated against the firm's real transcripts. Permitting the category for this firm remains conditional on actions 6 and 12. | CallGuard |
 | 11 | ~~Decide and implement who can read an unredacted transcript within a firm (R3)~~ **Done, 3 August 2026: the `admin` role only**, enforced at the API for firms keeping any category in the clear. Transcript content is withheld from every other role rather than partially masked; see R3. | Controller + CallGuard |

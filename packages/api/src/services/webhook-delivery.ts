@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import { query, queryOne } from '../db/client.js';
 import { decrypt } from './crypto.js';
+import { organisationKeepsUnredacted, withheldBreachEvidence } from './transcript-access.js';
 import type { WebhookPayload, WebhookCallScoredPayload, WebhookJourneyScoredPayload } from '@callguard/shared';
 
 interface ApiKeyWebhookConfig {
@@ -18,7 +19,7 @@ interface ApiKeyWebhookConfig {
 export async function deliverWebhook(
   apiKeyId: string,
   sessionId: string | null,
-  payload: WebhookPayload,
+  rawPayload: WebhookPayload,
 ): Promise<void> {
   const key = await queryOne<ApiKeyWebhookConfig>(
     `SELECT id as api_key_id, organization_id, webhook_url, webhook_secret_encrypted
@@ -35,6 +36,24 @@ export async function deliverWebhook(
     // Partner hasn't configured a webhook - silently skip
     return;
   }
+
+  // DPIA R5, action 8. Here rather than in deliverCallScored below, because
+  // THIS is the function that leaves: three producers reach it, and the other
+  // two are the live-session events (services/stream-worker.ts) that carry the
+  // same verbatim transcript quote. Gating the batch path alone would have left
+  // the control complete on `core` and absent on the tiers that have live
+  // streaming, which is not a property a compliance control may have.
+  //
+  // Gated on ANY permitted category, not health alone: a webhook_url is
+  // whatever endpoint the tenant typed, so the "the CRM already holds their
+  // name" argument that narrows the Zoho gate does not apply. See the
+  // two-gates note in services/transcript-access.ts.
+  //
+  // Applied before the row is written, so a retry replays the withheld copy.
+  const payload = withheldBreachEvidence(
+    rawPayload,
+    await organisationKeepsUnredacted(key.organization_id),
+  );
 
   const deliveryRow = await queryOne<{ id: string }>(
     `INSERT INTO webhook_deliveries
@@ -133,6 +152,9 @@ export async function deliverCallScored(
   organizationId: string,
   payload: WebhookCallScoredPayload | WebhookJourneyScoredPayload,
 ): Promise<void> {
+  // No R5 filter here on purpose — deliverWebhook applies it for every
+  // producer, including the two live-session events that never pass through
+  // this function.
   const keys = await query<{ id: string }>(
     `SELECT id FROM api_keys
        WHERE organization_id = $1 AND revoked_at IS NULL AND webhook_url IS NOT NULL`,

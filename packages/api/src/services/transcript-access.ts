@@ -138,3 +138,96 @@ export function withheldTranscript<T extends Record<string, unknown>>(
   if (had && access.restricted) out.transcript_restricted = true;
   return out as T & { transcript_restricted?: boolean };
 }
+
+// ── What leaves the platform in a scored payload (DPIA R5, action 8) ──────────
+//
+// `breaches[].evidence` is a VERBATIM TRANSCRIPT QUOTE — services/scoring.ts
+// asks the model for "a direct quote from the transcript as evidence". On a
+// tenant keeping health in the clear that quote is the customer's health
+// disclosure, word for word, and it is strictly more exposing than the model's
+// `reasoning`, which the feedback email already withholds from exactly these
+// tenants (services/journey-feedback.ts).
+//
+// It was travelling to four kinds of destination that leave the controlled
+// environment: the tenant's Zoho CRM (a breach Task's description and the QA
+// record's notes field, services/zoho.ts), any tenant-configured webhook
+// (services/webhook-delivery.ts), the two CSV downloads (routes/breaches.ts,
+// routes/capture.ts), and the partner pull endpoint that is the webhook's
+// documented companion (routes/ingestion.ts). None is assessed as a recipient
+// of health data anywhere in the DPIA, whose sub-processor list names Deepgram
+// and Anthropic — not a CRM, and not an endpoint we cannot see.
+//
+// R5: "exports and alert payloads must carry the question, the fact of a
+// discrepancy, and a link back into CallGuard, never the answer content."
+// The label is the question, the severity is the fact, the review link is
+// already in the payloads that have one. The quote is the answer content.
+//
+// CUT AT THE EXIT, NOT AT THE BUILD. Six call sites build these payloads but
+// far fewer deliver them, and every delivery function has an organizationId to
+// hand. Applying it at the exit also means the copy persisted for retry
+// (zoho_deliveries / webhook_deliveries carry the payload) is the withheld one,
+// so a replay months later cannot re-send what this removed.
+//
+// TWO GATES, AND THE DIFFERENCE IS THE DESTINATION, NOT THE DATA.
+//
+//   Zoho     — `organisationKeepsHealthUnredacted`. The CRM already holds the
+//              customer's name and address by definition; it IS the firm's
+//              customer record. Withholding a quote there on the grounds it
+//              might contain a name would protect nothing, so health is the
+//              marginal disclosure. Same reasoning the feedback email uses.
+//
+//   Webhook, — `organisationKeepsUnredacted` (ANY permitted category). A
+//   CSV,       webhook_url is whatever endpoint the tenant typed and a CSV is a
+//   pull API   file that goes wherever files go; neither is a system we can say
+//              anything about. The CRM argument does not survive the move to a
+//              destination we cannot see, so an unredacted date of birth or
+//              address in a quote is withheld there too.
+
+/** Empty every `evidence`, top level and inside `breaches[]`. */
+function stripEvidence<P extends object>(payload: P): P {
+  const out = { ...payload } as Record<string, unknown>;
+  if (typeof out.evidence === 'string') out.evidence = '';
+  if (Array.isArray(out.breaches)) {
+    out.breaches = (out.breaches as Array<Record<string, unknown>>).map((b) => ({
+      ...b,
+      evidence: '',
+    }));
+  }
+  return out as P;
+}
+
+/** Does this payload actually carry a quote to withhold? */
+function carriesEvidence(payload: Record<string, unknown>): boolean {
+  if (typeof payload.evidence === 'string' && payload.evidence) return true;
+  if (Array.isArray(payload.breaches)) {
+    return (payload.breaches as Array<Record<string, unknown>>).some((b) => !!b.evidence);
+  }
+  return false;
+}
+
+/**
+ * Strip verbatim transcript quotes from a payload on its way out.
+ *
+ * `withhold` is the caller's gate — see the two-gates note above; this function
+ * deliberately does not choose it, because the right predicate depends on where
+ * the payload is going and only the caller knows that.
+ *
+ * Returns the payload untouched when nothing is withheld, so a tenant whose
+ * transcripts were redacted at source is unaffected and pays no allocation.
+ *
+ * Sets `evidence_withheld` rather than quietly shortening the list: a breach
+ * list with no quotes reads as "the AI had nothing to quote", which is a
+ * different and false statement.
+ */
+export function withheldBreachEvidence<
+  P extends { evidence_withheld?: boolean } & (
+    | { breaches: Array<{ evidence: string }> }
+    | { evidence: string }
+  ),
+>(payload: P, withhold: boolean): P {
+  if (!withhold) return payload;
+  // Nothing to withhold, so do not claim a restriction — same rule as
+  // withheldTranscript above.
+  if (!carriesEvidence(payload as unknown as Record<string, unknown>)) return payload;
+  return { ...stripEvidence(payload), evidence_withheld: true };
+}

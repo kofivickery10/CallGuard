@@ -157,8 +157,18 @@ export interface WebhookCallScoredPayload {
     scorecard_item_id: string;
     scorecard_item_label: string;
     severity: string;
+    // A VERBATIM TRANSCRIPT QUOTE. The scoring prompt asks for "a direct quote
+    // from the transcript as evidence" (services/scoring.ts), so this field
+    // carries the customer's own words, not a paraphrase. Empty string where
+    // there is none — and where it was withheld, see evidence_withheld below.
     evidence: string;
   }>;
+  // True when every quote above was removed before this payload left the
+  // platform, because the organisation keeps health disclosures unredacted
+  // (DPIA R5). Absent means nothing was withheld. A consumer that shows
+  // breaches must say so rather than render a silently quote-less list, which
+  // is indistinguishable from a call the AI found nothing to quote on.
+  evidence_withheld?: boolean;
 }
 
 // Fired when a customer journey finishes scoring (spec §9 — multi-call, not
@@ -191,8 +201,11 @@ export interface WebhookJourneyScoredPayload {
     scorecard_item_id: string;
     scorecard_item_label: string;
     severity: string;
+    /** A verbatim transcript quote — see WebhookCallScoredPayload.breaches. */
     evidence: string;
   }>;
+  /** See WebhookCallScoredPayload.evidence_withheld (DPIA R5). */
+  evidence_withheld?: boolean;
 }
 
 export type WebhookPayload =
