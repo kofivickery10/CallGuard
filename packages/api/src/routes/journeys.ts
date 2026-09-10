@@ -19,6 +19,7 @@ import type {
   JourneyNoteRevision,
   FeedbackStatus,
   FeedbackStatusSummary,
+  RemediationOutcome,
   BreachSeverity,
   ClaimsDefenceResponse,
   ClaimsDefenceHeader,
@@ -539,6 +540,20 @@ journeysRouter.get('/:id', requireOrgView, async (req, res, next) => {
 // answered, here it is" from "the customer answered, the value was redacted"
 // rather than reading a bare null as silence.
 //
+// PRIVACY, second field: journey_feedback_items.remediation_note (CG-26) is
+// free text an adviser typed about what they did for this customer, and it is
+// exported unredacted. It is here on the same footing as the case notes (CG-9)
+// already in the pack — staff-written prose about this case, for a reader of
+// this case — and the pack already names the customer and their number in its
+// header, so it is not a new category of disclosure about the data subject.
+// What it can carry that the machine-derived fields cannot is a third party the
+// adviser mentions in passing ("spoke to his wife"), which is a reason for the
+// limitations bullet below to say plainly whose words these are, not a reason to
+// withhold the answer to the question the pack exists to answer. The adviser's
+// note reaches this route via the tokenised page, which is unauthenticated —
+// this route is not: requireOrgView still applies, and nothing on the adviser's
+// side can read the pack.
+//
 // Deliberately does not surface journeys.coverage — same Phase 2 gate as the
 // board pack (routes/board-pack.ts) — see the TODO in the limitations block
 // below.
@@ -632,17 +647,122 @@ journeysRouter.get('/:id/claims-defence', requireOrgView, async (req, res, next)
     // fields the breaches report template omits today. Ordered severity then
     // recency, matching GET /breaches/report's own (alphabetical-on-severity)
     // ordering, for consistency across the app's reports.
-    const findings = await query<ClaimsDefenceFinding>(
+    //
+    // Each finding also carries what was asked of the adviser and what they
+    // said they did about it (CG-26) — the sixth step of the evidence chain,
+    // and the one that answers "what was done about it?" rather than only "were
+    // you told?".
+    //
+    // The lateral joins on scorecard_item_id, NOT on
+    // journey_feedback_items.breach_id, and that is the whole reason this
+    // survives contact with production. breach_id is ON DELETE SET NULL (087)
+    // and a re-score deletes and recreates this sale's breaches, so joining on
+    // it would drop the adviser's answer from the pack the first time anybody
+    // re-scored the sale — silently, and with the answer still sitting in the
+    // database. (feedback_id, scorecard_item_id) is the durable identity 087
+    // built for exactly this, and it is keyed to the same checkpoint the breach
+    // in front of it is.
+    //
+    // Which row wins, when a sale has been fed back more than once: the most
+    // recent answer the adviser actually gave, and only failing that the most
+    // recent time they were asked. A sale fed back, answered, re-scored and fed
+    // back again must keep showing the answer rather than reverting to silence.
+    const findingRows = await query<
+      Omit<ClaimsDefenceFinding, 'remediation'> & {
+        remediation_guidance: string | null;
+        adviser_name: string | null;
+        told_at: string | null;
+        acknowledged_at: string | null;
+        remediation_outcome: RemediationOutcome | null;
+        remediation_note: string | null;
+        remediated_at: string | null;
+      }
+    >(
       `SELECT b.id, si.label AS scorecard_item_label, b.severity, b.status,
               b.evidence_caveats, b.confirmed_at, b.detected_at,
-              u.name AS confirmed_by_name
+              u.name AS confirmed_by_name,
+              rem.remediation_guidance, rem.remediation_outcome,
+              rem.remediation_note, rem.remediated_at,
+              rem.adviser_name, rem.told_at, rem.acknowledged_at
          FROM breaches b
          JOIN scorecard_items si ON si.id = b.scorecard_item_id
          LEFT JOIN users u ON u.id = b.confirmed_by
+         LEFT JOIN LATERAL (
+           SELECT fi.remediation_guidance, fi.remediation_outcome,
+                  fi.remediation_note, fi.remediated_at,
+                  jf.adviser_name, jf.sent_at AS told_at,
+                  jf.confirmed_at AS acknowledged_at
+             FROM journey_feedback_items fi
+             JOIN journey_feedback jf ON jf.id = fi.feedback_id
+            WHERE jf.journey_id = $1
+              AND fi.scorecard_item_id = b.scorecard_item_id
+            ORDER BY (fi.remediation_outcome IS NOT NULL) DESC,
+                     fi.remediated_at DESC NULLS LAST,
+                     jf.sent_at DESC
+            LIMIT 1
+         ) rem ON TRUE
         WHERE b.journey_id = $1
         ORDER BY b.severity, b.detected_at DESC`,
       [journey.id]
     );
+
+    // Answers given before the current one, read from the finding's own event
+    // history. Every write appends a row rather than replacing one (116), so
+    // "said unreachable, then said put right" is recoverable — and it is a fact
+    // a claims file needs, because it shows persistence that the final answer
+    // alone hides.
+    //
+    // Only the answer and its date survive here; breach_events does not carry
+    // the note, and the column holds only the latest one. Disclosed below
+    // rather than papered over.
+    const answerHistory = findingRows.length
+      ? await query<{ breach_id: string; outcome: RemediationOutcome; created_at: string }>(
+          `SELECT breach_id, to_value AS outcome, created_at
+             FROM breach_events
+            WHERE breach_id = ANY($1::uuid[]) AND event_type = 'remediation_recorded'
+            ORDER BY created_at ASC`,
+          [findingRows.map((f) => f.id)]
+        )
+      : [];
+
+    const findings: ClaimsDefenceFinding[] = findingRows.map((row) => {
+      const {
+        remediation_guidance: guidance,
+        adviser_name: adviserName,
+        told_at: toldAt,
+        acknowledged_at: acknowledgedAt,
+        remediation_outcome: outcome,
+        remediation_note: note,
+        remediated_at: recordedAt,
+        ...finding
+      } = row;
+
+      // No feedback item for this checkpoint on this sale: it was never fed
+      // back. adviser_name and sent_at are NOT NULL on the parent row, so
+      // either both arrived or neither did.
+      if (!adviserName || !toldAt) return { ...finding, remediation: null };
+
+      // The last event restates the answer already shown above it, so it is
+      // dropped rather than repeated. Nothing is dropped where the events are
+      // gone entirely — a re-score cascades them away (006) while the answer
+      // itself survives on the snapshot row.
+      const events = answerHistory.filter((e) => e.breach_id === finding.id);
+      return {
+        ...finding,
+        remediation: {
+          guidance,
+          adviser_name: adviserName,
+          told_at: toldAt,
+          acknowledged_at: acknowledgedAt,
+          outcome,
+          note,
+          recorded_at: recordedAt,
+          earlier_answers: events
+            .slice(0, -1)
+            .map((e) => ({ outcome: e.outcome, recorded_at: e.created_at })),
+        },
+      };
+    });
 
     // 5. Said versus submitted — the latest reconciliation run for this sale,
     // if one exists. No run is a normal case (module not in use, or no
@@ -758,6 +878,21 @@ journeysRouter.get('/:id/claims-defence', requireOrgView, async (req, res, next)
       limitations.push(
         'The case notes in this pack are written by staff at the firm, not produced or verified by CallGuard. They are recorded as stated, cannot be deleted, and any note that was amended shows every version it replaced.'
       );
+    }
+    if (findings.some((f) => f.remediation)) {
+      // The remediation record is the one part of this pack a person asserted
+      // about their own conduct. It has to be read that way, and the pack has to
+      // say so before an insurer or the Ombudsman reads a tidy "Put right" as
+      // something CallGuard established.
+      limitations.push(
+        "Where a finding shows what the adviser did about it, that is the adviser's own account, recorded by them on the link in their feedback email and stored as stated. CallGuard has not verified it against a recording, a document or anything else, and nobody at the firm signs these answers off — an outcome is an assertion by the person who was fed back, not a finding.",
+        "A finding with no answer recorded means the adviser has not answered, never that no action was needed: \"no action needed\" is one of the three answers they can give and appears as such. The date shown against an answer is when it was recorded, not when the work was done — an adviser may be describing a call they made the previous week, and the note is where a date for the work itself can be stated."
+      );
+      if (findings.some((f) => f.remediation?.earlier_answers.length)) {
+        limitations.push(
+          "Where an adviser revised an answer, the earlier answers are shown with the dates they were given. Only the answer and its date are kept for a revised answer — the note that accompanied it is not retained, and any answer given against a finding that a later re-score replaced is no longer recoverable, though the most recent answer survives a re-score."
+        );
+      }
     }
     // TODO(partial-journey-coverage): once Phase 2 ships (false-positive
     // measurement approved per docs/partial-journey-detection.md §6), add a
