@@ -927,6 +927,56 @@ h1, h2, h3, h4, h5 { color: var(--text-primary); font-weight: 700; line-height: 
   color: var(--primary);
 }
 
+/* ─── Cross-link list ────────────────────────────────────────────────────
+   A shared recipe for "here are the sibling pages" blocks. Added for the
+   compare/ cross-links: those pages each had a single inbound link from
+   their hub, which on a crawl-constrained domain is a thin path to the
+   highest-intent pages on the site. Kept generic and token-only so any
+   section can use it instead of inlining another one-off variant. */
+.link-list {
+  list-style: none;
+  padding: 0;
+  margin: 28px 0 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  column-gap: 32px;
+}
+.link-list li {
+  margin: 0;
+  border-top: 1px solid var(--border-light);
+}
+.link-list a {
+  display: block;
+  padding: 14px 2px;
+  text-decoration: none;
+  color: var(--text-primary);
+  font-size: 16px;
+  font-weight: 600;
+  border-radius: var(--radius-btn);
+  transition: color 0.15s ease;
+}
+.link-list a:hover {
+  color: var(--primary);
+}
+.link-list a:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 3px;
+}
+.link-list a .link-note {
+  display: block;
+  margin-top: 3px;
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+.link-list-all {
+  margin: 24px 0 0;
+}
+
+@media (max-width: 768px) {
+  .link-list { column-gap: 0; }
+}
+
 @media (max-width: 768px) {
   .blog-hero { padding: 48px 0 36px; }
   .article-hero { padding: 44px 0 28px; }
@@ -1184,11 +1234,18 @@ h1, h2, h3, h4, h5 { color: var(--text-primary); font-weight: 700; line-height: 
   padding: 22px 28px;
   margin-bottom: 40px;
 }
+/* The TOC heading is an <h2> so the legal pages descend h1 -> h2 without a
+   skip; it must not pick up the section-heading size or spacing from
+   `.legal-body h2`, hence the explicit margin/padding reset. h3 kept in the
+   selector so an older page that still uses one is not restyled. */
+.legal-body .toc h2,
 .legal-body .toc h3 {
   font-size: 13px;
   text-transform: uppercase;
   letter-spacing: 0.6px;
+  margin-top: 0;
   margin-bottom: 12px;
+  padding-top: 0;
   color: var(--text-muted);
   font-weight: 700;
 }

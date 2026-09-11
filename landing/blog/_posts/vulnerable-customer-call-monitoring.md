@@ -103,4 +103,4 @@ Three things, in order.
 
 None of that requires the guidance to change. It requires knowing what was said.
 
-CallGuard AI screens every call for vulnerability indicators against your own scorecard and evidences each finding with a timestamped quote from the transcript. The coaching brief for the adviser is drafted for you and goes out when your reviewer approves it, until you trust the calibration enough to stop checking. If you want to see it run on your own recordings, bring five and we will score them on a 15-minute call.
+CallGuard AI screens every call you select for vulnerability indicators against your own scorecard and evidences each finding with a timestamped quote from the transcript. The coaching brief for the adviser is drafted for you and goes out when your reviewer approves it, until you trust the calibration enough to stop checking. If you want to see it run on your own recordings, bring five and we will score them on a 15-minute call.

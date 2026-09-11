@@ -82,8 +82,18 @@ exit
 ```bash
 # From your local repo root
 rsync -avz --exclude='DEPLOY.md' \
+  --exclude='blog/_posts' --exclude='blog/_template.html' \
   landing/ youruser@yourhost.example.com:/home/youruser/public_html/
 ```
+
+
+> **Never upload `blog/_posts/` or `blog/_template.html`.** They are build *inputs*,
+> not pages. A whole-folder upload previously published them, and they served 200 to
+> Googlebot — the template as an `index,follow` page titled `{{ogTitle}}`, and every
+> Markdown source as a duplicate of its own published post. `.htaccess` now returns
+> 410 for both, but the excludes above are what stops it recurring. The cPanel and
+> SFTP routes have no exclude list, so if you drag-drop the `blog` folder, delete
+> `_posts` and `_template.html` on the server afterwards.
 
 ---
 

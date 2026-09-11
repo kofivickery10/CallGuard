@@ -1,6 +1,6 @@
 ---
 title: "What is AI call QA and how does it actually work?"
-ogTitle: "What Is AI Call QA and How Does It Actually Work?"
+ogTitle: "What Is AI Call QA and How Does It Work?"
 breadcrumb: "What is AI call QA"
 description: "A plain-English walkthrough of how AI call quality assurance works: speech recognition, large language models and per-tenant calibration."
 ogDescription: "A plain-English walkthrough of how AI call quality assurance works."
@@ -80,7 +80,7 @@ Both modes use the same scorecard and the same calibration layer. The mid-call m
 
 **"It's just transcription with summarisation slapped on top."** Summaries are non-auditable. AI call QA produces a structured per-criterion verdict with the evidence quote underneath. That is the difference between a feature and a compliance tool.
 
-**"It will replace QA staff."** It changes what QA staff do. The volume of calls reviewed goes from 1-5% to 100%, and humans spend their time on the calls the AI flagged for review (low scores, critical breaches, ambiguous evidence) rather than randomly sampling. Most contact centres redeploy QA staff into coaching rather than off the payroll.
+**"It will replace QA staff."** It changes what QA staff do. The volume of calls reviewed goes from a single-digit sample to 100%, and humans spend their time on the calls the AI flagged for review (low scores, critical breaches, ambiguous evidence) rather than randomly sampling. Most contact centres redeploy QA staff into coaching rather than off the payroll.
 
 ## Who needs it
 
