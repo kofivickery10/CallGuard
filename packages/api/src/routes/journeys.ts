@@ -5,6 +5,7 @@ import { AppError } from '../middleware/errors.js';
 import { assembleJourney } from '../services/journey.js';
 import { recordAuditEvent } from '../services/audit.js';
 import { latestConfirmedAskSql, openRemediationExistsSql, OPEN_ASK_PREDICATE } from './remediations.js';
+import { feedbackReachedCloserSql } from '../services/journey-feedback.js';
 import { getScoringSettings } from '../services/tenant-settings.js';
 import { pushJourneyScoreUpdate } from '../services/score-writeback.js';
 import { deriveSeverity, isItemPass, callPasses } from '@callguard/shared';
@@ -77,12 +78,22 @@ export const SALE_DATE_SQL = `COALESCE(
 // confirmed is chasing the wrong thing. 'acknowledged' now means acknowledged
 // with nothing outstanding behind it, which is what a reader always took it to
 // mean and what it did not previously say.
+//
+// Every branch, and every figure below read off the same rounds, counts only
+// feedback that reached the adviser the sale is credited to
+// (feedbackReachedCloserSql). A round sent to someone the sale no longer credits
+// stays on the record — and in the remediation backlog, under whoever was asked
+// — but it does not make the sale fed back, awaiting or acknowledged.
+const REACHED_CLOSER_SQL = feedbackReachedCloserSql('f');
+const CLOSER_FEEDBACK_WHERE = `f.journey_id = j.id AND ${REACHED_CLOSER_SQL}`;
+
 const FEEDBACK_STATUS_SQL = `CASE
         WHEN EXISTS (SELECT 1 FROM journey_feedback f
-                      WHERE f.journey_id = j.id AND f.confirmed_at IS NULL) THEN 'awaiting'
-        WHEN ${openRemediationExistsSql('j')} THEN 'awaiting_remediation'
+                      WHERE f.journey_id = j.id AND f.confirmed_at IS NULL
+                        AND ${REACHED_CLOSER_SQL}) THEN 'awaiting'
+        WHEN ${openRemediationExistsSql('j', REACHED_CLOSER_SQL)} THEN 'awaiting_remediation'
         WHEN EXISTS (SELECT 1 FROM journey_feedback f
-                      WHERE f.journey_id = j.id) THEN 'acknowledged'
+                      WHERE ${CLOSER_FEEDBACK_WHERE}) THEN 'acknowledged'
         ELSE 'not_fed_back'
       END`;
 
@@ -90,7 +101,7 @@ const FEEDBACK_STATUS_SQL = `CASE
 // is outstanding, otherwise the most recent confirmed one.
 const FEEDBACK_SENT_AT_SQL = `(
         SELECT f.sent_at FROM journey_feedback f
-         WHERE f.journey_id = j.id
+         WHERE ${CLOSER_FEEDBACK_WHERE}
          ORDER BY (f.confirmed_at IS NULL) DESC, f.sent_at DESC
          LIMIT 1)`;
 
@@ -104,17 +115,17 @@ const FEEDBACK_SENT_AT_SQL = `(
 // sale's most recent confirmation says August.
 const OPEN_REMEDIATIONS_SQL = `(
         SELECT COUNT(*)::int
-          FROM (${latestConfirmedAskSql('f.journey_id = j.id')}) latest_ask
+          FROM (${latestConfirmedAskSql(CLOSER_FEEDBACK_WHERE)}) latest_ask
          WHERE ${OPEN_ASK_PREDICATE})`;
 
 const OLDEST_REMEDIATION_DAYS_SQL = `(
         SELECT FLOOR(EXTRACT(EPOCH FROM (now() - MIN(latest_ask.confirmed_at))) / 86400)::int
-          FROM (${latestConfirmedAskSql('f.journey_id = j.id', 'fi.remediation_outcome, fi.remediation_guidance, f.confirmed_at')}) latest_ask
+          FROM (${latestConfirmedAskSql(CLOSER_FEEDBACK_WHERE, 'fi.remediation_outcome, fi.remediation_guidance, f.confirmed_at')}) latest_ask
          WHERE ${OPEN_ASK_PREDICATE})`;
 
 const FEEDBACK_CONFIRMED_AT_SQL = `(
         SELECT f.confirmed_at FROM journey_feedback f
-         WHERE f.journey_id = j.id AND f.confirmed_at IS NOT NULL
+         WHERE ${CLOSER_FEEDBACK_WHERE} AND f.confirmed_at IS NOT NULL
          ORDER BY f.confirmed_at DESC
          LIMIT 1)`;
 
@@ -283,7 +294,8 @@ journeysRouter.get('/', requireOrgView, async (req, res, next) => {
               COUNT(*)::text AS count,
               MAX(CASE WHEN NOT EXISTS (
                     SELECT 1 FROM journey_feedback f2
-                     WHERE f2.journey_id = j.id AND f2.confirmed_at IS NULL)
+                     WHERE f2.journey_id = j.id AND f2.confirmed_at IS NULL
+                       AND ${feedbackReachedCloserSql('f2')})
                   THEN NULL
                   ELSE FLOOR(EXTRACT(EPOCH FROM (now() - (${FEEDBACK_SENT_AT_SQL}))) / 86400)
               END)::text AS oldest_awaiting_days,

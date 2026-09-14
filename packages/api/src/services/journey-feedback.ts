@@ -79,6 +79,49 @@ export async function resolveAdviser(journeyId: string): Promise<AdviserTarget> 
   return { userId: row.agent_id, name, email: row.user_email, problem: null };
 }
 
+/**
+ * SQL: did this feedback round reach the adviser the sale is credited to now?
+ *
+ * The credited adviser is resolveAdviser's, read live: the wrap-up call's adviser
+ * (services/wrap-up.ts decides which call that is). A round counts when
+ *   - a supervisor chose its recipient (recipient_source = 'manual'). That pick
+ *     is the firm saying who sold (migration 111); refusing it would leave a
+ *     deliberately corrected sale reading "not fed back" with no way to clear it;
+ *   - the sale has no attributable adviser, so there is nobody to disagree with;
+ *   - it went to that adviser: by user id where both sides have one, otherwise by
+ *     name, because advisers often have no account at all (061).
+ *
+ * WHY: the wrap-up can move after feedback is sent — a re-score, or
+ * scripts/rederive-wrap-up.ts — and a round confirmed by whoever it went to then
+ * reads as the sale being fed back while the adviser now credited was never told:
+ * the "looks complete, proves nothing" record migration 111 exists to prevent.
+ * Such a round stays on the record and in the panel; it just does not settle the
+ * sale. The remediation backlog does not use this — an ask is owed by whoever
+ * was asked (routes/remediations.ts).
+ *
+ * @param f alias of the journey_feedback row in the enclosing query.
+ */
+export function feedbackReachedCloserSql(f: string): string {
+  return `(${f}.recipient_source = 'manual' OR EXISTS (
+          SELECT 1 FROM (
+            SELECT rc_c.agent_id, COALESCE(rc_u.name, rc_c.agent_name) AS name
+              FROM journey_calls rc_jc
+              JOIN calls rc_c ON rc_c.id = rc_jc.call_id
+              LEFT JOIN users rc_u ON rc_u.id = rc_c.agent_id
+             WHERE rc_jc.journey_id = ${f}.journey_id
+             ORDER BY (rc_jc.role = 'wrap_up') DESC,
+                      CASE WHEN rc_jc.role = 'wrap_up'
+                           THEN COALESCE(rc_c.call_date, rc_c.created_at) END ASC,
+                      COALESCE(rc_c.call_date, rc_c.created_at) DESC
+             LIMIT 1
+          ) closer
+          WHERE (closer.agent_id IS NULL AND closer.name IS NULL)
+             OR CASE WHEN closer.agent_id IS NOT NULL AND ${f}.adviser_user_id IS NOT NULL
+                     THEN ${f}.adviser_user_id = closer.agent_id
+                     ELSE lower(btrim(${f}.adviser_name)) = lower(btrim(closer.name))
+                END))`;
+}
+
 export interface FeedbackRecipient {
   id: string;
   name: string;
@@ -237,6 +280,8 @@ export interface FeedbackRow {
   token_expires_at: string;
   recipient_source: RecipientSource;
   suggested_adviser_user_id: string | null;
+  /** False when this round went to someone the sale is no longer credited to. */
+  reached_adviser: boolean;
 }
 
 export async function latestFeedback(
@@ -246,16 +291,24 @@ export async function latestFeedback(
   return queryOne<FeedbackRow>(
     `SELECT id, journey_id, adviser_user_id, adviser_name, adviser_email,
             sent_by, sent_at, message, confirmed_at, token_expires_at,
-            recipient_source, suggested_adviser_user_id
-       FROM journey_feedback
+            recipient_source, suggested_adviser_user_id,
+            ${feedbackReachedCloserSql('f')} AS reached_adviser
+       FROM journey_feedback f
       WHERE organization_id = $1 AND journey_id = $2
       ORDER BY sent_at DESC LIMIT 1`,
     [organizationId, journeyId]
   );
 }
 
-/** Where the recipient came from. Widened, not replaced, if a CRM owner lands. */
-export type RecipientSource = 'default_last_caller' | 'manual';
+/**
+ * Where the recipient came from. Widened, not replaced, if a CRM owner lands.
+ *
+ * 'default_closing_adviser' is what every default send records since migration
+ * 117: resolveAdviser picks the wrap-up call's adviser, and the wrap-up is no
+ * longer simply the last call. 'default_last_caller' remains only on rows sent
+ * before that, where it is what they were.
+ */
+export type RecipientSource = 'default_closing_adviser' | 'default_last_caller' | 'manual';
 
 export interface SendResult {
   feedbackId: string;
@@ -465,7 +518,7 @@ export async function sendFeedback(input: {
   const recipientSource: RecipientSource =
     adviserUserId !== null && adviserUserId !== undefined && adviserUserId !== suggested.userId
       ? 'manual'
-      : 'default_last_caller';
+      : 'default_closing_adviser';
 
   if (!adviser.email) {
     throw new Error(
