@@ -17,6 +17,7 @@ import { maybeStartJourneyCapture } from '../../services/capture-runs.js';
 import { maybeStartReconciliation } from '../../services/reconciliation-runs.js';
 import { buildCombinedTranscript, resolveSourceCallIndex } from '../../services/journey-transcript.js';
 import { assessJourneyCoverage, computeStructuralCorroboration, resolveCoverage } from '../../services/journey.js';
+import { setWrapUpRole } from '../../services/wrap-up.js';
 import { detectProductsFromTranscript } from '../../services/product-resolution.js';
 import { isItemPass, deriveSeverity, callPasses, resolveBranchWithSource, isNoScoreCrmStage } from '@callguard/shared';
 import {
@@ -76,6 +77,16 @@ export async function processScoreJourney(job: Job<ScoreJourneyJobData>) {
   await query("UPDATE journeys SET status = 'scoring', updated_at = now() WHERE id = $1", [journeyId]);
 
   try {
+    // Settle the wrap-up before anything reads it. Assembly may have chosen
+    // before the calls were hydrated and their durations known, and a sale
+    // assembled under the old latest-call rule is corrected when it re-scores.
+    const wrapUpMove = await setWrapUpRole({ query }, journeyId);
+    if (wrapUpMove.previous && wrapUpMove.chosen !== wrapUpMove.previous) {
+      console.log(
+        `[ScoreJourney] ${journeyId}: wrap-up moved from call ${wrapUpMove.previous} to ${wrapUpMove.chosen}`
+      );
+    }
+
     const journeyCalls = await query<JourneyCallRow>(
       `SELECT c.id, jc.role, c.call_date, c.created_at, c.agent_id, c.agent_name,
               c.transcript_text, c.speaker_attribution_confidence, c.speaker_integrity_flag
