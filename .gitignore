@@ -69,5 +69,5 @@ packages/web/.ds-types/
 
 # Impeccable design skill: local working state (critique snapshots, live mode,
 # review captures, build state). Only the shared config is committed.
-.impeccable/*
-!.impeccable/config.json
+**/.impeccable/*
+!**/.impeccable/config.json
