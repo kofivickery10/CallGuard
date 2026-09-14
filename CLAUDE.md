@@ -126,3 +126,39 @@ source of brand decisions. CallGuard already has a design system, so:
 
 To update it, re-copy `.claude/skills/ui-ux-pro-max/` from the upstream repo (skip
 `scripts/tests/`) and change `${CLAUDE_PLUGIN_ROOT}/.claude/skills/` to `.claude/skills/` in its SKILL.md.
+
+### The `impeccable` skill: use it, but our design system wins
+
+`.claude/skills/impeccable/` (vendored from [pbakaus/impeccable](https://github.com/pbakaus/impeccable),
+Apache-2.0) gives `/impeccable audit | critique | polish | harden | …`, four helper agents
+(`.claude/agents/impeccable-*.md`) and a design-detector hook in `.claude/settings.json` that
+scans UI files after every Edit/Write and again on Stop. Its launcher (`scripts/impeccable`)
+downloads a checksum-verified engine binary to `~/.impeccable/bin/` on first run.
+
+It is written to push for bold, distinctive design. CallGuard's app UI is its "Operate" mode
+and already has a design system, so:
+
+- **BRAND_GUIDELINES.md / DESIGN_SYSTEM.md and the implemented tokens are the design authority.**
+  Treat them as the incumbent system: refine and extend it, never replace it. No redesign or
+  "replacement visual world" flows.
+- **Don't create a second source of truth.** Never run `init`, `document` or `extract` to write
+  `PRODUCT.md`, `DESIGN.md` or `.impeccable/design.json` without asking first. If asked, derive them
+  from our docs, not from the skill's interview or taste.
+- `bolder`, `colorize`, `typeset`, `delight`, `animate` and `overdrive` may not introduce colours,
+  fonts, gradients, glows or motion outside the tokens and component recipes.
+- **Good uses:** `audit`, `critique`, `polish`, `harden`, `clarify`, `adapt`, `layout`, `onboard`
+  (empty and first-run states), all within the tokens.
+- **Monorepo:** run `scripts/impeccable context` from `packages/web` or `packages/admin-web`.
+  At the repo root it only asks which app to target. Run `scripts/impeccable detect packages/web/src`
+  from the **repo root**, though: the shared `.impeccable/config.json` lives there, and a scan
+  started inside a package ignores it and re-flags sanctioned exceptions.
+- **Hook findings:** fix real problems. A finding that contradicts a documented brand choice is a
+  sanctioned exception. Suppress it with `scripts/impeccable hooks ignore-value <rule> <value>
+  --reason "BRAND_GUIDELINES.md: …"`, which writes the tracked `.impeccable/config.json`.
+  `ignore-rule` / `ignore-file` need the user's approval. `scripts/impeccable hooks off` disables
+  the hook for the project.
+
+Never run `npx impeccable install` or `update`: they write into other harness folders and
+`settings.local.json`. To update, re-copy upstream's `.claude/skills/impeccable/`,
+`.claude/agents/impeccable-*.md` and the hook block of `.claude/settings.json`, then add its
+`LICENSE` and `NOTICE.md` into the skill folder.
