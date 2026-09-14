@@ -110,3 +110,19 @@ Non-negotiables (the rest is in the docs):
 
 The implemented tokens in `packages/web/tailwind.config.js` + `src/index.css` are the
 source of truth; keep the docs in step with them.
+
+### The `ui-ux-pro-max` skill is advisory only
+
+`.claude/skills/ui-ux-pro-max/` (vendored from
+[nextlevelbuilder/ui-ux-pro-max-skill](https://github.com/nextlevelbuilder/ui-ux-pro-max-skill), MIT)
+is useful for UX, accessibility, chart and stack-specific checks. It is **not** a
+source of brand decisions. CallGuard already has a design system, so:
+
+- **Never** use its `--design-system` generator's palettes, fonts or "styles" (glassmorphism,
+  OLED dark, etc.) in CallGuard UI, and never run `--persist` (it writes design files into the repo).
+- Where it conflicts with BRAND_GUIDELINES.md / DESIGN_SYSTEM.md, **our docs win**.
+- Good uses: `--domain ux` (a11y, forms, touch targets), `--domain chart`, `--stack react` /
+  `--stack html-tailwind`, and the pre-delivery checklist in `references/pro-rules.md`.
+
+To update it, re-copy `.claude/skills/ui-ux-pro-max/` from the upstream repo (skip
+`scripts/tests/`) and change `${CLAUDE_PLUGIN_ROOT}/.claude/skills/` to `.claude/skills/` in its SKILL.md.
