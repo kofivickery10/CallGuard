@@ -110,3 +110,28 @@ Non-negotiables (the rest is in the docs):
 
 The implemented tokens in `packages/web/tailwind.config.js` + `src/index.css` are the
 source of truth; keep the docs in step with them.
+
+### The design skill: Impeccable
+
+`.claude/skills/impeccable/` (vendored from [pbakaus/impeccable](https://github.com/pbakaus/impeccable)
+v4.3.1, Apache 2.0) is the project's design skill: `/impeccable critique`, `audit`, `polish`,
+`distill`, `harden`, `clarify`, `adapt` and so on. It replaced `ui-ux-pro-max` in Sep 2026 after a
+side-by-side trial on the sale page, where it measured contrast and overflow failures the other
+skill could not see.
+
+- **Our docs still win on the live app.** BRAND_GUIDELINES.md, DESIGN_SYSTEM.md and the tokens are
+  the authority. Impeccable's own craft rules ban things CallGuard does on purpose (the Inter font,
+  coloured left-border callouts, uppercase labels above headings, progress rings); follow ours
+  unless the user has explicitly asked for a redesign that sets them aside.
+- **Critique and audit need the running app with data.** Its source-only `detect` cannot resolve
+  Tailwind token classes and reports nothing on this codebase; the useful findings come from the
+  in-page scan. Run the app against the **local** database only — the repo `.env` points at production.
+- **No automatic hooks.** Don't run `/impeccable hooks on` without asking. If it is ever enabled,
+  first ignore `overused-font` (Inter) and `side-tab`, and the `text-nav-label` size under `undersized-ui-text`.
+- **Don't create a competing design doc.** Don't run `/impeccable document` (it writes `DESIGN.md`)
+  unless reconciling it with DESIGN_SYSTEM.md is the task. `PRODUCT.md` (product facts) is fine.
+- **It downloads its engine.** On first run the launcher fetches a compiled binary from the
+  pbakaus/impeccable GitHub releases into `~/.impeccable/bin/` and verifies its checksum.
+
+Its working files live in `.impeccable/` (gitignored apart from `config.json`). To update it,
+re-copy `.claude/skills/impeccable/` from the upstream repo's built `.claude/skills/impeccable/`.

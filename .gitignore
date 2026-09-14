@@ -66,3 +66,8 @@ packages/web/.ds-css/
 # design-sync generated types entry (see .design-sync/prepare.sh)
 /index.d.ts
 packages/web/.ds-types/
+
+# Impeccable design skill: local working state (critique snapshots, live mode,
+# review captures, build state). Only the shared config is committed.
+.impeccable/*
+!.impeccable/config.json
