@@ -12,7 +12,7 @@ uploads/
 # agent briefs below are shared project config, not user-specific state.
 .claude/*
 !.claude/agents/
-# Vendored project skills (e.g. ui-ux-pro-max, MIT) — shared like the agents.
+# Vendored project skills — shared like the agents.
 !.claude/skills/
 
 # Still ignored by the rule above, and deliberately: settings.local.json holds
