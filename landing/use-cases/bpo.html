@@ -246,9 +246,9 @@
   <section class="section">
     <div class="container">
       <span class="section-tag">Live and embedded</span>
-      <h2 class="section-h2">Score the call <span class="accent">while it's still happening.</span></h2>
+      <h2 class="section-h2">Flag the breach <span class="accent">while the call is still happening.</span></h2>
       <p class="lead">
-        Stream audio live from your dialler over our WebSocket protocol. Live transcript builds as it is spoken. Every 30 seconds the AI reviews the rolling transcript and emits high-confidence breach alerts via webhook, HMAC-signed once you set a signing secret, to your dialler or CRM.
+        Stream audio live from your dialler over our WebSocket protocol. Live transcript builds as it is spoken. Every 30 seconds the AI reviews the rolling transcript, and a breach is sent only when the model rates it at 0.75 confidence or higher: over the stream, or as a webhook to your own systems, HMAC-signed once you set a signing secret.
       </p>
 
       <div class="feature-grid feature-grid-2">
