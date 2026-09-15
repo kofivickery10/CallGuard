@@ -20,7 +20,12 @@ interface CallScoreRow {
 
 interface ItemScoreRow {
   scorecard_item_id: string;
-  normalized_score: number;
+  // NULL for na and manual items, which carry no score (migration 040).
+  normalized_score: number | null;
+  // 'pass' | 'fail' is a verdict. 'manual_review' is a checkpoint held for a
+  // person — possibly with the AI's provisional score attached — and 'na' did
+  // not apply. Neither is a verdict an alert may report.
+  result: string | null;
   label: string;
 }
 
@@ -73,7 +78,7 @@ export async function evaluateAlertsForCall(
     );
     if (callScore) {
       itemScores = await query<ItemScoreRow>(
-        `SELECT cis.scorecard_item_id, cis.normalized_score, si.label
+        `SELECT cis.scorecard_item_id, cis.normalized_score, cis.result, si.label
            FROM call_item_scores cis
            JOIN scorecard_items si ON si.id = cis.scorecard_item_id
           WHERE cis.call_score_id = $1`,
@@ -217,6 +222,13 @@ function evaluateRule(
       const threshold = Number(rule.trigger_config.threshold);
       const item = itemScores.find((s) => s.scorecard_item_id === itemId);
       if (!item) return null;
+      // Only a verdict can fail. A held checkpoint's provisional score is the
+      // AI's suggestion awaiting a reviewer (score.ts keeps it out of the
+      // weighted score and the breach register for the same reason), and a
+      // manual or na item has a NULL score that Number() would read as 0 —
+      // either way "Item failed" would reach the firm before anyone decided it.
+      if (item.result !== 'pass' && item.result !== 'fail') return null;
+      if (item.normalized_score == null) return null;
       if (Number(item.normalized_score) >= threshold) return null;
       return {
         title: `Item failed: ${item.label}`,
