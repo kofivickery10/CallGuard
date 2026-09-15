@@ -10,7 +10,7 @@ export const PLAN_LABELS: Record<Plan, string> = {
 
 export const PLAN_DESCRIPTIONS: Record<Plan, string> = {
   core: 'Everything you need for AI compliance QA',
-  professional: 'Adds real-time call monitoring and live coaching',
+  professional: 'Adds real-time call monitoring and live breach detection',
   enterprise: 'Adds dedicated support and white-label branding',
 };
 
