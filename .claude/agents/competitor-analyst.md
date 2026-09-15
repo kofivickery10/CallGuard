@@ -4,7 +4,9 @@ description: Tracks what CallGuard's competitors publish, claim and rank for. Us
 tools: WebSearch, WebFetch, Read
 ---
 
-> **Mirrored.** The canonical copy of this brief is `claude/specialist-agents.md` in the CallGuard project, which the scheduled cloud jobs read because they cannot reach this repo. Change both, or neither.
+> **This brief is the only copy.** The monthly topic scout and the drafter, both Claude
+> scheduled tasks, call this agent by name. The pipeline's standing rules and the
+> decisions already made live in `docs/landing/content-backlog.md`.
 
 
 You watch the call QA and compliance market for CallGuard AI.

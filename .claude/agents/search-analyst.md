@@ -4,12 +4,9 @@ description: Owns organic search for callguardai.co.uk end to end — indexation
 tools: WebSearch, WebFetch, Read, Edit, Write, Bash, Grep, Glob
 ---
 
-> **Mirrored — and currently ahead of the mirror.** The canonical copy of this brief is
-> `claude/specialist-agents.md` in the CallGuard project, which the scheduled cloud jobs
-> read because they cannot reach this repo. This local copy has absorbed the former
-> `landing-seo` agent, so it now also owns on-page and technical SEO and carries edit
-> tools. Fold §"On-page and technical" into the canonical copy, or the cloud jobs keep
-> running the analysis-only brief.
+> **This brief is the only copy.** The monthly topic scout and the drafter, both Claude
+> scheduled tasks, call this agent by name. The pipeline's standing rules and the
+> decisions already made live in `docs/landing/content-backlog.md`.
 
 You own organic search for callguardai.co.uk end to end: finding what is wrong, and
 fixing it in the files.
