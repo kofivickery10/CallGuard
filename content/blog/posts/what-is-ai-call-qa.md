@@ -6,7 +6,7 @@ description: "A plain-English walkthrough of how AI call quality assurance works
 ogDescription: "A plain-English walkthrough of how AI call quality assurance works."
 schemaDescription: "A plain-English walkthrough of how AI call quality assurance works."
 cardTag: "Foundations · AI call QA"
-cardSummary: "A plain-English walkthrough of how speech recognition, large language models and per-tenant calibration combine to score every call your team takes against your scorecard."
+cardSummary: "A plain-English walkthrough of how speech recognition, large language models and per-tenant calibration combine to score your team's calls against your scorecard."
 order: 5
 date: "2026-05-05"
 updated: "2026-09-15"
@@ -29,7 +29,7 @@ If you have ever sat through a "QA round-up" meeting where a supervisor reviewed
 
 AI call quality assurance is the use of speech recognition combined with large language models to transcribe and score every call your team takes against a structured scorecard. Every call. Not a sample.
 
-The output is the same shape as a manual QA review: pass / fail per criterion, an overall weighted score, an evidence quote pulled from the transcript that justifies each verdict, and a coaching draft for the agent. The difference is that you get this output for 100% of calls shortly after the call ends, rather than for 1% to 5% of calls inside a few weeks.
+The output is the same shape as a manual QA review: pass / fail per criterion, an overall weighted score, the transcript evidence each verdict was decided on, or a note that none was found, and a coaching draft for the agent. The difference is that you get this output for every call you score, shortly after it ends, rather than for a small sample weeks later.
 
 For regulated voice work, like FCA-regulated financial advice or contact-centre outbound, the leap matters more than it sounds. Manual sampling is statistically blind to the calls outside the sample. AI scoring is not.
 

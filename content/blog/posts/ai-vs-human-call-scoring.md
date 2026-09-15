@@ -52,7 +52,7 @@ We sell an AI call scoring product, so this should be the easiest argument in th
 
 The model that works best in production is roughly this division of labour:
 
-**AI scores 100% of calls automatically.** Per-criterion verdict, evidence quote, breach flag, coaching draft. This is the volume layer. It runs every minute as new calls land, surfaces the calls that need attention, and produces the audit trail.
+**AI scores every call or sale automatically.** Per-criterion verdict, transcript evidence where there is any, breach flag, coaching draft. This is the volume layer. It runs as new calls land, surfaces the calls that need attention, and produces the audit trail.
 
 **Humans review the calls AI flagged.** Critical breaches, ambiguous evidence, low scores on items that look surprising. The reviewer either confirms the AI verdict (which trains the model) or corrects it (which corrects the model). Reviewers spend their time on the high-leverage calls instead of randomly sampling.
 
@@ -98,7 +98,7 @@ The answers usually point to "AI does the volume, humans do the judgement, and t
 
 ## What CallGuard AI thinks the right shape is
 
-We build for the model where AI scores 100% of calls and humans calibrate the edge cases that matter. The product is designed around that division of labour: any AI verdict can be corrected by a compliance officer, choosing Pass or Fail and adding a reason if they want to, and that correction becomes one of the examples the AI is shown the next time it scores that criterion; the dashboard surfaces the calls that need human attention rather than burying them in volume.
+We build for the model where AI scores every call or sale and humans calibrate the edge cases that matter. The product is designed around that division of labour: any AI verdict can be corrected by a compliance officer, choosing Pass or Fail and adding a reason if they want to, and that correction becomes one of the examples the AI is shown the next time it scores that criterion; the dashboard surfaces the calls that need human attention rather than burying them in volume.
 
 If that division of labour matches how your QA team wants to work, we are probably the right tool. If you want a fully autonomous QA solution that needs no human input, we are not, and we would rather tell you that on the discovery call than after a deployment that drifts. If you are weighing us against other options, see [how CallGuard compares to other call QA tools](/compare/).
 

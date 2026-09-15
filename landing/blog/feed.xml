@@ -33,7 +33,7 @@
     <pubDate>Tue, 05 May 2026 09:00:00 +0100</pubDate>
     <category>How the scoring works</category>
     <dc:creator>Kofi Vickery</dc:creator>
-    <description>A plain-English walkthrough of how speech recognition, large language models and per-tenant calibration combine to score every call your team takes against your scorecard.</description>
+    <description>A plain-English walkthrough of how speech recognition, large language models and per-tenant calibration combine to score your team's calls against your scorecard.</description>
   </item>
 </channel>
 </rss>

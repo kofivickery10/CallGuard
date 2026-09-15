@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta name="description" content="AI call QA for CloudTalk. Point CloudTalk's webhook at CallGuard and every call is transcribed, scored and matched to the right agent automatically." />
+<meta name="description" content="AI call QA for CloudTalk. Point CloudTalk's webhook at CallGuard and every call is transcribed, matched to its agent and ready to score, alone or as a sale." />
 <meta name="theme-color" content="#4a9e6e" />
 <meta name="robots" content="index,follow,max-image-preview:large" />
 <meta name="author" content="CallGuard AI" />
@@ -21,12 +21,12 @@
 <meta property="og:locale" content="en_GB" />
 <meta property="og:url" content="https://callguardai.co.uk/integrations/cloudtalk" />
 <meta property="og:title" content="CloudTalk Call QA Integration | CallGuard AI" />
-<meta property="og:description" content="Point CloudTalk's webhook at CallGuard and every call is transcribed, scored and matched to the right agent automatically." />
+<meta property="og:description" content="Point CloudTalk's webhook at CallGuard and every call is transcribed and matched to its agent, ready to score one by one or as part of a sale." />
 <meta property="og:image" content="https://callguardai.co.uk/og-image.jpg" />
 
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="CloudTalk Call QA Integration | CallGuard AI" />
-<meta name="twitter:description" content="AI call QA for CloudTalk, wired up in minutes." />
+<meta name="twitter:description" content="AI call QA for CloudTalk." />
 <meta name="twitter:image" content="https://callguardai.co.uk/og-image.jpg" />
 
 <script type="application/ld+json">
@@ -75,7 +75,7 @@
           "name": "How do calls get matched to the right agent?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "By CloudTalk's stable numeric agent ID, not by matching names. Dialer webhooks and agent rosters spell the same person differently, for example a webhook sending \"Vish\" where the roster has \"Vish Bhalla\" and CallGuard has \"Vishall Bhalla\", so matching on the ID CloudTalk assigns avoids misattributing a call to the wrong adviser."
+            "text": "By CloudTalk's stable numeric agent ID, not by matching names. Dialler webhooks and agent rosters spell the same person differently, for example a webhook sending \"Vish\" where the roster has \"Vish Bhalla\" and CallGuard has \"Vishall Bhalla\", so matching on the ID CloudTalk assigns avoids misattributing a call to the wrong adviser."
           }
         },
         {
@@ -166,7 +166,7 @@
         AI call QA for <span class="accent">CloudTalk.</span>
       </h1>
       <p class="hero-sub">
-        Point CloudTalk's "Call Ended" webhook at CallGuard and every call is pulled, transcribed, scored against your scorecard and matched to the right agent automatically — no code to deploy, no middleware, no manual export. It's our most deeply built-out dialer integration: tolerant field mapping, agent-ID matching, and full call-history backfill for journey scoring. It sits alongside CallGuard's other <a href="/integrations/">call and meeting integrations</a>.
+        Point CloudTalk's "Call Ended" webhook at CallGuard and every call is pulled, transcribed and matched to the right agent automatically, ready to be scored against your scorecard one by one or as part of a sale, depending on how your firm is set up — no code to deploy, no middleware, no manual export. It's our most deeply built-out dialler integration: tolerant field mapping, agent-ID matching, and full call-history backfill for journey scoring. It sits alongside CallGuard's other <a href="/integrations/">call and meeting integrations</a>.
       </p>
       <div class="hero-ctas">
         <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20CloudTalk%20demo" class="btn btn-primary btn-lg">Request a demo</a>
@@ -262,7 +262,7 @@
         </details>
         <details class="faq-item">
           <summary>How do calls get matched to the right agent?</summary>
-          <div class="faq-body"><p>By CloudTalk's stable numeric agent ID, not by matching names. Dialer webhooks and agent rosters spell the same person differently, for example a webhook sending "Vish" where the roster has "Vish Bhalla" and CallGuard has "Vishall Bhalla", so matching on the ID CloudTalk assigns avoids misattributing a call to the wrong adviser.</p></div>
+          <div class="faq-body"><p>By CloudTalk's stable numeric agent ID, not by matching names. Dialler webhooks and agent rosters spell the same person differently, for example a webhook sending "Vish" where the roster has "Vish Bhalla" and CallGuard has "Vishall Bhalla", so matching on the ID CloudTalk assigns avoids misattributing a call to the wrong adviser.</p></div>
         </details>
         <details class="faq-item">
           <summary>What if CloudTalk's webhook payload doesn't match your default field names?</summary>
