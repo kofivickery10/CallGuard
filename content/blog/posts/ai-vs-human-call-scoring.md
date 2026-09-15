@@ -56,7 +56,7 @@ The model that works best in production is roughly this division of labour:
 
 **Humans review the calls AI flagged.** Critical breaches, ambiguous evidence, low scores on items that look surprising. The reviewer either confirms the AI verdict (which trains the model) or corrects it (which corrects the model). Reviewers spend their time on the high-leverage calls instead of randomly sampling.
 
-**Humans calibrate the AI on edge cases.** When the AI gets it wrong, the correction feeds back into the next batch of scoring. Over weeks and months, the AI converges on your firm's interpretation. This is the single most valuable use of senior QA time in the new world: every correction made by one reviewer becomes a few-shot example used on every future call. [More on how scoring calibration works.](/scoring-calibration)
+**Humans calibrate the AI on edge cases.** When the AI gets it wrong, the correction is kept, and the most recent corrections on that criterion, up to five, are shown to the AI as examples the next time it scores. They are examples rather than rules, but they move the scoring towards your firm's interpretation. This is the single most valuable use of senior QA time in the new world: one reviewer's judgement on a hard case shapes how the next calls on that criterion are scored. [More on how scoring calibration works.](/scoring-calibration)
 
 **Humans deliver coaching.** The AI provides the draft, the human delivers the conversation. The shape of coaching shifts from "we listened to your call yesterday and noticed" to "we have noticed across your last 40 calls that". Coaching becomes data-driven rather than anecdote-driven.
 
