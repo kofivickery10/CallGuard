@@ -14,7 +14,11 @@
    at to read rather than to scan, so getting a keyboard user past
    the ten-link header matters more here than anywhere else. */
 body.blog .skip-link {
-  position: absolute;
+  /* Fixed, not absolute: the page clips horizontal overflow, and an
+     absolutely-positioned link parked above the top of the document is
+     clipped away with it — so it never appeared when tabbed to, which is
+     the only moment it exists for. */
+  position: fixed;
   left: 16px;
   top: -64px;
   z-index: 100;
