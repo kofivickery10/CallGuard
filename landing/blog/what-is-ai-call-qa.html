@@ -71,7 +71,7 @@
       "isPartOf": {"@id": "https://callguardai.co.uk/blog/#blog"},
       "mainEntityOfPage": "https://callguardai.co.uk/blog/what-is-ai-call-qa",
       "articleSection": "Foundations",
-      "wordCount": 1708
+      "wordCount": 1754
     },
     {
       "@type": "Organization",
@@ -206,7 +206,7 @@
 
     <p>This is the bit that distinguishes a serious AI QA system from a wallpaper one. Generic LLM scoring drifts. The model's interpretation of "fair value" or "vulnerable" is whatever happened to be in its training data, not your firm's interpretation.</p>
 
-    <p>The fix is not to fine-tune the model (slow, expensive, often regresses on edge cases). The fix is to feed the model your own corrections, exemplars and prior coaching as context every time it scores. After 50 to 100 corrections from your compliance officer, the AI scores like that compliance officer, not like a generic baseline. That is what we mean by per-tenant AI learning, and it is the mechanism that lets one engine serve a financial planning firm, a debt-collection BPO and a customer-support contact centre without each customer having to fine-tune anything.</p>
+    <p>The fix is not to fine-tune the model (slow, expensive, often regresses on edge cases). The fix is to feed the model your own corrections, exemplars and prior coaching as context every time it scores. When your compliance officer corrects a verdict, the most recent corrections on that criterion, up to five, are shown to the AI as examples the next time it scores. They are examples rather than rules, and the AI can still reach a different verdict, but the scoring moves towards your compliance officer's reading of the scorecard rather than a generic baseline. That is what we mean by per-tenant AI learning, and it is the mechanism that lets one engine serve a financial planning firm, a debt-collection BPO and a customer-support contact centre without each customer having to fine-tune anything. <a href="/scoring-calibration">More on how scoring calibration works.</a></p>
 
     <h2 id="what-gets-measured">What gets measured<a class="heading-anchor" href="#what-gets-measured" aria-label="Link to this section">#</a></h2>
 
@@ -315,7 +315,7 @@
         <p class="footer-heading" id="footer-product">Product</p>
         <a href="/#how-it-works">How it works</a>
         <a href="/#live">Live &amp; embedded</a>
-        <a href="/#learning">AI learning</a>
+        <a href="/scoring-calibration">Scoring calibration</a>
         <a href="/application-reconciliation">Reconciliation</a>
         <a href="/pricing">Pricing</a>
         <a href="/compare/">Compare</a>

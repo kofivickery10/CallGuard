@@ -81,7 +81,7 @@ The transcript goes to a large language model with your scorecard. The model sco
 
 ### 4. Per-tenant calibration
 
-Your compliance team corrects AI verdicts they disagree with, marks gold-standard calls as exemplars, and provides written guidance through a knowledge base. All three feed into the prompt the next time the AI scores. After 50 to 100 corrections, the AI scores like your senior reviewer rather than a generic baseline. This is what makes AI call QA stick rather than drift.
+Your compliance team corrects AI verdicts they disagree with, marks gold-standard calls as exemplars, and provides written guidance through a knowledge base. All three feed into the prompt the next time the AI scores: the most recent corrections on a criterion, up to five, are shown to it as examples. They are examples rather than rules, so the AI can still disagree, but the scoring moves towards your senior reviewer's reading of the scorecard rather than a generic baseline. This is what makes AI call QA stick rather than drift.
 
 ### 5. Output integration
 
