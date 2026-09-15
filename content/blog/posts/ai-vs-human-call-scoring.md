@@ -68,7 +68,7 @@ Some teams try the no-humans-needed model. Two failure modes show up.
 
 **Drift.** Without human calibration, the AI scores against whatever interpretation it had on day one. As regulations evolve, as your firm's products change, as new edge cases emerge, the AI's scoring no longer reflects your interpretation. Within six months you have systematic scoring that no longer matches the underlying intent of your scorecard.
 
-**Trust collapse.** Without human review of the AI's flagged calls, agents stop trusting the verdicts. "The AI said I failed but I'm not sure why" becomes a daily conversation. The fix is not "explain the AI better" (we do, with evidence quotes); it is "have a human stand behind the verdicts that matter".
+**Trust collapse.** Without human review of the AI's flagged calls, agents stop trusting the verdicts. "The AI said I failed but I'm not sure why" becomes a daily conversation. The fix is not "explain the AI better" (we do, with transcript evidence); it is "have a human stand behind the verdicts that matter".
 
 The teams that get the most value from AI call scoring keep humans in the loop in two specific places: calibrating edge cases, and delivering coaching. They redeploy the QA capacity they would have spent on random sampling into those higher-leverage activities.
 

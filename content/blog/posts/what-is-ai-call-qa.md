@@ -81,7 +81,7 @@ Both modes use the same scorecard and the same calibration layer. The mid-call m
 
 **"It will just give every call a high score."** Without corrections and exemplars to draw on, models do tend toward leniency on subjective items. When your compliance officer corrects a verdict, that correction becomes an example shown to the AI the next time it scores that criterion, so it has your compliance officer's reading to draw on rather than only the scorecard's words.
 
-**"It's just transcription with summarisation slapped on top."** Summaries are non-auditable. AI call QA produces a structured per-criterion verdict with the evidence quote underneath. That is the difference between a feature and a compliance tool.
+**"It's just transcription with summarisation slapped on top."** Summaries are non-auditable. AI call QA produces a structured per-criterion verdict with the transcript evidence underneath. That is the difference between a feature and a compliance tool.
 
 **"It will replace QA staff."** It changes what QA staff do. The volume of calls reviewed goes from 1-5% to 100%, and humans spend their time on the calls the AI flagged for review (low scores, critical breaches, ambiguous evidence) rather than randomly sampling. Most contact centres redeploy QA staff into coaching rather than off the payroll.
 
@@ -93,7 +93,7 @@ Three groups, in roughly this order of urgency:
 
 **Contact centres and BPOs at scale.** Anyone running more than 50 seats hits the same wall: hiring more QA staff does not scale, sample sizes have to drop as call volume rises, and clients increasingly demand programme-level visibility that a monthly PDF report cannot provide. AI scoring breaks the curve.
 
-**Outbound and field sales operations.** Anywhere the regulator can fine you for a single bad call (urgency language, missing consent capture, fair-value failure), the cost of missing one in your sample is asymmetric. AI gives you full coverage on 100% of connected calls.
+**Outbound and field sales operations.** Anywhere a single bad call can become a regulatory problem (urgency language, an objection ignored, a caller who won't give their name), the cost of missing one in your sample is asymmetric. AI makes it practical to score every call rather than a sample.
 
 ## How to evaluate AI call QA software
 
@@ -111,4 +111,4 @@ If you are about to demo three or four products, the questions worth asking are 
 
 ## What this looks like in practice
 
-If you want to see what an AI-scored call looks like end to end (transcript, per-criterion verdicts, evidence quotes, breach register, coaching draft) we run a short demo scoring synthetic calls against a scorecard like yours. [Drop us a line at hello@callguardai.co.uk](mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request) and we will set it up; when you want to try your own recordings, we put a DPA in place first.
+If you want to see what an AI-scored call looks like end to end (transcript, per-criterion verdicts, transcript evidence, breach register, coaching draft) we run a short demo scoring synthetic calls against a scorecard like yours. [Drop us a line at hello@callguardai.co.uk](mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request) and we will set it up; when you want to try your own recordings, we put a DPA in place first.
