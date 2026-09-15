@@ -1,20 +1,22 @@
 <!doctype html>
-<html lang="en">
+<html lang="en-GB">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <meta name="description" content="A plain-English walkthrough of how AI call quality assurance works: speech recognition, large language models and per-tenant calibration." />
 <meta name="theme-color" content="#4a9e6e" />
 <meta name="robots" content="index,follow,max-image-preview:large" />
-<meta name="author" content="CallGuard AI" />
+<meta name="author" content="Kofi Vickery" />
 <title>What Is AI Call QA and How Does It Actually Work? | CallGuard AI</title>
 <link rel="canonical" href="https://callguardai.co.uk/blog/what-is-ai-call-qa" />
 <link rel="icon" href="/favicon.ico" sizes="48x48" />
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 <link rel="manifest" href="/site.webmanifest" />
+<link rel="alternate" type="application/rss+xml" title="CallGuard AI briefings" href="/blog/feed.xml" />
 <link rel="preload" as="font" type="font/woff2" href="/fonts/InterVariable.woff2" crossorigin>
-<link rel="stylesheet" href="/style.css?v=16" />
+<link rel="stylesheet" href="/style.css?v=17" />
+<link rel="stylesheet" href="/blog.css?v=1" />
 
 <meta property="og:type" content="article" />
 <meta property="og:site_name" content="CallGuard AI" />
@@ -22,15 +24,19 @@
 <meta property="og:url" content="https://callguardai.co.uk/blog/what-is-ai-call-qa" />
 <meta property="og:title" content="What Is AI Call QA and How Does It Actually Work?" />
 <meta property="og:description" content="A plain-English walkthrough of how AI call quality assurance works." />
-<meta property="og:image" content="https://callguardai.co.uk/og-image.jpg" />
+<meta property="og:image" content="https://callguardai.co.uk/og/blog-what-is-ai-call-qa.png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta property="og:image:alt" content="What Is AI Call QA and How Does It Actually Work?" />
 <meta property="article:published_time" content="2026-05-05T09:00:00+01:00" />
-<meta property="article:author" content="CallGuard AI" />
+<meta property="article:modified_time" content="2026-09-15T09:00:00+01:00" />
+<meta property="article:author" content="Kofi Vickery" />
 <meta property="article:section" content="Foundations" />
 
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="What Is AI Call QA and How Does It Actually Work?" />
 <meta name="twitter:description" content="A plain-English walkthrough of how AI call quality assurance works." />
-<meta name="twitter:image" content="https://callguardai.co.uk/og-image.jpg" />
+<meta name="twitter:image" content="https://callguardai.co.uk/og/blog-what-is-ai-call-qa.png" />
 
 <script type="application/ld+json">
 {
@@ -45,21 +51,43 @@
       ]
     },
     {
-      "@type": "Article",
+      "@type": "BlogPosting",
       "@id": "https://callguardai.co.uk/blog/what-is-ai-call-qa#article",
       "headline": "What Is AI Call QA and How Does It Actually Work?",
       "description": "A plain-English walkthrough of how AI call quality assurance works.",
       "url": "https://callguardai.co.uk/blog/what-is-ai-call-qa",
       "datePublished": "2026-05-05T09:00:00+01:00",
-      "dateModified": "2026-05-05T09:00:00+01:00",
+      "dateModified": "2026-09-15T09:00:00+01:00",
       "inLanguage": "en-GB",
-      "image": "https://callguardai.co.uk/og-image.jpg",
-      "author": {"@type": "Organization", "name": "CallGuard AI", "url": "https://callguardai.co.uk/"},
+      "image": "https://callguardai.co.uk/og/blog-what-is-ai-call-qa.png",
+      "author": {
+        "@type": "Person",
+        "name": "Kofi Vickery",
+        "jobTitle": "Co-founder, CallGuard AI",
+        "url": "https://callguardai.co.uk/about",
+        "worksFor": {"@id": "https://callguardai.co.uk/#organization"}
+      },
       "publisher": {"@id": "https://callguardai.co.uk/#organization"},
       "isPartOf": {"@id": "https://callguardai.co.uk/blog/#blog"},
       "mainEntityOfPage": "https://callguardai.co.uk/blog/what-is-ai-call-qa",
       "articleSection": "Foundations",
-      "wordCount": 1500
+      "wordCount": 1686
+    },
+    {
+      "@type": "Organization",
+      "@id": "https://callguardai.co.uk/#organization",
+      "name": "CallGuard AI",
+      "legalName": "CallGuard AI Ltd",
+      "url": "https://callguardai.co.uk/",
+      "logo": "https://callguardai.co.uk/brand/svg/callguard-logo-horizontal.svg",
+      "email": "hello@callguardai.co.uk",
+      "address": {
+        "@type": "PostalAddress",
+        "streetAddress": "106 Haytor Avenue",
+        "addressLocality": "Paignton",
+        "postalCode": "TQ4 7TB",
+        "addressCountry": "GB"
+      }
     }
   ]
 }
@@ -74,7 +102,9 @@
   })();
 </script>
 </head>
-<body>
+<body class="blog">
+
+<a class="skip-link" href="#article-start">Skip to the article</a>
 
 <header class="nav" role="banner">
   <div class="container nav-inner">
@@ -94,12 +124,12 @@
       <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
       <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
     </button>
-    <button class="nav-toggle" aria-label="Open menu" aria-controls="mobile-drawer" aria-expanded="false">
+    <button type="button" class="nav-toggle" aria-label="Open menu" aria-controls="mobile-drawer" aria-expanded="false">
       <svg class="icon-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="7"  x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>
       <svg class="icon-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="6" y1="6"  x2="18" y2="18"/><line x1="6" y1="18" x2="18" y2="6"/></svg>
     </button>
   </div>
-  <div class="nav-drawer" id="mobile-drawer" aria-label="Mobile menu">
+  <nav class="nav-drawer" id="mobile-drawer" aria-label="Mobile menu">
     <a href="/#how-it-works">How it works</a>
     <a href="/#live">Live &amp; embedded</a>
     <a href="/#learning">AI learning</a>
@@ -110,22 +140,44 @@
     <a href="/#faq">FAQ</a>
     <a href="https://app.callguardai.co.uk/">Log in</a>
     <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request" class="btn btn-primary">Request a demo</a>
-  </div>
+  </nav>
 </header>
 
 <article class="article">
   <header class="article-hero">
     <div class="container">
-      <div class="crumb"><a href="/">Home</a> · <a href="/blog/">Blog</a> · Foundations</div>
-      <h1>What is AI call QA and how does it actually work?</h1>
-      <p class="article-meta"><span>Published 5 May 2026</span> <span class="post-card-dot">·</span> <span>10 minute read</span> <span class="post-card-dot">·</span> <span>Foundations</span></p>
+      <nav class="crumb" aria-label="Breadcrumb"><a href="/">Home</a> · <a href="/blog/">Blog</a> · <a href="/blog/#foundations">How the scoring works</a></nav>
+      <h1 id="article-start">What is AI call QA and how does it actually work?</h1>
+      <p class="article-meta">
+        <span>Published <time datetime="2026-05-05T09:00:00+01:00">5 May 2026</time></span>
+        <span class="post-card-dot">·</span> <span>Reviewed <time datetime="2026-09-15">15 September 2026</time></span>
+        <span class="post-card-dot">·</span> <span>8 minute read</span>
+      </p>
+      <p class="article-byline">
+        By <a href="https://callguardai.co.uk/about">Kofi Vickery</a>, Co-founder, CallGuard AI
+      </p>
     </div>
   </header>
 
-  <div class="container article-body">
+  <div class="container article-shell">
+    <nav class="article-contents" aria-labelledby="contents-heading">
+        <h2 id="contents-heading">On this page</h2>
+        <ol>
+          <li><a href="#what-ai-call-qa-actually-means">What "AI call QA" actually means</a></li>
+          <li><a href="#the-three-pieces-that-make-it-work">The three pieces that make it work</a></li>
+          <li><a href="#what-gets-measured">What gets measured</a></li>
+          <li><a href="#live-versus-after-call-scoring">Live versus after-call scoring</a></li>
+          <li><a href="#common-myths">Common myths</a></li>
+          <li><a href="#who-needs-it">Who needs it</a></li>
+          <li><a href="#how-to-evaluate-ai-call-qa-software">How to evaluate AI call QA software</a></li>
+          <li><a href="#what-this-looks-like-in-practice">What this looks like in practice</a></li>
+        </ol>
+      </nav>
+
+    <div class="article-body">
     <p class="lead">If you have ever sat through a "QA round-up" meeting where a supervisor reviewed five recorded calls in front of a room full of agents, you already understand the problem with manual call quality assurance. It is slow, it is biased toward the calls a human happened to pick, and 95% of the conversations your team had that week never get reviewed at all. AI call QA replaces that with something the data warehouse already does for sales and CSAT: full coverage, scored consistently.</p>
 
-    <h2>What "AI call QA" actually means</h2>
+    <h2 id="what-ai-call-qa-actually-means">What "AI call QA" actually means<a class="heading-anchor" href="#what-ai-call-qa-actually-means" aria-label="Link to this section">#</a></h2>
 
     <p>AI call quality assurance is the use of speech recognition combined with large language models to transcribe and score every call your team takes against a structured scorecard. Every call. Not a sample.</p>
 
@@ -133,29 +185,29 @@
 
     <p>For regulated voice work, like FCA-regulated financial advice or contact-centre outbound, the leap matters more than it sounds. Manual sampling is statistically blind to the calls outside the sample. AI scoring is not.</p>
 
-    <h2>The three pieces that make it work</h2>
+    <h2 id="the-three-pieces-that-make-it-work">The three pieces that make it work<a class="heading-anchor" href="#the-three-pieces-that-make-it-work" aria-label="Link to this section">#</a></h2>
 
     <p>Underneath the dashboards, an AI call QA system is three things glued together: a speech-to-text engine, a large language model running against a scorecard, and a per-tenant calibration layer.</p>
 
-    <h3>1. Speech-to-text with speaker separation</h3>
+    <h3 id="speech-to-text-with-speaker-separation">1. Speech-to-text with speaker separation</h3>
 
     <p>Production-grade speech recognition (sometimes called automatic speech recognition or ASR) converts the audio into a written transcript. For QA work, the engine needs three things on top of plain transcription: <strong>speaker diarisation</strong>, so the agent's words can be distinguished from the customer's; <strong>keyterm boosting</strong>, so product names and acronyms specific to your business get recognised correctly; and <strong>punctuation and capitalisation</strong>, because a model scoring downstream depends on having sentence boundaries.</p>
 
     <p>Modern ASR achieves word-error rates well under 10% on UK English with good audio quality. The remaining errors mostly cluster on regional accents, technical jargon and overlapping speech, which is why keyterm boosting matters more than people realise.</p>
 
-    <h3>2. A large language model running against your scorecard</h3>
+    <h3 id="a-large-language-model-running-against-your-scorecard">2. A large language model running against your scorecard</h3>
 
     <p>The transcript goes to a large language model (in CallGuard's case, Anthropic's Claude). The model is shown your whole scorecard in one pass, told to score each criterion against the transcript, and asked for two things back per criterion: a verdict (pass or fail), and the direct quote from the transcript that proves the verdict.</p>
 
     <p>That second part matters more than the first. A score with no evidence is just an opinion. A score with a quote underneath it is auditable. If your compliance officer reviews 50 scored calls and disagrees with a verdict, they can see exactly which words drove the AI to that conclusion and override it. That is the basis of an audit trail the FCA actually expects.</p>
 
-    <h3>3. Per-tenant calibration</h3>
+    <h3 id="per-tenant-calibration">3. Per-tenant calibration</h3>
 
     <p>This is the bit that distinguishes a serious AI QA system from a wallpaper one. Generic LLM scoring drifts. The model's interpretation of "fair value" or "vulnerable" is whatever happened to be in its training data, not your firm's interpretation.</p>
 
     <p>The fix is not to fine-tune the model (slow, expensive, often regresses on edge cases). The fix is to feed the model your own corrections, exemplars and prior coaching as context every time it scores. After 50 to 100 corrections from your compliance officer, the AI scores like that compliance officer, not like a generic baseline. That is what we mean by per-tenant AI learning, and it is the mechanism that lets one engine serve a financial planning firm, a debt-collection BPO and a customer-support contact centre without each customer having to fine-tune anything.</p>
 
-    <h2>What gets measured</h2>
+    <h2 id="what-gets-measured">What gets measured<a class="heading-anchor" href="#what-gets-measured" aria-label="Link to this section">#</a></h2>
 
     <p>The scorecard is yours, not the vendor's. That is the most important sentence on this page. A serious AI QA system scores against the structured scorecard your firm already uses, not a one-size-fits-all template.</p>
 
@@ -165,7 +217,7 @@
 
     <p>The point is that the engine does not care what regime you are scoring against. It cares that each criterion is well-defined and that the verdict can be justified by a quote.</p>
 
-    <h2>Live versus after-call scoring</h2>
+    <h2 id="live-versus-after-call-scoring">Live versus after-call scoring<a class="heading-anchor" href="#live-versus-after-call-scoring" aria-label="Link to this section">#</a></h2>
 
     <p>There are two operating modes worth understanding. Most legacy speech analytics tools only do the second.</p>
 
@@ -175,7 +227,7 @@
 
     <p>Both modes use the same scorecard and the same calibration layer. The mid-call mode adds a confidence threshold, so it only emits a breach when it is confident the criterion has already failed, rather than firing on every borderline signal.</p>
 
-    <h2>Common myths</h2>
+    <h2 id="common-myths">Common myths<a class="heading-anchor" href="#common-myths" aria-label="Link to this section">#</a></h2>
 
     <p><strong>"AI call QA is just sentiment analysis."</strong> No. Sentiment analysis is one cell on the scorecard. AI QA scores arbitrary scorecard items, including binary compliance checks (was the consent statement read), categorical judgements (was the recommendation suitable for the disclosed risk profile), and weighted scoring (how clearly were charges disclosed on a 1 to 5 scale). Sentiment is rarely the headline use case.</p>
 
@@ -185,7 +237,7 @@
 
     <p><strong>"It will replace QA staff."</strong> It changes what QA staff do. The volume of calls reviewed goes from 1-5% to 100%, and humans spend their time on the calls the AI flagged for review (low scores, critical breaches, ambiguous evidence) rather than randomly sampling. Most contact centres redeploy QA staff into coaching rather than off the payroll.</p>
 
-    <h2>Who needs it</h2>
+    <h2 id="who-needs-it">Who needs it<a class="heading-anchor" href="#who-needs-it" aria-label="Link to this section">#</a></h2>
 
     <p>Three groups, in roughly this order of urgency:</p>
 
@@ -195,7 +247,7 @@
 
     <p><strong>Outbound and field sales operations.</strong> Anywhere the regulator can fine you for a single bad call (urgency language, missing consent capture, fair-value failure), the cost of missing one in your sample is asymmetric. AI gives you full coverage on 100% of connected calls.</p>
 
-    <h2>How to evaluate AI call QA software</h2>
+    <h2 id="how-to-evaluate-ai-call-qa-software">How to evaluate AI call QA software<a class="heading-anchor" href="#how-to-evaluate-ai-call-qa-software" aria-label="Link to this section">#</a></h2>
 
     <p>If you are about to demo three or four products, the questions worth asking are these.</p>
 
@@ -209,23 +261,53 @@
 
     <p><strong>How do I get the data out?</strong> If results are locked inside the vendor's UI, integrating with your CRM, agent desktop or compliance case-management system becomes a custom-build project. A REST API that returns the per-call score plus evidence in JSON should be table stakes.</p>
 
-    <h2>What this looks like in practice</h2>
+    <h2 id="what-this-looks-like-in-practice">What this looks like in practice<a class="heading-anchor" href="#what-this-looks-like-in-practice" aria-label="Link to this section">#</a></h2>
 
     <p>If you want to see what an AI-scored call looks like end to end (transcript, per-criterion verdicts, evidence quotes, breach register, coaching draft) we run a short demo scoring synthetic calls against a scorecard like yours. <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request">Drop us a line at hello@callguardai.co.uk</a> and we will set it up; when you want to try your own recordings, we put a DPA in place first.</p>
+    </div>
   </div>
 
-  <div class="container article-cta">
-    <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request" class="btn btn-primary btn-lg">Request a demo</a>
-  </div>
+  <div class="container article-foot">
+    
 
-  <aside class="container article-related">
-    <h3>Read next</h3>
-    <ul>
-      <li><a href="/blog/score-100-percent-contact-centre-calls">How to score 100% of contact centre calls without hiring more QA staff</a></li>
-      <li><a href="/blog/fca-consumer-duty-call-recordings">FCA Consumer Duty: 7 things your call recordings need to evidence</a></li>
-      <li><a href="/blog/pecr-tps-2026-outbound-compliance">PECR and TPS in 2026: practical compliance for outbound teams</a></li>
-    </ul>
-  </aside>
+    <section class="article-author" aria-labelledby="author-heading">
+      <h2 id="author-heading">Written by Kofi Vickery</h2>
+      <p>Co-founder, CallGuard AI. Writes about how the scoring works and what running QA on every call takes.</p>
+    </section>
+
+    <section class="article-cta" aria-labelledby="cta-heading">
+      <h2 id="cta-heading">See this on your own calls</h2>
+      <p>We run demos on synthetic calls, so nothing of yours is processed before a data processing agreement is in place. We usually reply the same working day.</p>
+      <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request" class="btn btn-primary btn-lg">Request a demo</a>
+    </section>
+
+    <nav class="article-related" aria-labelledby="related-heading">
+      <h2 id="related-heading">Read next</h2>
+      <ul>
+        <li>
+          <a href="/blog/score-100-percent-contact-centre-calls">
+            <span class="related-topic">Running QA</span>
+            <span class="related-title">How to score 100% of contact centre calls without hiring more QA staff</span>
+            <span class="related-meta">8 min read</span>
+          </a>
+        </li>
+        <li>
+          <a href="/blog/fca-consumer-duty-call-recordings">
+            <span class="related-topic">Regulation</span>
+            <span class="related-title">FCA Consumer Duty: 7 things your call recordings need to evidence</span>
+            <span class="related-meta">8 min read</span>
+          </a>
+        </li>
+        <li>
+          <a href="/blog/pecr-tps-2026-outbound-compliance">
+            <span class="related-topic">Regulation</span>
+            <span class="related-title">PECR and TPS in 2026: practical compliance for outbound teams</span>
+            <span class="related-meta">8 min read</span>
+          </a>
+        </li>
+      </ul>
+    </nav>
+  </div>
 </article>
 
 <footer class="footer">
@@ -277,7 +359,7 @@
   </div>
 </footer>
 
-<script defer src="/script.js?v=5"></script>
+<script defer src="/script.js?v=6"></script>
 
 <script defer src="/analytics.js?v=2"></script>
 </body>

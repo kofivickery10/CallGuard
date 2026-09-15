@@ -9,10 +9,12 @@ cardTag: "Regulation · Vulnerability"
 cardSummary: "FG21/1 is guidance, not a rulebook, which makes it harder to evidence rather than easier. The FCA's 2025 review named the hard case precisely: vulnerability that is detectable but never disclosed. That happens out loud, on the call."
 order: 6
 date: "2026-08-27"
+updated: "2026-09-15"
 time: "09:00"
 section: "Regulation"
-readingTime: 8
-wordCount: 1450
+topic: "regulation"
+author: "charlotte"
+featured: true
 ctaSubject: "CallGuard%20AI%20demo%20request"
 useCaseLink: "/use-cases/financial-services"
 related:

@@ -43,7 +43,7 @@
       "description": "Briefings for FCA protection and mortgage advice firms on what a recorded advice call has to evidence.",
       "publisher": {"@id": "https://callguardai.co.uk/#organization"},
       "inLanguage": "en-GB",
-      "dateModified": "2026-09-15T09:00:00+01:00"
+      "dateModified": "{{updatedISO}}"
     },
     {
       "@type": "BreadcrumbList",
@@ -52,18 +52,7 @@
         {"@type": "ListItem", "position": 2, "name": "Blog"}
       ]
     },
-      {
-      "@type": "ItemList",
-      "name": "CallGuard AI briefings",
-      "itemListElement": [
-        {"@type": "ListItem", "position": 1, "url": "https://callguardai.co.uk/blog/vulnerable-customer-call-monitoring", "name": "Vulnerable customer call monitoring: what FG21/1 actually expects"},
-        {"@type": "ListItem", "position": 2, "url": "https://callguardai.co.uk/blog/pecr-tps-2026-outbound-compliance", "name": "PECR and TPS in 2026: practical compliance for outbound teams"},
-        {"@type": "ListItem", "position": 3, "url": "https://callguardai.co.uk/blog/ai-vs-human-call-scoring", "name": "AI vs human call scoring: when each makes sense"},
-        {"@type": "ListItem", "position": 4, "url": "https://callguardai.co.uk/blog/fca-consumer-duty-call-recordings", "name": "FCA Consumer Duty: 7 things your call recordings need to evidence"},
-        {"@type": "ListItem", "position": 5, "url": "https://callguardai.co.uk/blog/score-100-percent-contact-centre-calls", "name": "How to score 100% of contact centre calls without hiring more QA staff"},
-        {"@type": "ListItem", "position": 6, "url": "https://callguardai.co.uk/blog/what-is-ai-call-qa", "name": "What is AI call QA and how does it actually work?"}
-      ]
-    },
+{{itemList}},
     {
       "@type": "Organization",
       "@id": "https://callguardai.co.uk/#organization",
@@ -136,11 +125,9 @@
       <p class="blog-masthead-sub">Briefings for compliance leads at FCA protection and mortgage advice firms: what the rules ask a call to evidence, what a file check cannot see, and what changes when every call is scored rather than a sample of them.</p>
       <div class="blog-masthead-foot">
         <nav class="topic-nav" aria-label="Topics">
-          <a href="#regulation">Regulation</a>
-          <a href="#operations">Running QA</a>
-          <a href="#foundations">How the scoring works</a>
+{{topicNav}}
         </nav>
-        <p class="blog-masthead-updated">6 briefings · last reviewed <time datetime="2026-09-15T09:00:00+01:00">15 September 2026</time> · <a href="/blog/feed.xml">RSS</a></p>
+        <p class="blog-masthead-updated">{{postCount}} briefings · last reviewed <time datetime="{{updatedISO}}">{{updatedHuman}}</time> · <a href="/blog/feed.xml">RSS</a></p>
       </div>
     </div>
   </section>
@@ -148,22 +135,7 @@
   <section class="section blog-featured" aria-labelledby="briefings">
     <div class="container">
       <h2 class="visually-hidden" id="briefings">Latest briefing</h2>
-      <a class="brief" href="/blog/vulnerable-customer-call-monitoring">
-          <div class="brief-label">
-            <span class="brief-topic">Regulation</span>
-            <span class="brief-flag">Latest briefing</span>
-          </div>
-          <h2 class="brief-title">Vulnerable customer call monitoring: what FG21/1 actually expects</h2>
-          <p class="brief-summary">FG21/1 is guidance, not a rulebook, which makes it harder to evidence rather than easier. The FCA's 2025 review named the hard case precisely: vulnerability that is detectable but never disclosed. That happens out loud, on the call.</p>
-          <div class="brief-meta">
-            <span>Charlotte Court</span>
-            <span class="post-card-dot">·</span>
-            <time datetime="2026-08-27">27 August 2026</time>
-            <span class="post-card-dot">·</span>
-            <span>7 min read</span>
-          </div>
-          <span class="brief-more">Read the briefing</span>
-        </a>
+      {{featured}}
     </div>
   </section>
 
@@ -171,104 +143,7 @@
     <div class="container">
       <div class="topic-columns">
 
-        <section class="topic" id="regulation" aria-labelledby="regulation-heading">
-          <h2 class="topic-name" id="regulation-heading">Regulation</h2>
-          <p class="topic-blurb">What the FCA and the ICO expect a recorded advice call to evidence, and how firms show it.</p>
-          <ul class="topic-list">
-            <li class="topic-item">
-              <a href="/blog/vulnerable-customer-call-monitoring">
-                <h3 class="topic-item-title">Vulnerable customer call monitoring: what FG21/1 actually expects</h3>
-                <p class="topic-item-summary">FG21/1 is guidance, not a rulebook, which makes it harder to evidence rather than easier. The FCA's 2025 review named the hard case precisely: vulnerability that is detectable but never disclosed. That happens out loud, on the call.</p>
-                <div class="topic-item-meta">
-                  <span>Charlotte Court</span>
-                  <span class="post-card-dot">·</span>
-                  <time datetime="2026-08-27">27 August 2026</time>
-                  <span class="post-card-dot">·</span>
-                  <span>7 min</span>
-                </div>
-              </a>
-            </li>
-            <li class="topic-item">
-              <a href="/blog/pecr-tps-2026-outbound-compliance">
-                <h3 class="topic-item-title">PECR and TPS in 2026: practical compliance for outbound teams</h3>
-                <p class="topic-item-summary">What's tightened, what's blurred, and the five things the ICO will ask if a PECR complaint reaches them. Plus the systematic-monitoring standard that has replaced sample-based QA.</p>
-                <div class="topic-item-meta">
-                  <span>Charlotte Court</span>
-                  <span class="post-card-dot">·</span>
-                  <time datetime="2026-05-05">5 May 2026</time>
-                  <span class="post-card-dot">·</span>
-                  <span>8 min</span>
-                </div>
-              </a>
-            </li>
-            <li class="topic-item">
-              <a href="/blog/fca-consumer-duty-call-recordings">
-                <h3 class="topic-item-title">FCA Consumer Duty: 7 things your call recordings need to evidence</h3>
-                <p class="topic-item-summary">A practical checklist for compliance leads at FCA-regulated firms. The four outcomes, the evidence the regulator actually expects on a recording, and why a 5% sample no longer cuts it.</p>
-                <div class="topic-item-meta">
-                  <span>Charlotte Court</span>
-                  <span class="post-card-dot">·</span>
-                  <time datetime="2026-05-05">5 May 2026</time>
-                  <span class="post-card-dot">·</span>
-                  <span>8 min</span>
-                </div>
-              </a>
-            </li>
-          </ul>
-        </section>
-
-        <section class="topic" id="operations" aria-labelledby="operations-heading">
-          <h2 class="topic-name" id="operations-heading">Running QA</h2>
-          <p class="topic-blurb">Coverage, sampling and what changes in a compliance team when every call is scored rather than 5%.</p>
-          <ul class="topic-list">
-            <li class="topic-item">
-              <a href="/blog/score-100-percent-contact-centre-calls">
-                <h3 class="topic-item-title">How to score 100% of contact centre calls without hiring more QA staff</h3>
-                <p class="topic-item-summary">The QA bottleneck explained from first principles, the maths of manual versus AI scoring, and what the architecture of 100% coverage actually looks like in production.</p>
-                <div class="topic-item-meta">
-                  <span>Kofi Vickery</span>
-                  <span class="post-card-dot">·</span>
-                  <time datetime="2026-05-05">5 May 2026</time>
-                  <span class="post-card-dot">·</span>
-                  <span>8 min</span>
-                </div>
-              </a>
-            </li>
-          </ul>
-        </section>
-
-        <section class="topic" id="foundations" aria-labelledby="foundations-heading">
-          <h2 class="topic-name" id="foundations-heading">How the scoring works</h2>
-          <p class="topic-blurb">Plain-English explanations of the technology, including what it is not good at.</p>
-          <ul class="topic-list">
-            <li class="topic-item">
-              <a href="/blog/ai-vs-human-call-scoring">
-                <h3 class="topic-item-title">AI vs human call scoring: when each makes sense</h3>
-                <p class="topic-item-summary">An honest comparison from someone selling AI scoring tooling. What AI is genuinely better at, what humans still beat AI on, and the right division of labour for production QA teams.</p>
-                <div class="topic-item-meta">
-                  <span>Kofi Vickery</span>
-                  <span class="post-card-dot">·</span>
-                  <time datetime="2026-05-05">5 May 2026</time>
-                  <span class="post-card-dot">·</span>
-                  <span>8 min</span>
-                </div>
-              </a>
-            </li>
-            <li class="topic-item">
-              <a href="/blog/what-is-ai-call-qa">
-                <h3 class="topic-item-title">What is AI call QA and how does it actually work?</h3>
-                <p class="topic-item-summary">A plain-English walkthrough of how speech recognition, large language models and per-tenant calibration combine to score every call your team takes against your scorecard.</p>
-                <div class="topic-item-meta">
-                  <span>Kofi Vickery</span>
-                  <span class="post-card-dot">·</span>
-                  <time datetime="2026-05-05">5 May 2026</time>
-                  <span class="post-card-dot">·</span>
-                  <span>8 min</span>
-                </div>
-              </a>
-            </li>
-          </ul>
-        </section>
+{{columns}}
 
       </div>
     </div>

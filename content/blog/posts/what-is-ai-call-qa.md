@@ -9,9 +9,10 @@ cardTag: "Foundations · AI call QA"
 cardSummary: "A plain-English walkthrough of how speech recognition, large language models and per-tenant calibration combine to score every call your team takes against your scorecard."
 order: 5
 date: "2026-05-05"
+updated: "2026-09-15"
 section: "Foundations"
-readingTime: 10
-wordCount: 1500
+topic: "foundations"
+author: "kofi"
 ctaSubject: "CallGuard%20AI%20demo%20request"
 useCaseLink: "/use-cases/financial-services"
 related:

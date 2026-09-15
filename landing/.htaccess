@@ -110,6 +110,26 @@ DirectoryIndex index.html
   Require all denied
 </FilesMatch>
 
+# ─── Blog sources are not public ─────────────────────────────────────────
+# The post Markdown and the page template used to live in this directory, so
+# /blog/_posts/*.md was downloadable and /blog/_template was a real, indexable
+# page. They now live in content/, which is outside the document root — but a
+# deploy only adds and overwrites files, so the old copies stay on the server
+# until someone deletes them. These rules make them unreachable either way,
+# and keep them unreachable if anyone ever puts a source file back.
+<FilesMatch "\.(md|markdown)$">
+  Require all denied
+</FilesMatch>
+RedirectMatch 404 ^/blog/_.*
+
+# ─── Feed ────────────────────────────────────────────────────────────────
+# Scoped to the one file, not to .xml: sitemap.xml must keep its own type, and
+# handing Search Console an RSS content type for a sitemap is a real failure,
+# not a cosmetic one.
+<Files "feed.xml">
+  ForceType application/rss+xml
+</Files>
+
 # ─── Custom error pages ──────────────────────────────────────────────────
 # Serve a real 404 page that returns a 404 status. Pointing this at a static
 # file (not index.html) means Apache responds with the correct 404 code, which

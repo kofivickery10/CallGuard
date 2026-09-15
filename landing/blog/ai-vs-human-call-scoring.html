@@ -1,20 +1,22 @@
 <!doctype html>
-<html lang="en">
+<html lang="en-GB">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <meta name="description" content="When does AI call scoring make sense, when does human scoring make sense, and when do you need both? An honest comparison from an AI QA vendor." />
 <meta name="theme-color" content="#4a9e6e" />
 <meta name="robots" content="index,follow,max-image-preview:large" />
-<meta name="author" content="CallGuard AI" />
+<meta name="author" content="Kofi Vickery" />
 <title>AI vs Human Call Scoring: When Each Makes Sense | CallGuard AI</title>
 <link rel="canonical" href="https://callguardai.co.uk/blog/ai-vs-human-call-scoring" />
 <link rel="icon" href="/favicon.ico" sizes="48x48" />
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 <link rel="manifest" href="/site.webmanifest" />
+<link rel="alternate" type="application/rss+xml" title="CallGuard AI briefings" href="/blog/feed.xml" />
 <link rel="preload" as="font" type="font/woff2" href="/fonts/InterVariable.woff2" crossorigin>
-<link rel="stylesheet" href="/style.css?v=16" />
+<link rel="stylesheet" href="/style.css?v=17" />
+<link rel="stylesheet" href="/blog.css?v=1" />
 
 <meta property="og:type" content="article" />
 <meta property="og:site_name" content="CallGuard AI" />
@@ -22,15 +24,19 @@
 <meta property="og:url" content="https://callguardai.co.uk/blog/ai-vs-human-call-scoring" />
 <meta property="og:title" content="AI vs Human Call Scoring: When Each Makes Sense" />
 <meta property="og:description" content="An honest comparison of AI and human call scoring." />
-<meta property="og:image" content="https://callguardai.co.uk/og-image.jpg" />
+<meta property="og:image" content="https://callguardai.co.uk/og/blog-ai-vs-human-call-scoring.png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta property="og:image:alt" content="AI vs Human Call Scoring: When Each Makes Sense" />
 <meta property="article:published_time" content="2026-05-05T09:30:00+01:00" />
-<meta property="article:author" content="CallGuard AI" />
+<meta property="article:modified_time" content="2026-09-15T09:30:00+01:00" />
+<meta property="article:author" content="Kofi Vickery" />
 <meta property="article:section" content="Foundations" />
 
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="AI vs Human Call Scoring: When Each Makes Sense" />
 <meta name="twitter:description" content="An honest comparison of AI and human call scoring." />
-<meta name="twitter:image" content="https://callguardai.co.uk/og-image.jpg" />
+<meta name="twitter:image" content="https://callguardai.co.uk/og/blog-ai-vs-human-call-scoring.png" />
 
 <script type="application/ld+json">
 {
@@ -45,21 +51,43 @@
       ]
     },
     {
-      "@type": "Article",
+      "@type": "BlogPosting",
       "@id": "https://callguardai.co.uk/blog/ai-vs-human-call-scoring#article",
       "headline": "AI vs Human Call Scoring: When Each Makes Sense",
       "description": "An honest comparison of AI and human call scoring.",
       "url": "https://callguardai.co.uk/blog/ai-vs-human-call-scoring",
       "datePublished": "2026-05-05T09:30:00+01:00",
-      "dateModified": "2026-05-05T09:30:00+01:00",
+      "dateModified": "2026-09-15T09:30:00+01:00",
       "inLanguage": "en-GB",
-      "image": "https://callguardai.co.uk/og-image.jpg",
-      "author": {"@type": "Organization", "name": "CallGuard AI", "url": "https://callguardai.co.uk/"},
+      "image": "https://callguardai.co.uk/og/blog-ai-vs-human-call-scoring.png",
+      "author": {
+        "@type": "Person",
+        "name": "Kofi Vickery",
+        "jobTitle": "Co-founder, CallGuard AI",
+        "url": "https://callguardai.co.uk/about",
+        "worksFor": {"@id": "https://callguardai.co.uk/#organization"}
+      },
       "publisher": {"@id": "https://callguardai.co.uk/#organization"},
       "isPartOf": {"@id": "https://callguardai.co.uk/blog/#blog"},
       "mainEntityOfPage": "https://callguardai.co.uk/blog/ai-vs-human-call-scoring",
       "articleSection": "Foundations",
-      "wordCount": 1500
+      "wordCount": 1678
+    },
+    {
+      "@type": "Organization",
+      "@id": "https://callguardai.co.uk/#organization",
+      "name": "CallGuard AI",
+      "legalName": "CallGuard AI Ltd",
+      "url": "https://callguardai.co.uk/",
+      "logo": "https://callguardai.co.uk/brand/svg/callguard-logo-horizontal.svg",
+      "email": "hello@callguardai.co.uk",
+      "address": {
+        "@type": "PostalAddress",
+        "streetAddress": "106 Haytor Avenue",
+        "addressLocality": "Paignton",
+        "postalCode": "TQ4 7TB",
+        "addressCountry": "GB"
+      }
     }
   ]
 }
@@ -74,7 +102,9 @@
   })();
 </script>
 </head>
-<body>
+<body class="blog">
+
+<a class="skip-link" href="#article-start">Skip to the article</a>
 
 <header class="nav" role="banner">
   <div class="container nav-inner">
@@ -94,12 +124,12 @@
       <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
       <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
     </button>
-    <button class="nav-toggle" aria-label="Open menu" aria-controls="mobile-drawer" aria-expanded="false">
+    <button type="button" class="nav-toggle" aria-label="Open menu" aria-controls="mobile-drawer" aria-expanded="false">
       <svg class="icon-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="7"  x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>
       <svg class="icon-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="6" y1="6"  x2="18" y2="18"/><line x1="6" y1="18" x2="18" y2="6"/></svg>
     </button>
   </div>
-  <div class="nav-drawer" id="mobile-drawer" aria-label="Mobile menu">
+  <nav class="nav-drawer" id="mobile-drawer" aria-label="Mobile menu">
     <a href="/#how-it-works">How it works</a>
     <a href="/#live">Live &amp; embedded</a>
     <a href="/#learning">AI learning</a>
@@ -110,22 +140,43 @@
     <a href="/#faq">FAQ</a>
     <a href="https://app.callguardai.co.uk/">Log in</a>
     <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request" class="btn btn-primary">Request a demo</a>
-  </div>
+  </nav>
 </header>
 
 <article class="article">
   <header class="article-hero">
     <div class="container">
-      <div class="crumb"><a href="/">Home</a> · <a href="/blog/">Blog</a> · Foundations</div>
-      <h1>AI vs human call scoring: when each makes sense.</h1>
-      <p class="article-meta"><span>Published 5 May 2026</span> <span class="post-card-dot">·</span> <span>9 minute read</span> <span class="post-card-dot">·</span> <span>Foundations</span></p>
+      <nav class="crumb" aria-label="Breadcrumb"><a href="/">Home</a> · <a href="/blog/">Blog</a> · <a href="/blog/#foundations">How the scoring works</a></nav>
+      <h1 id="article-start">AI vs human call scoring: when each makes sense.</h1>
+      <p class="article-meta">
+        <span>Published <time datetime="2026-05-05T09:30:00+01:00">5 May 2026</time></span>
+        <span class="post-card-dot">·</span> <span>Reviewed <time datetime="2026-09-15">15 September 2026</time></span>
+        <span class="post-card-dot">·</span> <span>8 minute read</span>
+      </p>
+      <p class="article-byline">
+        By <a href="https://callguardai.co.uk/about">Kofi Vickery</a>, Co-founder, CallGuard AI
+      </p>
     </div>
   </header>
 
-  <div class="container article-body">
+  <div class="container article-shell">
+    <nav class="article-contents" aria-labelledby="contents-heading">
+        <h2 id="contents-heading">On this page</h2>
+        <ol>
+          <li><a href="#what-ai-scoring-is-genuinely-better-at">What AI scoring is genuinely better at</a></li>
+          <li><a href="#what-human-scoring-is-genuinely-better-at">What human scoring is genuinely better at</a></li>
+          <li><a href="#what-ai-does-the-analysis-humans-do-the-judgement-looks-like">What "AI does the analysis, humans do the judgement" looks like</a></li>
+          <li><a href="#what-ai-replaces-all-human-scoring-looks-like-and-why-it-doe">What "AI replaces all human scoring" looks like (and why it does not work)</a></li>
+          <li><a href="#what-humans-only-looks-like-and-why-it-is-becoming-non-viabl">What "humans only" looks like (and why it is becoming non-viable)</a></li>
+          <li><a href="#how-to-decide-for-your-team">How to decide for your team</a></li>
+          <li><a href="#what-callguard-ai-thinks-the-right-shape-is">What CallGuard AI thinks the right shape is</a></li>
+        </ol>
+      </nav>
+
+    <div class="article-body">
     <p class="lead">We sell an AI call scoring product, so this should be the easiest argument in the world: replace your QA team with our software, save the money. We do not actually believe that, and the customers we have who tried to do it that way regret it. The honest answer is that AI scoring and human scoring are good at different things, and the question is not "which one wins" but "what is the right division of labour".</p>
 
-    <h2>What AI scoring is genuinely better at</h2>
+    <h2 id="what-ai-scoring-is-genuinely-better-at">What AI scoring is genuinely better at<a class="heading-anchor" href="#what-ai-scoring-is-genuinely-better-at" aria-label="Link to this section">#</a></h2>
 
     <p><strong>Coverage.</strong> A human reviewer scores 4 to 8 calls an hour. An AI scores 50,000 calls a week without breaking a sweat. If your goal is "did anything happen on these 5,000 calls today that needs immediate intervention", AI is the only viable answer. <a href="/blog/score-100-percent-contact-centre-calls">We covered the maths in detail elsewhere.</a></p>
 
@@ -137,7 +188,7 @@
 
     <p><strong>Compliance evidence.</strong> "We sample 5% of calls and review them for compliance" stopped being a defensible answer to regulators after Consumer Duty. "We score every call against the regulator's framework, with the transcript evidence behind each verdict" is a different conversation. AI gives compliance leads a paper trail that sample-based QA cannot.</p>
 
-    <h2>What human scoring is genuinely better at</h2>
+    <h2 id="what-human-scoring-is-genuinely-better-at">What human scoring is genuinely better at<a class="heading-anchor" href="#what-human-scoring-is-genuinely-better-at" aria-label="Link to this section">#</a></h2>
 
     <p><strong>Edge cases.</strong> When the call has a context the AI did not have (a previous interaction, a known account history, a one-off campaign rule), a human reviewer with that context scores more accurately. AI can be given that context (knowledge base, prior coaching, scorecard customisation), but there will always be situations where a human's broader awareness produces the right verdict and the AI gets it wrong.</p>
 
@@ -149,7 +200,7 @@
 
     <p><strong>Calibration sessions and inter-rater alignment.</strong> Periodically pulling 10 calls and having multiple reviewers score them to align on standards is something humans do better than AI, because the work is meta: "are we judging this correctly as a team". AI does not have a standpoint to negotiate from; humans do.</p>
 
-    <h2>What "AI does the analysis, humans do the judgement" looks like</h2>
+    <h2 id="what-ai-does-the-analysis-humans-do-the-judgement-looks-like">What "AI does the analysis, humans do the judgement" looks like<a class="heading-anchor" href="#what-ai-does-the-analysis-humans-do-the-judgement-looks-like" aria-label="Link to this section">#</a></h2>
 
     <p>The model that works best in production is roughly this division of labour:</p>
 
@@ -163,7 +214,7 @@
 
     <p><strong>Humans calibrate as a team.</strong> Periodic calibration sessions where multiple reviewers score the same calls and align on standards. AI does not replace this; AI consumes the output. After a calibration session, the corrections feed into the AI and the next month's scoring reflects the team's aligned interpretation.</p>
 
-    <h2>What "AI replaces all human scoring" looks like (and why it does not work)</h2>
+    <h2 id="what-ai-replaces-all-human-scoring-looks-like-and-why-it-doe">What "AI replaces all human scoring" looks like (and why it does not work)<a class="heading-anchor" href="#what-ai-replaces-all-human-scoring-looks-like-and-why-it-doe" aria-label="Link to this section">#</a></h2>
 
     <p>Some teams try the no-humans-needed model. Two failure modes show up.</p>
 
@@ -173,7 +224,7 @@
 
     <p>The teams that get the most value from AI call scoring keep humans in the loop in two specific places: calibrating edge cases, and delivering coaching. They redeploy the QA capacity they would have spent on random sampling into those higher-leverage activities.</p>
 
-    <h2>What "humans only" looks like (and why it is becoming non-viable)</h2>
+    <h2 id="what-humans-only-looks-like-and-why-it-is-becoming-non-viabl">What "humans only" looks like (and why it is becoming non-viable)<a class="heading-anchor" href="#what-humans-only-looks-like-and-why-it-is-becoming-non-viabl" aria-label="Link to this section">#</a></h2>
 
     <p>The other end of the spectrum: keeping QA fully human, no AI involvement. This worked when the regulatory environment expected sample-based monitoring and your competitors were doing the same thing.</p>
 
@@ -185,7 +236,7 @@
 
     <p><strong>The unit economics</strong> of human scoring at scale never worked, but it gets more obvious every year. AI scoring at £0.30 to £0.60 per 6-minute call versus £30 per call for a human reviewer makes the comparison unambiguous, even if you keep humans in the loop for a fraction of the volume.</p>
 
-    <h2>How to decide for your team</h2>
+    <h2 id="how-to-decide-for-your-team">How to decide for your team<a class="heading-anchor" href="#how-to-decide-for-your-team" aria-label="Link to this section">#</a></h2>
 
     <p>If you are running QA today and considering AI, the questions worth asking yourself are not "AI or humans" but "which AI capabilities address my actual problem". Three diagnostic questions:</p>
 
@@ -197,27 +248,57 @@
 
     <p>The answers usually point to "AI does the volume, humans do the judgement, and the right ratio depends on your specific shape". Which is, frankly, less exciting than "AI replaces everything", but it is what actually works in production.</p>
 
-    <h2>What CallGuard AI thinks the right shape is</h2>
+    <h2 id="what-callguard-ai-thinks-the-right-shape-is">What CallGuard AI thinks the right shape is<a class="heading-anchor" href="#what-callguard-ai-thinks-the-right-shape-is" aria-label="Link to this section">#</a></h2>
 
     <p>We build for the model where AI scores 100% of calls and humans calibrate the edge cases that matter. The product is designed around that division of labour: every AI verdict can be one-click corrected by a compliance officer, every correction feeds back into the next batch of scoring, and the dashboard surfaces the calls that need human attention rather than burying them in volume.</p>
 
     <p>If that division of labour matches how your QA team wants to work, we are probably the right tool. If you want a fully autonomous QA solution that needs no human input, we are not, and we would rather tell you that on the discovery call than after a deployment that drifts. If you are weighing us against other options, see <a href="/compare/">how CallGuard compares to other call QA tools</a>.</p>
 
     <p>If you want to see what AI-scored calls look like with humans in the loop, we run a short demo scoring synthetic calls against a scorecard like yours. <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request">Email hello@callguardai.co.uk</a> and we will book it in; when you want to try your own recordings, we put a DPA in place first.</p>
+    </div>
   </div>
 
-  <div class="container article-cta">
-    <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request" class="btn btn-primary btn-lg">Request a demo</a>
-  </div>
+  <div class="container article-foot">
+    
 
-  <aside class="container article-related">
-    <h3>Read next</h3>
-    <ul>
-      <li><a href="/blog/score-100-percent-contact-centre-calls">How to score 100% of contact centre calls without hiring more QA staff</a></li>
-      <li><a href="/blog/what-is-ai-call-qa">What is AI call QA and how does it actually work?</a></li>
-      <li><a href="/blog/fca-consumer-duty-call-recordings">FCA Consumer Duty: 7 things your call recordings need to evidence</a></li>
-    </ul>
-  </aside>
+    <section class="article-author" aria-labelledby="author-heading">
+      <h2 id="author-heading">Written by Kofi Vickery</h2>
+      <p>Co-founder, CallGuard AI. Writes about how the scoring works and what running QA on every call takes.</p>
+    </section>
+
+    <section class="article-cta" aria-labelledby="cta-heading">
+      <h2 id="cta-heading">See this on your own calls</h2>
+      <p>We run demos on synthetic calls, so nothing of yours is processed before a data processing agreement is in place. We usually reply the same working day.</p>
+      <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request" class="btn btn-primary btn-lg">Request a demo</a>
+    </section>
+
+    <nav class="article-related" aria-labelledby="related-heading">
+      <h2 id="related-heading">Read next</h2>
+      <ul>
+        <li>
+          <a href="/blog/score-100-percent-contact-centre-calls">
+            <span class="related-topic">Running QA</span>
+            <span class="related-title">How to score 100% of contact centre calls without hiring more QA staff</span>
+            <span class="related-meta">8 min read</span>
+          </a>
+        </li>
+        <li>
+          <a href="/blog/what-is-ai-call-qa">
+            <span class="related-topic">How the scoring works</span>
+            <span class="related-title">What is AI call QA and how does it actually work?</span>
+            <span class="related-meta">8 min read</span>
+          </a>
+        </li>
+        <li>
+          <a href="/blog/fca-consumer-duty-call-recordings">
+            <span class="related-topic">Regulation</span>
+            <span class="related-title">FCA Consumer Duty: 7 things your call recordings need to evidence</span>
+            <span class="related-meta">8 min read</span>
+          </a>
+        </li>
+      </ul>
+    </nav>
+  </div>
 </article>
 
 <footer class="footer">
@@ -269,7 +350,7 @@
   </div>
 </footer>
 
-<script defer src="/script.js?v=5"></script>
+<script defer src="/script.js?v=6"></script>
 
 <script defer src="/analytics.js?v=2"></script>
 </body>

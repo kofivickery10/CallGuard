@@ -1,20 +1,22 @@
 <!doctype html>
-<html lang="en">
+<html lang="en-GB">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <meta name="description" content="{{description}}" />
 <meta name="theme-color" content="#4a9e6e" />
 <meta name="robots" content="index,follow,max-image-preview:large" />
-<meta name="author" content="CallGuard AI" />
+<meta name="author" content="{{authorName}}" />
 <title>{{ogTitle}} | CallGuard AI</title>
 <link rel="canonical" href="https://callguardai.co.uk/blog/{{slug}}" />
 <link rel="icon" href="/favicon.ico" sizes="48x48" />
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 <link rel="manifest" href="/site.webmanifest" />
+<link rel="alternate" type="application/rss+xml" title="CallGuard AI briefings" href="/blog/feed.xml" />
 <link rel="preload" as="font" type="font/woff2" href="/fonts/InterVariable.woff2" crossorigin>
-<link rel="stylesheet" href="/style.css?v=16" />
+<link rel="stylesheet" href="/style.css?v=17" />
+<link rel="stylesheet" href="/blog.css?v=1" />
 
 <meta property="og:type" content="article" />
 <meta property="og:site_name" content="CallGuard AI" />
@@ -22,15 +24,19 @@
 <meta property="og:url" content="https://callguardai.co.uk/blog/{{slug}}" />
 <meta property="og:title" content="{{ogTitle}}" />
 <meta property="og:description" content="{{ogDescription}}" />
-<meta property="og:image" content="https://callguardai.co.uk/og-image.jpg" />
+<meta property="og:image" content="https://callguardai.co.uk/og/blog-{{slug}}.png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta property="og:image:alt" content="{{ogTitle}}" />
 <meta property="article:published_time" content="{{publishedISO}}" />
-<meta property="article:author" content="CallGuard AI" />
+<meta property="article:modified_time" content="{{modifiedISO}}" />
+<meta property="article:author" content="{{authorName}}" />
 <meta property="article:section" content="{{section}}" />
 
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="{{ogTitle}}" />
 <meta name="twitter:description" content="{{twitterDescription}}" />
-<meta name="twitter:image" content="https://callguardai.co.uk/og-image.jpg" />
+<meta name="twitter:image" content="https://callguardai.co.uk/og/blog-{{slug}}.png" />
 
 <script type="application/ld+json">
 {
@@ -45,7 +51,7 @@
       ]
     },
     {
-      "@type": "Article",
+      "@type": "BlogPosting",
       "@id": "https://callguardai.co.uk/blog/{{slug}}#article",
       "headline": "{{ogTitle}}",
       "description": "{{schemaDescription}}",
@@ -53,13 +59,35 @@
       "datePublished": "{{publishedISO}}",
       "dateModified": "{{modifiedISO}}",
       "inLanguage": "en-GB",
-      "image": "https://callguardai.co.uk/og-image.jpg",
-      "author": {"@type": "Organization", "name": "CallGuard AI", "url": "https://callguardai.co.uk/"},
+      "image": "https://callguardai.co.uk/og/blog-{{slug}}.png",
+      "author": {
+        "@type": "Person",
+        "name": "{{authorName}}",
+        "jobTitle": "{{authorRole}}",
+        "url": "{{authorUrl}}",
+        "worksFor": {"@id": "https://callguardai.co.uk/#organization"}
+      },
       "publisher": {"@id": "https://callguardai.co.uk/#organization"},
       "isPartOf": {"@id": "https://callguardai.co.uk/blog/#blog"},
       "mainEntityOfPage": "https://callguardai.co.uk/blog/{{slug}}",
       "articleSection": "{{section}}",
       "wordCount": {{wordCount}}
+    },
+    {
+      "@type": "Organization",
+      "@id": "https://callguardai.co.uk/#organization",
+      "name": "CallGuard AI",
+      "legalName": "CallGuard AI Ltd",
+      "url": "https://callguardai.co.uk/",
+      "logo": "https://callguardai.co.uk/brand/svg/callguard-logo-horizontal.svg",
+      "email": "hello@callguardai.co.uk",
+      "address": {
+        "@type": "PostalAddress",
+        "streetAddress": "106 Haytor Avenue",
+        "addressLocality": "Paignton",
+        "postalCode": "TQ4 7TB",
+        "addressCountry": "GB"
+      }
     }
   ]
 }
@@ -74,7 +102,9 @@
   })();
 </script>
 </head>
-<body>
+<body class="blog">
+
+<a class="skip-link" href="#article-start">Skip to the article</a>
 
 <header class="nav" role="banner">
   <div class="container nav-inner">
@@ -94,12 +124,12 @@
       <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
       <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
     </button>
-    <button class="nav-toggle" aria-label="Open menu" aria-controls="mobile-drawer" aria-expanded="false">
+    <button type="button" class="nav-toggle" aria-label="Open menu" aria-controls="mobile-drawer" aria-expanded="false">
       <svg class="icon-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="7"  x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>
       <svg class="icon-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="6" y1="6"  x2="18" y2="18"/><line x1="6" y1="18" x2="18" y2="6"/></svg>
     </button>
   </div>
-  <div class="nav-drawer" id="mobile-drawer" aria-label="Mobile menu">
+  <nav class="nav-drawer" id="mobile-drawer" aria-label="Mobile menu">
     <a href="/#how-it-works">How it works</a>
     <a href="/#live">Live &amp; embedded</a>
     <a href="/#learning">AI learning</a>
@@ -110,32 +140,54 @@
     <a href="/#faq">FAQ</a>
     <a href="https://app.callguardai.co.uk/">Log in</a>
     <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request" class="btn btn-primary">Request a demo</a>
-  </div>
+  </nav>
 </header>
 
 <article class="article">
   <header class="article-hero">
     <div class="container">
-      <div class="crumb"><a href="/">Home</a> · <a href="/blog/">Blog</a> · {{section}}</div>
-      <h1>{{title}}</h1>
-      <p class="article-meta"><span>Published {{dateHuman}}</span> <span class="post-card-dot">·</span> <span>{{readingTime}} minute read</span> <span class="post-card-dot">·</span> <span>{{section}}</span></p>
+      <nav class="crumb" aria-label="Breadcrumb"><a href="/">Home</a> · <a href="/blog/">Blog</a> · <a href="/blog/#{{topicKey}}">{{topicName}}</a></nav>
+      <h1 id="article-start">{{title}}</h1>
+      <p class="article-meta">
+        <span>Published <time datetime="{{publishedISO}}">{{dateHuman}}</time></span>
+        {{updatedLine}}
+        <span class="post-card-dot">·</span> <span>{{readingTime}} minute read</span>
+      </p>
+      <p class="article-byline">
+        By <a href="{{authorUrl}}">{{authorName}}</a>, {{authorRole}}
+      </p>
     </div>
   </header>
 
-  <div class="container article-body">
+  <div class="container article-shell">
+    {{contents}}
+
+    <div class="article-body">
 {{body}}
+    </div>
   </div>
 
-  <div class="container article-cta">
-    <a href="mailto:hello@callguardai.co.uk?subject={{ctaSubject}}" class="btn btn-primary btn-lg">Request a demo</a>
-  </div>
+  <div class="container article-foot">
+    {{sources}}
 
-  <aside class="container article-related">
-    <h3>Read next</h3>
-    <ul>
+    <section class="article-author" aria-labelledby="author-heading">
+      <h2 id="author-heading">Written by {{authorName}}</h2>
+      <p>{{authorRole}}. {{authorRemit}}</p>
+    </section>
+
+    <section class="article-cta" aria-labelledby="cta-heading">
+      <h2 id="cta-heading">See this on your own calls</h2>
+      <p>We run demos on synthetic calls, so nothing of yours is processed before a data processing agreement is in place. We usually reply the same working day.</p>
+      <a href="mailto:hello@callguardai.co.uk?subject={{ctaSubject}}" class="btn btn-primary btn-lg">Request a demo</a>
+    </section>
+
+    <nav class="article-related" aria-labelledby="related-heading">
+      <h2 id="related-heading">Read next</h2>
+      <ul>
 {{related}}
-    </ul>
-  </aside>
+      </ul>
+    </nav>
+  </div>
 </article>
 
 <footer class="footer">
@@ -187,7 +239,7 @@
   </div>
 </footer>
 
-<script defer src="/script.js?v=5"></script>
+<script defer src="/script.js?v=6"></script>
 
 <script defer src="/analytics.js?v=2"></script>
 </body>

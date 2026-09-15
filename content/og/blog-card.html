@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<!-- Not a real page: the 1200x630 template scripts/build-og.mjs fills and
+     screenshots per post, the same way landing/og-image.html is the source
+     for og-image.jpg. Kept out of the index deliberately. -->
+<meta name="robots" content="noindex,nofollow" />
+<title>Blog OG card template (not a public page)</title>
+<style>
+  /* Self-hosted so the render works with no network access. Same family
+     name and path pattern as landing/style.css's @font-face, just resolved
+     with a relative path since this template lives outside the served
+     site. font-display: block (not swap) because a fallback-font paint
+     must never be the one this script screenshots — build-og.mjs also
+     waits on document.fonts.ready before it measures/shoots, so this is
+     belt and braces, not the only guard. */
+  @font-face {
+    font-family: 'Inter Variable';
+    font-style: normal;
+    font-weight: 100 900;
+    font-display: block;
+    src: url('../../landing/fonts/InterVariable.woff2') format('woff2-variations'),
+         url('../../landing/fonts/InterVariable.woff2') format('woff2');
+  }
+  @page { size: 1200px 630px; margin: 0; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 1200px; height: 630px; }
+  body {
+    position: relative;
+    font-family: 'Inter Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    /* Flat brand dark-green — the same top-left value og-image.html's
+       radial/linear gradient stack starts from, used here as a solid fill.
+       No gradient, no glow: DESIGN_SYSTEM.md §11 rules those out and this
+       card is a calm, typographic analyst voice, not a hero panel. */
+    background: #1a2e1a;
+    color: #ffffff;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+  .brand {
+    position: absolute;
+    top: 64px;
+    left: 84px;
+  }
+  .brand img { display: block; height: 52px; width: auto; }
+  /* Ordinary small text, not an uppercase kicker — DESIGN_SYSTEM.md §11
+     rules out kickers above headings, so the topic just reads like a label
+     a person would write, not a shouted eyebrow. */
+  .topic {
+    position: absolute;
+    top: 152px;
+    left: 84px;
+    font-size: 24px;
+    font-weight: 600;
+    line-height: 1.2;
+    color: #a7b8ab;
+  }
+  /* Fixed box, not auto height: the title's font-size is shrunk by script
+     below until it fits inside this box, so the box's top/height never
+     move and the author line below it never collides — true regardless of
+     whether the title takes one line or three. */
+  .title-box {
+    position: absolute;
+    top: 204px;
+    left: 84px;
+    width: 1032px;
+    height: 222px;
+    display: flex;
+    align-items: center;
+    overflow: hidden;
+  }
+  .title {
+    width: 100%;
+    font-weight: 800;
+    font-size: 60px;
+    line-height: 1.16;
+    letter-spacing: -1.2px;
+    color: #ffffff;
+  }
+  .author {
+    position: absolute;
+    bottom: 64px;
+    left: 84px;
+    font-size: 24px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.78);
+  }
+</style>
+</head>
+<body>
+  <div class="brand">
+    <img src="../../landing/brand/svg/callguard-logo-horizontal-dark.svg" alt="CallGuard AI" />
+  </div>
+  <div class="topic">{{topic}}</div>
+  <div class="title-box">
+    <div class="title" id="og-title">{{title}}</div>
+  </div>
+  <div class="author">{{author}}</div>
+  <script>
+    (function () {
+      // Shrink-to-fit rather than a fixed size: post titles run 50-95
+      // characters and a size tuned for the longest one makes the shortest
+      // look thin, while a size tuned for the shortest clips or overflows
+      // the longest. 30px is the floor — small enough to fit three lines
+      // of the longest title we've shipped, still legible once the whole
+      // card is scaled down to the ~300px width a LinkedIn/Slack preview
+      // renders it at.
+      var MIN_FONT_PX = 30;
+      var MAX_FONT_PX = 60;
+      var el = document.getElementById('og-title');
+      var box = el.parentElement;
+
+      function overflowing() {
+        return el.scrollHeight > box.clientHeight;
+      }
+
+      function fit() {
+        var size = MAX_FONT_PX;
+        el.style.fontSize = size + 'px';
+        while (overflowing() && size > MIN_FONT_PX) {
+          size -= 1;
+          el.style.fontSize = size + 'px';
+        }
+      }
+
+      // Measuring before the variable font has actually painted would size
+      // against system-font metrics, which are narrower than Inter's —
+      // the card would then under-shrink and clip once Inter swaps in.
+      document.fonts.ready.then(function () {
+        fit();
+        // build-og.mjs polls this rather than a fixed delay: a fixed delay
+        // is either a wasted wait on a fast run or a race on a slow one.
+        document.body.setAttribute('data-og-ready', 'true');
+      });
+    })();
+  </script>
+</body>
+</html>

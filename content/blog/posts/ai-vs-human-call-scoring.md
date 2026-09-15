@@ -9,10 +9,11 @@ cardTag: "Foundations · AI call QA"
 cardSummary: "An honest comparison from someone selling AI scoring tooling. What AI is genuinely better at, what humans still beat AI on, and the right division of labour for production QA teams."
 order: 2
 date: "2026-05-05"
+updated: "2026-09-15"
 time: "09:30"
 section: "Foundations"
-readingTime: 9
-wordCount: 1500
+topic: "foundations"
+author: "kofi"
 ctaSubject: "CallGuard%20AI%20demo%20request"
 useCaseLink: "/use-cases/financial-services"
 related:

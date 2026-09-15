@@ -9,9 +9,10 @@ cardTag: "Operations · Contact centres"
 cardSummary: "The QA bottleneck explained from first principles, the maths of manual versus AI scoring, and what the architecture of 100% coverage actually looks like in production."
 order: 4
 date: "2026-05-05"
+updated: "2026-09-15"
 section: "Operations"
-readingTime: 11
-wordCount: 1700
+topic: "operations"
+author: "kofi"
 ctaSubject: "CallGuard%20AI%20%E2%80%94%20BPO%20demo"
 useCaseLink: "/use-cases/bpo"
 related:

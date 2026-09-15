@@ -9,14 +9,15 @@ cardTag: "Compliance · Financial services"
 cardSummary: "A practical checklist for compliance leads at FCA-regulated firms. The four outcomes, the evidence the regulator actually expects on a recording, and why a 5% sample no longer cuts it."
 order: 3
 date: "2026-05-05"
+updated: "2026-09-15"
 section: "Compliance"
-readingTime: 9
-wordCount: 1600
+topic: "regulation"
+author: "charlotte"
 ctaSubject: "CallGuard%20AI%20%E2%80%94%20FCA%20demo"
 useCaseLink: "/use-cases/collections"
 related:
+  - vulnerable-customer-call-monitoring
   - what-is-ai-call-qa
-  - score-100-percent-contact-centre-calls
   - pecr-tps-2026-outbound-compliance
 ---
 

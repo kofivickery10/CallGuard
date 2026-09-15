@@ -8,10 +8,11 @@ cardTag: "Compliance · Outbound"
 cardSummary: "What's tightened, what's blurred, and the five things the ICO will ask if a PECR complaint reaches them. Plus the systematic-monitoring standard that has replaced sample-based QA."
 order: 1
 date: "2026-05-05"
+updated: "2026-09-15"
 time: "10:00"
 section: "Compliance"
-readingTime: 9
-wordCount: 1500
+topic: "regulation"
+author: "charlotte"
 ctaSubject: "CallGuard%20AI%20%E2%80%94%20PECR%20demo"
 useCaseLink: "/use-cases/outbound-sales"
 related:

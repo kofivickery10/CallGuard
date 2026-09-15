@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:dc="http://purl.org/dc/elements/1.1/">
+<channel>
+  <title>CallGuard AI briefings</title>
+  <link>https://callguardai.co.uk/blog/</link>
+  <atom:link href="https://callguardai.co.uk/blog/feed.xml" rel="self" type="application/rss+xml" />
+  <description>Briefings on call compliance for FCA-regulated protection and mortgage advice firms.</description>
+  <language>en-GB</language>
+  <copyright>© 2026 CallGuard AI Ltd</copyright>
+  <lastBuildDate>Tue, 15 Sep 2026 09:00:00 +0100</lastBuildDate>
+  <item>
+    <title>Vulnerable customer call monitoring: what FG21/1 actually expects</title>
+    <link>https://callguardai.co.uk/blog/vulnerable-customer-call-monitoring</link>
+    <guid isPermaLink="true">https://callguardai.co.uk/blog/vulnerable-customer-call-monitoring</guid>
+    <pubDate>Thu, 27 Aug 2026 09:00:00 +0100</pubDate>
+    <category>Regulation</category>
+    <dc:creator>Charlotte Court</dc:creator>
+    <description>FG21/1 is guidance, not a rulebook, which makes it harder to evidence rather than easier. The FCA's 2025 review named the hard case precisely: vulnerability that is detectable but never disclosed. That happens out loud, on the call.</description>
+  </item>
+  <item>
+    <title>PECR and TPS in 2026: practical compliance for outbound teams</title>
+    <link>https://callguardai.co.uk/blog/pecr-tps-2026-outbound-compliance</link>
+    <guid isPermaLink="true">https://callguardai.co.uk/blog/pecr-tps-2026-outbound-compliance</guid>
+    <pubDate>Tue, 05 May 2026 10:00:00 +0100</pubDate>
+    <category>Regulation</category>
+    <dc:creator>Charlotte Court</dc:creator>
+    <description>What's tightened, what's blurred, and the five things the ICO will ask if a PECR complaint reaches them. Plus the systematic-monitoring standard that has replaced sample-based QA.</description>
+  </item>
+  <item>
+    <title>AI vs human call scoring: when each makes sense</title>
+    <link>https://callguardai.co.uk/blog/ai-vs-human-call-scoring</link>
+    <guid isPermaLink="true">https://callguardai.co.uk/blog/ai-vs-human-call-scoring</guid>
+    <pubDate>Tue, 05 May 2026 09:30:00 +0100</pubDate>
+    <category>How the scoring works</category>
+    <dc:creator>Kofi Vickery</dc:creator>
+    <description>An honest comparison from someone selling AI scoring tooling. What AI is genuinely better at, what humans still beat AI on, and the right division of labour for production QA teams.</description>
+  </item>
+  <item>
+    <title>FCA Consumer Duty: 7 things your call recordings need to evidence</title>
+    <link>https://callguardai.co.uk/blog/fca-consumer-duty-call-recordings</link>
+    <guid isPermaLink="true">https://callguardai.co.uk/blog/fca-consumer-duty-call-recordings</guid>
+    <pubDate>Tue, 05 May 2026 09:00:00 +0100</pubDate>
+    <category>Regulation</category>
+    <dc:creator>Charlotte Court</dc:creator>
+    <description>A practical checklist for compliance leads at FCA-regulated firms. The four outcomes, the evidence the regulator actually expects on a recording, and why a 5% sample no longer cuts it.</description>
+  </item>
+  <item>
+    <title>How to score 100% of contact centre calls without hiring more QA staff</title>
+    <link>https://callguardai.co.uk/blog/score-100-percent-contact-centre-calls</link>
+    <guid isPermaLink="true">https://callguardai.co.uk/blog/score-100-percent-contact-centre-calls</guid>
+    <pubDate>Tue, 05 May 2026 09:00:00 +0100</pubDate>
+    <category>Running QA</category>
+    <dc:creator>Kofi Vickery</dc:creator>
+    <description>The QA bottleneck explained from first principles, the maths of manual versus AI scoring, and what the architecture of 100% coverage actually looks like in production.</description>
+  </item>
+  <item>
+    <title>What is AI call QA and how does it actually work?</title>
+    <link>https://callguardai.co.uk/blog/what-is-ai-call-qa</link>
+    <guid isPermaLink="true">https://callguardai.co.uk/blog/what-is-ai-call-qa</guid>
+    <pubDate>Tue, 05 May 2026 09:00:00 +0100</pubDate>
+    <category>How the scoring works</category>
+    <dc:creator>Kofi Vickery</dc:creator>
+    <description>A plain-English walkthrough of how speech recognition, large language models and per-tenant calibration combine to score every call your team takes against your scorecard.</description>
+  </item>
+</channel>
+</rss>
