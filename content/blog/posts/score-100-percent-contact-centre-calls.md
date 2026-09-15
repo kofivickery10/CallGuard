@@ -25,7 +25,7 @@ If you run QA in a contact centre, you already know the maths. A senior reviewer
 
 ## The QA bottleneck, from first principles
 
-The bottleneck is not lack of will. Most QA teams would love to review more calls. The bottleneck is unit cost. A reviewer scoring 4 calls per hour at a fully-loaded UK senior wage of, say, £45,000 plus 25% overheads, costs roughly £35 per scored call once you net out admin time. At a 50,000-call-per-week floor, full coverage by humans would cost £1.75m per week or £91m per year. Nobody approves that budget, so you sample.
+The bottleneck is not lack of will. Most QA teams would love to review more calls. The bottleneck is unit cost. A senior reviewer scores about four calls an hour, so reviewing everything on a floor taking tens of thousands of calls a week would mean a review team several times the size of the one you have. Nobody approves that budget, so you sample.
 
 Sampling looked acceptable when "auditable evidence" meant a binder of reviewed-call summaries on a shelf. It is much harder to defend now that PRIN 2A.9.8R asks firms to regularly monitor the outcomes their customers are experiencing, and clients expect programme-level visibility from BPOs in real time. The rule sets no sample size. But a binder of 5% tells you what those calls contained, not what the other 95% did, and that gap is the thing the question is really about.
 
@@ -39,9 +39,9 @@ The intuitive response to a QA bottleneck is "hire more reviewers". It does not 
 
 **Reviewers burn out.** Listening to 30 calls a day for compliance failures is grim work. Senior reviewers leave for coaching roles, agent ops roles, or out of the industry. The team you build erodes faster than you can rebuild it.
 
-## The maths of AI scoring
+## Why coverage stops being a budget decision
 
-AI call scoring removes the unit-cost barrier that made sampling necessary. Machine transcription and model scoring are billed by the minute of audio, and scoring a call in full lands two orders of magnitude below the human equivalent rather than a few per cent below it. That is the change that makes full coverage arithmetic rather than aspiration.
+AI call scoring removes the unit-cost barrier that made sampling necessary. Scoring becomes machine work billed by the minute of audio rather than an hour of a senior reviewer's attention, so how much you review stops being a budget decision and becomes a configuration one.
 
 The cost is not the headline though. The headline is what you can do with 100% coverage that you cannot do with 5%. [We covered the foundations of how AI call QA works in a separate post](/blog/what-is-ai-call-qa), but here are the operational consequences specific to contact centres.
 
@@ -103,11 +103,11 @@ The honest answer: they do better work. The 1% sample reviews disappear because 
 
 **Programme-level analysis.** Patterns across the floor: which scorecard items are getting harder to pass, which agents are improving, which campaigns have rising breach rates. AI-generated insights digests give compliance leads a strategic view that nobody had time to build manually.
 
-## An ROI sketch you can adapt
+## Working out the case for your own floor
 
-This is the rough working we use with prospects. Treat it as illustrative, not precise.
+You can do this with numbers you already have, and we would rather you used yours than ours.
 
-A 100-seat outbound contact centre takes roughly 80,000 calls per month at 4-5 minute average duration. Manual QA at 5% sample is 4,000 reviewed calls per month at £30-£35 per call, or £130k a month. Manual QA at 1% sample (more typical) is around £25-£30k a month, with the trade-off of being less defensible to clients and regulators. AI scoring at 100% coverage runs at the same order-of-magnitude cost advantage as the maths above, for the same scoring depth, with the additional value of mid-call breach detection on outbound campaigns. Ask us for a quote sized to your call volume. The arithmetic only goes in one direction.
+Take a reviewer's fully loaded hourly cost and how many calls one reviewer scores in an hour: that gives you what a reviewed call costs you today. Multiply by the calls you review each month, and you have the cost of your current sample. Then ask what the calls outside it are worth: a missed breach that reaches a client or a regulator, the coaching that never happened, the complaint that could have been caught. Ask us for a quote sized to your call volume and set the two against each other.
 
 That said, ROI on a tool the regulator now expects is the wrong metric. The right metric is whether your firm can credibly answer "how do you systematically monitor outcomes" without flinching. Sampling does not.
 

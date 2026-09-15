@@ -71,7 +71,7 @@
       "isPartOf": {"@id": "https://callguardai.co.uk/blog/#blog"},
       "mainEntityOfPage": "https://callguardai.co.uk/blog/score-100-percent-contact-centre-calls",
       "articleSection": "Operations",
-      "wordCount": 1717
+      "wordCount": 1680
     },
     {
       "@type": "Organization",
@@ -152,7 +152,7 @@
       <p class="article-meta">
         <span>Published <time datetime="2026-05-05T09:00:00+01:00">5 May 2026</time></span>
         <span class="post-card-dot">·</span> <span>Reviewed <time datetime="2026-09-15">15 September 2026</time></span>
-        <span class="post-card-dot">·</span> <span>9 minute read</span>
+        <span class="post-card-dot">·</span> <span>8 minute read</span>
       </p>
       <p class="article-byline">
         By <a href="https://callguardai.co.uk/about">Kofi Vickery</a>, Co-founder, CallGuard AI
@@ -166,11 +166,11 @@
         <ol>
           <li><a href="#the-qa-bottleneck-from-first-principles">The QA bottleneck, from first principles</a></li>
           <li><a href="#why-hiring-more-qa-reviewers-does-not-scale">Why hiring more QA reviewers does not scale</a></li>
-          <li><a href="#the-maths-of-ai-scoring">The maths of AI scoring</a></li>
+          <li><a href="#why-coverage-stops-being-a-budget-decision">Why coverage stops being a budget decision</a></li>
           <li><a href="#what-100-coverage-actually-unlocks">What 100% coverage actually unlocks</a></li>
           <li><a href="#the-architecture-of-100-coverage">The architecture of 100% coverage</a></li>
           <li><a href="#what-qa-staff-do-once-full-coverage-is-the-default">What QA staff do once full coverage is the default</a></li>
-          <li><a href="#an-roi-sketch-you-can-adapt">An ROI sketch you can adapt</a></li>
+          <li><a href="#working-out-the-case-for-your-own-floor">Working out the case for your own floor</a></li>
           <li><a href="#where-to-start">Where to start</a></li>
         </ol>
       </nav>
@@ -180,7 +180,7 @@
 
     <h2 id="the-qa-bottleneck-from-first-principles">The QA bottleneck, from first principles<a class="heading-anchor" href="#the-qa-bottleneck-from-first-principles" aria-label="Link to this section">#</a></h2>
 
-    <p>The bottleneck is not lack of will. Most QA teams would love to review more calls. The bottleneck is unit cost. A reviewer scoring 4 calls per hour at a fully-loaded UK senior wage of, say, £45,000 plus 25% overheads, costs roughly £35 per scored call once you net out admin time. At a 50,000-call-per-week floor, full coverage by humans would cost £1.75m per week or £91m per year. Nobody approves that budget, so you sample.</p>
+    <p>The bottleneck is not lack of will. Most QA teams would love to review more calls. The bottleneck is unit cost. A senior reviewer scores about four calls an hour, so reviewing everything on a floor taking tens of thousands of calls a week would mean a review team several times the size of the one you have. Nobody approves that budget, so you sample.</p>
 
     <p>Sampling looked acceptable when "auditable evidence" meant a binder of reviewed-call summaries on a shelf. It is much harder to defend now that PRIN 2A.9.8R asks firms to regularly monitor the outcomes their customers are experiencing, and clients expect programme-level visibility from BPOs in real time. The rule sets no sample size. But a binder of 5% tells you what those calls contained, not what the other 95% did, and that gap is the thing the question is really about.</p>
 
@@ -194,9 +194,9 @@
 
     <p><strong>Reviewers burn out.</strong> Listening to 30 calls a day for compliance failures is grim work. Senior reviewers leave for coaching roles, agent ops roles, or out of the industry. The team you build erodes faster than you can rebuild it.</p>
 
-    <h2 id="the-maths-of-ai-scoring">The maths of AI scoring<a class="heading-anchor" href="#the-maths-of-ai-scoring" aria-label="Link to this section">#</a></h2>
+    <h2 id="why-coverage-stops-being-a-budget-decision">Why coverage stops being a budget decision<a class="heading-anchor" href="#why-coverage-stops-being-a-budget-decision" aria-label="Link to this section">#</a></h2>
 
-    <p>AI call scoring removes the unit-cost barrier that made sampling necessary. Machine transcription and model scoring are billed by the minute of audio, and scoring a call in full lands two orders of magnitude below the human equivalent rather than a few per cent below it. That is the change that makes full coverage arithmetic rather than aspiration.</p>
+    <p>AI call scoring removes the unit-cost barrier that made sampling necessary. Scoring becomes machine work billed by the minute of audio rather than an hour of a senior reviewer's attention, so how much you review stops being a budget decision and becomes a configuration one.</p>
 
     <p>The cost is not the headline though. The headline is what you can do with 100% coverage that you cannot do with 5%. <a href="/blog/what-is-ai-call-qa">We covered the foundations of how AI call QA works in a separate post</a>, but here are the operational consequences specific to contact centres.</p>
 
@@ -262,11 +262,11 @@
 
     <p><strong>Programme-level analysis.</strong> Patterns across the floor: which scorecard items are getting harder to pass, which agents are improving, which campaigns have rising breach rates. AI-generated insights digests give compliance leads a strategic view that nobody had time to build manually.</p>
 
-    <h2 id="an-roi-sketch-you-can-adapt">An ROI sketch you can adapt<a class="heading-anchor" href="#an-roi-sketch-you-can-adapt" aria-label="Link to this section">#</a></h2>
+    <h2 id="working-out-the-case-for-your-own-floor">Working out the case for your own floor<a class="heading-anchor" href="#working-out-the-case-for-your-own-floor" aria-label="Link to this section">#</a></h2>
 
-    <p>This is the rough working we use with prospects. Treat it as illustrative, not precise.</p>
+    <p>You can do this with numbers you already have, and we would rather you used yours than ours.</p>
 
-    <p>A 100-seat outbound contact centre takes roughly 80,000 calls per month at 4-5 minute average duration. Manual QA at 5% sample is 4,000 reviewed calls per month at £30-£35 per call, or £130k a month. Manual QA at 1% sample (more typical) is around £25-£30k a month, with the trade-off of being less defensible to clients and regulators. AI scoring at 100% coverage runs at the same order-of-magnitude cost advantage as the maths above, for the same scoring depth, with the additional value of mid-call breach detection on outbound campaigns. Ask us for a quote sized to your call volume. The arithmetic only goes in one direction.</p>
+    <p>Take a reviewer's fully loaded hourly cost and how many calls one reviewer scores in an hour: that gives you what a reviewed call costs you today. Multiply by the calls you review each month, and you have the cost of your current sample. Then ask what the calls outside it are worth: a missed breach that reaches a client or a regulator, the coaching that never happened, the complaint that could have been caught. Ask us for a quote sized to your call volume and set the two against each other.</p>
 
     <p>That said, ROI on a tool the regulator now expects is the wrong metric. The right metric is whether your firm can credibly answer "how do you systematically monitor outcomes" without flinching. Sampling does not.</p>
 

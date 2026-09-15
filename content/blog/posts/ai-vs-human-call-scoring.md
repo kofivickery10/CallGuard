@@ -82,7 +82,7 @@ Three forces have shifted the ground:
 
 **Client expectations in BPO contexts** have shifted from monthly PDF reports to live programme dashboards. Clients want to see how their programme is performing in real time, not in retrospect. Sample-based QA cannot produce live dashboards.
 
-**The unit economics** of human scoring at scale never worked, but it gets more obvious every year. Scoring a call with AI costs orders of magnitude less than a reviewer's time, which makes the comparison unambiguous, even if you keep humans in the loop for a fraction of the volume.
+**The unit economics** of human scoring at scale never worked, but it gets more obvious every year. Scoring a call with AI is machine work rather than an hour of a senior reviewer's attention, which makes the comparison unambiguous, even if you keep humans in the loop for a fraction of the volume.
 
 ## How to decide for your team
 

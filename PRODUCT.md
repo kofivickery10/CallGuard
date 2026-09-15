@@ -152,7 +152,11 @@ without "when a secret is set"; "CallGuard checks ICOBS/MCOB …" (the firm's sc
 defines the checks); firms "choosing" to disable redaction (only CallGuard staff can,
 with a DPIA note); "bring five of your own recordings" to a demo (a DPA comes before any
 real recordings; demos use synthetic calls); any CallGuard price, or "published pricing",
-on a public page (owner, 15 Sep 2026: never show a price, we can keep the plans).
+on a public page (owner, 15 Sep 2026: never show a price, we can keep the plans);
+the cost of scoring a call — per call, per minute, or as a multiple of manual
+review — because a cost alongside a quote gives away the margin (owner, 15 Sep 2026).
+That bars the derivable form too: a manual cost per call plus "orders of magnitude
+below" is the same disclosure with a division in the way.
 
 **Demo:** don't state a demo length (owner, 14 Sep 2026); demos use synthetic calls, and a DPA
 comes before any real recordings; replies usually the same working day.
