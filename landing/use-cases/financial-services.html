@@ -83,7 +83,7 @@
           "name": "How is client data secured?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "All audio is encrypted at rest with AES-256-GCM. Transport is TLS 1.2+. Hosted in the UK. UK GDPR Article 28 DPA is published at /dpa and our sub-processor list at /sub-processors. We do not train any model on your data."
+            "text": "All audio is encrypted at rest with AES-256-GCM. Transport is TLS 1.2+. Customer data is stored in the UK; some sub-processors that process audio and transcripts are outside the UK, and they are named on our sub-processor list. UK GDPR Article 28 DPA is published at /dpa and our sub-processor list at /sub-processors. We do not train any model on your data."
           }
         },
         {
@@ -91,7 +91,7 @@
           "name": "Does this work alongside our existing case management system?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "Yes. Push call recordings into CallGuard via REST API, and pull the scoring result back via the same API to render inside your case-management UI. Integrators can also subscribe to HMAC-signed webhooks to be notified the moment a critical breach is detected on a live call."
+            "text": "Yes. Push call recordings into CallGuard via REST API, and pull the scoring result back via the same API to render inside your case-management UI. Integrators can also subscribe to webhooks, HMAC-signed once you set a signing secret, to be notified the moment a critical breach is detected on a live call."
           }
         }
       ]
@@ -126,7 +126,7 @@
     </nav>
 
     <a href="https://app.callguardai.co.uk/" class="nav-login">Log in</a>
-    <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request" class="btn btn-primary nav-cta">Book a demo</a>
+    <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request" class="btn btn-primary nav-cta">Request a demo</a>
 
     <button class="theme-switch" type="button" aria-label="Toggle dark mode" aria-pressed="false">
       <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
@@ -148,7 +148,7 @@
     <a href="/blog/">Blog</a>
       <a href="/#faq">FAQ</a>
     <a href="https://app.callguardai.co.uk/">Log in</a>
-    <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request" class="btn btn-primary">Book a demo</a>
+    <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request" class="btn btn-primary">Request a demo</a>
   </div>
 </header>
 
@@ -164,7 +164,7 @@
         CallGuard AI is FCA call monitoring software for mortgage brokers, protection advisers, IFAs and pension specialists. Score every advice call against ICOBS 5 suitability, FG21/1 vulnerable customer indicators, charges and Consumer Duty fair-value tests, and DB-transfer specialist-pathway gates. Audit-ready evidence on 100% of conversations, not a 5% sample.
       </p>
       <div class="hero-ctas">
-        <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20FCA%20demo" class="btn btn-primary btn-lg">Book a 15-min demo</a>
+        <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20FCA%20demo" class="btn btn-primary btn-lg">Request a demo</a>
         <a href="#how" class="btn btn-ghost btn-lg">How it works ↓</a>
       </div>
     </div>
@@ -214,7 +214,7 @@
         Your scorecard, <span class="accent">built around the FCA's four outcomes.</span>
       </h2>
       <p class="lead">
-        CallGuard AI scores against the scorecard you upload. For IFAs, mortgage brokers, protection and pension advisers, that typically maps to ICOBS 5 suitability, FG21/1 vulnerable customer call monitoring, the four Consumer Duty outcomes, and your firm's own conduct rules. Every verdict on every criterion is backed by a direct quote from the call transcript, which is the evidence trail the regulator expects.
+        CallGuard AI scores against the scorecard you upload. For IFAs, mortgage brokers, protection and pension advisers, that typically maps to ICOBS 5 suitability, FG21/1 vulnerable customer call monitoring, the Consumer Duty outcomes visible on a call, and your firm's own conduct rules. Every verdict on every criterion is backed by the transcript evidence it was decided on, which is the evidence trail the regulator expects.
       </p>
 
       <div class="feature-grid feature-grid-2">
@@ -271,7 +271,7 @@
         </div>
         <div class="feature">
           <h3>Strategic insights for the CO</h3>
-          <p>A weekly digest summarising what changed, the patterns worth attention, and 3 to 4 specific actions a compliance director will actually take. Written for the CO, not as boilerplate.</p>
+          <p>An AI insights brief, generated on request, summarising what changed, the patterns worth attention, and 3 to 4 specific actions a compliance director will actually take. Written for the CO, not as boilerplate.</p>
         </div>
       </div>
     </div>
@@ -297,11 +297,11 @@
         </details>
         <details class="faq-item">
           <summary>How is client data secured?</summary>
-          <div class="faq-body"><p>All audio is encrypted at rest with AES-256-GCM. Transport is TLS 1.2+. Hosted in the UK. UK GDPR Article 28 DPA is published at <a href="/dpa">/dpa</a> and our sub-processor list at <a href="/sub-processors">/sub-processors</a>. We do not train any model on your data.</p></div>
+          <div class="faq-body"><p>All audio is encrypted at rest with AES-256-GCM. Transport is TLS 1.2+. Customer data is stored in the UK; some sub-processors that process audio and transcripts are outside the UK, and they are named on our sub-processor list. UK GDPR Article 28 DPA is published at <a href="/dpa">/dpa</a> and our sub-processor list at <a href="/sub-processors">/sub-processors</a>. We do not train any model on your data.</p></div>
         </details>
         <details class="faq-item">
           <summary>Does this work alongside our existing case management system?</summary>
-          <div class="faq-body"><p>Yes. Push call recordings into CallGuard via REST API, and pull the scoring result back via the same API to render inside your case-management UI. Integrators can also subscribe to HMAC-signed webhooks to be notified the moment a critical breach is detected on a live call.</p></div>
+          <div class="faq-body"><p>Yes. Push call recordings into CallGuard via REST API, and pull the scoring result back via the same API to render inside your case-management UI. Integrators can also subscribe to webhooks, HMAC-signed once you set a signing secret, to be notified the moment a critical breach is detected on a live call.</p></div>
         </details>
       </div>
 
@@ -310,7 +310,7 @@
       </p>
 
       <div style="margin-top: 36px; text-align: center;">
-        <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20FCA%20demo" class="btn btn-primary btn-lg">Book a 15-min demo</a>
+        <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20FCA%20demo" class="btn btn-primary btn-lg">Request a demo</a>
       </div>
     </div>
   </section>
@@ -363,7 +363,7 @@
   </div>
   <div class="container footer-bottom">
     <span>© 2026 CallGuard AI.</span>
-    <span>UK-based · GDPR-compliant by default</span>
+    <span>UK-based · Data stored in the UK</span>
   </div>
 </footer>
 

@@ -89,7 +89,7 @@
       <a href="/blog/">Blog</a>
     </nav>
     <a href="https://app.callguardai.co.uk/" class="nav-login">Log in</a>
-    <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request" class="btn btn-primary nav-cta">Book a demo</a>
+    <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request" class="btn btn-primary nav-cta">Request a demo</a>
     <button class="theme-switch" type="button" aria-label="Toggle dark mode" aria-pressed="false">
       <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
       <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
@@ -109,7 +109,7 @@
     <a href="/blog/">Blog</a>
     <a href="/#faq">FAQ</a>
     <a href="https://app.callguardai.co.uk/">Log in</a>
-    <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request" class="btn btn-primary">Book a demo</a>
+    <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request" class="btn btn-primary">Request a demo</a>
   </div>
 </header>
 
@@ -129,7 +129,7 @@
 
     <p>AI call quality assurance is the use of speech recognition combined with large language models to transcribe and score every call your team takes against a structured scorecard. Every call. Not a sample.</p>
 
-    <p>The output is the same shape as a manual QA review: pass / fail per criterion, an overall weighted score, an evidence quote pulled from the transcript that justifies each verdict, and a coaching draft for the agent. The difference is that you get this output for 100% of calls inside a minute of the call ending, rather than for 1% to 5% of calls inside a few weeks.</p>
+    <p>The output is the same shape as a manual QA review: pass / fail per criterion, an overall weighted score, an evidence quote pulled from the transcript that justifies each verdict, and a coaching draft for the agent. The difference is that you get this output for 100% of calls shortly after the call ends, rather than for 1% to 5% of calls inside a few weeks.</p>
 
     <p>For regulated voice work, like FCA-regulated financial advice or contact-centre outbound, the leap matters more than it sounds. Manual sampling is statistically blind to the calls outside the sample. AI scoring is not.</p>
 
@@ -145,7 +145,7 @@
 
     <h3>2. A large language model running against your scorecard</h3>
 
-    <p>The transcript goes to a large language model (in CallGuard's case, Anthropic's Claude). The model is shown your scorecard one criterion at a time, told to score the criterion against the transcript, and asked for two things back: a verdict (pass or fail), and the direct quote from the transcript that proves the verdict.</p>
+    <p>The transcript goes to a large language model (in CallGuard's case, Anthropic's Claude). The model is shown your whole scorecard in one pass, told to score each criterion against the transcript, and asked for two things back per criterion: a verdict (pass or fail), and the direct quote from the transcript that proves the verdict.</p>
 
     <p>That second part matters more than the first. A score with no evidence is just an opinion. A score with a quote underneath it is auditable. If your compliance officer reviews 50 scored calls and disagrees with a verdict, they can see exactly which words drove the AI to that conclusion and override it. That is the basis of an audit trail the FCA actually expects.</p>
 
@@ -169,11 +169,11 @@
 
     <p>There are two operating modes worth understanding. Most legacy speech analytics tools only do the second.</p>
 
-    <p><strong>After-call scoring</strong> processes the recording once the call has ended. The transcript and score are ready inside a minute. This is appropriate for compliance review, breach detection, agent coaching and reporting. It is also the only mode you need if your audio is uploaded as files (recordings from a dialer, exported from a compliance recorder, or pushed in via API).</p>
+    <p><strong>After-call scoring</strong> processes the recording once the call has ended. The transcript and score are ready shortly after. This is appropriate for compliance review, breach detection, agent coaching and reporting. It is also the only mode you need if your audio is uploaded as files (recordings from a dialer, exported from a compliance recorder, or pushed in via API).</p>
 
-    <p><strong>Mid-call scoring</strong> runs while the conversation is still happening. Audio streams over a WebSocket from the dialer (Twilio, AWS Connect, generic WebRTC). The system transcribes live, runs scoring against a rolling transcript every 30 seconds or so, and emits high-confidence breach alerts via signed webhook to your supervisor screen or CRM before the call ends. This mode matters for outbound campaigns where a critical breach (urgency-language, missing consent capture, mini-Miranda failure) is regulator-grade and you need to intervene mid-call rather than file a finding three weeks later.</p>
+    <p><strong>Mid-call scoring</strong> runs while the conversation is still happening. Audio streams over a WebSocket from the dialer (Twilio, Amazon Connect via a customer-run Lambda bridge, generic WebRTC). The system transcribes live, runs scoring against a rolling transcript, and emits high-confidence breach alerts via webhook, HMAC-signed once you set a signing secret, to your CRM or agent desktop before the call ends. This mode matters for outbound campaigns where a critical breach (urgency-language, missing consent capture, mini-Miranda failure) is regulator-grade and you need to intervene mid-call rather than file a finding three weeks later.</p>
 
-    <p>Both modes use the same scorecard and the same calibration layer. The mid-call mode adds a confidence threshold (typically &gt;75%) so you do not get false-positive breach alerts every 30 seconds.</p>
+    <p>Both modes use the same scorecard and the same calibration layer. The mid-call mode adds a confidence threshold, so it only emits a breach when it is confident the criterion has already failed, rather than firing on every borderline signal.</p>
 
     <h2>Common myths</h2>
 
@@ -201,7 +201,7 @@
 
     <p><strong>Can I bring my own scorecard?</strong> If the answer is "we have a template you can edit", be cautious. A serious AI QA system runs against an arbitrary scorecard you upload, not a vendor-curated set of items.</p>
 
-    <p><strong>Where is the evidence quote?</strong> Every verdict on every criterion should have a direct quote underneath it. If the product cannot show you the words from the transcript that drove the score, it is not auditable.</p>
+    <p><strong>Where is the evidence?</strong> Every verdict should show the transcript evidence it was decided on, or say plainly that no relevant evidence was found. If the product cannot show you what drove the score, it is not auditable.</p>
 
     <p><strong>Can compliance officers correct AI scores, and does the system learn from those corrections?</strong> The honest answer to "does it learn" should be specific: it should be able to tell you exactly how many corrections feed back into future prompts, and you should see your scoring drift toward your firm's interpretation over a few weeks of use.</p>
 
@@ -211,11 +211,11 @@
 
     <h2>What this looks like in practice</h2>
 
-    <p>If you want to see what an AI-scored call looks like end to end (transcript, per-criterion verdicts, evidence quotes, breach register, coaching draft) we run a 15-minute demo against your own sample recordings. <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request">Drop us a line at hello@callguardai.co.uk</a> and bring 5 recordings; we will score them on the call.</p>
+    <p>If you want to see what an AI-scored call looks like end to end (transcript, per-criterion verdicts, evidence quotes, breach register, coaching draft) we run a short demo scoring synthetic calls against a scorecard like yours. <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request">Drop us a line at hello@callguardai.co.uk</a> and we will set it up; when you want to try your own recordings, we put a DPA in place first.</p>
   </div>
 
   <div class="container article-cta">
-    <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request" class="btn btn-primary btn-lg">Book a 15-min demo</a>
+    <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request" class="btn btn-primary btn-lg">Request a demo</a>
   </div>
 
   <aside class="container article-related">
@@ -273,7 +273,7 @@
   </div>
   <div class="container footer-bottom">
     <span>© 2026 CallGuard AI.</span>
-    <span>UK-based · GDPR-compliant by default</span>
+    <span>UK-based · Data stored in the UK</span>
   </div>
 </footer>
 

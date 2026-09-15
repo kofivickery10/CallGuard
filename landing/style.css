@@ -1383,6 +1383,9 @@ h1, h2, h3, h4, h5 { color: var(--text-primary); font-weight: 700; line-height: 
   padding: 14px 24px;
   font-size: 16px;
 }
+/* .nav-drawer a sets text-primary, which outranks .btn-primary's white text: keep the drawer CTA legible (was 2.4:1 in light mode). */
+.nav-drawer .btn-primary,
+.nav-drawer .btn-primary:hover { color: #ffffff; }
 body.no-scroll { overflow: hidden; }
 
 /* ============================================================

@@ -89,7 +89,7 @@
       <a href="/blog/">Blog</a>
     </nav>
     <a href="https://app.callguardai.co.uk/" class="nav-login">Log in</a>
-    <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request" class="btn btn-primary nav-cta">Book a demo</a>
+    <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request" class="btn btn-primary nav-cta">Request a demo</a>
     <button class="theme-switch" type="button" aria-label="Toggle dark mode" aria-pressed="false">
       <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
       <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
@@ -109,7 +109,7 @@
     <a href="/blog/">Blog</a>
     <a href="/#faq">FAQ</a>
     <a href="https://app.callguardai.co.uk/">Log in</a>
-    <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request" class="btn btn-primary">Book a demo</a>
+    <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request" class="btn btn-primary">Request a demo</a>
   </div>
 </header>
 
@@ -149,7 +149,7 @@
 
     <h2>What 100% coverage actually unlocks</h2>
 
-    <p><strong>Breach detection in seconds, not weeks.</strong> A critical compliance failure (urgency-language, missing consent capture, mini-Miranda failure, fair-value misstep) is currently caught when a customer complains weeks later. With live mid-call scoring, a high-confidence breach fires a webhook to your supervisor screen within 30 seconds of the AI being sure it has happened. Coaching can be in the next call rather than the next month.</p>
+    <p><strong>Breach detection in seconds, not weeks.</strong> A critical compliance failure (urgency-language, missing consent capture, mini-Miranda failure, fair-value misstep) is currently caught when a customer complains weeks later. With live mid-call breach detection, a high-confidence breach fires a webhook to your CRM or agent desktop while the call is still happening. Coaching can be in the next call rather than the next month.</p>
 
     <p><strong>Real coaching, on every agent, every week.</strong> Per-call coaching drafts feed into per-agent coaching memory. The coaching the agent receives next time builds on what was said last time. If they have improved on the flagged area, the AI acknowledges it. If they have not, the language escalates. Manual QA cannot do this because no human has the time to remember every coaching note for every agent.</p>
 
@@ -168,7 +168,7 @@
     <p>Calls have to get into the system. There are three patterns:</p>
 
     <ul class="article-list">
-      <li><strong>Live streaming over WebSocket</strong> from your dialer. Twilio Media Streams and AWS Connect Voice Streams are the most common. <a href="/integrations/twilio">Our Twilio integration</a> and <a href="/integrations/aws-connect">AWS Connect integration</a> walk through the wiring. Other dialers connect via a generic WebSocket protocol.</li>
+      <li><strong>Live streaming over WebSocket</strong> from your dialer. Twilio Media Streams and Amazon Connect live media streaming via a customer-run Lambda bridge are the most common. <a href="/integrations/twilio">Our Twilio integration</a> and <a href="/integrations/aws-connect">AWS Connect integration</a> walk through the wiring. Other dialers connect via a generic WebSocket protocol.</li>
       <li><strong>Batch upload of recordings</strong> via REST API or the dashboard. Useful for legacy stacks where streaming is not available, or for archived recordings being scored retrospectively.</li>
       <li><strong>Drag-and-drop</strong> for one-off calls being reviewed in the dashboard.</li>
     </ul>
@@ -181,7 +181,7 @@
 
     <h3>3. LLM scoring against your scorecard</h3>
 
-    <p>The transcript goes to a large language model with your scorecard. The model scores each criterion individually, returns a verdict, and returns the direct quote from the transcript that justifies the verdict. The evidence quote is the part that matters: a score with no evidence is unauditable.</p>
+    <p>The transcript goes to a large language model with your scorecard. The model scores each criterion, returns a verdict, and returns the transcript evidence that justifies it, or records that no relevant evidence was found. The evidence is the part that matters: a score with no evidence is unauditable.</p>
 
     <h3>4. Per-tenant calibration</h3>
 
@@ -193,7 +193,7 @@
 
     <ul class="article-list">
       <li><strong>Dashboard</strong> for QA leads, ops directors and compliance officers who want to review individual calls.</li>
-      <li><strong>HMAC-signed webhooks</strong> for live breach alerts to your supervisor screen, CRM or Slack.</li>
+      <li><strong>Webhooks, HMAC-signed once you set a signing secret,</strong> for live breach alerts to your CRM, agent desktop or Slack.</li>
       <li><strong>REST API</strong> to pull scores back per call so you can render them inside your own client portal, agent desktop or case-management system.</li>
     </ul>
 
@@ -219,11 +219,11 @@
 
     <h2>Where to start</h2>
 
-    <p>If your contact centre or BPO is at the point where adding more QA staff has diminishing returns, the right next step is to score a sample of your real calls and see what AI actually catches that your sample missed. We run 15-minute demos against five recordings you bring; you see your scorecard, your breaches, and your coaching drafts on the call. <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20BPO%20demo">Email hello@callguardai.co.uk</a> and we will book it in.</p>
+    <p>If your contact centre or BPO is at the point where adding more QA staff has diminishing returns, the right next step is to see what AI scoring actually catches that your sample misses. In a short demo we score synthetic calls against a scorecard like yours, so you see your scorecard, your breaches, and your coaching drafts on the call. When you want to try your own recordings, we put a DPA in place first. <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20BPO%20demo">Email hello@callguardai.co.uk</a> and we will book it in.</p>
   </div>
 
   <div class="container article-cta">
-    <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20BPO%20demo" class="btn btn-primary btn-lg">Book a 15-min demo</a>
+    <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20BPO%20demo" class="btn btn-primary btn-lg">Request a demo</a>
   </div>
 
   <aside class="container article-related">
@@ -280,7 +280,7 @@
   </div>
   <div class="container footer-bottom">
     <span>© 2026 CallGuard AI.</span>
-    <span>UK-based · GDPR-compliant by default</span>
+    <span>UK-based · Data stored in the UK</span>
   </div>
 </footer>
 

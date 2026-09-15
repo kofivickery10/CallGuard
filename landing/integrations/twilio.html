@@ -3,11 +3,11 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta name="description" content="AI call QA for Twilio Media Streams. Stream live audio over WebSocket, score every call against your scorecard, and fire signed webhooks on breaches." />
+<meta name="description" content="AI call QA for Twilio Media Streams. Stream live audio over WebSocket, score every call against your scorecard, and fire webhooks on breaches." />
 <meta name="theme-color" content="#4a9e6e" />
 <meta name="robots" content="index,follow,max-image-preview:large" />
 <meta name="author" content="CallGuard AI" />
-<title>Twilio Call QA Integration: Live AI Scoring | CallGuard AI</title>
+<title>Twilio Call QA: Live Breach Detection | CallGuard AI</title>
 <link rel="canonical" href="https://callguardai.co.uk/integrations/twilio" />
 <link rel="icon" href="/favicon.ico" sizes="48x48" />
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
@@ -20,8 +20,8 @@
 <meta property="og:site_name" content="CallGuard AI" />
 <meta property="og:locale" content="en_GB" />
 <meta property="og:url" content="https://callguardai.co.uk/integrations/twilio" />
-<meta property="og:title" content="Twilio Call QA Integration: Live AI Scoring | CallGuard AI" />
-<meta property="og:description" content="AI call QA for Twilio Media Streams. Live scoring, signed webhooks, mid-call breach detection." />
+<meta property="og:title" content="Twilio Call QA: Live Breach Detection | CallGuard AI" />
+<meta property="og:description" content="AI call QA for Twilio Media Streams. Live breach detection, webhooks, full scoring after the call." />
 <meta property="og:image" content="https://callguardai.co.uk/og-image.jpg" />
 
 <meta name="twitter:card" content="summary_large_image" />
@@ -46,7 +46,7 @@
       "@id": "https://callguardai.co.uk/integrations/twilio#webpage",
       "name": "Twilio Call QA Integration",
       "url": "https://callguardai.co.uk/integrations/twilio",
-      "description": "Live AI scoring on Twilio Media Streams.",
+      "description": "Live breach detection on Twilio Media Streams.",
       "isPartOf": {"@id": "https://callguardai.co.uk/#website"},
       "about": {"@id": "https://callguardai.co.uk/#software"}
     },
@@ -132,7 +132,7 @@
       <a href="/blog/">Blog</a>
     </nav>
     <a href="https://app.callguardai.co.uk/" class="nav-login">Log in</a>
-    <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request" class="btn btn-primary nav-cta">Book a demo</a>
+    <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request" class="btn btn-primary nav-cta">Request a demo</a>
     <button class="theme-switch" type="button" aria-label="Toggle dark mode" aria-pressed="false">
       <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
       <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
@@ -152,7 +152,7 @@
     <a href="/blog/">Blog</a>
       <a href="/#faq">FAQ</a>
     <a href="https://app.callguardai.co.uk/">Log in</a>
-    <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request" class="btn btn-primary">Book a demo</a>
+    <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request" class="btn btn-primary">Request a demo</a>
   </div>
 </header>
 
@@ -165,10 +165,10 @@
         AI call QA for <span class="accent">Twilio Media Streams.</span>
       </h1>
       <p class="hero-sub">
-        First-class adapter for Twilio's Media Streams WebSocket. Live transcription with speaker separation, scoring against your own scorecard, mid-call breach detection within 30 seconds, and HMAC-signed webhooks back to your CRM or supervisor screen. No middleware, no Lambda bridge.
+        First-class adapter for Twilio's Media Streams WebSocket. Live transcription with speaker separation, scoring against your own scorecard, mid-call breach detection while the call is still happening, and webhooks, HMAC-signed once you set a signing secret, back to your CRM or agent desktop. No middleware, no Lambda bridge.
       </p>
       <div class="hero-ctas">
-        <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20Twilio%20demo" class="btn btn-primary btn-lg">Book a 15-min demo</a>
+        <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20Twilio%20demo" class="btn btn-primary btn-lg">Request a demo</a>
         <a href="#how" class="btn btn-ghost btn-lg">How the integration works ↓</a>
       </div>
     </div>
@@ -193,12 +193,12 @@
         <div class="step">
           <div class="step-num">2</div>
           <h3>We score in real time</h3>
-          <p>The adapter consumes Twilio's media frames, runs live transcription with speaker separation, and feeds the rolling transcript into Claude every 30 seconds for breach detection at over 75% confidence.</p>
+          <p>The adapter consumes Twilio's media frames, runs live transcription with speaker separation, and feeds the rolling transcript into Claude for breach detection, only emitting a breach when it is confident the criterion has already failed.</p>
         </div>
         <div class="step">
           <div class="step-num">3</div>
           <h3>Webhooks fire back</h3>
-          <p>HMAC-SHA256 signed POST to your endpoint within 30 seconds of a breach being detected, plus a final scored event when the call ends. Retry with exponential backoff. Full audit log in the dashboard.</p>
+          <p>A POST to your endpoint, HMAC-SHA256 signed once you set a signing secret, sent as soon as a breach is detected, plus a final scored event when the call ends. Retry with exponential backoff. Full audit log in the dashboard.</p>
         </div>
       </div>
     </div>
@@ -222,11 +222,11 @@
         </div>
         <div class="feature">
           <h3>30-second breach cadence</h3>
-          <p>Mid-call breach detection runs every 30 seconds against the rolling transcript. Only emits a breach when the AI is over 75% confident a criterion has clearly already failed. No alert fatigue.</p>
+          <p>Mid-call breach detection runs against the rolling transcript as the call happens. Only emits a breach when the AI is confident a criterion has clearly already failed. No alert fatigue.</p>
         </div>
         <div class="feature">
           <h3>HMAC-SHA256 signed webhooks</h3>
-          <p>Every webhook is signed so your endpoint can verify the payload came from CallGuard. Headers include <code>X-CallGuardAI-Event</code> and <code>X-CallGuardAI-Signature: sha256=...</code>. Retries on failure with exponential backoff.</p>
+          <p>Set a signing secret and every webhook carries a signature so your endpoint can verify the payload came from CallGuard. Headers include <code>X-CallGuardAI-Event</code> and <code>X-CallGuardAI-Signature: sha256=...</code>. Retries on failure with exponential backoff.</p>
         </div>
         <div class="feature">
           <h3>Final scored event</h3>
@@ -273,7 +273,7 @@
       </div>
 
       <div style="margin-top: 36px; text-align: center;">
-        <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20Twilio%20demo" class="btn btn-primary btn-lg">Book a 15-min demo</a>
+        <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20Twilio%20demo" class="btn btn-primary btn-lg">Request a demo</a>
       </div>
     </div>
   </section>
@@ -326,7 +326,7 @@
   </div>
   <div class="container footer-bottom">
     <span>© 2026 CallGuard AI.</span>
-    <span>UK-based · GDPR-compliant by default</span>
+    <span>UK-based · Data stored in the UK</span>
   </div>
 </footer>
 

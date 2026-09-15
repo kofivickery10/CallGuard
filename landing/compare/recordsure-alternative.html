@@ -124,7 +124,7 @@
       <a href="/blog/">Blog</a>
     </nav>
     <a href="https://app.callguardai.co.uk/" class="nav-login">Log in</a>
-    <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request" class="btn btn-primary nav-cta">Book a demo</a>
+    <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request" class="btn btn-primary nav-cta">Request a demo</a>
     <button class="theme-switch" type="button" aria-label="Toggle dark mode" aria-pressed="false">
       <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
       <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
@@ -144,7 +144,7 @@
     <a href="/blog/">Blog</a>
     <a href="/#faq">FAQ</a>
     <a href="https://app.callguardai.co.uk/">Log in</a>
-    <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request" class="btn btn-primary">Book a demo</a>
+    <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request" class="btn btn-primary">Request a demo</a>
   </div>
 </header>
 
@@ -158,7 +158,7 @@
         Recordsure, part of TCC Group, has spent years capturing and reviewing regulated conversations in UK wealth management: record the meeting, including face-to-face ones, assess it afterwards, and hand the file-review team the riskiest cases first. CallGuard AI is telephony-first and live: calls scored while they are still happening, whole sale journeys scored as one compliance unit, and every price published. This is the honest comparison, including the parts where Recordsure does something we do not.
       </p>
       <div class="hero-ctas">
-        <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20vs%20Recordsure" class="btn btn-primary btn-lg">Book a 15-min demo</a>
+        <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20vs%20Recordsure" class="btn btn-primary btn-lg">Request a demo</a>
         <a href="#compare" class="btn btn-ghost btn-lg">See the comparison ↓</a>
       </div>
     </div>
@@ -204,23 +204,23 @@
       <div class="feature-grid feature-grid-2">
         <div class="feature">
           <h3>Breaches caught mid-call, not at review</h3>
-          <p>On streamed calls, CallGuard AI rescores the rolling transcript every 30 seconds and fires an HMAC-signed webhook to your supervisor, CRM or agent desktop only when the AI is over 75% confident a criterion has already failed. A supervisor can step in while the customer is still on the line, which is a different outcome from finding out at review.</p>
+          <p>On streamed calls, CallGuard AI rescores the rolling transcript as the call happens and fires a webhook, HMAC-signed once you set a signing secret, to your CRM or agent desktop only when the AI is confident a criterion has already failed. Whoever is watching can step in while the customer is still on the line, which is a different outcome from finding out at review.</p>
         </div>
         <div class="feature">
           <h3>No published price</h3>
           <p>Recordsure does not publish pricing, so the first step in evaluating them is a conversation rather than a number. CallGuard AI publishes all three plans on the pricing page: £199, £299 and £399 per seat, per month, with volume discounts and no multi-year minimum. You can build the business case before anyone calls you.</p>
         </div>
         <div class="feature">
-          <h3>Same-day start, no implementation project</h3>
-          <p>Upload your scorecard as a CSV, connect a dialer or drop in a folder of recordings, and the first calls are scored that day. For a firm of twenty advisers, an enterprise implementation cycle costs more in delay than the software costs in licence fees.</p>
+          <h3>No implementation project</h3>
+          <p>Share your scorecard and we set up your account. We put a DPA in place before you share any real recordings, and connecting a dialer can follow once you are happy with the results. For a firm of twenty advisers, an enterprise implementation cycle costs more in delay than the software costs in licence fees.</p>
         </div>
         <div class="feature">
           <h3>Dialer-native ingestion</h3>
           <p>First-class adapters for <a href="/integrations/cloudtalk">CloudTalk</a>, <a href="/integrations/twilio">Twilio Media Streams</a> and <a href="/integrations/aws-connect">AWS Connect</a>, plus a generic WebSocket protocol for any other dialer and a REST API for pushing recording URLs. If your advice happens down a phone line, the audio arrives without anyone exporting anything.</p>
         </div>
         <div class="feature">
-          <h3>Every verdict carries its quote</h3>
-          <p>Each scorecard criterion returns pass or fail with the exact transcript line that decided it. A reviewer agrees or overturns in seconds instead of relistening, and the evidence for the audit file is assembled as a by-product rather than as a separate task.</p>
+          <h3>Evidence behind every verdict</h3>
+          <p>Each scorecard criterion returns pass or fail with the transcript evidence it was decided on. A reviewer agrees or overturns in seconds instead of relistening, and the evidence for the audit file is assembled as a by-product rather than as a separate task.</p>
         </div>
         <div class="feature">
           <h3>Scoring that learns your firm's reading</h3>
@@ -242,11 +242,11 @@
           <tbody>
             <tr><td>Primary job</td><td>Post-conversation assessment and file review</td><td>Live and post-call compliance scoring</td></tr>
             <tr><td>Face-to-face meeting capture</td><td>Yes, via the Capture App</td><td>Not offered; telephony, streams and uploads</td></tr>
-            <tr><td>Live mid-call breach detection</td><td>Post-conversation focus</td><td>Rescored every 30 seconds, webhook above 75% confidence</td></tr>
+            <tr><td>Live mid-call breach detection</td><td>Post-conversation focus</td><td>Continuously rescored, confidence-gated webhook</td></tr>
             <tr><td>Advice journeys</td><td>Scored in ConversationAI</td><td>Multi-call sale journeys assembled from your dialer</td></tr>
             <tr><td>Dialer ingestion</td><td>Not published</td><td>CloudTalk, Twilio, AWS Connect, WebSocket, REST</td></tr>
             <tr><td>Pricing</td><td>Not published</td><td>£199 / £299 / £399 per seat, per month, published</td></tr>
-            <tr><td>Time to first scored call</td><td>Not published</td><td>Same-day onboarding</td></tr>
+            <tr><td>Time to first scored call</td><td>Not published</td><td>No integration project to begin</td></tr>
             <tr><td>Per-tenant AI learning</td><td>Not published</td><td>Your compliance corrections recalibrate scoring</td></tr>
             <tr><td>Hosting</td><td>UK data storage on Microsoft Azure</td><td>UK-hosted by default, published DPA and sub-processors</td></tr>
           </tbody>
@@ -267,12 +267,12 @@
         </div>
         <div class="feature">
           <h3>Pick CallGuard AI if</h3>
-          <p>Your regulated conversations happen on the phone, you want breaches flagged mid-call rather than at review, and you want a multi-call sale judged as one compliance unit with a transcript quote under every verdict. You are a smaller or mid-sized firm, you want the price published, and you want the first calls scored today rather than after an implementation.</p>
+          <p>Your regulated conversations happen on the phone, you want breaches flagged mid-call rather than at review, and you want a multi-call sale judged as one compliance unit with the transcript evidence behind every verdict. You are a smaller or mid-sized firm, you want the price published, and you want no integration project standing between you and your first scored calls.</p>
         </div>
       </div>
 
       <div style="margin-top: 36px; text-align: center;">
-        <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20vs%20Recordsure%20demo" class="btn btn-primary btn-lg">Book a 15-min demo with five of your calls</a>
+        <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20vs%20Recordsure%20demo" class="btn btn-primary btn-lg">Request a demo</a>
       </div>
     </div>
   </section>
@@ -355,7 +355,7 @@
   </div>
   <div class="container footer-bottom">
     <span>© 2026 CallGuard AI.</span>
-    <span>UK-based · GDPR-compliant by default</span>
+    <span>UK-based · Data stored in the UK</span>
   </div>
 </footer>
 

@@ -75,7 +75,7 @@
           "name": "How does this integrate with our dialer (Five9, Genesys, Twilio)?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "First-class adapters for Twilio Media Streams and AWS Connect Voice Streams. Twilio integration here, AWS Connect here. Other dialers can connect via our generic WebSocket protocol for live streaming. For any dialer, including Five9 and Genesys, you can also export recordings and bring them in via upload or our REST API."
+            "text": "First-class adapter for Twilio Media Streams, and Amazon Connect live media streaming via a customer-run Lambda bridge. Twilio integration here, AWS Connect here. Other dialers can connect via our generic WebSocket protocol for live streaming. For any dialer, including Five9 and Genesys, you can also export recordings and bring them in via upload or our REST API."
           }
         },
         {
@@ -124,7 +124,7 @@
       <a href="/blog/">Blog</a>
     </nav>
     <a href="https://app.callguardai.co.uk/" class="nav-login">Log in</a>
-    <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request" class="btn btn-primary nav-cta">Book a demo</a>
+    <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request" class="btn btn-primary nav-cta">Request a demo</a>
     <button class="theme-switch" type="button" aria-label="Toggle dark mode" aria-pressed="false">
       <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
       <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
@@ -144,7 +144,7 @@
     <a href="/blog/">Blog</a>
     <a href="/#faq">FAQ</a>
     <a href="https://app.callguardai.co.uk/">Log in</a>
-    <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request" class="btn btn-primary">Book a demo</a>
+    <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request" class="btn btn-primary">Request a demo</a>
   </div>
 </header>
 
@@ -160,7 +160,7 @@
         CallGuard AI is collections call monitoring software for FCA CONC rules, Ofcom no-call windows and GDPR recording consent, with FDCPA mini-Miranda coverage for US-facing books. Collections calls carry an unusually long compliance checklist and a single missed item is a regulator-grade event. CallGuard AI scores all of them on 100% of calls, with live breach alerts before the call ends.
       </p>
       <div class="hero-ctas">
-        <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20collections%20demo" class="btn btn-primary btn-lg">Book a 15-min demo</a>
+        <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20collections%20demo" class="btn btn-primary btn-lg">Request a demo</a>
         <a href="#how" class="btn btn-ghost btn-lg">What gets scored ↓</a>
       </div>
     </div>
@@ -243,13 +243,13 @@
       <span class="section-tag">Live mid-call alerts</span>
       <h2 class="section-h2">Catch the breach <span class="accent">before the call ends.</span></h2>
       <p class="lead">
-        For collections, "discovering the breach in next month's audit" is too late. The customer has already complained to the regulator. CallGuard AI streams audio live from your dialer, runs scoring against the rolling transcript every 30 seconds, and emits high-confidence breach alerts via signed webhook to your floor manager's screen, your CRM, or a Slack channel.
+        For collections, "discovering the breach in next month's audit" is too late. The customer has already complained to the regulator. CallGuard AI streams audio live from your dialer, runs scoring against the rolling transcript as the call happens, and emits high-confidence breach alerts via webhook, HMAC-signed once you set a signing secret, to your dialer, your CRM, or a Slack channel.
       </p>
 
       <div class="feature-grid feature-grid-2">
         <div class="feature">
           <h3>Mini-Miranda missing alert</h3>
-          <p>If the agent has not delivered a clean mini-Miranda within the first 60 seconds of an FDCPA-regulated call, a webhook fires to the supervisor screen. The supervisor can intervene before the call goes any further.</p>
+          <p>If the agent has not delivered a clean mini-Miranda within the first 60 seconds of an FDCPA-regulated call, a webhook fires to your dialler or CRM. A floor manager watching can intervene before the call goes any further.</p>
         </div>
         <div class="feature">
           <h3>Vulnerability disclosure alert</h3>
@@ -283,7 +283,7 @@
         </details>
         <details class="faq-item">
           <summary>How does this integrate with our dialer (Five9, Genesys, Twilio)?</summary>
-          <div class="faq-body"><p>First-class adapters for Twilio Media Streams and AWS Connect Voice Streams. <a href="/integrations/twilio">Twilio integration here</a>, <a href="/integrations/aws-connect">AWS Connect here</a>. Other dialers can connect via our generic WebSocket protocol for live streaming. For any dialer, including Five9 and Genesys, you can also export recordings and bring them in via upload or our REST API.</p></div>
+          <div class="faq-body"><p>First-class adapter for Twilio Media Streams, and Amazon Connect live media streaming via a customer-run Lambda bridge. <a href="/integrations/twilio">Twilio integration here</a>, <a href="/integrations/aws-connect">AWS Connect here</a>. Other dialers can connect via our generic WebSocket protocol for live streaming. For any dialer, including Five9 and Genesys, you can also export recordings and bring them in via upload or our REST API.</p></div>
         </details>
         <details class="faq-item">
           <summary>Can complaint handling be triggered automatically?</summary>
@@ -300,7 +300,7 @@
       </p>
 
       <div style="margin-top: 36px; text-align: center;">
-        <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20collections%20demo" class="btn btn-primary btn-lg">Book a 15-min demo</a>
+        <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20collections%20demo" class="btn btn-primary btn-lg">Request a demo</a>
       </div>
     </div>
   </section>
@@ -352,7 +352,7 @@
   </div>
   <div class="container footer-bottom">
     <span>© 2026 CallGuard AI.</span>
-    <span>UK-based · GDPR-compliant by default</span>
+    <span>UK-based · Data stored in the UK</span>
   </div>
 </footer>
 

@@ -45,7 +45,7 @@ The cost is not the headline though. The headline is what you can do with 100% c
 
 ## What 100% coverage actually unlocks
 
-**Breach detection in seconds, not weeks.** A critical compliance failure (urgency-language, missing consent capture, mini-Miranda failure, fair-value misstep) is currently caught when a customer complains weeks later. With live mid-call scoring, a high-confidence breach fires a webhook to your supervisor screen within 30 seconds of the AI being sure it has happened. Coaching can be in the next call rather than the next month.
+**Breach detection in seconds, not weeks.** A critical compliance failure (urgency-language, missing consent capture, mini-Miranda failure, fair-value misstep) is currently caught when a customer complains weeks later. With live mid-call breach detection, a high-confidence breach fires a webhook to your CRM or agent desktop while the call is still happening. Coaching can be in the next call rather than the next month.
 
 **Real coaching, on every agent, every week.** Per-call coaching drafts feed into per-agent coaching memory. The coaching the agent receives next time builds on what was said last time. If they have improved on the flagged area, the AI acknowledges it. If they have not, the language escalates. Manual QA cannot do this because no human has the time to remember every coaching note for every agent.
 
@@ -63,7 +63,7 @@ What does the system actually look like? Five components, each of which is built
 
 Calls have to get into the system. There are three patterns:
 
-- **Live streaming over WebSocket** from your dialer. Twilio Media Streams and AWS Connect Voice Streams are the most common. [Our Twilio integration](/integrations/twilio) and [AWS Connect integration](/integrations/aws-connect) walk through the wiring. Other dialers connect via a generic WebSocket protocol.
+- **Live streaming over WebSocket** from your dialer. Twilio Media Streams and Amazon Connect live media streaming via a customer-run Lambda bridge are the most common. [Our Twilio integration](/integrations/twilio) and [AWS Connect integration](/integrations/aws-connect) walk through the wiring. Other dialers connect via a generic WebSocket protocol.
 - **Batch upload of recordings** via REST API or the dashboard. Useful for legacy stacks where streaming is not available, or for archived recordings being scored retrospectively.
 - **Drag-and-drop** for one-off calls being reviewed in the dashboard.
 
@@ -75,7 +75,7 @@ Production-grade ASR converts audio to a transcript with speaker separation. Wor
 
 ### 3. LLM scoring against your scorecard
 
-The transcript goes to a large language model with your scorecard. The model scores each criterion individually, returns a verdict, and returns the direct quote from the transcript that justifies the verdict. The evidence quote is the part that matters: a score with no evidence is unauditable.
+The transcript goes to a large language model with your scorecard. The model scores each criterion, returns a verdict, and returns the transcript evidence that justifies it, or records that no relevant evidence was found. The evidence is the part that matters: a score with no evidence is unauditable.
 
 ### 4. Per-tenant calibration
 
@@ -86,7 +86,7 @@ Your compliance team corrects AI verdicts they disagree with, marks gold-standar
 Results need to land where the people who act on them are working. That means three integration paths:
 
 - **Dashboard** for QA leads, ops directors and compliance officers who want to review individual calls.
-- **HMAC-signed webhooks** for live breach alerts to your supervisor screen, CRM or Slack.
+- **Webhooks, HMAC-signed once you set a signing secret,** for live breach alerts to your CRM, agent desktop or Slack.
 - **REST API** to pull scores back per call so you can render them inside your own client portal, agent desktop or case-management system.
 
 ## What QA staff do once full coverage is the default
@@ -111,4 +111,4 @@ That said, ROI on a tool the regulator now expects is the wrong metric. The righ
 
 ## Where to start
 
-If your contact centre or BPO is at the point where adding more QA staff has diminishing returns, the right next step is to score a sample of your real calls and see what AI actually catches that your sample missed. We run 15-minute demos against five recordings you bring; you see your scorecard, your breaches, and your coaching drafts on the call. [Email hello@callguardai.co.uk](mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20BPO%20demo) and we will book it in.
+If your contact centre or BPO is at the point where adding more QA staff has diminishing returns, the right next step is to see what AI scoring actually catches that your sample misses. In a short demo we score synthetic calls against a scorecard like yours, so you see your scorecard, your breaches, and your coaching drafts on the call. When you want to try your own recordings, we put a DPA in place first. [Email hello@callguardai.co.uk](mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20BPO%20demo) and we will book it in.

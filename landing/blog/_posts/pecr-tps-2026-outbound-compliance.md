@@ -39,7 +39,7 @@ The practical effect is that the cost of getting it wrong has increased, and the
 
 PECR is sometimes described as a list-checking regime, but the on-call requirements are broader than just "did we honour the TPS register". Five things should be evidenced on every regulated outbound call:
 
-### 1. Caller identification, within 30 seconds
+### 1. Caller identification, promptly
 
 The agent identifies themselves, the firm, and the purpose of the call promptly. Not buried after the qualification questions. Calls where the agent hides who they are calling on behalf of until the customer has confirmed details are non-compliant on day one.
 
@@ -93,7 +93,7 @@ This is the practical setup that meets the standard the ICO is increasingly appl
 
 **Per-call AI scoring** on 100% of completed calls against a PECR-aware scorecard. Caller identification, consent capture, recording disclosure, opt-out handling, no-pressure-language, vulnerable-customer indicators. Each scored with an evidence quote.
 
-**Live mid-call breach detection** on outbound campaigns where regulator-grade events are possible. Pressure-language alert, missing-consent alert, complaint-trigger alert. Webhooks to the supervisor screen so floor managers can intervene.
+**Live mid-call breach detection** on outbound campaigns where regulator-grade events are possible. Pressure-language alert, missing-consent alert, complaint-trigger alert. Webhooks to your dialler or CRM so floor managers can intervene.
 
 **Breach register with closed-loop remediation**. Each detected breach has a severity, a status, an owner, a resolution and a date. The register answers question 5 above before it gets asked.
 
@@ -117,4 +117,4 @@ Three concrete steps in order:
 
 **Build a remediation plan tied to those patterns.** Update training scripts, update the dialler dispositions, add coaching memory so flagged agents get follow-up coaching. Track the trend in your scoring data so you have month-over-month evidence the regime is working.
 
-If "score 200 recent calls" is the part that gets stuck because you do not have the QA capacity, that is the gap AI scoring closes. We run a 15-minute demo against five of your own outbound recordings. [Email hello@callguardai.co.uk](mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20PECR%20demo) and we will set it up.
+If "score 200 recent calls" is the part that gets stuck because you do not have the QA capacity, that is the gap AI scoring closes. In a short demo we score synthetic outbound calls against a scorecard like yours. When you want to try your own recordings, we put a DPA in place first. [Email hello@callguardai.co.uk](mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20PECR%20demo) and we will set it up.

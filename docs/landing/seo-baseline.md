@@ -92,3 +92,75 @@ pulls it, these are the last known values and not current state.
 
 Note the discrepancy worth resolving: that review counted 53 URLs, this audit finds 33
 pages. Either the count included non-page URLs, or 20 URLs have since gone.
+
+---
+
+## Re-measured 2026-09-14 (blog + page-architecture audit, report only, no site files edited)
+
+### Tool output
+
+- `npm run audit:onpage`: 33 pages, 0 errors, 16 warnings (the 9 length warnings above,
+  unchanged, plus the same 7 thin-inbound pages). Nothing moved since 2026-08-28.
+- `audit:links` (linkinator on the preview): 119 links, 25 "broken", every one a
+  trailing-slash variant (`/pricing/`, `/compare/aveni-alternative/`, ...) reported with
+  the extensionless page as its parent. No relative href in the source explains it and
+  production serves those variants 200, so treat it as a preview artefact. Not proven.
+- JSON-LD parses on the blog index and all 6 generated posts.
+
+### Closed
+
+- `/blog/vulnerable-customer-call-monitoring` now **200 in production** with the cache
+  bypassed. All 33 sitemap URLs return 200. The live blog HTML matches local except
+  `style.css?v=15` (live) vs `v=16` (local).
+
+### New defects, production (verified with curl, cache bypassed)
+
+| Severity | Defect | Evidence |
+|---|---|---|
+| High | `/blog/_template` is live and indexable: `<title>{{ogTitle}} \| CallGuard AI`, canonical `https://callguardai.co.uk/blog/{{slug}}`, robots `index,follow` | `curl https://callguardai.co.uk/blog/_template` → 200 |
+| Medium | Post sources are public: `/blog/_posts/<slug>.md` → 200 | `curl -o /dev/null -w '%{http_code}' .../blog/_posts/what-is-ai-call-qa.md` |
+| Medium | Internal ops doc is public: `/DEPLOY.md` → 200 | same |
+| Medium | Directory URLs without a slash take 2 hops through `http://`: `/blog`, `/compare`, `/templates`, `/use-cases` → 301 `http://.../x/` → 301 `https://.../x/`. mod_dir's DirectorySlash builds the scheme itself behind the TLS CDN, the same failure the `.html` strip rule already had. No internal link uses the slashless form, so only external links are exposed. | `curl -sI https://callguardai.co.uk/blog` |
+| Low | `/use-cases/` and `/integrations/` → 403 (no index file). Nothing links there. | curl |
+| Low | `/index`, `/blog/index` and trailing-slash post URLs serve 200 duplicates. They canonicalise correctly. `/index.html` 301s to `/index`, not `/`. | curl |
+
+`.htaccess` fixes go to a human. Proposed, untested against live:
+`RewriteCond %{REQUEST_FILENAME} -d` + `RewriteRule ^(.+[^/])$ https://callguardai.co.uk/$1/ [R=301,L]`
+placed before the pretty-URL rule, and `RedirectMatch 404 ^/(blog/_|DEPLOY\.md)`.
+
+### New defects, repo
+
+- All 6 generated posts still say "Book a 15-min demo". `_template.html` now says "Request
+  a demo" (changed 2026-09-14), but `npm run blog:build` has not been re-run. PRODUCT.md
+  says not to state a demo length.
+- `wordCount` is hand-typed front-matter and has drifted: ai-vs-human 1500 (body 1674),
+  what-is-ai-call-qa 1500 (1682), pecr 1500 (1578), fca 1600 (1518).
+- The redesigned homepage (`index.html`, commit 1c94c0b) is **not live**. Production still
+  serves the old `hero-headline` design.
+- Blog head gaps against the homepage standard: no `og:image:width/height/alt`, no
+  `article:modified_time`. Every post has `dateModified` = `datePublished`, author is
+  Organization, and `publisher` is an `@id` reference to a node defined only on `/`.
+- Only 1 of 6 posts links to fca.org.uk (vulnerable-customer, 2 links). None links to the
+  FCA Handbook or the ICO.
+- Claims routed to `claims-auditor`, not fixed here: "Live AI Scoring" in the
+  `/integrations/twilio` and `/integrations/aws-connect` titles (live is breach detection
+  only); "the four outcomes" in the fca post card summary and the pecr post; ">75%"
+  threshold in what-is-ai-call-qa; unsourced 5% sample figures across posts.
+
+### Proxy, not measured
+
+A public `site:callguardai.co.uk` query surfaced one URL, and on the **www** host
+(`www.callguardai.co.uk/blog/score-100-percent-contact-centre-calls`). www 301s to the
+bare host in one hop, so this is either stale or a consolidation still pending. Search
+Console is the only real answer: pull Pages → indexed / not indexed by reason, and URL
+Inspection for `/blog/vulnerable-customer-call-monitoring`, `/compare/aveni-alternative`,
+and `/blog/_template`.
+
+### Open recommendations, awaiting owner decision
+
+- Page architecture: add **one** capability URL now (Reconciliation), a security/trust
+  page second, and none for journey scoring, live detection or "how it works".
+- Named author bylines for blog E-E-A-T.
+- Move `_template.html` and `_posts/` out of `landing/` so they cannot be uploaded.
+
+No human overrules recorded this run.

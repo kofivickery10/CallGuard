@@ -29,11 +29,11 @@ We sell an AI call scoring product, so this should be the easiest argument in th
 
 **Consistency.** Two senior reviewers reading the same call will score it differently. Inter-rater reliability for human QA scoring is rarely measured precisely because the answers tend to be uncomfortable. AI scoring is consistent: the same call scored on Monday and Friday gets the same verdict, which means trends across agents and across the floor are real signal rather than noise from reviewer rotation.
 
-**Speed.** A human review lands days after the call. An AI verdict lands seconds after the call ends. For coaching, that compresses the feedback loop from "we'll talk about this in next week's one-to-one" to "the agent reads the coaching draft before their next break". For compliance, it shifts breach detection from "regulator audit window" to "supervisor screen, mid-call".
+**Speed.** A human review lands days after the call. An AI verdict lands seconds after the call ends. For coaching, that compresses the feedback loop from "we'll talk about this in next week's one-to-one" to "the agent reads the coaching draft before their next break". For compliance, it shifts breach detection from "regulator audit window" to "webhook to your CRM or agent desktop, mid-call".
 
 **Pattern detection.** Cross-floor analysis (which scorecard items are getting harder to pass, which campaigns have rising breach rates, which agents are improving) requires data on every call. Sample-based QA cannot generate that data; AI scoring can. The patterns are usually more interesting than the per-call findings.
 
-**Compliance evidence.** "We sample 5% of calls and review them for compliance" stopped being a defensible answer to regulators after Consumer Duty. "We score 100% of calls against the regulator's framework with evidence quotes attached to every verdict" is a different conversation. AI gives compliance leads a paper trail that sample-based QA cannot.
+**Compliance evidence.** "We sample 5% of calls and review them for compliance" stopped being a defensible answer to regulators after Consumer Duty. "We score every call against the regulator's framework, with the transcript evidence behind each verdict" is a different conversation. AI gives compliance leads a paper trail that sample-based QA cannot.
 
 ## What human scoring is genuinely better at
 
@@ -101,4 +101,4 @@ We build for the model where AI scores 100% of calls and humans calibrate the ed
 
 If that division of labour matches how your QA team wants to work, we are probably the right tool. If you want a fully autonomous QA solution that needs no human input, we are not, and we would rather tell you that on the discovery call than after a deployment that drifts. If you are weighing us against other options, see [how CallGuard compares to other call QA tools](/compare/).
 
-If you want to see what AI-scored calls look like with humans in the loop, we run a 15-minute demo against five of your own recordings. [Email hello@callguardai.co.uk](mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request) and we will book it in.
+If you want to see what AI-scored calls look like with humans in the loop, we run a short demo scoring synthetic calls against a scorecard like yours. [Email hello@callguardai.co.uk](mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request) and we will book it in; when you want to try your own recordings, we put a DPA in place first.

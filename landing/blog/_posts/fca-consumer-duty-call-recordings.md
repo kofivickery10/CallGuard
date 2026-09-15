@@ -76,7 +76,7 @@ Easily fixable, but only if you can identify the calls where it is happening. Sa
 
 The regulator's question: "Did the customer have a clear picture of the next steps before the call ended, and were they given space to back out?" A confident close where the adviser races through paperwork and the customer signs off without articulating their own understanding fails this test.
 
-Best-practice closing scripts cover this. Live mid-call coaching can prompt advisers when the engineered close is missing key elements. [Our financial services use-case page](/use-cases/financial-services) goes deeper on what gets scored against this outcome.
+Best-practice closing scripts cover this. Live breach detection can flag a call in progress when the close is missing key elements. [Our financial services use-case page](/use-cases/financial-services) goes deeper on what gets scored against this outcome.
 
 ## 7. Cancellation rights and complaint route, in plain language
 
@@ -104,4 +104,4 @@ Three concrete steps that work in the order listed.
 
 ## If you want help with #2
 
-If "score 100 recent calls" is the part where this gets stuck because you do not have the QA capacity, that is exactly the gap AI call scoring is built to close. We run a 15-minute demo against five of your own recordings. You see your scorecard, your breaches, and your coaching drafts on the call. [Email hello@callguardai.co.uk](mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20FCA%20demo) and we will set it up.
+If "score 100 recent calls" is the part where this gets stuck because you do not have the QA capacity, that is exactly the gap AI call scoring is built to close. In a short demo we score synthetic calls against a scorecard like yours, so you see your scorecard, your breaches, and your coaching drafts on the call. When you want to try your own recordings, we put a DPA in place first. [Email hello@callguardai.co.uk](mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20FCA%20demo) and we will set it up.
