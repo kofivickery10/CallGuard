@@ -61,8 +61,8 @@ export function ScoreCorrectionModal({
       <div className="relative bg-card border border-border rounded-card w-full max-w-lg p-6 shadow-lg">
         <h3 className="text-section-title text-text-primary mb-1">Correct Score</h3>
         <p className="text-table-cell text-text-subtle mb-4">
-          Your correction is saved and becomes a calibration example in future scoring prompts.
-          The AI learns your firm's interpretation over time.
+          Your correction is saved. The most recent corrections on this criterion, up to five,
+          are shown to the AI as examples when it next scores it.
         </p>
 
         <div className="bg-table-header rounded-btn p-3 mb-4">
