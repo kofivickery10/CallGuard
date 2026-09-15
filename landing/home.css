@@ -17,6 +17,7 @@
   --hp-customer:    #5a5a8a;
   --hp-tag-bg:      #eef2ee;
   --hp-field:       var(--primary-light);
+  --hp-accent:      #388157;   /* brand green deepened to clear 4.5:1 on white and page */
   --hp-radius:      10px;
   --hp-radius-btn:  8px;
   --hp-shadow:      0 1px 2px rgba(26, 46, 26, 0.06), 0 4px 8px -4px rgba(26, 46, 26, 0.10);
@@ -31,6 +32,7 @@
   --hp-agent:       #5cc08a;
   --hp-customer:    #9a9ad0;
   --hp-tag-bg:      #222b25;
+  --hp-accent:      #57ab7a;
   --hp-shadow:      0 1px 2px rgba(0, 0, 0, 0.45), 0 4px 8px -4px rgba(0, 0, 0, 0.5);
 }
 
@@ -593,4 +595,78 @@
   .hp-call-name { font-size: 0.875rem; }
   .hp-hero-actions .btn,
   .hp-close-actions .btn { width: 100%; justify-content: center; }
+}
+
+/* ---------- Heading accent ---------- */
+/* Every section heading carries one accent phrase: the half of the line that
+   holds the section's idea, in brand green. WCAG would allow 3:1 for headings
+   this size, but the design detector holds all text to 4.5:1 and the homepage
+   ships with no findings and no suppressions, so --hp-accent is the brand green
+   deepened just far enough to clear 4.5:1 on white and on the page. On the light
+   green field even that falls short, so the hero and closing use --primary-dark. */
+.hp-accent { color: var(--hp-accent); }
+.hp-hero .hp-accent,
+.hp-close .hp-accent { color: var(--primary-dark); }
+
+/* ---------- The gap a sample leaves ---------- */
+.hp-gap-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  gap: 40px 64px;
+  align-items: center;
+}
+.hp-gap-figure {
+  margin: 0;
+  padding: 32px 36px;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--hp-radius);
+  box-shadow: var(--hp-shadow);
+}
+/* A static figure, never counted up: count-up statistics are banned, and
+   script.js animates anything with .stat-num, so this deliberately isn't one. */
+.hp-gap-num {
+  margin: 0;
+  font-size: clamp(4rem, 2.5rem + 6vw, 7rem);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  color: var(--hp-accent);
+  font-variant-numeric: tabular-nums;
+}
+.hp-gap-label {
+  margin: 14px 0 0;
+  max-width: 28ch;
+  font-size: 1.0625rem;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+/* ---------- The dark band ---------- */
+/* One section sits on the brand's dark green. The dark theme's tokens are
+   applied inside it in both themes, so its panel, tags and links stay
+   readable without a second set of component rules. */
+.hp-section--dark {
+  background: var(--dark-bg);
+  color: var(--text-primary);
+  color-scheme: dark;
+  --primary: #57ab7a; --primary-hover: #6abb8a; --primary-dark: #8fd3a8;
+  --primary-light: #1f2e24; --primary-50: #16201a; --on-primary-dark: #0b110d;
+  --fail: #f0726a; --fail-bg: #3a1d1b;
+  --page-bg: #0f1512; --section-alt: #141c17; --card-bg: #18211b;
+  --border: #2b3630; --border-light: #222b25;
+  --text-primary: #e6efe8; --text-secondary: #b3c2b6; --text-cell: #c4d2c7; --text-muted: #8a9c8d;
+  --hp-pass: #5cc08a; --hp-pass-bg: #16301f; --hp-review: #d6a838; --hp-review-bg: #332714;
+  --hp-agent: #5cc08a; --hp-customer: #9a9ad0; --hp-tag-bg: #222b25; --hp-accent: #57ab7a;
+  --hp-shadow: 0 1px 2px rgba(0, 0, 0, 0.45), 0 4px 8px -4px rgba(0, 0, 0, 0.5);
+}
+/* In the dark theme the page is already near-black, so the band steps up a shade instead. */
+:root[data-theme="dark"] .hp-section--dark { background: var(--dark-bg-2); }
+.hp-section--dark,
+.hp-section--dark + .hp-section { border-top: 0; }
+.hp-section--dark a { text-decoration: underline; text-underline-offset: 3px; text-decoration-color: color-mix(in srgb, currentColor 45%, transparent); }
+
+@media (max-width: 860px) {
+  .hp-gap-grid { grid-template-columns: minmax(0, 1fr); }
+  .hp-gap-figure { padding: 26px 24px; }
 }

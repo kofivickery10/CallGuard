@@ -213,7 +213,7 @@ The public homepage (`landing/index.html`) is a marketing surface, not app UI, b
 
 **Files.** `landing/style.css` and `landing/script.js` are shared by every landing page. Homepage-only styles go in `landing/home.css` (scoped to `body.hp` and `hp-` classes) and motion in `landing/home.js`. Bump the `?v=` query on any changed asset: `.htaccess` caches CSS/JS immutably. Don't reuse class names `script.js` auto-animates (`.feature`, `.step`, `.faq-item`, `.stat-num`, `.section .lead`, `.cta-card`).
 
-**Tokens.** Landing tokens from `style.css` (`--primary`, `--primary-light`, `--fail`, `--page-bg`, `--card-bg`, `--border`, `--text-*`) plus homepage status and speaker tokens in `home.css` (`--hp-pass`, `--hp-review`, `--hp-fail`, `--hp-agent`, `--hp-customer`, `--hp-tag-bg`), mirroring the values in BRAND_GUIDELINES.md §3. `--hp-review` is darkened for AA on its tint. The hero and closing sections sit on the `--primary-light` field; other sections alternate page and white.
+**Tokens.** Landing tokens from `style.css` (`--primary`, `--primary-light`, `--fail`, `--page-bg`, `--card-bg`, `--border`, `--text-*`) plus homepage status and speaker tokens in `home.css` (`--hp-pass`, `--hp-review`, `--hp-fail`, `--hp-agent`, `--hp-customer`, `--hp-tag-bg`), mirroring the values in BRAND_GUIDELINES.md §3. `--hp-review` is darkened for AA on its tint. The hero and closing sections sit on the `--primary-light` field; other sections alternate page and white, except the security section, which is the one dark band (`.hp-section--dark`, `--dark-bg`, with the dark token set applied inside it in both themes).
 
 **Type.** Inter only. `.hp-h1` clamps to a 50px maximum so the two-sentence headline wraps in three lines with no single-word line (measure in Chrome at 1280/1440/1600/390 before changing size or copy). `.hp-h2` for section headings; body copy ≤ 62ch.
 
@@ -236,6 +236,9 @@ The public homepage (`landing/index.html`) is a marketing surface, not app UI, b
 
 **Rules.**
 - No kickers/eyebrows above headings, icon-tile feature cards, coloured side stripes, gradient text, glows, or count-up statistics.
+- **Heading accent:** every section heading carries one accent phrase, `<span class="hp-accent">`, on the half of the line that holds the section's idea. `--hp-accent` (#388157, the brand green deepened to clear 4.5:1 on white and page) on page and white sections; `--primary-dark` on the green field; the ordinary brand green on dark surfaces. Never on body text, and never on a claim that isn't in PRODUCT.md. The owner asked for this in Sep 2026 after the rebuild dropped it: without it every section reads as the same black text.
+- **Large figures:** allowed when the number is arithmetic or sourced (the "95% unreviewed at a 5% sample" figure is arithmetic). Static only, and never the `.stat-num` class, which `script.js` animates.
+- **Dark band:** one section only, so it reads as a change of register rather than a pattern.
 - Standalone links and buttons ≥ 44px tall; status never by colour alone.
 - Keep the anchors other pages link to: `#how-it-works`, `#live`, `#learning`, `#data-forms`, `#use-cases`, `#faq` (plus `#security`, `#contact`).
 - One `h1`; FAQ JSON-LD text must match the visible FAQ word for word.

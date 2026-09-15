@@ -17,7 +17,7 @@
 <link rel="manifest" href="/site.webmanifest" />
 <link rel="preload" as="font" type="font/woff2" href="/fonts/InterVariable.woff2" crossorigin>
 <link rel="stylesheet" href="/style.css?v=17" />
-<link rel="stylesheet" href="/home.css?v=12" />
+<link rel="stylesheet" href="/home.css?v=14" />
 
 <!-- Open Graph -->
 <meta property="og:type" content="website" />
@@ -225,7 +225,7 @@
   <section class="hp-hero" aria-labelledby="hp-title">
     <div class="container hp-hero-grid">
       <div>
-        <h1 class="hp-h1" id="hp-title">Score every advice call or sale. See the evidence behind each verdict.</h1>
+        <h1 class="hp-h1" id="hp-title">Score every advice call or sale. <span class="hp-accent">See the evidence behind each verdict.</span></h1>
         <p class="hp-lede">
           CallGuard AI scores protection and mortgage advice calls, one by one or as a sale, against your own compliance scorecard. Each verdict shows the transcript evidence it was decided on, or tells you none was found, so you can review every call or sale instead of a sample.
         </p>
@@ -284,10 +284,24 @@
     </div>
   </section>
 
+  <!-- ============== The gap a sample leaves ============== -->
+  <section class="hp-section hp-section--white" aria-labelledby="hp-gap">
+    <div class="container hp-gap-grid">
+      <div>
+        <h2 class="hp-h2" id="hp-gap">A 5% sample leaves <span class="hp-accent">95% of calls unreviewed.</span></h2>
+        <p class="hp-lede">Reviewing calls by hand means choosing which few to listen to. Whatever the sample misses is never reviewed: the disclosure that was skipped, the customer who sounded unsure, the pressure to decide today. CallGuard AI scores every call or sale against your scorecard, so none of it depends on which calls were picked.</p>
+      </div>
+      <figure class="hp-gap-figure">
+        <p class="hp-gap-num">95%</p>
+        <figcaption class="hp-gap-label">of calls are never reviewed when a team samples 5% by hand</figcaption>
+      </figure>
+    </div>
+  </section>
+
   <!-- ============== How it works ============== -->
   <section class="hp-section" id="how-it-works" aria-labelledby="hp-how">
     <div class="container">
-      <h2 class="hp-h2" id="hp-how">From the call to the evidence.</h2>
+      <h2 class="hp-h2" id="hp-how">From the call <span class="hp-accent">to the evidence.</span></h2>
       <p class="hp-lede">CallGuard AI sits alongside the dialler and CRM you already use. Nothing about how your advisers work has to change.</p>
 
       <ol class="hp-steps">
@@ -316,7 +330,7 @@
     <div class="container">
       <div class="hp-split">
         <div>
-          <h2 class="hp-h2" id="hp-sale">Scored as a sale, not just a call.</h2>
+          <h2 class="hp-h2" id="hp-sale">Scored as a sale, <span class="hp-accent">not just a call.</span></h2>
           <p class="hp-lede">A protection sale is rarely one conversation. When the sale is recorded in your CRM, CallGuard AI gathers that customer's calls from the sale window and scores them together, so a disclosure on the first call still counts when the application goes in on the <span class="hp-nowrap">third. <span class="hp-plan">Pro plan</span></span></p>
         </div>
         <figure class="hp-panel" aria-label="Example of three calls scored as one sale">
@@ -343,7 +357,7 @@
 
       <div class="hp-wide">
         <div class="hp-wide-intro">
-          <h3 class="hp-h2">Checked against the application.</h3>
+          <h3 class="hp-h2">Checked against <span class="hp-accent">the application.</span></h3>
           <p class="hp-lede">Once Reconciliation is switched on for your firm and the insurer's application PDF is attached to the sale in your CRM, it compares each answer with what the customer said on the calls. A mismatch is flagged for your team to raise with the insurer, and later amendments are classified so a routine fix isn't treated like a real discrepancy.</p>
           <p class="hp-body"><a class="hp-link" href="/templates/protection-consent-gate-checklist">Get the protection consent-gate checklist</a></p>
           <p class="hp-body"><a class="hp-link" href="/application-reconciliation">More on how Reconciliation works</a></p>
@@ -380,7 +394,7 @@
 
       <div class="hp-split" id="live">
         <div>
-          <h3 class="hp-h2">Breaches flagged while the call is live.</h3>
+          <h3 class="hp-h2">Breaches flagged <span class="hp-accent">while the call is live.</span></h3>
           <p class="hp-lede">For calls streamed from Twilio, Amazon Connect or our WebSocket API, CallGuard AI flags breaches it is confident have already happened and sends them to your own systems, over the stream or a webhook signed when you set a secret, before the call <span class="hp-nowrap">ends. <span class="hp-plan">Pro plan</span></span></p>
           <p class="hp-body">When a streamed call ends, its full transcript is scored against your scorecard like a recorded call. Consent questions on streamed calls always go to your review queue, because a live stream can't confirm who said what. <a class="hp-link" href="/integrations/twilio">How live streaming connects</a></p>
         </div>
@@ -408,7 +422,7 @@
   <section class="hp-section" id="learning" aria-labelledby="hp-learning">
     <div class="container hp-split">
       <div>
-        <h2 class="hp-h2" id="hp-learning">Scored to your firm's standard.</h2>
+        <h2 class="hp-h2" id="hp-learning">Scored to <span class="hp-accent">your firm&#39;s standard.</span></h2>
         <p class="hp-lede">Every firm writes its own scorecard for what a good advice call looks like. When your compliance team corrects a verdict, CallGuard AI uses your most recent corrections as examples when it scores later calls on that <span class="hp-nowrap">criterion. <span class="hp-plan">Growth and Pro</span></span></p>
         <dl class="hp-facts" style="margin-top: 32px">
           <div class="hp-fact">
@@ -446,10 +460,10 @@
   </section>
 
   <!-- ============== Security ============== -->
-  <section class="hp-section hp-section--white" id="security" aria-labelledby="hp-security">
+  <section class="hp-section hp-section--dark" id="security" aria-labelledby="hp-security">
     <div class="container hp-split hp-split--flip">
       <div>
-        <h2 class="hp-h2" id="hp-security">Personal data is redacted before scoring.</h2>
+        <h2 class="hp-h2" id="hp-security">Personal data is redacted <span class="hp-accent">before scoring.</span></h2>
         <p class="hp-lede">Names, payment details and health information are replaced with tags in the transcript before it is stored or scored. Call audio is kept, encrypted, and our transcription provider is named on the sub-processor list. Every redaction category is on by default. Your firm can ask us to turn some off, backed by a DPIA, but payment details can never be turned off.</p>
         <dl class="hp-facts" style="margin-top: 32px">
           <div class="hp-fact">
@@ -488,7 +502,7 @@
   <section class="hp-section" aria-labelledby="hp-pricing">
     <div class="container hp-pricing">
       <div>
-        <h2 class="hp-h2" id="hp-pricing">Prices you can see before you call us.</h2>
+        <h2 class="hp-h2" id="hp-pricing">Prices you can see <span class="hp-accent">before you call us.</span></h2>
         <p class="hp-body">Starting prices per seat, per month, with volume discounts and no multi-year minimum.</p>
         <ul class="hp-tiers">
           <li class="hp-tier"><div class="hp-tier-top"><span class="hp-tier-name">Starter</span><span class="hp-price">£199</span></div><p class="hp-tier-adds">Your own scorecard, per-criterion verdicts with the evidence behind them, and email breach alerts.</p></li>
@@ -513,7 +527,7 @@
   <!-- ============== Sectors ============== -->
   <section class="hp-section hp-section--white" id="use-cases" aria-labelledby="hp-sectors">
     <div class="container">
-      <h2 class="hp-h2" id="hp-sectors">Made for protection and mortgage advice.</h2>
+      <h2 class="hp-h2" id="hp-sectors">Made for <span class="hp-accent">protection and mortgage advice.</span></h2>
       <div class="hp-sectors">
         <div class="hp-sector">
           <h3 class="hp-h3">Protection advice</h3>
@@ -536,7 +550,7 @@
   <section class="hp-section" id="faq" aria-labelledby="hp-faq">
     <div class="container hp-faq">
       <div>
-        <h2 class="hp-h2" id="hp-faq">Questions compliance teams ask.</h2>
+        <h2 class="hp-h2" id="hp-faq">Questions <span class="hp-accent">compliance teams ask.</span></h2>
         <p class="hp-body">Something else? Email <a class="hp-link" href="mailto:hello@callguardai.co.uk" data-demo-skip="true">hello@callguardai.co.uk</a>.</p>
       </div>
       <div class="hp-faq-list">
@@ -575,7 +589,7 @@
   <!-- ============== Closing CTA ============== -->
   <section class="hp-section hp-close" id="contact" aria-labelledby="hp-close">
     <div class="container hp-close-inner">
-      <h2 class="hp-h2" id="hp-close">See calls scored against a scorecard like yours.</h2>
+      <h2 class="hp-h2" id="hp-close">See calls scored against <span class="hp-accent">a scorecard like yours.</span></h2>
       <p class="hp-lede">In a short demo we score synthetic calls against a scorecard like yours. When you want to try your own recordings, we'll put a DPA in place before you share any.</p>
       <div class="hp-close-actions">
         <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request" class="btn btn-primary btn-lg">Request a demo</a>
