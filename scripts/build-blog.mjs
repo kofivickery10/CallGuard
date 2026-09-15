@@ -427,13 +427,27 @@ function loadPosts() {
   }
 
   const bySlug = new Map(published.map((p) => [p.slug, p]));
-  return { posts: published, held, bySlug, featured: featured[0] };
+  return { posts: published, held, bySlug, allPosts: all, featured: featured[0] };
 }
 
 // ── render: post ─────────────────────────────────────────────────────────
 
-function renderPost(post, bySlug, template) {
+function renderPost(post, bySlug, allPosts, template) {
   const { html: bodyHtml, outline } = renderMarkdown(post.body, post.file);
+
+  // A prose link to a held post is a link to a page that is not being
+  // published. Dropping it silently would change the sentence around it, so
+  // the build stops and the writer decides what the sentence should say.
+  for (const [, slug] of bodyHtml.matchAll(/href="\/blog\/([a-z0-9-]+)"/g)) {
+    const target = allPosts.get(slug);
+    if (!target) throw new Error(`${post.file}: links to /blog/${slug}, which does not exist`);
+    if (target.draft) {
+      throw new Error(
+        `${post.file}: links in its prose to /blog/${slug}, which is held. ` +
+          'Rewrite the sentence, or publish that post.',
+      );
+    }
+  }
 
   // The use-case link is asserted, not injected. The SEO review was explicit
   // that these belong in the prose as contextual links, not appended as a
@@ -694,7 +708,7 @@ function fill(template, values, what) {
 }
 
 function main() {
-  const { posts, held, bySlug, featured } = loadPosts();
+  const { posts, held, bySlug, allPosts, featured } = loadPosts();
 
   for (const post of held) {
     process.stdout.write(`  HELD  ${post.slug} — written, not published\n`);
@@ -702,7 +716,7 @@ function main() {
 
   const postTemplate = readFileSync(POST_TEMPLATE, 'utf8');
   for (const post of posts) {
-    writeFileSync(join(BLOG_DIR, `${post.slug}.html`), renderPost(post, bySlug, postTemplate));
+    writeFileSync(join(BLOG_DIR, `${post.slug}.html`), renderPost(post, bySlug, allPosts, postTemplate));
     process.stdout.write(`  blog/${post.slug}.html  (${post.wordCount} words, ${post.readingTime} min)\n`);
   }
 

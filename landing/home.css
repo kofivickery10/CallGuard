@@ -513,16 +513,6 @@
   margin-top: 36px;
 }
 
-/* ---------- Footer headings (h2, was h5) ---------- */
-.hp .footer-heading {
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: #fff;
-  margin: 0 0 14px;
-  line-height: 1.4;
-}
-
-
 /* ---------- Plan labels, tiers, wide Reconciliation, small type fixes ---------- */
 .hp-plan {
   display: inline-block;

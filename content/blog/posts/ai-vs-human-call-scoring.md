@@ -34,7 +34,7 @@ We sell an AI call scoring product, so this should be the easiest argument in th
 
 **Pattern detection.** Cross-floor analysis (which scorecard items are getting harder to pass, which campaigns have rising breach rates, which agents are improving) requires data on every call. Sample-based QA cannot generate that data; AI scoring can. The patterns are usually more interesting than the per-call findings.
 
-**Compliance evidence.** "We sample 5% of calls and review them for compliance" stopped being a defensible answer to regulators after Consumer Duty. "We score every call against the regulator's framework, with the transcript evidence behind each verdict" is a different conversation. AI gives compliance leads a paper trail that sample-based QA cannot.
+**Compliance evidence.** "We sample 5% of calls and review them for compliance" describes how much reviewing a team can afford. "We score every call against our scorecard, with the transcript evidence behind each verdict" describes what happened to customers. AI gives compliance leads a paper trail that sample-based QA cannot, which is our argument for it rather than a rule anyone has written.
 
 ## What human scoring is genuinely better at
 
@@ -78,7 +78,7 @@ The other end of the spectrum: keeping QA fully human, no AI involvement. This w
 
 Three forces have shifted the ground:
 
-**Consumer Duty (UK financial services) and similar regimes globally** expect systematic monitoring rather than sampling. "We sample 5%" is no longer the answer the regulator wants when they ask how you evidence good outcomes. [Detail on what this looks like for FCA-regulated firms here.](/blog/fca-consumer-duty-call-recordings)
+**Consumer Duty (UK financial services).** PRIN 2A.9.8R requires a firm to regularly monitor the outcomes its retail customers are experiencing. The Handbook does not set a sample size, and it does not require every call to be reviewed. What it does mean is that "we sample 5%" is an answer about your capacity, not about your outcomes, and the two stopped being the same answer when the Duty landed.
 
 **Client expectations in BPO contexts** have shifted from monthly PDF reports to live programme dashboards. Clients want to see how their programme is performing in real time, not in retrospect. Sample-based QA cannot produce live dashboards.
 

@@ -89,7 +89,7 @@ Both modes use the same scorecard and the same calibration layer. The mid-call m
 
 Three groups, in roughly this order of urgency:
 
-**FCA-regulated firms post-Consumer Duty.** Sample reviews stopped being a defensible answer to "how do you evidence good outcomes" the day Consumer Duty landed. If your compliance officer is being asked to demonstrate systematic monitoring rather than statistical sampling, AI call QA is now table stakes.
+**FCA-regulated firms under Consumer Duty.** PRIN 2A.9.8R asks firms to regularly monitor the outcomes their retail customers receive. It sets no sample size and does not require reviewing every call. But a 5% sample answers a question about that 5%, and if your compliance officer is being asked what happened to everyone else, AI call QA is one of the few ways to answer it.
 
 **Contact centres and BPOs at scale.** Anyone running more than 50 seats hits the same wall: hiring more QA staff does not scale, sample sizes have to drop as call volume rises, and clients increasingly demand programme-level visibility that a monthly PDF report cannot provide. AI scoring breaks the curve.
 

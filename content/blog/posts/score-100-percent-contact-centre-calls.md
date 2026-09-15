@@ -27,7 +27,7 @@ If you run QA in a contact centre, you already know the maths. A senior reviewer
 
 The bottleneck is not lack of will. Most QA teams would love to review more calls. The bottleneck is unit cost. A reviewer scoring 4 calls per hour at a fully-loaded UK senior wage of, say, £45,000 plus 25% overheads, costs roughly £35 per scored call once you net out admin time. At a 50,000-call-per-week floor, full coverage by humans would cost £1.75m per week or £91m per year. Nobody approves that budget, so you sample.
 
-Sampling looked acceptable when "auditable evidence" meant a binder of reviewed-call summaries on a shelf. It is much harder to defend now that regulators expect systematic monitoring (post-Consumer Duty in financial services, post-PECR for outbound) and clients expect programme-level visibility from BPOs in real time. The sampled-call binder is no longer the answer to the question being asked.
+Sampling looked acceptable when "auditable evidence" meant a binder of reviewed-call summaries on a shelf. It is much harder to defend now that PRIN 2A.9.8R asks firms to regularly monitor the outcomes their customers are experiencing, and clients expect programme-level visibility from BPOs in real time. The rule sets no sample size. But a binder of 5% tells you what those calls contained, not what the other 95% did, and that gap is the thing the question is really about.
 
 ## Why hiring more QA reviewers does not scale
 

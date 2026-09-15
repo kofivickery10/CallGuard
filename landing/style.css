@@ -1125,13 +1125,17 @@ h1, h2, h3, h4, h5 { color: var(--text-primary); font-weight: 700; line-height: 
   grid-template-columns: repeat(4, 1fr);
   gap: 24px;
 }
-.footer-col h5 {
-  font-size: 12px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.6px;
+/* An h2, not an h5: these are the top-level labels inside the footer
+   landmark, and jumping from the page's last h2 straight to an h5 broke the
+   document outline a screen reader navigates by. Sentence case, following
+   the homepage — the redesign dropped the uppercase micro-label and the
+   rest of the site had not caught up. */
+.footer-col .footer-heading {
+  font-size: 14px;
+  font-weight: 600;
   color: white;
-  margin-bottom: 14px;
+  line-height: 1.4;
+  margin: 0 0 14px;
 }
 .footer-col a {
   display: block;
