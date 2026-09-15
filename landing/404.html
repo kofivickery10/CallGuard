@@ -15,15 +15,7 @@
 <link rel="manifest" href="/site.webmanifest" />
 <link rel="preload" as="font" type="font/woff2" href="/fonts/InterVariable.woff2" crossorigin>
 <link rel="stylesheet" href="/style.css?v=15" />
-<script>
-  (function () {
-    try {
-      var s = localStorage.getItem('cg-theme');
-      var d = s ? s === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
-      document.documentElement.setAttribute('data-theme', d ? 'dark' : 'light');
-    } catch (e) {}
-  })();
-</script>
+<script src="/theme-init.js?v=1"></script>
 </head>
 <body>
 

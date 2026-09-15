@@ -19,6 +19,11 @@
  *     .htaccess:106    DirectoryIndex index.html
  *     .htaccess:119    ErrorDocument 404 -> /404.html
  *     .htaccess:35-36  /alternatives/* -> /compare/* (301)
+ *     .htaccess:70     Content-Security-Policy header, verbatim. A production
+ *                      CSP bug (a blocked inline script, say) needs to be
+ *                      visible on localhost, not just on a live deploy —
+ *                      this server used to send no CSP at all, which is
+ *                      exactly how the inline theme-flash bug hid.
  *
  *   DELIBERATELY NOT MIRRORED
  *     .htaccess:14-15  www -> apex redirect
@@ -68,6 +73,9 @@ const REDIRECTS = new Map([
   ['/alternatives/callminer', '/compare/callminer-alternative'],
   ['/alternatives/observe-ai', '/compare/observe-ai-alternative'],
 ]);
+
+// .htaccess:70, verbatim — see the file header for why this one is mirrored.
+const CSP = "default-src 'self'; img-src 'self' data: https://www.google-analytics.com https://www.googletagmanager.com; style-src 'self' 'unsafe-inline'; font-src 'self'; script-src 'self' https://www.googletagmanager.com; connect-src 'self' https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com https://www.googletagmanager.com https://app.callguardai.co.uk; frame-ancestors 'none'; base-uri 'self'; form-action 'self' mailto:";
 
 const TYPES = new Map(Object.entries({
   '.html': 'text/html; charset=utf-8',
@@ -135,7 +143,10 @@ const server = createServer(async (req, res) => {
   if (!file) {
     // ErrorDocument 404 (.htaccess:119)
     const notFound = await fileAt(join(ROOT, '404.html'));
-    res.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.writeHead(404, {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Content-Security-Policy': CSP,
+    });
     return res.end(notFound ? await readFile(notFound) : 'Not found');
   }
 
@@ -143,6 +154,7 @@ const server = createServer(async (req, res) => {
     'Content-Type': TYPES.get(extname(file)) || 'application/octet-stream',
     // No caching: this is a dev server and stale CSS is the whole problem.
     'Cache-Control': 'no-store',
+    'Content-Security-Policy': CSP,
   });
   res.end(await readFile(file));
 });
