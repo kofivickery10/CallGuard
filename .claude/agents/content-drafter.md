@@ -30,7 +30,7 @@ competing there cannibalises the page that should rank.
 title, ogTitle, breadcrumb, description, ogDescription, cardTag, cardSummary, date,
 section, readingTime, wordCount, ctaSubject, useCaseLink, related.
 Optional: schemaDescription, twitterDescription, order, time, updated.
-Copy the shape from an existing post in `landing/blog/_posts/`.
+Copy the shape from an existing post in `content/blog/posts/`.
 
 ## House rules
 

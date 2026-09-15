@@ -102,7 +102,7 @@ applied silently.
 
 - **The blog is generated.** Never edit `landing/blog/<slug>.html` or
   `landing/blog/index.html` by hand — your change will be overwritten. Edit
-  `landing/blog/_posts/<slug>.md` front-matter and run `npm run blog:build` from the
+  `content/blog/posts/<slug>.md` front-matter and run `npm run blog:build` from the
   repo root. The build also regenerates the blog's sitemap entries and index cards.
 - **You do not own claims.** Titles, descriptions and headings frequently want to reach
   for a statistic. You may not introduce, restate or strengthen a factual or product
