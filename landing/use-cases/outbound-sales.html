@@ -59,7 +59,7 @@
           "name": "Does CallGuard AI score TPS list compliance?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "Indirectly. The TPS list check happens at dial-time in your dialer, before CallGuard AI sees the call. What we score is the conversation that follows: did the agent acknowledge objections appropriately, did they handle a customer mentioning TPS registration correctly, did they explain how the number was sourced if asked. The dial-time list check is upstream of us."
+            "text": "Indirectly. The TPS list check happens at dial-time in your dialler, before CallGuard AI sees the call. What we score is the conversation that follows: did the agent acknowledge objections appropriately, did they handle a customer mentioning TPS registration correctly, did they explain how the number was sourced if asked. The dial-time list check is upstream of us."
           }
         },
         {
@@ -75,7 +75,7 @@
           "name": "How do you handle field sales operations versus call-centre outbound?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "The scoring engine is the same; the channel differs. Call-centre outbound uses dialer streaming. Field sales (doorstep, in-person) is on our roadmap pending the first design partner. The streaming protocol works today for any audio source; what's coming is the native iOS / Android capture layer. More on the roadmap here."
+            "text": "The scoring engine is the same; the channel differs. Call-centre outbound uses dialler streaming. Field sales (doorstep, in-person) is on our roadmap pending the first design partner. The streaming protocol works today for any audio source; what's coming is the native iOS / Android capture layer. More on the roadmap here."
           }
         },
         {
@@ -91,7 +91,7 @@
           "name": "How does this integrate with Five9, Genesys or Twilio?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "First-class adapter for Twilio Media Streams, and Amazon Connect live media streaming via a customer-run Lambda bridge. Other dialers can connect via our generic WebSocket protocol for live streaming. For any dialer, including Five9 and Genesys, you can also export recordings and bring them in via upload or our REST API."
+            "text": "First-class adapter for Twilio Media Streams, and Amazon Connect live media streaming via a customer-run Lambda bridge. Other diallers can connect via our generic WebSocket protocol for live streaming. For any dialler, including Five9 and Genesys, you can also export recordings and bring them in via upload or our REST API."
           }
         }
       ]
@@ -244,7 +244,7 @@
       <span class="section-tag">Live mid-call alerts</span>
       <h2 class="section-h2">Catch the urgency-language close <span class="accent">before the customer hangs up.</span></h2>
       <p class="lead">
-        For outbound, "we found this in next month's audit" is too late. The customer has already lodged a complaint with the ICO. CallGuard AI streams audio live from your dialer, runs scoring against the rolling transcript as the call happens, and emits high-confidence breach alerts via webhook, HMAC-signed once you set a signing secret, to your dialer, your CRM or a Slack channel.
+        For outbound, "we found this in next month's audit" is too late. The customer has already lodged a complaint with the ICO. CallGuard AI streams audio live from your dialler, runs scoring against the rolling transcript as the call happens, and emits high-confidence breach alerts via webhook, HMAC-signed once you set a signing secret, to your dialler, your CRM or a Slack channel.
       </p>
 
       <div class="feature-grid feature-grid-2">
@@ -276,7 +276,7 @@
       <div class="faq-list">
         <details class="faq-item">
           <summary>Does CallGuard AI score TPS list compliance?</summary>
-          <div class="faq-body"><p>Indirectly. The TPS list check happens at dial-time in your dialer, before CallGuard AI sees the call. What we score is the conversation that follows: did the agent acknowledge objections appropriately, did they handle a customer mentioning TPS registration correctly, did they explain how the number was sourced if asked. The dial-time list check is upstream of us.</p></div>
+          <div class="faq-body"><p>Indirectly. The TPS list check happens at dial-time in your dialler, before CallGuard AI sees the call. What we score is the conversation that follows: did the agent acknowledge objections appropriately, did they handle a customer mentioning TPS registration correctly, did they explain how the number was sourced if asked. The dial-time list check is upstream of us.</p></div>
         </details>
         <details class="faq-item">
           <summary>Will the AI flag every "act now" as urgency language?</summary>
@@ -284,7 +284,7 @@
         </details>
         <details class="faq-item">
           <summary>How do you handle field sales operations versus call-centre outbound?</summary>
-          <div class="faq-body"><p>The scoring engine is the same; the channel differs. Call-centre outbound uses dialer streaming. Field sales (doorstep, in-person) is on our roadmap pending the first design partner. The streaming protocol works today for any audio source; what's coming is the native iOS / Android capture layer. <a href="/#whats-coming">More on the roadmap here.</a></p></div>
+          <div class="faq-body"><p>The scoring engine is the same; the channel differs. Call-centre outbound uses dialler streaming. Field sales (doorstep, in-person) is on our roadmap pending the first design partner. The streaming protocol works today for any audio source; what's coming is the native iOS / Android capture layer. <a href="/#whats-coming">More on the roadmap here.</a></p></div>
         </details>
         <details class="faq-item">
           <summary>Can mid-call alerts be configured per agent or per campaign?</summary>
@@ -292,7 +292,7 @@
         </details>
         <details class="faq-item">
           <summary>How does this integrate with Five9, Genesys or Twilio?</summary>
-          <div class="faq-body"><p>First-class adapter for <a href="/integrations/twilio">Twilio Media Streams</a>, and Amazon Connect live media streaming via a customer-run Lambda bridge. Other dialers can connect via our generic WebSocket protocol for live streaming. For any dialer, including Five9 and Genesys, you can also export recordings and bring them in via upload or our REST API.</p></div>
+          <div class="faq-body"><p>First-class adapter for <a href="/integrations/twilio">Twilio Media Streams</a>, and Amazon Connect live media streaming via a customer-run Lambda bridge. Other diallers can connect via our generic WebSocket protocol for live streaming. For any dialler, including Five9 and Genesys, you can also export recordings and bring them in via upload or our REST API.</p></div>
         </details>
       </div>
 
