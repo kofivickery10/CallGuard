@@ -53,7 +53,7 @@ That second part matters more than the first. A score with no evidence is just a
 
 This is the bit that distinguishes a serious AI QA system from a wallpaper one. Generic LLM scoring drifts. The model's interpretation of "fair value" or "vulnerable" is whatever happened to be in its training data, not your firm's interpretation.
 
-The fix is not to fine-tune the model (slow, expensive, often regresses on edge cases). The fix is to feed the model your own corrections, exemplars and prior coaching as context every time it scores. When your compliance officer corrects a verdict, the most recent corrections on that criterion, up to five, are shown to the AI as examples the next time it scores. They are examples rather than rules, and the AI can still reach a different verdict, but the scoring moves towards your compliance officer's reading of the scorecard rather than a generic baseline. That is what we mean by per-tenant AI learning, and it is the mechanism that lets one engine serve a financial planning firm, a debt-collection BPO and a customer-support contact centre without each customer having to fine-tune anything. [More on how scoring calibration works.](/scoring-calibration)
+The fix is not to fine-tune the model (slow, expensive, often regresses on edge cases). The fix is to feed the model your own corrections and exemplars as context every time it scores, and prior coaching drafts as context when it writes a new one. When your compliance officer corrects a verdict, up to five of the most recent corrections on that criterion are shown to the AI as examples the next time it scores that criterion. They are examples rather than rules: the AI can still reach a different verdict on a call that genuinely differs. That is the mechanism that lets one engine serve a financial planning firm, a debt-collection BPO and a customer-support contact centre without each customer having to fine-tune anything. [More on how scoring calibration works.](/scoring-calibration)
 
 ## What gets measured
 
@@ -79,7 +79,7 @@ Both modes use the same scorecard and the same calibration layer. The mid-call m
 
 **"AI call QA is just sentiment analysis."** No. Sentiment analysis is one cell on the scorecard. AI QA scores arbitrary scorecard items, including binary compliance checks (was the consent statement read), categorical judgements (was the recommendation suitable for the disclosed risk profile), and weighted scoring (how clearly were charges disclosed on a 1 to 5 scale). Sentiment is rarely the headline use case.
 
-**"It will just give every call a high score."** Without per-tenant calibration, models do tend toward leniency on subjective items. With calibration, the AI scores against the bar your compliance officer has already drawn through their corrections. It can be calibrated to score more strictly than a human QA team, because it does not have the empathy gradient that biases human reviewers.
+**"It will just give every call a high score."** Without corrections and exemplars to draw on, models do tend toward leniency on subjective items. When your compliance officer corrects a verdict, that correction becomes an example shown to the AI the next time it scores that criterion, so it has your compliance officer's reading to draw on rather than only the scorecard's words.
 
 **"It's just transcription with summarisation slapped on top."** Summaries are non-auditable. AI call QA produces a structured per-criterion verdict with the evidence quote underneath. That is the difference between a feature and a compliance tool.
 
@@ -103,7 +103,7 @@ If you are about to demo three or four products, the questions worth asking are 
 
 **Where is the evidence?** Every verdict should show the transcript evidence it was decided on, or say plainly that no relevant evidence was found. If the product cannot show you what drove the score, it is not auditable.
 
-**Can compliance officers correct AI scores, and does the system learn from those corrections?** The honest answer to "does it learn" should be specific: it should be able to tell you exactly how many corrections feed back into future prompts, and you should see your scoring drift toward your firm's interpretation over a few weeks of use.
+**Can compliance officers correct AI scores, and are those corrections used again?** The honest answer should be specific: a vendor should be able to tell you exactly how many recent corrections on a criterion are shown to the AI as examples the next time it scores that criterion, and show you the evidence and reason behind each one — not just claim the system "learns".
 
 **Does it stream live or only batch?** Both modes have different value. If you are scoring outbound campaigns, the lack of mid-call alerts is a deal-breaker. If you are scoring recorded advice files, you may not need live at all. Know which mode the regulator cares about for your use case.
 

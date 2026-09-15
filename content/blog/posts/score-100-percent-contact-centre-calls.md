@@ -51,7 +51,7 @@ The cost is not the headline though. The headline is what you can do with 100% c
 
 **Real coaching, on every agent, every week.** Per-call coaching drafts feed into per-agent coaching memory. The coaching the agent receives next time builds on what was said last time. If they have improved on the flagged area, the AI acknowledges it. If they have not, the language escalates. Manual QA cannot do this because no human has the time to remember every coaching note for every agent.
 
-**Agent risk profiles, accurate to the call.** A heatmap of which agents are driving which breach types becomes possible because every call is scored. Today, agent performance reviews are anchored on three or four reviewed calls and a wall of subjective impressions. With AI scoring, agent risk is a number computed across hundreds of conversations, not a folk theory.
+**Agent risk profiles, accurate to the call.** A heatmap of which agents are driving which breach types becomes possible because every call or sale is scored. Today, agent performance reviews are anchored on three or four reviewed calls and a wall of subjective impressions. With AI scoring, agent risk is a number computed across hundreds of conversations, not a folk theory.
 
 **Client reporting in real time.** BPOs running multi-tenant programmes can give each client a scoped portal with their own scorecard, their own breach register, and their own pass rate trend. This replaces the multi-person reporting team that currently produces monthly PDFs. It is the reporting pattern our [contact centre and BPO QA](/use-cases/bpo) setup is built around.
 
@@ -81,7 +81,7 @@ The transcript goes to a large language model with your scorecard. The model sco
 
 ### 4. Per-tenant calibration
 
-Your compliance team corrects AI verdicts they disagree with, marks gold-standard calls as exemplars, and provides written guidance through a knowledge base. All three feed into the prompt the next time the AI scores: the most recent corrections on a criterion, up to five, are shown to it as examples. They are examples rather than rules, so the AI can still disagree, but the scoring moves towards your senior reviewer's reading of the scorecard rather than a generic baseline. This is what makes AI call QA stick rather than drift.
+Your compliance team corrects AI verdicts they disagree with, marks gold-standard calls as exemplars, and provides written guidance through a knowledge base. All three feed into the prompt the next time the AI scores: up to five of the most recent corrections on a criterion are shown to it as examples. They are examples rather than rules, so the AI can still disagree — but it has your senior reviewer's reading of the scorecard to draw on, not only the scorecard's words.
 
 ### 5. Output integration
 
@@ -95,7 +95,7 @@ Results need to land where the people who act on them are working. That means th
 
 The honest answer: they do better work. The 1% sample reviews disappear because the AI does them all. What remains is high-leverage human work that AI cannot do.
 
-**Calibration of the AI.** Senior reviewers correct edge cases the AI got wrong. Each correction makes the AI better at scoring like your firm. This is the highest-leverage QA work in the new world: every correction made by one reviewer becomes a few-shot example used on every future call. One person's judgement scales across the floor.
+**Calibration of the AI.** Senior reviewers correct edge cases the AI got wrong. Each correction becomes one of the examples the AI is shown the next time it scores that same criterion. This is the highest-leverage QA work in the new world: one reviewer's judgement on a hard case becomes an example other calls on that criterion are checked against. One person's judgement scales across the floor.
 
 **Coaching delivery.** The AI generates the coaching draft. A human delivers the coaching conversation. The shape of coaching shifts from "we listened to your call yesterday and noticed" to "we have noticed across your last 40 calls that". Coaching becomes data-driven rather than anecdote-driven, and that lands harder with agents.
 

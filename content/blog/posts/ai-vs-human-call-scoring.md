@@ -34,15 +34,15 @@ We sell an AI call scoring product, so this should be the easiest argument in th
 
 **Pattern detection.** Cross-floor analysis (which scorecard items are getting harder to pass, which campaigns have rising breach rates, which agents are improving) requires data on every call. Sample-based QA cannot generate that data; AI scoring can. The patterns are usually more interesting than the per-call findings.
 
-**Compliance evidence.** "We sample 5% of calls and review them for compliance" describes how much reviewing a team can afford. "We score every call against our scorecard, with the transcript evidence behind each verdict" describes what happened to customers. AI gives compliance leads a paper trail that sample-based QA cannot, which is our argument for it rather than a rule anyone has written.
+**Compliance evidence.** "We sample 5% of calls and review them for compliance" describes how much reviewing a team can afford. "We score every call or sale against our scorecard, with the transcript evidence each verdict was decided on, or a note when none was found" describes what happened to customers. AI gives compliance leads a paper trail that sample-based QA cannot, which is our argument for it rather than a rule anyone has written.
 
 ## What human scoring is genuinely better at
 
 **Edge cases.** When the call has a context the AI did not have (a previous interaction, a known account history, a one-off campaign rule), a human reviewer with that context scores more accurately. AI can be given that context (knowledge base, prior coaching, scorecard customisation), but there will always be situations where a human's broader awareness produces the right verdict and the AI gets it wrong.
 
-**Subjective interpretation.** "Did the agent show appropriate empathy here" is genuinely a judgement call. AI scoring can be trained on your firm's prior corrections to align with how you have judged similar cases before, but the underlying question is still subjective. For high-stakes calls (complaint resolution, vulnerable customer interactions, escalations), a human reviewer's judgement still beats an AI's.
+**Subjective interpretation.** "Did the agent show appropriate empathy here" is genuinely a judgement call. AI scoring can be shown your firm's prior corrections as examples of how you have judged similar cases before, but the underlying question is still subjective. For high-stakes calls (complaint resolution, vulnerable customer interactions, escalations), a human reviewer's judgement still beats an AI's.
 
-**Calibration of the AI itself.** An AI that scores 100% of calls without ever being corrected drifts from your firm's interpretation. Senior reviewers correcting edge-case AI verdicts is the highest-leverage QA work in the new world: each correction makes the AI better. Without humans calibrating it, the AI is a baseline, not a calibrated system.
+**Calibration of the AI itself.** An AI that scores 100% of calls without ever being corrected only ever reflects a generic reading of the scorecard. Senior reviewers correcting edge-case AI verdicts is the highest-leverage QA work in the new world: each correction becomes an example the AI is shown the next time it scores that criterion. Without humans providing those corrections, the AI has no view of your firm's interpretation to draw on.
 
 **Coaching delivery.** AI generates the coaching draft; humans deliver the coaching conversation. Agents respond differently to a draft document and a peer or manager talking through findings with them. Coaching as a pure-AI loop is less effective than coaching with the AI doing the analysis and a human doing the conversation.
 
@@ -56,11 +56,11 @@ The model that works best in production is roughly this division of labour:
 
 **Humans review the calls AI flagged.** Critical breaches, ambiguous evidence, low scores on items that look surprising. The reviewer either confirms the AI verdict (which trains the model) or corrects it (which corrects the model). Reviewers spend their time on the high-leverage calls instead of randomly sampling.
 
-**Humans calibrate the AI on edge cases.** When the AI gets it wrong, the correction is kept, and the most recent corrections on that criterion, up to five, are shown to the AI as examples the next time it scores. They are examples rather than rules, but they move the scoring towards your firm's interpretation. This is the single most valuable use of senior QA time in the new world: one reviewer's judgement on a hard case shapes how the next calls on that criterion are scored. [More on how scoring calibration works.](/scoring-calibration)
+**Humans calibrate the AI on edge cases.** When the AI gets it wrong, the correction is kept, and up to five of the most recent corrections on that criterion are shown to the AI as examples the next time it scores that criterion. They are examples rather than rules: the AI can still reach a different verdict on a call that genuinely differs. This is the single most valuable use of senior QA time in the new world: one reviewer's judgement on a hard case becomes one of the examples the AI sees when it next scores that criterion. [More on how scoring calibration works.](/scoring-calibration)
 
 **Humans deliver coaching.** The AI provides the draft, the human delivers the conversation. The shape of coaching shifts from "we listened to your call yesterday and noticed" to "we have noticed across your last 40 calls that". Coaching becomes data-driven rather than anecdote-driven.
 
-**Humans calibrate as a team.** Periodic calibration sessions where multiple reviewers score the same calls and align on standards. AI does not replace this; AI consumes the output. After a calibration session, the corrections feed into the AI and the next month's scoring reflects the team's aligned interpretation.
+**Humans calibrate as a team.** Periodic calibration sessions where multiple reviewers score the same calls and align on standards. AI does not replace this; AI consumes the output. After a calibration session, the corrections become examples the AI is shown the next time it scores those criteria.
 
 ## What "AI replaces all human scoring" looks like (and why it does not work)
 
@@ -98,7 +98,7 @@ The answers usually point to "AI does the volume, humans do the judgement, and t
 
 ## What CallGuard AI thinks the right shape is
 
-We build for the model where AI scores 100% of calls and humans calibrate the edge cases that matter. The product is designed around that division of labour: every AI verdict can be one-click corrected by a compliance officer, every correction feeds back into the next batch of scoring, and the dashboard surfaces the calls that need human attention rather than burying them in volume.
+We build for the model where AI scores 100% of calls and humans calibrate the edge cases that matter. The product is designed around that division of labour: any AI verdict can be corrected by a compliance officer, choosing Pass or Fail and adding a reason if they want to, and that correction becomes one of the examples the AI is shown the next time it scores that criterion; the dashboard surfaces the calls that need human attention rather than burying them in volume.
 
 If that division of labour matches how your QA team wants to work, we are probably the right tool. If you want a fully autonomous QA solution that needs no human input, we are not, and we would rather tell you that on the discovery call than after a deployment that drifts. If you are weighing us against other options, see [how CallGuard compares to other call QA tools](/compare/).
 

@@ -39,9 +39,13 @@ and coach advisers from real calls, without adding reviewers.
   was decided on, which is what an auditor, the FCA or a complaints handler asks to
   see. A criterion with nothing relevant on the call is recorded as "no relevant
   evidence found", so not every verdict carries a quote.
-- **The firm's interpretation, not a generic one.** Scoring learns from the
-  compliance officer's corrections and gold-standard exemplar calls, so it
-  converges on the firm's own bar for "suitable" and "fair value".
+- **The firm's interpretation, not a generic one.** When a compliance officer
+  corrects a verdict, up to five of the most recent corrections on that criterion
+  are shown to the AI as examples the next time it scores that criterion, alongside
+  gold-standard exemplar calls — so the AI sees how your firm has read that
+  criterion before, not only the scorecard's words. There is no measured
+  improvement, convergence or accuracy figure; never write "learns", "converges",
+  "scores like", "gets better", "moves the scoring towards" or "drifts towards".
 - **The sale, not just the call.** Multiple calls with one customer are scored
   together as one compliance unit (a journey), triggered by the sale in the CRM.
 - **Call checked against paperwork.** Reconciliation compares what the customer
@@ -66,8 +70,13 @@ and coach advisers from real calls, without adding reviewers.
   connector already built; for any other CRM, CallGuard builds the same connection
   during setup (owner, 15 Sep 2026). Results also reach any system through signed
   webhooks and the results API.
-- Firms bring their own scorecards, QA manuals and product checklists. Low-confidence
-  consent-gate items go to a manual review queue rather than being auto-passed.
+- Firms bring their own scorecards, QA manuals and product checklists.
+  Consent-gate items go to a manual review queue when CallGuard can't reliably
+  tell which speaker is the customer — that's speaker attribution from
+  transcription, not the AI's confidence in its verdict. If a sale's main call
+  can't be attributed at all, every checkpoint on that sale goes to review.
+  Routing is per checkpoint, not per call. A threshold on the AI's own
+  confidence exists too, but it is off by default.
 - Insurer application PDFs are parsed for Reconciliation.
 - Outputs: per-criterion pass/fail with transcript evidence, a weighted score,
   breach alerts (in-app, email, Slack, webhooks), adviser coaching drafts, AI
@@ -92,6 +101,18 @@ an alert arrives), sent to the streaming client or a webhook, not to
 supervisors; webhooks, HMAC-signed when a signing secret is set; corrections-based
 learning and exemplar library; coaching memory and AI insights briefs on request
 (not scheduled); journey calls matched by phone number within a sale window;
+scoring calibration detail (claims audit, 14 Sep 2026; fix in progress, separate
+PR, so do not publish these three limitations on any customer-facing page): the
+five most recent corrections shown per criterion are drawn from the latest fifty
+corrections logged across the scorecard being scored, and a criterion whose
+corrections have all aged out of that window gets none; checkpoints held for
+review (consent items where the speaker can't be told apart) are scored with no
+calibration examples; coaching memory only appears on calls scored individually,
+so sale-scored coaching does not yet see an adviser's prior coaching drafts.
+Customer-facing copy should say only "up to five of the most recent corrections
+on that criterion are shown to the AI as examples", and for coaching, that
+individually-scored calls use the adviser's last three drafts, without stating
+what sale-scored coaching lacks;
 Reconciliation (switched on per firm by CallGuard staff; runs once the insurer application
 PDF is on the sale record in the firm's CRM, through the Zoho connector in the code today; not listed on any plan on pricing.html); CloudTalk and Zoho CRM connectors built, with other diallers through SFTP, upload and the API, and other CRMs connected by CallGuard during setup;
 AES-256-GCM encryption at rest; manual review queue; adviser remediation
@@ -110,6 +131,13 @@ with the sub-processor list.
 
 **False, never repeat (claims audit, 14 Sep 2026):** "personal data never reaches the
 AI"; "every verdict quoted"; "weekly" insights; live breach alerts to supervisors;
+"learns", "converges", "scores like", "moves the scoring towards" or "drifts
+towards" (no measured improvement, convergence or accuracy figure exists; the true
+wording is that up to five of the most recent corrections on a criterion are shown
+to the AI as examples the next time it scores that criterion, so it sees how the
+firm has read that criterion before, not only the scorecard's words); "one-click
+correction" (correcting a verdict is choose Pass or Fail, an optional reason, then
+Save — never "one click");
 "one criterion at a time"; "gathers every call with that customer"; "the four
 Consumer Duty outcomes" evidenced on a call (only PRIN 2A.5 and 2A.6 are
 call-visible); MCOB affordability as an adviser duty (MCOB 11.6 binds lenders);
@@ -152,8 +180,12 @@ multi-call customer unit; "breach" for a critical scorecard failure.
 - The redesign keeps the brand palette (primary green, pass/fail/review status
   colours, green-tinted neutrals) and Inter, per BRAND_GUIDELINES.md. It may
   extend them for marketing scale but not replace them.
-- Strapline: "Smarter calls. Safer business." Positioning statement: "Every sales
-  conversation, scored live by AI that learns from your compliance team."
+- Strapline: "Smarter calls. Safer business." Positioning statement in
+  BRAND_GUIDELINES.md ("Every sales conversation, scored live by AI that learns
+  from your compliance team") is false on two counts and should not be repeated
+  on customer-facing pages: "live" (only breach detection runs live; scoring
+  itself is post-call) and "learns" (no measured improvement; the AI is shown
+  your compliance team's corrections as examples, it does not learn or converge).
 
 ## Evidence on Hand
 

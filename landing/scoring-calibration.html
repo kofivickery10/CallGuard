@@ -59,7 +59,7 @@
           "name": "What happens when my compliance team disagrees with a verdict?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "They correct it in one click, with a reason and the transcript evidence it's based on. That correction is stored, and the next time CallGuard scores that same criterion on a different call, it's shown the most recent corrections on that criterion, up to five of them, as examples of how your firm reads it. It's an example, not a rule: the AI can still reach a different verdict on a call that genuinely differs."
+            "text": "They choose Pass or Fail, add a reason if they want to, and save. That correction is stored with the transcript excerpt the AI based its verdict on, plus the reason if one was given. The next time CallGuard scores that criterion on a different call, it's shown up to five of the most recent corrections on that criterion, as examples of how your firm reads it, not rules it must follow: the AI can still reach a different verdict on a call that genuinely differs."
           }
         },
         {
@@ -67,15 +67,15 @@
           "name": "Which plans include scoring calibration?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "Growth and Pro. Starter scores every call against your scorecard but without calibration from corrections, exemplar calls or coaching memory. See what else each plan includes on the pricing page."
+            "text": "Growth and Pro. Starter doesn't include calibration from corrections, exemplar calls or coaching memory. See what else each plan includes on the pricing page."
           }
         },
         {
           "@type": "Question",
-          "name": "Does CallGuard ever send a call to a person on its own?",
+          "name": "Does CallGuard ever send a checkpoint to a person on its own?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "Yes, in one specific case: when CallGuard can't be sure it was the customer, rather than the adviser, who answered a consent question, that item goes to your review queue instead of being scored automatically. That's the only routing rule built around the AI's own uncertainty on this - it isn't a general confidence threshold applied across every criterion, which is off by default."
+            "text": "Yes, in two situations, both driven by speaker attribution rather than the AI's confidence. When CallGuard can't reliably tell which speaker is the customer, a consent question goes to your review queue. When a sale's main call can't be attributed at all, every checkpoint on that sale goes to review. Routing works per checkpoint, not per call. There's also a threshold on the AI's own confidence, but it's off by default."
           }
         }
       ]
@@ -141,7 +141,7 @@
         Your scorecard, read the way <span class="accent">your compliance team reads it.</span>
       </h1>
       <p class="hero-sub">
-        Two advisers can read the same exclusions out in different words. One compliance officer counts a fact find from an earlier call as covering affordability; another wants it repeated at the point of sale. When your compliance team corrects a verdict like that, CallGuard AI uses your most recent corrections as examples the next time it scores that criterion. <span class="hp-plan">Growth and Pro</span>
+        Two advisers can read the same exclusions out in different words. One compliance officer counts a fact find from an earlier call as covering the customer's budget; another wants it repeated at the point of sale. When your compliance team corrects a verdict like that, CallGuard AI uses your most recent corrections as examples the next time it scores that criterion. <span class="hp-plan">Growth and Pro</span>
       </p>
       <p class="hero-sub">See what's included on <a href="/pricing">Growth and Pro</a>, or ask us about upgrading.</p>
       <div class="hero-ctas">
@@ -157,7 +157,7 @@
         A scorecard is not self-explanatory. <span class="accent">Your compliance team already knows what it means.</span>
       </h2>
       <p class="lead">
-        An AI that only reads the words of your scorecard has to settle judgement calls somehow — and left to itself, it settles them with whatever reading is most literal or most common across firms, not necessarily the one your compliance team would reach. "Explained the exclusions" can mean read verbatim from the policy document to one reviewer, and summarised in the customer's own understanding to another. Both are defensible. Only one is yours.
+        An AI that only reads the words of your scorecard still has to settle judgement calls somehow, without knowing which reading your compliance team would choose. "Explained the exclusions" can mean read verbatim from the policy document to one reviewer, and summarised in the customer's own understanding to another. Both are defensible. Only one is yours.
       </p>
 
       <div class="feature-grid feature-grid-2">
@@ -180,10 +180,10 @@
           Examples for the AI to weigh, <span class="accent">not rules for it to follow.</span>
         </h2>
         <p class="lead">
-          Correct a verdict and explain why, and that correction is stored with the transcript excerpt it was made on. The next time CallGuard scores that same criterion — on a different call — it's shown the most recent corrections on that criterion, up to five of them, drawn from your last fifty. They're shown as examples of how your firm reads that criterion, not as rules the AI must follow: it can still reach a different verdict on a call that genuinely differs.
+          Correct a verdict — choose Pass or Fail, add a reason if you want to, and save — and it's stored with the transcript excerpt the AI based its verdict on, plus your reason if you gave one. The next time CallGuard scores that same criterion — on a different call — it's shown up to five of the most recent corrections on that criterion. They're shown as examples of how your firm reads that criterion, not as rules the AI must follow: it can still reach a different verdict on a call that genuinely differs.
         </p>
         <p class="lead">
-          Exemplar calls work alongside corrections. Mark a call as an example of what good looks like at your firm, and an excerpt of it is shown to the AI too, alongside any written guidance from your knowledge base — your product rules, your house style for explaining exclusions, whatever your compliance team has documented.
+          Exemplar calls work alongside corrections. Mark a call or a sale as an example of what good looks like at your firm, and the AI is shown the first 1,500 characters of the two most recently marked exemplars — for a sale, that's its closing call — alongside any written guidance from your knowledge base: your product rules, your house style for explaining exclusions, whatever your compliance team has documented.
         </p>
       </div>
 
@@ -200,7 +200,7 @@
           <div class="hp-compare-label">Reason</div>
           <div class="hp-compare-quote">The adviser covered the waiting period earlier in the call, while reading through the policy summary. We count that as covered — it doesn't need repeating at the point of sale.</div>
         </div>
-        <div class="hp-alert-row"><span>Next call scored on this criterion</span><span class="hp-pill hp-pill--neutral">Used as a calibration example</span></div>
+        <div class="hp-alert-row"><span>Later calls on this criterion</span><span class="hp-pill hp-pill--neutral">Used as a calibration example</span></div>
         <figcaption class="hp-caption">Illustrative example with synthetic data.</figcaption>
       </figure>
 
@@ -211,11 +211,11 @@
         </div>
         <div class="hp-fact">
           <dt>Your best calls as the benchmark</dt>
-          <dd>Mark calls that show good practice, and excerpts of them are shown to the AI as what good looks like at your firm.</dd>
+          <dd>Mark a call or sale as good practice, and the AI is shown the first 1,500 characters of the two most recently marked exemplars as what good looks like at your firm.</dd>
         </div>
         <div class="hp-fact">
           <dt>Coaching that remembers</dt>
-          <dd>Coaching drafts build on what each adviser was told before. An insights brief, generated on request rather than on a schedule, summarises recent patterns for your compliance team.</dd>
+          <dd>On calls scored individually, each coaching draft is written with that adviser's last three coaching drafts in view. An insights brief, generated on request over a period you choose, summarises patterns for your compliance team.</dd>
         </div>
       </dl>
     </div>
@@ -233,7 +233,7 @@
       <div class="feature-grid feature-grid-2">
         <div class="feature">
           <h3>Examples, not rules</h3>
-          <p>Corrections shape what the AI is shown, not what it must conclude. It can still score a similar call differently if the transcript genuinely warrants it.</p>
+          <p>Corrections shape what the AI is shown, not what it must conclude. It can still score a similar call differently if the transcript genuinely warrants it — the one exception is the same sale that was corrected: if that sale is re-scored, the correction's ruling stands.</p>
         </div>
         <div class="feature">
           <h3>No fine-tuning, no model per firm</h3>
@@ -245,7 +245,7 @@
         </div>
         <div class="feature">
           <h3>No accuracy or agreement figure, published</h3>
-          <p>We don't publish a figure for how closely calibrated scoring tracks a human reviewer's judgement. What you get instead is the transcript evidence behind each verdict and the reason behind each correction, so your team can check it directly.</p>
+          <p>We don't publish a figure for how closely calibrated scoring tracks a human reviewer's judgement. What you get instead is the transcript evidence each verdict was decided on, or a note that none was found, and any reason your reviewer gave for a correction, so your team can check it directly.</p>
         </div>
       </div>
 
@@ -262,15 +262,15 @@
       <div class="faq-list">
         <details class="faq-item">
           <summary>What happens when my compliance team disagrees with a verdict?</summary>
-          <div class="faq-body"><p>They correct it in one click, with a reason and the transcript evidence it's based on. That correction is stored, and the next time CallGuard scores that same criterion on a different call, it's shown the most recent corrections on that criterion, up to five of them, as examples of how your firm reads it. It's an example, not a rule: the AI can still reach a different verdict on a call that genuinely differs.</p></div>
+          <div class="faq-body"><p>They choose Pass or Fail, add a reason if they want to, and save. That correction is stored with the transcript excerpt the AI based its verdict on, plus the reason if one was given. The next time CallGuard scores that criterion on a different call, it's shown up to five of the most recent corrections on that criterion, as examples of how your firm reads it, not rules it must follow: the AI can still reach a different verdict on a call that genuinely differs.</p></div>
         </details>
         <details class="faq-item">
           <summary>Which plans include scoring calibration?</summary>
-          <div class="faq-body"><p>Growth and Pro. Starter scores every call against your scorecard but without calibration from corrections, exemplar calls or coaching memory. See what else each plan includes on the <a href="/pricing">pricing page</a>.</p></div>
+          <div class="faq-body"><p>Growth and Pro. Starter doesn't include calibration from corrections, exemplar calls or coaching memory. See what else each plan includes on the <a href="/pricing">pricing page</a>.</p></div>
         </details>
         <details class="faq-item">
-          <summary>Does CallGuard ever send a call to a person on its own?</summary>
-          <div class="faq-body"><p>Yes, in one specific case: when CallGuard can't be sure it was the customer, rather than the adviser, who answered a consent question, that item goes to your review queue instead of being scored automatically. That's the only routing rule built around the AI's own uncertainty on this - it isn't a general confidence threshold applied across every criterion, which is off by default.</p></div>
+          <summary>Does CallGuard ever send a checkpoint to a person on its own?</summary>
+          <div class="faq-body"><p>Yes, in two situations, both driven by speaker attribution rather than the AI's confidence. When CallGuard can't reliably tell which speaker is the customer, a consent question goes to your review queue. When a sale's main call can't be attributed at all, every checkpoint on that sale goes to review. Routing works per checkpoint, not per call. There's also a threshold on the AI's own confidence, but it's off by default.</p></div>
         </details>
       </div>
 
