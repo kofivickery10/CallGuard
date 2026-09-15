@@ -139,24 +139,25 @@ export function redactionCheckMode(
   return categoryIsReadable(category, unredactedCategories) ? null : 'presence';
 }
 
+/** An email address, wherever it appears. Exported so document-profile-learner.ts
+ *  can use the same shape when scrubbing a raw document ahead of profile
+ *  learning — a different call site with the same job. */
+export const EMAIL_PATTERN = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
+
+/**
+ * A UK postcode in its full form only, exported for the same reason as
+ * EMAIL_PATTERN. The outward-code-only shape ("M32") is indistinguishable from
+ * ordinary alphanumerics that appear in policy and product references, and
+ * scrubbing those would damage comparable values to no benefit.
+ */
+export const UK_POSTCODE_PATTERN = /\b[A-Z]{1,2}[0-9][0-9A-Z]? ?[0-9][A-Z]{2}\b/g;
+
 // PII that can appear INSIDE another field's value, with the placeholder to put
 // in its place. Applied whatever the question is, because the question's own
 // category says nothing about what a contaminated value happens to contain.
 const EMBEDDED_PII: Array<{ category: AnswerCategory; find: RegExp; replace: string }> = [
-  {
-    category: 'email_address',
-    find: /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g,
-    replace: '[EMAIL_ADDRESS]',
-  },
-  {
-    // A UK postcode in its full form only. The outward-code-only shape ("M32")
-    // is indistinguishable from ordinary alphanumerics that appear in policy
-    // and product references, and scrubbing those would damage comparable
-    // values to no benefit.
-    category: 'location_address',
-    find: /\b[A-Z]{1,2}[0-9][0-9A-Z]? ?[0-9][A-Z]{2}\b/g,
-    replace: '[LOCATION_ZIP]',
-  },
+  { category: 'email_address', find: EMAIL_PATTERN, replace: '[EMAIL_ADDRESS]' },
+  { category: 'location_address', find: UK_POSTCODE_PATTERN, replace: '[LOCATION_ZIP]' },
 ];
 
 /**
