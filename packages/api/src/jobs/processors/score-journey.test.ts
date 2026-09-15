@@ -3,6 +3,7 @@ import type { Job } from 'bullmq';
 import { query, queryOne, withTransaction } from '../../db/client.js';
 import { scoreTranscriptConsensus } from '../../services/scoring.js';
 import { getLearningContext } from '../../services/learning-context.js';
+import { evaluateAlertsForJourney } from '../../services/alert-evaluator.js';
 import { processScoreJourney, type ScoreJourneyJobData } from './score-journey.js';
 
 // Sale scoring, end to end through the processor with the database and every
@@ -47,6 +48,7 @@ vi.mock('../../services/journey.js', () => ({
   resolveCoverage: vi.fn(),
 }));
 vi.mock('../../services/product-resolution.js', () => ({ detectProductsFromTranscript: vi.fn(async () => []) }));
+vi.mock('../../services/alert-evaluator.js', () => ({ evaluateAlertsForJourney: vi.fn(async () => {}) }));
 
 const ORG = 'org-1';
 const JOURNEY = 'journey-1';
@@ -184,9 +186,9 @@ function setup({
   })) as never);
 }
 
-function run() {
+function run(data: Partial<ScoreJourneyJobData> = {}) {
   return processScoreJourney({
-    data: { journeyId: JOURNEY },
+    data: { journeyId: JOURNEY, ...data },
     opts: { attempts: 1 },
     attemptsMade: 0,
   } as unknown as Job<ScoreJourneyJobData>);
@@ -200,6 +202,7 @@ const ATTRIBUTABLE = 'Agent: Shall I put the policy in trust?\nCustomer: It cann
 
 beforeEach(() => {
   vi.mocked(getLearningContext).mockClear();
+  vi.mocked(evaluateAlertsForJourney).mockClear();
 });
 
 describe('processScoreJourney — a not-applicable ruling on the same sale', () => {
@@ -624,5 +627,51 @@ describe('processScoreJourney — an earlier call that cannot be attributed', ()
     expect(itemScoreInsert('consent')!.sql).toContain("'manual_review'");
     expect(itemScoreInsert('disclosure')!.params[2]).toBe('pass');
     expect(journeyUpdate().params[3]).toBe(100);
+  });
+});
+
+// Alerting a sale-scored firm at all. The calls behind a sale are never scored
+// on their own, so if scoring a sale raises no alert, the firm's email and
+// Slack breach alerts never arrive — whatever rules they have configured.
+describe('processScoreJourney — alert rules', () => {
+  it("evaluates the sale's alert rules once it has been scored", async () => {
+    setup({
+      transcript: ATTRIBUTABLE,
+      items: [item('disclosure')],
+      aiScores: { disclosure: 0 },
+      speakerConfidence: 0.8,
+    });
+
+    await run();
+
+    expect(evaluateAlertsForJourney).toHaveBeenCalledWith(JOURNEY);
+  });
+
+  it('raises nothing on a sale where every checkpoint awaits review', async () => {
+    // Mirrors the webhook and Zoho write-back, which are held for the same
+    // reason: there is no verdict yet to tell anyone about.
+    setup({
+      transcript: ONE_SIDED,
+      items: [item('disclosure'), item('trust')],
+      aiScores: { disclosure: 1, trust: 0 },
+      speakerConfidence: 1.0,
+    });
+
+    await run();
+
+    expect(evaluateAlertsForJourney).not.toHaveBeenCalled();
+  });
+
+  it('raises nothing on a bulk re-score, which suppresses downstream side effects', async () => {
+    setup({
+      transcript: ATTRIBUTABLE,
+      items: [item('disclosure')],
+      aiScores: { disclosure: 0 },
+      speakerConfidence: 0.8,
+    });
+
+    await run({ suppressCrm: true });
+
+    expect(evaluateAlertsForJourney).not.toHaveBeenCalled();
   });
 });

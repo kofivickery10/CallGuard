@@ -5,6 +5,7 @@ import { AppError } from '../middleware/errors.js';
 import { recordAuditEvent } from '../services/audit.js';
 import { getScoringSettings } from '../services/tenant-settings.js';
 import { pushCallScoreUpdate, pushJourneyScoreUpdate } from '../services/score-writeback.js';
+import { evaluateAlertsForResolvedItem } from '../services/alert-evaluator.js';
 import { locateEvidence } from '../services/evidence-locator.js';
 import { deriveSeverity, isItemPass, callPasses } from '@callguard/shared';
 import type { ManualReviewItem, BreachSeverity, EvidenceLocation } from '@callguard/shared';
@@ -212,16 +213,32 @@ reviewRouter.post('/resolve', requireActioner, async (req, res, next) => {
     const normalized = result === 'na' ? null : result === 'pass' ? 100 : 0;
     const rawScore = result === 'na' ? null : result === 'pass' ? 1 : 0;
 
+    const resolved =
+      kind === 'call'
+        ? await resolveCallItem(orgId, req.user!.userId, item_score_id, result, normalized, rawScore, settings.passThreshold)
+        : await resolveJourneyItem(orgId, req.user!.userId, item_score_id, result, normalized, rawScore, settings.passThreshold);
+
+    // Re-push the corrected score downstream (webhook + Zoho), so the CRM
+    // reflects the human verdict rather than the AI's provisional score.
+    // Best-effort and after commit — never blocks the reviewer's response.
     if (kind === 'call') {
-      const callId = await resolveCallItem(orgId, req.user!.userId, item_score_id, result, normalized, rawScore, settings.passThreshold);
-      // Re-push the corrected score downstream (webhook + Zoho), so the CRM
-      // reflects the human verdict rather than the AI's provisional score.
-      // Best-effort and after commit — never blocks the reviewer's response.
-      void pushCallScoreUpdate(orgId, callId);
+      void pushCallScoreUpdate(orgId, resolved.entityId);
     } else {
-      const journeyId = await resolveJourneyItem(orgId, req.user!.userId, item_score_id, result, normalized, rawScore, settings.passThreshold);
-      void pushJourneyScoreUpdate(orgId, journeyId);
+      void pushJourneyScoreUpdate(orgId, resolved.entityId);
     }
+
+    // And tell the team, if a rule asks to hear about this checkpoint. A held
+    // checkpoint raised no alert when the AI scored it — it was not a verdict
+    // (#208) — so this ruling is the first moment there is anything to report.
+    // A confirmed pass or a not-applicable ruling matches no rule and says
+    // nothing; a checkpoint already alerted at scoring time is not re-announced
+    // (alert_events, migration 117). Fire-and-forget: an alert must never fail
+    // the reviewer's action.
+    void evaluateAlertsForResolvedItem({
+      kind,
+      entityId: resolved.entityId,
+      scorecardItemId: resolved.scorecardItemId,
+    });
 
     void recordAuditEvent({
       organizationId: orgId,
@@ -240,6 +257,14 @@ reviewRouter.post('/resolve', requireActioner, async (req, res, next) => {
   }
 });
 
+// What was ruled on: the call or sale it belongs to, and the checkpoint itself
+// — both needed to re-push the score and to evaluate the alert rules the ruling
+// can have made true.
+interface ResolvedItem {
+  entityId: string;
+  scorecardItemId: string;
+}
+
 async function resolveCallItem(
   orgId: string,
   userId: string,
@@ -248,7 +273,7 @@ async function resolveCallItem(
   normalized: number | null,
   rawScore: number | null,
   threshold: number
-): Promise<string> {
+): Promise<ResolvedItem> {
   const row = await queryOne<{ call_score_id: string; scorecard_item_id: string; call_id: string; weight: string; severity: string | null }>(
     `SELECT cis.call_score_id, cis.scorecard_item_id, cs.call_id, si.weight::text, si.severity
        FROM call_item_scores cis
@@ -330,7 +355,7 @@ async function resolveCallItem(
     }
   });
 
-  return row.call_id;
+  return { entityId: row.call_id, scorecardItemId: row.scorecard_item_id };
 }
 
 async function resolveJourneyItem(
@@ -341,7 +366,7 @@ async function resolveJourneyItem(
   normalized: number | null,
   rawScore: number | null,
   threshold: number
-): Promise<string> {
+): Promise<ResolvedItem> {
   const row = await queryOne<{ journey_id: string; scorecard_item_id: string; weight: string; severity: string | null; evidence: string | null; normalized_score: number | null }>(
     `SELECT jis.journey_id, jis.scorecard_item_id, si.weight::text, si.severity, jis.evidence, jis.normalized_score
        FROM journey_item_scores jis
@@ -428,7 +453,7 @@ async function resolveJourneyItem(
     }
   });
 
-  return row.journey_id;
+  return { entityId: row.journey_id, scorecardItemId: row.scorecard_item_id };
 }
 
 // Weighted overall + list of failing severities, over the pass/fail items only
