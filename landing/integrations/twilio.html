@@ -37,7 +37,7 @@
       "@type": "BreadcrumbList",
       "itemListElement": [
         {"@type": "ListItem", "position": 1, "name": "Home", "item": "https://callguardai.co.uk/"},
-        {"@type": "ListItem", "position": 2, "name": "Integrations", "item": "https://callguardai.co.uk/#live"},
+        {"@type": "ListItem", "position": 2, "name": "Integrations", "item": "https://callguardai.co.uk/integrations/"},
         {"@type": "ListItem", "position": 3, "name": "Twilio"}
       ]
     },
@@ -166,7 +166,7 @@
         AI call QA for <span class="accent">Twilio Media Streams.</span>
       </h1>
       <p class="hero-sub">
-        First-class adapter for Twilio's Media Streams WebSocket. Live transcription with speaker separation, scoring against your own scorecard, mid-call breach detection while the call is still happening, and webhooks, HMAC-signed once you set a signing secret, back to your CRM or agent desktop. No middleware, no Lambda bridge.
+        First-class adapter for Twilio's Media Streams WebSocket. Live transcription with speaker separation, scoring against your own scorecard, mid-call breach detection while the call is still happening, and webhooks, HMAC-signed once you set a signing secret, back to your CRM or agent desktop. No middleware, no Lambda bridge. It sits alongside CallGuard's other <a href="/integrations/">call and meeting integrations</a>.
       </p>
       <div class="hero-ctas">
         <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20Twilio%20demo" class="btn btn-primary btn-lg">Request a demo</a>
@@ -222,8 +222,8 @@
           <p>Speaker separation distinguishes agent and customer turns. Production-grade speech recognition with keyterm boosting for product names, regional accents and acronyms.</p>
         </div>
         <div class="feature">
-          <h3>30-second breach cadence</h3>
-          <p>Mid-call breach detection runs against the rolling transcript as the call happens. Only emits a breach when the AI is confident a criterion has clearly already failed. No alert fatigue.</p>
+          <h3>Confidence-gated breach detection</h3>
+          <p>The rolling transcript is checked about every 30 seconds as the call happens, and a breach is sent only when the model rates it at 0.75 confidence or higher. No alert fatigue.</p>
         </div>
         <div class="feature">
           <h3>HMAC-SHA256 signed webhooks</h3>
@@ -231,7 +231,7 @@
         </div>
         <div class="feature">
           <h3>Final scored event</h3>
-          <p>When the call ends, a final webhook fires with the overall score, pass/fail per scorecard criterion, evidence quotes, breach list and coaching draft. Same payload as the REST result endpoint.</p>
+          <p>When the call ends, a final webhook fires with the overall score, pass/fail per scorecard criterion, transcript evidence, breach list and coaching draft. Same payload as the REST result endpoint.</p>
         </div>
         <div class="feature">
           <h3>Encryption at rest</h3>
