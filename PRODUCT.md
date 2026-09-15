@@ -85,7 +85,10 @@ connectors, and do not imply that connecting a non-Zoho CRM is self-serve.
 **Confirmed in the codebase:** transcription with speaker separation and
 transcript redaction (tenant-configurable); per-call and journey scoring with
 transcript evidence (all criteria scored in one model call); live streaming and
-mid-call breach detection, sent to the streaming client or a webhook, not to
+mid-call breach detection (the rolling transcript is re-checked every 30 seconds,
+stream-worker.ts:33, and a breach is sent only at 0.75 model confidence or higher,
+live-scorer.ts:155; write "0.75 or higher", never ">75%", and never promise how fast
+an alert arrives), sent to the streaming client or a webhook, not to
 supervisors; webhooks, HMAC-signed when a signing secret is set; corrections-based
 learning and exemplar library; coaching memory and AI insights briefs on request
 (not scheduled); journey calls matched by phone number within a sale window;
@@ -126,7 +129,7 @@ comes before any real recordings; replies usually the same working day.
 
 **Claims that need verification before any page repeats them:** "a 15-minute call with
 an engineer, not a salesperson"; "scored in under a minute"; "100 calls
-scored before lunch"; the ">75% confident" live-alert threshold; "within 30
+scored before lunch"; "within 30
 seconds" webhook delivery; "the audit trail the FCA expects"; "GDPR-compliant by
 default"; the 5–10% industry sample rate and 60–90 minute review time (unsourced).
 
