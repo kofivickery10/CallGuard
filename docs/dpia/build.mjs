@@ -84,9 +84,21 @@ rmSync(bodyHtml, { force: true });
  */
 function assertComplete(stage, generated) {
   // Tags stripped from both sides: inline emphasis in a heading becomes <em>, so
-  // the raw markdown text is not contiguous in the HTML.
+  // the raw markdown text is not contiguous in the HTML. Entities decoded too —
+  // marked escapes a literal apostrophe in text content to `&#39;`, so a heading
+  // like "the adviser's" never matched its own source text and this check has
+  // been silently unable to confirm completeness since whichever heading first
+  // used one. Caught rebuilding this document at 0.6: dpia-0.3.pdf sitting
+  // alongside a 0.5 source is what a silently-broken check looks like.
   const flatten = (s) =>
-    s.replace(/<[^>]+>/g, '').replace(/[*_`~]/g, '').replace(/\s+/g, ' ').trim();
+    s
+      .replace(/<[^>]+>/g, '')
+      .replace(/[*_`~]/g, '')
+      .replace(/&#39;/g, "'")
+      .replace(/&quot;/g, '"')
+      .replace(/&amp;/g, '&')
+      .replace(/\s+/g, ' ')
+      .trim();
   const haystack = flatten(generated);
   const expected = [...body.matchAll(/^#{2,3}\s+(.+)$/gm)].map((m) => flatten(m[1]));
   const missing = expected.filter((h) => !haystack.includes(h));

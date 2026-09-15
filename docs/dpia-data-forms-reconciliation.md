@@ -7,13 +7,24 @@
 | **Assessment covers** | The CallGuard AI Data Forms module, specifically the reconciliation feature that compares what a customer said on a recorded call against the application submitted to an insurer, and the change to transcript redaction that makes it possible. |
 | **Prepared by** | CallGuard AI (processor) |
 | **Controller** | Trust Point (first deploying firm) |
-| **Version** | 0.5, draft for controller review |
-| **Date** | 10 September 2026 |
+| **Version** | 0.6, draft for controller review |
+| **Date** | 15 September 2026 |
 | **Status** | **DRAFT. Not signed. The processing described here must not be enabled in production until this assessment is completed and signed by the controller.** |
 | **Review due** | 12 months from sign-off, or on any material change to the processing |
 
 ### Change log
 
+- **0.6** — A gap this assessment had not described, closed and disclosed
+  together (new **section 4.12**). Learning how to read a new insurer's
+  application format — a one-off call to Claude, separate from reconciliation's
+  own per-sale extraction — was sending up to roughly 12,000 characters of the
+  raw, unredacted document: name, date of birth, address, policy number and
+  health disclosures included. Nothing in versions 0.1–0.5 said this call
+  existed. It now sends the same document with every field's value replaced by
+  a typed placeholder, keeping only the labels, delimiters and section markers
+  the model actually needs. New **action 14** asks the controller and
+  CallGuard to establish together whether any real document reached Anthropic
+  unredacted this way before the fix.
 - **0.5** — One new disclosure, and one new open decision, both in **section
   4.11**. The tokenised page an adviser opens from their feedback email — no
   login, the URL is the credential — used to show that adviser's own name and a
@@ -236,6 +247,10 @@ stored**. CallGuard therefore holds no copy of the medical-consent form, the
 underwriting decision, or the commission schedule, none of which are relevant to
 the purpose. The pack remains in the firm's CRM, its system of record.
 
+This extraction is deterministic code, not a model, and it runs on every sale.
+Teaching CallGuard how to extract from a *new* insurer format — once per format,
+not once per sale — is a different, model-involving step. See 4.12.
+
 ### 4.6 Scope of questions
 
 Only the questions the controller defines are captured. The controller can mark
@@ -438,6 +453,50 @@ well be right, and it would close a real gap. It is a controller decision about
 disclosing health-derived text to an unauthenticated URL, not an engineering
 one, so it has been left unbuilt and recorded as action 13. Relaxing it is one
 condition in one function.
+
+### 4.12 Document text used to learn a new insurer format is redacted before it reaches the model *(new in 0.6)*
+
+**What this call is, and why it exists.** Reconciliation reads a submitted
+application deterministically, using a stored profile that says where the
+questions, answers and section boundaries sit in that specific insurer's
+document (4.5). The profile has to be produced once, the first time a format is
+seen and again if the insurer changes their question set: the document's text is
+shown to Claude, which is asked to describe the document's *shape* — its
+delimiters, section markers and field labels — and nothing else. It is not asked
+to read or repeat any answer, and the config it returns is verified by actually
+parsing the real document with it before it is ever stored (see the note added
+to 4.5, and 3.2). This is a separate, occasional call, not the per-sale
+extraction that runs on every application.
+
+**Where the gap was.** Until this fix, that call was given up to roughly 12,000
+characters of the raw document exactly as extracted from the pack described in
+4.5 — before any redaction. For a fully underwritten product that is the
+customer's name, date of birth, home address, policy number and their health
+and lifestyle disclosures, sent to Anthropic with nothing masked. This was the
+same category of data reconciliation already retains and this assessment already
+covers (section 5), reaching the same sub-processor the controller has already
+accepted for scoring (section 2) — but this specific flow was never described
+here, and it should have been. Nothing about it was logged (the application log
+on this path records only a file name, never document content), and the text
+itself is never stored; it exists only for the duration of the one model call.
+Neither of those facts is a reason it should have gone unredacted, only a bound
+on how far a gap that should not have existed reached.
+
+**What now happens.** The document is redacted before this call is made.
+Redaction here is not selective by category the way transcript redaction is
+(4.1): every field's *value* is replaced with a typed placeholder — `[NAME]`,
+`[DOB]`, `[LOCATION_ADDRESS]`, `[POLICY_NUMBER]`, or `[VALUE]` for a free-text
+answer, health disclosures included — while the labels, question wording,
+delimiters and section markers are left untouched, because those are the only
+things the model's task requires it to read. It runs unconditionally, the same
+way for every firm, regardless of a tenant's transcript category configuration,
+because this call has never needed a real value to describe a document's shape.
+
+**What this does not change.** The per-sale extraction that produces the
+reconciliation record itself (5, 4.5) is unaffected — it runs on the real,
+unredacted document using the profile this (now-redacted) call proposed, exactly
+as before. This section concerns only the one-off call that infers *how* to read
+a format, not the ongoing reading of it.
 
 ---
 
@@ -700,6 +759,7 @@ firm. Each tenant is a separate controller and cannot be enabled by default.
 | 11 | ~~Decide and implement who can read an unredacted transcript within a firm (R3)~~ **Done, 3 August 2026: the `admin` role only**, enforced at the API for firms keeping any category in the clear. Transcript content is withheld from every other role rather than partially masked; see R3. | Controller + CallGuard |
 | 12 | ~~Run the verification script against a real call under the proposed category list and record the output~~ **Done, 3 August 2026.** A real 20 minute sale re-transcribed with every category permitted; no bank-length digit run survived. Output recorded in 4.9. To be repeated on any change to the category list. | CallGuard |
 | 13 | **Decide whether the model's reasoning may be shown on the unauthenticated adviser page (4.11).** Two things follow from it either way, and both are live now: an adviser with no login currently has nowhere to read the detail the email tells them is in CallGuard, and the page has just started naming findings and firm guidance without it. Withheld pending this decision, which is a disclosure judgement rather than a technical one. | Controller |
+| 14 | ~~Redact document text before it is sent to Claude to learn a new insurer format (4.12)~~ **Done, 15 September 2026.** Described in 4.12. The gap this closes predates this document — no version of this assessment described the call, so it was never covered by a decision to accept it. Establish, if records allow, whether any real insurer application document reached Anthropic unredacted this way before the fix, and decide together what, if anything, follows. | Controller + CallGuard |
 
 ---
 
