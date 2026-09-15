@@ -15,7 +15,7 @@ co-branded with, any other product or company.
 
 - **Name:** CallGuard AI (always "CallGuard AI" on first use; "CallGuard" acceptable thereafter).
 - **Logo strapline:** SMARTER CALLS. SAFER BUSINESS.
-- **Positioning statement (marketing, not the logo):** Every sales conversation, scored live by AI that learns from your compliance team.
+- **Positioning statement (marketing, not the logo):** Every advice call or sale, scored against your own scorecard, with the evidence behind each verdict. (Matches the homepage headline. The earlier wording, "scored live by AI that learns from your compliance team", was false twice over: only breach detection happens live, and corrections are shown to the AI as examples rather than taught to it. See PRODUCT.md.)
 - **Personality:** The expert analyst — calm, precise, trustworthy. Never alarmist, never flippant.
 - **Voice & tone:**
   - Plain, direct English. Short sentences. Technical when the subject is technical.
