@@ -41,7 +41,7 @@ The intuitive response to a QA bottleneck is "hire more reviewers". It does not 
 
 ## The maths of AI scoring
 
-AI call scoring removes the unit-cost barrier that made sampling necessary. Speech recognition costs about £0.005 to £0.01 per call-minute today. Large language model scoring against a structured scorecard costs another £0.02 to £0.05 per call-minute, depending on the model and the scorecard length. A 6-minute call costs roughly 30 to 60 pence to score in full, including the transcript. At 50,000 calls a week with average 5-minute duration, full coverage is £75,000 to £150,000 per year. Two orders of magnitude cheaper than the human equivalent.
+AI call scoring removes the unit-cost barrier that made sampling necessary. Machine transcription and model scoring are billed by the minute of audio, and scoring a call in full lands two orders of magnitude below the human equivalent rather than a few per cent below it. That is the change that makes full coverage arithmetic rather than aspiration.
 
 The cost is not the headline though. The headline is what you can do with 100% coverage that you cannot do with 5%. [We covered the foundations of how AI call QA works in a separate post](/blog/what-is-ai-call-qa), but here are the operational consequences specific to contact centres.
 
@@ -107,7 +107,7 @@ The honest answer: they do better work. The 1% sample reviews disappear because 
 
 This is the rough working we use with prospects. Treat it as illustrative, not precise.
 
-A 100-seat outbound contact centre takes roughly 80,000 calls per month at 4-5 minute average duration. Manual QA at 5% sample is 4,000 reviewed calls per month at £30-£35 per call, or £130k a month. Manual QA at 1% sample (more typical) is around £25-£30k a month, with the trade-off of being less defensible to clients and regulators. AI scoring on 100% coverage at 6-minute average duration costs £6-£10k per month for the same scoring depth, with the additional value of mid-call breach detection on outbound campaigns. The arithmetic only goes in one direction.
+A 100-seat outbound contact centre takes roughly 80,000 calls per month at 4-5 minute average duration. Manual QA at 5% sample is 4,000 reviewed calls per month at £30-£35 per call, or £130k a month. Manual QA at 1% sample (more typical) is around £25-£30k a month, with the trade-off of being less defensible to clients and regulators. AI scoring at 100% coverage runs at the same order-of-magnitude cost advantage as the maths above, for the same scoring depth, with the additional value of mid-call breach detection on outbound campaigns. Ask us for a quote sized to your call volume. The arithmetic only goes in one direction.
 
 That said, ROI on a tool the regulator now expects is the wrong metric. The right metric is whether your firm can credibly answer "how do you systematically monitor outcomes" without flinching. Sampling does not.
 

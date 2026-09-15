@@ -229,7 +229,7 @@ The public homepage (`landing/index.html`) is a marketing surface, not app UI, b
 **Layout patterns.**
 - Alternating text-and-panel splits (`.hp-split`) carry most sections; break the rhythm with a full-width block (`.hp-wide`: intro text, then the panel at container width) rather than repeating the split six times.
 - Plan gating is a small `.hp-plan` label at the **end of a lede** ("Pro plan", "Growth and Pro") — never a kicker above a heading, and never scattered sentences.
-- Pricing is one "starting prices" line plus `.hp-tiers` rows (tier name, price, one line on what it adds, taken from pricing.html), beside an "Every plan includes" list.
+- Plans are one lede line (quoted per seat for the team size) plus `.hp-tiers` rows (tier name, one line on what it adds, taken from pricing.html), beside an "Every plan includes" list. No price appears anywhere on the page (owner, 15 Sep 2026: never show a price, we can keep the plans).
 - Reassurance sits where a visitor hands over data: reply time and a privacy link under the closing CTA and in the demo modal; the DPA-first rule wherever real recordings are mentioned.
 
 **Motion.** One authored moment only: in the hero panel the verdicts settle in reading order and the quoted line is struck once, triggered by `home.js` when the panel (and then the struck line itself) is on screen. The final state is the default; reduced motion and no-JS show it without animation.

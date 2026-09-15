@@ -118,9 +118,10 @@ PDF is on the sale record in the firm's CRM, through the Zoho connector in the c
 AES-256-GCM encryption at rest; manual review queue; adviser remediation
 (what the adviser did about a finding).
 
-**Published facts:** plans from £199 (Starter), £299 (Growth) and £399 (Pro) per seat
-per month, exact per-seat price by quote, with live streaming and journey scoring
-listed on Pro. The code's plan gates differ from pricing.html (e.g. learning and coaching on
+**Published facts:** three plans, Starter, Growth and Pro, with live streaming and journey
+scoring listed on Pro; the owner decided on 15 Sep 2026 that no price is ever shown
+publicly — plans are quoted per seat for the team size, and pricing.html carries no £
+figure. The code's plan gates differ from pricing.html (e.g. learning and coaching on
 every plan, live streaming from Growth; plans named Core/Professional/Enterprise); DPA and
 sub-processor list published; CallGuard AI Ltd, company number 17279006,
 registered in England and Wales; founded by Kofi Vickery and Charlotte Court.
@@ -150,7 +151,8 @@ questions on streamed calls always go to review, no clean-up pass, no audio kept
 without "when a secret is set"; "CallGuard checks ICOBS/MCOB …" (the firm's scorecard
 defines the checks); firms "choosing" to disable redaction (only CallGuard staff can,
 with a DPIA note); "bring five of your own recordings" to a demo (a DPA comes before any
-real recordings; demos use synthetic calls).
+real recordings; demos use synthetic calls); any CallGuard price, or "published pricing",
+on a public page (owner, 15 Sep 2026: never show a price, we can keep the plans).
 
 **Demo:** don't state a demo length (owner, 14 Sep 2026); demos use synthetic calls, and a DPA
 comes before any real recordings; replies usually the same working day.
@@ -193,7 +195,7 @@ multi-call customer unit; "breach" for a critical scorecard failure.
 - The real product UI in `packages/web`, runnable locally against the seeded
   demo tenant "Brookfield Protection" (synthetic data; label anything taken from
   it as a demo).
-- Published pricing, DPA, sub-processor list, founders and company details.
+- Plans quoted per seat, published DPA, sub-processor list, founders and company details.
 - Downloadable templates: protection consent-gate checklist, MCOB mortgage scorecard.
 - **Absent, must not be fabricated:** customer testimonials, case studies,
   customer logos, named clients, accuracy benchmarks, ROI figures. A live client
@@ -204,7 +206,8 @@ multi-call customer unit; "breach" for a critical scorecard failure.
 1. Show the evidence: every claim on a page is either demonstrated or verifiable.
 2. The firm's compliance judgement leads; the AI follows it.
 3. Privacy by design is a feature, not a footnote.
-4. Honest and published: prices, legal documents and limits are visible.
+4. Honest and published: legal documents and limits are visible; plans are named and
+   explained, quoted per seat rather than priced on the page.
 5. Calm precision: reassure with facts under regulatory pressure, never with fear.
 
 ## Accessibility & Inclusion
