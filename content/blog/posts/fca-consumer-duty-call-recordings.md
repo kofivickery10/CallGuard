@@ -1,108 +1,119 @@
 ---
-title: "FCA Consumer Duty: 7 things your call recordings need to evidence."
+title: "FCA Consumer Duty: 7 things to evidence, and where each one lives."
 ogTitle: "FCA Consumer Duty: 7 Things to Evidence"
 breadcrumb: "FCA Consumer Duty 7 things"
-description: "A practical checklist for FCA-regulated firms: seven things your call recordings must evidence under Consumer Duty, and what regulators ask."
-ogDescription: "A practical checklist for FCA-regulated firms covering the seven things Consumer Duty expects you to evidence on a recorded call."
+description: "Under FCA Consumer Duty, only two outcomes are visible on a recorded call. Seven things to evidence, and whether the call or the file carries each."
+ogDescription: "Five things a recorded call has to evidence under Consumer Duty, and two the file carries instead."
 twitterDescription: "A practical Consumer Duty checklist for compliance leads at FCA-regulated firms."
 cardTag: "Compliance · Financial services"
-cardSummary: "A practical checklist for compliance leads at FCA-regulated firms. The four outcomes, the evidence the regulator actually expects on a recording, and why a 5% sample no longer cuts it."
+cardSummary: "Only PRIN 2A.5 and 2A.6 are visible in a conversation. Five things the recording has to evidence, two the file and the product governance record carry, and why a 5% sample cannot show either."
 order: 3
 date: "2026-05-05"
 updated: "2026-09-15"
 section: "Compliance"
 topic: "regulation"
 author: "charlotte"
+draft: true
 ctaSubject: "CallGuard%20AI%20%E2%80%94%20FCA%20demo"
 useCaseLink: "/use-cases/collections"
 related:
   - vulnerable-customer-call-monitoring
   - what-is-ai-call-qa
   - pecr-tps-2026-outbound-compliance
+sources:
+  - "FCA Handbook, PRIN 2A.3 (products and services)|https://www.handbook.fca.org.uk/handbook/PRIN/2A/3.html"
+  - "FCA Handbook, PRIN 2A.4 (price and value)|https://www.handbook.fca.org.uk/handbook/PRIN/2A/4.html"
+  - "FCA Handbook, PRIN 2A.5 (consumer understanding)|https://www.handbook.fca.org.uk/handbook/PRIN/2A/5.html"
+  - "FCA Handbook, PRIN 2A.6 (consumer support)|https://www.handbook.fca.org.uk/handbook/PRIN/2A/6.html"
+  - "FCA Handbook, PRIN 2A.9|https://www.handbook.fca.org.uk/handbook/PRIN/2A/9.html"
+  - "FCA Handbook, ICOBS 5 (identifying client needs and advising)|https://www.handbook.fca.org.uk/handbook/ICOBS/5/?view=chapter"
+  - "PS22/9: A new Consumer Duty|https://www.fca.org.uk/publications/policy-statements/ps22-9-new-consumer-duty"
 ---
 
-Consumer Duty has been in force since July 2023. The compliance question shifted on that day from "did you follow the process" to "can you evidence the outcome was good for the customer". For firms whose primary record of customer interaction is a call recording, that has profound implications. This piece is a checklist of the seven things the FCA expects to be evidenced on those recordings, plus the question they will ask if you cannot.
+FCA Consumer Duty has applied to open products and services since 31 July 2023, and to closed products since 31 July 2024. The compliance question shifted on those dates from "did you follow the process" to "can you evidence the outcome was good for the customer". For firms whose main record of the customer interaction is a call recording, that raises a question most checklists skip: which parts of the Duty can a recording evidence at all? Five of the seven items below belong to the call. Two belong to the file, and the call only supports them.
 
-## What changed in 2023
+## What the Duty changed, and when
 
-Before Consumer Duty, the regulator's interest in a recorded advice call was largely procedural. Did the adviser introduce themselves and confirm authorisation? Did they establish the customer's demands and needs before recommending anything? Were charges disclosed at the point of recommendation? These are still required (ICOBS 5 has not gone away), but they are the floor.
+Before Consumer Duty, the regulator's interest in a recorded advice call was largely procedural. Did the adviser confirm who they were and who they acted for? Did they establish the customer's demands and needs before recommending anything? Were the charges disclosed at the point of recommendation? Those are still required — for general insurance and pure protection business, ICOBS 5 has not gone away — but they are the floor.
 
-Consumer Duty added an outcomes layer on top. The four outcomes (products and services, price and value, consumer understanding, consumer support) are not boxes to tick. They are tests the regulator will apply when reviewing your records. The recordings now have to evidence not just that you did the procedural thing, but that what you did was suitable, fair and understood.
+Consumer Duty added an outcomes layer on top. The four outcomes are products and services, price and value, consumer understanding and consumer support. They are not four boxes to tick on a recording, and treating them that way is where most Consumer Duty call scorecards go wrong.
 
-That is a higher bar, and it falls on each call recording rather than on the file as a whole. Below is the checklist, with the procedural element underneath each outcome that customers must be evidenced for.
+## Two outcomes live on the call; two live in the file
 
-## 1. Target market fit
+This distinction decides what you can honestly claim your QA evidences.
 
-**Outcome:** products and services. **What the recording must evidence:** the customer falls within the target market the firm has defined for the recommended product, and the adviser made that link explicitly.
+**PRIN 2A.5 (consumer understanding) and PRIN 2A.6 (consumer support)** are conduct obligations that play out in a conversation. PRIN 2A.5.1R applies to communications with retail customers whatever the channel, which includes what an adviser says out loud. PRIN 2A.6.1R applies to firms dealing directly with and supporting retail customers. If you want evidence for these, the recording is the primary place it exists.
 
-The regulator's question: "How did the adviser confirm this customer matched the target market?" If the recording shows the adviser walking through risk profile, time horizon, capital protection requirements and product features against the firm's documented target market for that product, you have evidence. If the recording shows the adviser jumping from "you said you wanted growth" to "I'm recommending product X", you have a procedural compliance file with no Consumer Duty evidence.
+**PRIN 2A.3 (products and services)** binds manufacturers and distributors through product governance — PRIN 2A.3.4R on manufacturers, PRIN 2A.3.16R on distributors. It is evidenced by a target market definition, a distribution strategy and a file that shows this customer fell inside it.
 
-This is the most common gap we see in scored recordings. Advisers are confident the recommendation is right but do not articulate why on the call.
+**PRIN 2A.4 (price and value)** binds manufacturers to carry out a value assessment. And PRIN 2A.4.32R disapplies PRIN 2A.4 altogether for non-investment insurance, which is most protection business. An adviser at a protection firm is not the person the price and value rules bind, and no amount of talking about value on a call changes that.
 
-## 2. Vulnerability awareness
+So: five call items, two file items. Both sets are real obligations. Only one set is evidenced by a recording.
 
-**Outcome:** consumer support. **What the recording must evidence:** the adviser screened for vulnerability indicators (per FG21/1's four drivers: health, life event, resilience, capability) and adapted the call where indicators were disclosed.
+## Five things the call itself has to evidence
 
-The regulator's question: "Did the adviser identify and accommodate any vulnerability characteristic the customer disclosed?" If the customer mentioned recent bereavement, redundancy, ill-health or financial stress and the adviser carried on at the same pace using the same language, that is a Consumer Duty fail even if the recommendation was technically suitable.
+Each one is answerable from the audio alone.
 
-This is hard to score by sample because vulnerability indicators are rare per call but cumulative across a portfolio. Systematic scoring on 100% of calls catches the patterns; sampled scoring does not. The same evidencing standard applies to CONC-regulated debt conversations, where affordability and forbearance discussions carry the same burden of proof — see our [debt collections compliance use case](/use-cases/collections) for how that plays out.
+## 1. Vulnerability awareness
 
-## 3. Fair value, justified out loud
+**Outcome:** consumer support, PRIN 2A.6. **What the recording evidences:** the adviser noticed the vulnerability indicators the customer gave (FG21/1's four drivers: health, life events, resilience, capability) and adapted the call where they appeared.
 
-**Outcome:** price and value. **What the recording must evidence:** charges (initial and ongoing) were disclosed clearly, and the value the customer receives in exchange was articulated against those charges.
+The regulator's question: did the adviser identify and accommodate a characteristic of vulnerability the customer disclosed? If the customer mentioned bereavement, redundancy, ill-health or arrears and the adviser carried on at the same pace in the same language, the recording shows that, whatever the suitability letter says.
 
-The regulator's question: "If the customer asked at the end of this call why your fee is £X and a competitor's is £Y, did the adviser answer that question on the recording?" Disclosure of charges is the floor. Justification of charges against the ongoing service the customer receives is the Consumer Duty bar.
+This is hard to score by sample, because vulnerability signals are rare on any one call and cumulative across a book. The same evidencing problem applies to CONC-regulated debt conversations, where affordability and forbearance discussions carry the same burden of proof — see our [debt collections compliance use case](/use-cases/collections) for how that plays out.
 
-Common gap: charges disclosed quickly at the end of the call, fair-value articulation skipped because the adviser assumes the customer already understands. Customers do not.
+## 2. Understanding, asked about rather than assumed
 
-## 4. Consumer understanding, verified rather than assumed
+**Outcome:** consumer understanding, PRIN 2A.5. **What the rule requires:** PRIN 2A.5.9R requires a firm interacting with a retail customer one-to-one, including by telephone, to ask whether the customer understands the information it has given. The rule is qualified by "where appropriate".
 
-**Outcome:** consumer understanding. **What the recording must evidence:** the customer demonstrated understanding of the recommendation in their own words. Not the adviser saying "does that all make sense?" and the customer saying "yes". The customer paraphrasing the recommendation back.
+**What we recommend as the evidence standard, which is ours and not the FCA's:** ask the customer to say the recommendation back in their own words, and score that. "Does that all make sense?" followed by "yes" satisfies nobody reading the transcript two years later. A customer restating the cover, the exclusions and the cost, however imperfectly, is evidence that survives a complaint.
 
-The regulator's question: "How do you know the customer understood, rather than felt obliged to nod along?" If your recording has the adviser explaining at length followed by a "yes" from the customer, that is not evidence of understanding. If the customer rephrases the recommendation in their own words, however imperfectly, that is.
+## 3. Charges stated in language the customer can use
 
-This is the outcome most firms underweight. Understanding is asymmetric: advisers are domain experts, customers are not. Consumer Duty expects firms to bridge that asymmetry actively.
+**Outcome:** consumer understanding, PRIN 2A.5. **What the rules require:** communications must meet retail customers' information needs, be likely to be understood by them, and equip them to make decisions that are effective, timely and properly informed.
 
-## 5. Charges disclosed clearly, in plain English
+"Your premium is £38.40 a month, guaranteed for the full 20 years, so £9,216 if you hold it to the end of the term" tells a customer something they can act on. The same premium quoted once, at speed, at the end of a fifty-minute call, with no total and no term attached to it, does not. Our recommendation is to score the cash figure and the term, not the disclosure event.
 
-**Outcome:** consumer understanding plus price and value. **What the recording must evidence:** the charges were stated as numbers the customer can compare against alternatives (percentages alone are not enough; the pound-and-pence equivalent over the customer's term is the standard).
+## 4. Outcome confirmation before the call ends
 
-The regulator's question: "Did the customer leave the call knowing what they would actually pay?" "0.85% per annum on £200,000" is procedurally compliant but cognitively opaque to most customers. "£1,700 a year, or £8,500 over a five-year horizon" is what Consumer Duty expects.
+**Outcome:** consumer support, PRIN 2A.6. **What the recording evidences:** the adviser confirmed what the customer had agreed to, what happens next, and left room to ask a question or to pause.
 
-Easily fixable, but only if you can identify the calls where it is happening. Sample reviews catch a small fraction.
+The consumer support rules are about a customer being able to act — to ask, to pause, to cancel, to complain — without meeting unreasonable barriers. A close where the adviser races through the paperwork and the customer signs off without articulating anything is the call that generates the complaint. [Our financial services use-case page](/use-cases/financial-services) goes deeper on what gets scored here.
 
-## 6. Outcome confirmation
+## 5. Cancellation rights and the complaint route, in plain language
 
-**Outcome:** consumer support. **What the recording must evidence:** the adviser confirmed at the end of the call what the customer agreed to, what would happen next, and gave the customer the chance to question or pause.
+**Outcome:** consumer support, PRIN 2A.6. **What the recording evidences:** the cancellation right that actually applies to this product, stated in plain English, plus the complaint route and a contact for follow-up questions.
 
-The regulator's question: "Did the customer have a clear picture of the next steps before the call ended, and were they given space to back out?" A confident close where the adviser races through paperwork and the customer signs off without articulating their own understanding fails this test.
+Note the phrasing. Cancellation and cooling-off periods are product-specific, and there is no single figure that covers protection, mortgages and investments alike. Scoring "the adviser said fourteen days" is scoring a number that may not be the customer's number. Score whether the right the customer actually has was explained in a way they could use.
 
-Best-practice closing scripts cover this. Live breach detection can flag a call in progress when the close is missing key elements. [Our financial services use-case page](/use-cases/financial-services) goes deeper on what gets scored against this outcome.
+## Two things the file evidences, and the call can support
 
-## 7. Cancellation rights and complaint route, in plain language
+Real obligations, but not ones an adviser discharges by talking.
 
-**Outcome:** consumer support. **What the recording must evidence:** cancellation and cooling-off rights stated in plain English, complaint route mentioned, and contact information given for follow-up questions.
+## 6. Target market fit
 
-The regulator's question: "If the customer wants to cancel or complain after this call, did your adviser equip them to do so?" The procedural minimum (mentioning the 14-day cooling-off period) is not enough. Consumer Duty expects the adviser to have made the cancellation route easy to use, not just legally available.
+**Outcome:** products and services, PRIN 2A.3. **Where the evidence lives:** the firm's target market definition and distribution strategy, and the client file showing this customer sat inside it.
 
-This is one of the easiest items to score consistently because the language is fairly standardised, which makes it a useful first scorecard item to build out when implementing AI scoring in a financial planning firm.
+The recording is supporting evidence, and good supporting evidence. An adviser who says out loud why this customer's circumstances — the mortgage term, the dependants, the employer sick pay that runs out after three months — match the product's intended market makes the file's conclusion checkable. An adviser who jumps from "you said you wanted cover" to "I'm recommending this plan" leaves the file to carry the whole weight on its own.
+
+## 7. Fair value
+
+**Outcome:** price and value, PRIN 2A.4. **Where the evidence lives:** the manufacturer's value assessment. For non-investment insurance, PRIN 2A.4.32R switches PRIN 2A.4 off entirely, so for most protection business there is no adviser-level fair value rule to evidence on a call at all.
+
+What is left on the call is a PRIN 2A.5 question: were the charges communicated in a way the customer was likely to understand. Articulating what the customer gets for the money is worth scoring, and we recommend it, but score it as a communication item under the outcome it belongs to rather than labelling it fair value and implying a rule that does not apply to the adviser.
 
 ## Why a 5% sample no longer cuts it
 
-The seven items above are testable on every call. The question is whether you are testing every call or 5% of calls. The FCA does not specifically mandate 100% review, but the supervisory direction since 2023 has consistently been "systematic monitoring" rather than "statistical sampling". The line manager evidence form on a sampled call is a much harder document to defend than a per-call breach register sitting underneath an automated 100% scoring engine.
+PRIN 2A.9.8R requires firms to "regularly monitor" the outcomes retail customers are experiencing. The Handbook does not set a sample size and does not mandate 100% review. What it does do is put the burden on the firm to know what its outcomes are, and a 5% sample tells you about 5% of them.
 
-This is the leverage that AI scoring brings to compliance work in financial services. [We covered the operational case for 100% coverage in a separate post](/blog/score-100-percent-contact-centre-calls); the regulatory case is the same one expressed in compliance language.
+The practical gap is evidential. A line-manager form on a sampled call is a much harder document to defend than a per-call register showing what was flagged, on which call, and what was done about it. [We covered the operational case for full coverage separately](/blog/score-100-percent-contact-centre-calls); the regulatory case is the same argument in compliance language.
 
 ## What to do next week
 
-Three concrete steps that work in the order listed.
+**Audit your scorecard against the split above.** Mark every criterion call-evidenced or file-evidenced. Most firms find two or three criteria asking an adviser to evidence on a call something the rule places on a manufacturer. Those criteria generate arguments at calibration and prove nothing.
 
-**Audit your scorecard against the seven items above.** Pull your existing call-checking scorecard and lay it next to this list. Where are the gaps? Most firms find target market fit (#1), consumer understanding verification (#4), and outcome confirmation (#6) are weaker than the procedural items. Start by adding scorecard criteria for those three.
+**Score 100 recent calls against the corrected scorecard.** Manually if you have to. The goal is not to find disasters; it is to find the patterns, because a failure that recurs across advisers is a script or training problem rather than an individual one.
 
-**Score 100 recent calls against the updated scorecard.** Do this manually if you have to, but ideally on an automated scoring engine so you can do it quickly. The goal is not to find disasters; the goal is to find the systematic patterns. The same Consumer Duty failures show up across many advisers, which means they are scorecard or training issues rather than individual issues.
+**Build the remediation on the pattern.** Update the script, add coaching that builds on what the adviser was told last month, and track the item over time. The supervisory question then becomes "are your outcomes improving", which is the question PRIN 2A.9 actually asks.
 
-**Build a remediation plan tied to those patterns.** Update training scripts. Add coaching memory so advisers who flagged this month are coached on it next month. Track the trend. The supervisory question stops being "are you compliant on this call" and starts being "are you systematically improving against the four outcomes", which is the question Consumer Duty actually asks.
-
-## If you want help with #2
-
-If "score 100 recent calls" is the part where this gets stuck because you do not have the QA capacity, that is exactly the gap AI call scoring is built to close. In a short demo we score synthetic calls against a scorecard like yours, so you see your scorecard, your breaches, and your coaching drafts on the call. When you want to try your own recordings, we put a DPA in place first. [Email hello@callguardai.co.uk](mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20FCA%20demo) and we will set it up.
+If "score 100 recent calls" is the step that stalls because the QA capacity is not there, that is the gap AI call scoring closes. In a short demo we score synthetic calls against a scorecard like yours, so you see your criteria, your breaches and your coaching drafts on the call. When you want to try your own recordings, we put a DPA in place first. [Email hello@callguardai.co.uk](mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20FCA%20demo) and we will set it up.

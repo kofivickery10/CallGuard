@@ -16,8 +16,9 @@ author: "kofi"
 ctaSubject: "CallGuard%20AI%20%E2%80%94%20BPO%20demo"
 useCaseLink: "/use-cases/bpo"
 related:
-  - fca-consumer-duty-call-recordings
   - what-is-ai-call-qa
+  - ai-vs-human-call-scoring
+  - fca-consumer-duty-call-recordings
 ---
 
 If you run QA in a contact centre, you already know the maths. A senior reviewer takes 15 to 30 minutes to score one call against your scorecard. They review maybe 20 calls a week. Your floor takes 50,000 calls a week. The reviewed sample is 0.04%. Adding more QA reviewers shifts the rate to 0.08%, then 0.12%, but it never gets close to a number anyone in operations would call coverage. This piece is about the architecture that gets you to 100%.

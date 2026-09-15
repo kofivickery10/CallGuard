@@ -203,9 +203,11 @@ body.blog .brief:hover .brief-more { text-decoration: underline; }
 
 body.blog .blog-topics { padding: 44px 0 16px; }
 
+/* auto-fit rather than a fixed three: a topic whose briefings are all held
+   is omitted, and a fixed grid would hold its empty column open. */
 body.blog .topic-columns {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 40px 36px;
   align-items: start;
 }
@@ -628,13 +630,6 @@ body.blog .related-meta {
 
 /* ── narrow screens ───────────────────────────────────────── */
 
-@media (max-width: 900px) {
-  body.blog .topic-columns {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 36px 28px;
-  }
-}
-
 @media (max-width: 640px) {
   body.blog .blog-masthead { padding: 44px 0 30px; }
   body.blog .blog-masthead h1 { max-width: none; }
@@ -645,7 +640,7 @@ body.blog .related-meta {
   body.blog .brief-title { max-width: none; }
   body.blog .brief-summary { font-size: 16.5px; }
 
-  body.blog .topic-columns { grid-template-columns: minmax(0, 1fr); gap: 32px; }
+  body.blog .topic-columns { gap: 32px; }
 
   body.blog .article-hero { padding: 40px 0 26px; }
   body.blog .article-hero h1 { max-width: none; }

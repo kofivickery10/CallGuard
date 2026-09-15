@@ -361,6 +361,11 @@ function loadPosts() {
       readingTime: Math.max(1, Math.round(words / WORDS_PER_MINUTE)),
       sources: data.sources || [],
       featured: data.featured === true,
+      // A held post. It stays in the repo and keeps being edited, but it is
+      // not written, listed, fed or put in the sitemap. Used when a post is
+      // written but not yet cleared to publish — on a compliance product's
+      // blog that is a normal state, not an exception.
+      draft: data.draft === true,
       // Most posts reuse one description in three places. These two exist for
       // the posts that deliberately word them differently, and default rather
       // than being required so a new post needs one description, not four.
@@ -376,35 +381,53 @@ function loadPosts() {
   // Newest first, then explicit order, then slug — fully deterministic.
   posts.sort((a, b) => b.date.localeCompare(a.date) || a.order - b.order || a.slug.localeCompare(b.slug));
 
-  const featured = posts.filter((p) => p.featured);
-  if (featured.length !== 1) {
-    throw new Error(
-      `exactly one post must set "featured: true" (found ${featured.length}). ` +
-        'The index leads with it, so the choice is editorial rather than whichever post is newest.',
-    );
-  }
+  const held = posts.filter((p) => p.draft);
+  const published = posts.filter((p) => !p.draft);
+  if (published.length === 0) throw new Error('every post is a draft; there is nothing to publish');
 
-  const bySlug = new Map(posts.map((p) => [p.slug, p]));
+  // "related" may name a held post — that is how a held post keeps its place
+  // in the map while it waits — but the link is dropped from what is built,
+  // because a link to an unpublished page is a 404 with extra steps.
+  const all = new Map(posts.map((p) => [p.slug, p]));
   for (const post of posts) {
     for (const slug of post.related) {
-      if (!bySlug.has(slug)) throw new Error(`${post.file}: related post "${slug}" does not exist`);
+      if (!all.has(slug)) throw new Error(`${post.file}: related post "${slug}" does not exist`);
       if (slug === post.slug) throw new Error(`${post.file}: lists itself as related`);
     }
+  }
+  for (const post of published) {
+    post.related = post.related.filter((slug) => !all.get(slug).draft);
+    if (post.related.length === 0) {
+      throw new Error(
+        `${post.file}: every post it links to is held, so it would publish with no "Read next". ` +
+          'Add a published post to its "related" list.',
+      );
+    }
+  }
+
+  const featured = published.filter((p) => p.featured);
+  if (featured.length !== 1) {
+    throw new Error(
+      `exactly one published post must set "featured: true" (found ${featured.length}). ` +
+        'The index leads with it, so the choice is editorial rather than whichever post is newest. ' +
+        'Note that holding a post takes it out of this count.',
+    );
   }
 
   // Every post must be reachable from at least one other post. A post nothing
   // links to is one search engines discover only through the index, and it is
   // the first thing an internal-link audit flags.
-  const linkedTo = new Set(posts.flatMap((p) => p.related));
-  const orphans = posts.filter((p) => !linkedTo.has(p.slug) && !p.featured);
+  const linkedTo = new Set(published.flatMap((p) => p.related));
+  const orphans = published.filter((p) => !linkedTo.has(p.slug) && !p.featured);
   if (orphans.length) {
     throw new Error(
-      `no other post links to: ${orphans.map((p) => p.slug).join(', ')}. ` +
+      `no other published post links to: ${orphans.map((p) => p.slug).join(', ')}. ` +
         'Add each to another post\'s "related" list.',
     );
   }
 
-  return { posts, bySlug, featured: featured[0] };
+  const bySlug = new Map(published.map((p) => [p.slug, p]));
+  return { posts: published, held, bySlug, featured: featured[0] };
 }
 
 // ── render: post ─────────────────────────────────────────────────────────
@@ -506,11 +529,15 @@ ${post.sources
 
 const topicOf = (post) => TOPICS.find((t) => t.key === post.topic);
 
-function renderFeatured(post) {
+function renderFeatured(post, posts) {
+  // The featured briefing is an editorial choice, so it is not necessarily the
+  // newest one — and calling a five-month-old explainer the latest briefing is
+  // a small lie that a reader can check against the date two lines below it.
+  const flag = post === posts[0] ? 'Latest briefing' : 'Start here';
   return `<a class="brief" href="/blog/${post.slug}">
           <div class="brief-label">
             <span class="brief-topic">${escapeHtml(topicOf(post).name)}</span>
-            <span class="brief-flag">Latest briefing</span>
+            <span class="brief-flag">${flag}</span>
           </div>
           <h2 class="brief-title">${escapeHtml(post.cardTitle)}</h2>
           <p class="brief-summary">${escapeHtml(post.cardSummary)}</p>
@@ -531,7 +558,10 @@ function renderFeatured(post) {
 function renderColumns(posts) {
   return TOPICS.map((topic) => {
     const inTopic = posts.filter((p) => p.topic === topic.key);
-    if (inTopic.length === 0) throw new Error(`topic "${topic.key}" has no posts; remove it or write one`);
+    // A topic whose briefings are all held is left out rather than shown
+    // empty: a hub with a heading, a description and nothing under it reads
+    // as a broken page, not as a promise.
+    if (inTopic.length === 0) return '';
 
     const items = inTopic
       .map(
@@ -558,13 +588,13 @@ function renderColumns(posts) {
 ${items}
           </ul>
         </section>`;
-  }).join('\n\n');
+  }).filter(Boolean).join('\n\n');
 }
 
-function renderTopicNav() {
-  return TOPICS.map(
-    (t) => `          <a href="#${t.key}">${escapeHtml(t.name)}</a>`,
-  ).join('\n');
+function renderTopicNav(posts) {
+  return TOPICS.filter((t) => posts.some((p) => p.topic === t.key))
+    .map((t) => `          <a href="#${t.key}">${escapeHtml(t.name)}</a>`)
+    .join('\n');
 }
 
 /** The index's Blog + ItemList schema, listing every post in index order. */
@@ -589,9 +619,9 @@ function renderIndex(posts, featured, template) {
   return fill(
     template,
     {
-      featured: renderFeatured(featured),
+      featured: renderFeatured(featured, posts),
       columns: renderColumns(posts),
-      topicNav: renderTopicNav(),
+      topicNav: renderTopicNav(posts),
       itemList: renderIndexSchema(posts),
       postCount: String(posts.length),
       updatedISO: londonTimestamp(newest, '09:00'),
@@ -664,7 +694,11 @@ function fill(template, values, what) {
 }
 
 function main() {
-  const { posts, bySlug, featured } = loadPosts();
+  const { posts, held, bySlug, featured } = loadPosts();
+
+  for (const post of held) {
+    process.stdout.write(`  HELD  ${post.slug} — written, not published\n`);
+  }
 
   const postTemplate = readFileSync(POST_TEMPLATE, 'utf8');
   for (const post of posts) {

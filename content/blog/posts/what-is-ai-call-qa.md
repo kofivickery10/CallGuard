@@ -13,10 +13,12 @@ updated: "2026-09-15"
 section: "Foundations"
 topic: "foundations"
 author: "kofi"
+featured: true
 ctaSubject: "CallGuard%20AI%20demo%20request"
 useCaseLink: "/use-cases/financial-services"
 related:
   - score-100-percent-contact-centre-calls
+  - ai-vs-human-call-scoring
   - fca-consumer-duty-call-recordings
   - pecr-tps-2026-outbound-compliance
 ---

@@ -14,12 +14,17 @@ time: "09:00"
 section: "Regulation"
 topic: "regulation"
 author: "charlotte"
-featured: true
+draft: true
 ctaSubject: "CallGuard%20AI%20demo%20request"
 useCaseLink: "/use-cases/financial-services"
 related:
   - fca-consumer-duty-call-recordings
   - score-100-percent-contact-centre-calls
+sources:
+  - "FG21/1: Guidance for firms on the fair treatment of vulnerable customers|https://www.fca.org.uk/publications/finalised-guidance/guidance-firms-fair-treatment-vulnerable-customers"
+  - "Firms' treatment of customers in vulnerable circumstances|https://www.fca.org.uk/publications/multi-firm-reviews/firms-treatment-vulnerable-customers"
+  - "Good and poor practice: delivering for customers in vulnerable circumstances|https://www.fca.org.uk/publications/good-and-poor-practice/delivering-vulnerable-customers"
+  - "FCA Handbook, PRIN 2A.9 (monitoring and accountability)|https://www.handbook.fca.org.uk/handbook/PRIN/2A/9.html"
 ---
 
 Most firms treat vulnerable customer call monitoring as a training problem. Teach advisers the four drivers, add a tick-box to the CRM, run a refresher every year. That approach passes an internal audit and it misses the thing the FCA has been pointing at since 2021, and named explicitly in 2025: the customer who never says the word, and whose circumstances your adviser could have detected anyway.
@@ -28,15 +33,17 @@ That customer exists in every book. The only place the evidence lives is the rec
 
 ## FG21/1 is guidance, not rules — and that makes it harder
 
-Worth being precise, because a lot of vendor copy gets this wrong. [FG21/1](https://www.fca.org.uk/publications/finalised-guidance/guidance-firms-fair-treatment-vulnerable-customers) is finalised guidance. It says so itself: firms "are not bound to adopt or follow any of the specific actions described in this Guidance, they must meet the standards set by our Principles."
+Worth being precise, because a lot of vendor copy gets this wrong. [FG21/1](https://www.fca.org.uk/publications/finalised-guidance/guidance-firms-fair-treatment-vulnerable-customers) is finalised guidance. It says so itself: "While firms are not bound to adopt or follow any of the specific actions described in this Guidance, they must meet the standards set by our Principles and treat customers fairly."
 
 That sounds like latitude. In practice it is the opposite. A rule tells you what to do, and doing it is a defence. Guidance under the Principles tells you what outcome to reach and leaves the method — and the burden of showing you reached it — with you. There is no clause to point at that says "we did the required thing." You have to show the outcome.
+
+One note on currency. FG21/1 was last updated on 22 July 2026, and the FCA's own update note says it contains outdated references that pre-date the Consumer Duty, directing readers to the Consumer Duty pages. Read it as the standing statement of what the Principles expect on vulnerability, and read the Duty rules alongside it rather than through it.
 
 Which is why the interesting question is never **did we train the team on vulnerability**. It is **can you show what happened on the calls where a vulnerability signal was present**.
 
 ## The gap the FCA named in 2025
 
-In March 2025 the FCA published its [review of firms' treatment of customers in vulnerable circumstances](https://www.fca.org.uk/publications/multi-firm-reviews/firms-treatment-vulnerable-customers) — information requests to 725 firms, consumer research covering 1,500 people, and Financial Lives data alongside it.
+In March 2025 the FCA published its [review of firms' treatment of customers in vulnerable circumstances](https://www.fca.org.uk/publications/multi-firm-reviews/firms-treatment-vulnerable-customers) — built on a voluntary questionnaire answered by 725 firms, work with 29 firms across 12 markets, a deep dive into seven banks and building societies, and consumer research covering 1,500 people.
 
 The headline was reasonably positive. Many firms "had taken positive action and made good progress", and the Consumer Duty had "driven a renewed focus amongst firms on delivering good outcomes for customers in vulnerable circumstances".
 
@@ -66,7 +73,7 @@ None of these is a disclosure. Not one would reach a file note as a vulnerabilit
 
 Here is where most vulnerability monitoring stops, and where it should start.
 
-Catching the signal is necessary but it is not the thing being assessed. FG21/1 expects firms to "set up systems and processes in a way that will support and enable vulnerable consumers to disclose their needs", and expects frontline staff to have "the necessary skills and capability to recognise and respond to a range of characteristics of vulnerability".
+Catching the signal is necessary but it is not the thing being assessed. The expectation reaches past detection: that a firm's systems and processes support and enable customers in vulnerable circumstances to disclose their needs, and that frontline staff have the skills and capability to recognise those needs and respond to them. The FCA's [good and poor practice for customers in vulnerable circumstances](https://www.fca.org.uk/publications/good-and-poor-practice/delivering-vulnerable-customers) sets out both, with worked examples of each.
 
 Respond. That is the scored part.
 
@@ -85,9 +92,11 @@ It is also why generic AI scoring is close to useless here. "Vulnerability handl
 
 There is a second reason this cannot be handled by sampling, and it comes from the Consumer Duty rather than from FG21/1.
 
-**PRIN 2A.9.8R** requires a firm to "regularly monitor the outcomes retail customers receive" from its products, its communications and its customer support. **PRIN 2A.9.10R(2)** then requires that monitoring to enable the firm to identify whether any group of retail customers is experiencing different outcomes for a product compared with another group.
+**PRIN 2A.9.8R** requires a firm to "regularly monitor" the outcomes its retail customers are experiencing. **PRIN 2A.9.10R(2)** then requires that monitoring to enable the firm to identify whether a group of retail customers is experiencing a different outcome for a product compared with another group of customers for that same product.
 
-Read those alongside the FCA's 2025 finding that vulnerable consumers may not consistently receive outcomes as good as other consumers, and the obligation becomes concrete. You are expected to be able to answer one question: do customers showing vulnerability signals get worse outcomes here than customers who don't?
+Read the rule precisely: it is scoped to a product, and it does not name vulnerability as the grouping. Which groups to compare is the firm's judgement.
+
+Here is ours, offered as our view rather than as the rule's text. On a phone-based advice or sales floor, set that rule beside the FCA's 2025 finding that consumers in vulnerable circumstances may not consistently receive outcomes as good as other consumers, and the grouping picks itself. You should be able to answer one question: do customers showing vulnerability signals get worse outcomes here than customers who don't?
 
 That is a question about two populations. You cannot answer it from a sample at any sample size, because the calls carrying the signal are exactly the ones a random sample under-represents and a reviewer-chosen sample misses. To compare two groups you need both groups, which means the whole book.
 
@@ -101,7 +110,7 @@ Three things, in order.
 
 **Score the response, not the detection.** Acknowledged, pace adjusted, understanding checked, close deferred where it should have been. Four binary questions, each evidenced by a timestamped quote, are worth more than any percentage.
 
-**Then look at the two populations.** Once signals are flagged consistently across the book, the comparison PRIN 2A.9.10R(2) asks for becomes a report rather than a project. If the answer is uncomfortable, you have found it before the FCA or the Ombudsman does.
+**Then look at the two populations.** Once signals are flagged consistently across the book, that comparison becomes a report rather than a project. If the answer is uncomfortable, you have found it before the FCA or the Ombudsman does.
 
 None of that requires the guidance to change. It requires knowing what was said.
 
