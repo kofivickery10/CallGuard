@@ -35,6 +35,7 @@ uploads/
 .impeccable/build/
 .impeccable/review/
 .impeccable/mocks/
+.impeccable/questions/
 **/skills/impeccable/scripts/bin/
 
 # TypeScript incremental build cache
