@@ -56,12 +56,16 @@ and coach advisers from real calls, without adding reviewers.
 
 ## Operating Context
 
-- Calls arrive from the firm's dialler (CloudTalk is the primary integration;
-  a Twilio Media Streams adapter, Amazon Connect streaming through a customer-run
-  Lambda bridge, and a generic WebSocket protocol also exist), from recording
-  uploads, or via the REST API.
-- The CRM is part of the workflow: Zoho CRM sale triggers start journey scoring,
-  and scores and breach tasks are written back to the firm's QA module.
+- Calls arrive from the firm's own dialler, whichever it is: through the CloudTalk
+  connector, SFTP pickup of any dialler's recording export, recording upload over
+  the REST API (Teams and Zoom video included), or live streaming from Twilio Media
+  Streams, Amazon Connect (through a customer-run Lambda bridge) or the generic
+  WebSocket protocol.
+- The CRM is part of the workflow: a sale in the CRM starts journey scoring, and
+  scores and breach tasks are written back to the firm's QA module. Zoho CRM is the
+  connector already built; for any other CRM, CallGuard builds the same connection
+  during setup (owner, 15 Sep 2026). Results also reach any system through signed
+  webhooks and the results API.
 - Firms bring their own scorecards, QA manuals and product checklists. Low-confidence
   consent-gate items go to a manual review queue rather than being auto-passed.
 - Insurer application PDFs are parsed for Reconciliation.
@@ -69,6 +73,12 @@ and coach advisers from real calls, without adding reviewers.
   breach alerts (in-app, email, Slack, webhooks), adviser coaching drafts, AI
   insights briefs generated on request, and an evidence pack.
 - Roles: admin, supervisor, viewer and adviser (advisers see only their own calls).
+
+**Copy rule: your dialler, your CRM.** Never present CloudTalk or Zoho CRM as the only
+dialler or CRM CallGuard works with. Lead with "your dialler" and "your CRM", and name a
+product only where the sentence is about that connector. CRM work is something CallGuard
+connects for the firm: do not name or imply ready-made Salesforce, HubSpot or other
+connectors, and do not imply that connecting a non-Zoho CRM is self-serve.
 
 ## Capabilities and Constraints
 
@@ -80,7 +90,7 @@ supervisors; webhooks, HMAC-signed when a signing secret is set; corrections-bas
 learning and exemplar library; coaching memory and AI insights briefs on request
 (not scheduled); journey calls matched by phone number within a sale window;
 Reconciliation (switched on per firm by CallGuard staff; runs once the insurer application
-PDF is on the Zoho record; not listed on any plan on pricing.html); CloudTalk and Zoho integrations;
+PDF is on the sale record in the firm's CRM, through the Zoho connector in the code today; not listed on any plan on pricing.html); CloudTalk and Zoho CRM connectors built, with other diallers through SFTP, upload and the API, and other CRMs connected by CallGuard during setup;
 AES-256-GCM encryption at rest; manual review queue; adviser remediation
 (what the adviser did about a finding).
 
