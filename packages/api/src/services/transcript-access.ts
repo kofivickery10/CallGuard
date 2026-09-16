@@ -110,6 +110,24 @@ export async function resolveTranscriptAccess(
   return { readable: !sensitive, restricted: sensitive };
 }
 
+/**
+ * May the transcript lines around one checkpoint's evidence be sent?
+ *
+ * The evidence endpoint returns a few speaker turns either side of a quote.
+ * That was justified, under action 11, as the minimum a reviewer needs to settle
+ * a checkpoint they have been asked to rule on — so for a user who may not read
+ * the transcript, it is allowed for exactly that case and no other. Anywhere a
+ * page lets someone open checkpoint after checkpoint (the sale page does), the
+ * excerpts would otherwise add up to most of the transcript the restriction
+ * exists to withhold.
+ *
+ * `result` is the checkpoint's current state; 'manual_review' is "awaiting a
+ * human ruling".
+ */
+export function mayShowEvidenceExcerpt(access: TranscriptAccess, result: string | null | undefined): boolean {
+  return access.readable || result === 'manual_review';
+}
+
 /** Fields that carry transcript content and must travel together. */
 const TRANSCRIPT_FIELDS = ['transcript_text', 'transcript_raw'] as const;
 

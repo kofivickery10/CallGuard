@@ -7,6 +7,7 @@ import { getScoringSettings } from '../services/tenant-settings.js';
 import { pushCallScoreUpdate, pushJourneyScoreUpdate } from '../services/score-writeback.js';
 import { evaluateAlertsForResolvedItem } from '../services/alert-evaluator.js';
 import { locateEvidence } from '../services/evidence-locator.js';
+import { mayShowEvidenceExcerpt, resolveTranscriptAccess } from '../services/transcript-access.js';
 import { deriveSeverity, isItemPass, callPasses } from '@callguard/shared';
 import type { ManualReviewItem, BreachSeverity, EvidenceLocation } from '@callguard/shared';
 
@@ -106,7 +107,7 @@ reviewRouter.get('/:kind/:itemScoreId/evidence', requireOrgView, async (req, res
     const row =
       kind === 'call'
         ? await queryOne<EvidenceRow>(
-            `SELECT cis.evidence, c.id AS call_id, c.file_name, c.call_date,
+            `SELECT cis.evidence, cis.result, c.id AS call_id, c.file_name, c.call_date,
                     c.duration_seconds, c.file_key, c.transcript_text, c.transcript_raw,
                     c.speaker_integrity_flag
                FROM call_item_scores cis
@@ -116,7 +117,7 @@ reviewRouter.get('/:kind/:itemScoreId/evidence', requireOrgView, async (req, res
             [itemScoreId, orgId]
           )
         : await queryOne<EvidenceRow>(
-            `SELECT jis.evidence, c.id AS call_id, c.file_name, c.call_date,
+            `SELECT jis.evidence, jis.result, c.id AS call_id, c.file_name, c.call_date,
                     c.duration_seconds, c.file_key, c.transcript_text, c.transcript_raw,
                     c.speaker_integrity_flag
                FROM journey_item_scores jis
@@ -130,24 +131,35 @@ reviewRouter.get('/:kind/:itemScoreId/evidence', requireOrgView, async (req, res
     // source call — there is no single call to show evidence in.
     if (!row) throw new AppError(404, 'No source call for this checkpoint');
 
-    // Deliberately NOT gated by transcript access (services/transcript-access.ts).
+    // Gated narrowly by transcript access (services/transcript-access.ts).
     //
-    // This returns a bounded excerpt — the quoted line plus two blocks either side
-    // — tied to one checkpoint a reviewer has been asked to settle. The DPIA's
-    // action 11 restriction is on reading the conversation, and it explicitly
-    // preserves the evidence quote in context, because a supervisor who cannot see
-    // the moment cannot do the review that the restriction exists to support.
+    // This returns a bounded excerpt — the quoted line plus two blocks either side.
+    // The DPIA's action 11 restriction is on reading the conversation, and it
+    // preserves the evidence quote in context for one purpose: a supervisor who
+    // cannot see the moment cannot settle a checkpoint they have been asked to rule
+    // on. So a user who may not read the transcript gets the lines only for a
+    // checkpoint awaiting a ruling. Everywhere else — the sale page lets someone
+    // open checkpoint after checkpoint — the excerpts would add up to most of the
+    // transcript, and the user gets the AI's quote alone (restricted: true).
     //
     // If CONTEXT_BLOCKS is ever widened materially, or this endpoint starts
-    // returning the whole transcript on a failed match, that reasoning stops
-    // holding and this needs the gate.
+    // returning the whole transcript on a failed match, the review-case exception
+    // stops holding too.
     const located = locateEvidence({
       quote: row.evidence,
       transcriptText: row.transcript_text,
       transcriptRaw: row.transcript_raw,
     });
 
+    // The lines around the quote are sent only where the user may read the
+    // transcript, or the checkpoint awaits their ruling (mayShowEvidenceExcerpt).
+    // The position is still resolved — the recording is not gated, and cueing it
+    // to the moment reveals nothing the quote itself does not.
+    const access = await resolveTranscriptAccess(orgId, req.user!.role);
+    const excerptAllowed = mayShowEvidenceExcerpt(access, row.result);
+
     const location: EvidenceLocation = {
+      ...(excerptAllowed ? {} : { restricted: true }),
       call_id: row.call_id,
       call_file_name: row.file_name,
       call_date: row.call_date,
@@ -160,6 +172,7 @@ reviewRouter.get('/:kind/:itemScoreId/evidence', requireOrgView, async (req, res
       // a wrong verdict gets confirmed by a human and made permanent.
       speaker_integrity_flag: row.speaker_integrity_flag ?? null,
       ...located,
+      ...(excerptAllowed ? {} : { excerpt: [] }),
     };
     res.json(location);
   } catch (err) {
@@ -169,6 +182,7 @@ reviewRouter.get('/:kind/:itemScoreId/evidence', requireOrgView, async (req, res
 
 interface EvidenceRow {
   evidence: string | null;
+  result: string | null;
   speaker_integrity_flag: string | null;
   call_id: string;
   file_name: string | null;

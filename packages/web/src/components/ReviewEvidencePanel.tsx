@@ -163,7 +163,15 @@ export function ReviewEvidencePanel({ item }: ReviewEvidencePanelProps) {
 
           {data && (
             <>
-              {data.matched ? (
+              {data.restricted ? (
+                // Only reachable if the checkpoint was ruled on between the queue
+                // loading and this panel opening: the lines are sent for a
+                // checkpoint awaiting a ruling, and no longer once it is settled.
+                <p className="text-xs text-text-muted">
+                  This checkpoint has just been ruled on, so the conversation around the quote is
+                  now shown to administrators only.
+                </p>
+              ) : data.matched ? (
                 <div className="rounded-btn border border-border-light divide-y divide-border-light overflow-hidden">
                   {data.excerpt.map((line) => (
                     <div

@@ -133,7 +133,7 @@ export function EvidenceExcerpt({
 
       {/* The quote still stands on its own when the transcript can't be reached
           or matched, so the verdict is never left with no evidence at all. */}
-      {(isError || !sourceCallId || (data && !data.matched)) && (
+      {(isError || !sourceCallId || (data && (!data.matched || data.restricted))) && (
         <>
           <blockquote className="text-table-cell text-text-cell border-l-2 border-border pl-3 leading-relaxed">
             <WithRedactions text={cleanQuote} />
@@ -143,12 +143,16 @@ export function EvidenceExcerpt({
               ? "The transcript for this call couldn't be loaded, so this is the quote as the AI recorded it."
               : !sourceCallId
                 ? 'The AI did not attribute this checkpoint to a single call.'
-                : 'This wording was not found in the transcript — the AI may have paraphrased it, or be reporting that it was never said. Read the call to check.'}
+                : data?.restricted
+                  ? // Withheld, not missing: said plainly so nobody goes looking
+                    // for a transcript that exists but is not theirs to read.
+                    'Your firm keeps some personal details in its transcripts, so the conversation around this quote is shown to administrators only.'
+                  : 'This wording was not found in the transcript — the AI may have paraphrased it, or be reporting that it was never said. Read the call to check.'}
           </p>
         </>
       )}
 
-      {data?.matched && (
+      {data?.matched && !data.restricted && (
         <ol className="rounded-btn border border-border-light divide-y divide-border-light overflow-hidden">
           {data.excerpt.map((line) => (
             <li

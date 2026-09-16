@@ -251,6 +251,11 @@ export interface ManualReviewItem {
 // Where a checkpoint's evidence quote sits in the call — recovered from the
 // transcript on demand (services/evidence-locator.ts), not stored.
 export interface EvidenceLocation {
+  // True when the lines around the quote were withheld: the firm keeps some
+  // personal data unredacted, this user may not read such transcripts, and the
+  // checkpoint is not one awaiting their ruling. The excerpt is then empty and
+  // the UI shows the AI's quote alone (services/transcript-access.ts).
+  restricted?: boolean;
   call_id: string;
   call_file_name: string | null;
   call_date: string | null;
