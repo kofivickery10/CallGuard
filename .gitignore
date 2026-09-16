@@ -12,12 +12,31 @@ uploads/
 # agent briefs below are shared project config, not user-specific state.
 .claude/*
 !.claude/agents/
-# Vendored project skills — shared like the agents.
+# Vendored project skills (e.g. impeccable, Apache-2.0) — shared like the agents.
 !.claude/skills/
+# Shared project hooks (the Impeccable design detector). No permissions or
+# per-user state belong in here; those go in settings.local.json.
+!.claude/settings.json
 
 # Still ignored by the rule above, and deliberately: settings.local.json holds
 # per-user permissions, launch.json holds local ports, and worktrees/ is where
 # the working copies live.
+
+# Impeccable runtime state: hook cache, per-developer config, live-mode sessions,
+# critique snapshots and build/review scratch. Shared .impeccable/config.json
+# (detector ignores) stays tracked. The engine binary lives in ~/.impeccable.
+**/.impeccable/hook.cache.json
+**/.impeccable/hook.pending.json
+.impeccable/config.local.json
+.impeccable/history/
+.impeccable/live/
+.impeccable/critique/*
+!.impeccable/critique/ignore.md
+.impeccable/build/
+.impeccable/review/
+.impeccable/mocks/
+.impeccable/questions/
+**/skills/impeccable/scripts/bin/
 
 # TypeScript incremental build cache
 *.tsbuildinfo
@@ -66,8 +85,3 @@ packages/web/.ds-css/
 # design-sync generated types entry (see .design-sync/prepare.sh)
 /index.d.ts
 packages/web/.ds-types/
-
-# Impeccable design skill: local working state (critique snapshots, live mode,
-# review captures, build state). Only the shared config is committed.
-**/.impeccable/*
-!**/.impeccable/config.json
