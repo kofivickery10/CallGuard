@@ -136,7 +136,12 @@ function parseFrontMatter(text, file) {
     const item = raw.match(/^ {2}- (.+)$/);
     if (item) {
       if (!listKey) throw new Error(`${file}: list item outside a list: ${raw}`);
-      data[listKey].push(item[1].trim());
+      // Unquote exactly as a scalar is below. Pushing the raw text kept the quote
+      // marks, so a source written "Label|https://…" rendered a label opening with a
+      // stray " and an href ending in one: a broken link on every source of the
+      // three held regulation posts, invisible only because none had published.
+      const itemValue = item[1].trim();
+      data[listKey].push(itemValue.startsWith('"') ? JSON.parse(itemValue) : itemValue);
       continue;
     }
     const kv = raw.match(/^([A-Za-z][A-Za-z0-9_]*):\s*(.*)$/);
