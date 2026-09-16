@@ -114,12 +114,12 @@ on that criterion are shown to the AI as examples", and for coaching, that
 individually-scored calls use the adviser's last three drafts, without stating
 what sale-scored coaching lacks;
 Reconciliation (switched on per firm by CallGuard staff; runs once the insurer application
-PDF is on the sale record in the firm's CRM, through the Zoho connector in the code today; not listed on any plan on pricing.html); CloudTalk and Zoho CRM connectors built, with other diallers through SFTP, upload and the API, and other CRMs connected by CallGuard during setup;
+PDF is on the sale record in the firm's CRM, through the Zoho connector in the code today; listed on the Pro plan on pricing.html); CloudTalk and Zoho CRM connectors built, with other diallers through SFTP, upload and the API, and other CRMs connected by CallGuard during setup;
 AES-256-GCM encryption at rest; manual review queue; adviser remediation
 (what the adviser did about a finding).
 
-**Published facts:** three plans, Starter, Growth and Pro, with live streaming and journey
-scoring listed on Pro; the owner decided on 15 Sep 2026 that no price is ever shown
+**Published facts:** three plans, Starter, Growth and Pro, with live streaming, journey
+scoring and Reconciliation listed on Pro; the owner decided on 15 Sep 2026 that no price is ever shown
 publicly — plans are quoted per seat for the team size, and pricing.html carries no £
 figure. The code's plan gates differ from pricing.html (e.g. learning and coaching on
 every plan, live streaming from Growth; plans named Core/Professional/Enterprise); DPA and

@@ -14,8 +14,8 @@ content. It is to break it.
 
 ## Load first
 
-- `claude/positioning-brief.md` §5 — the claims register, forbidden and required
-- `claude/handbook-citations-verified.md` — the canonical citations
+- `PRODUCT.md`'s "False, never repeat" list — the claims register, forbidden and required
+- `docs/landing/handbook-citations-verified.md` — the canonical citations
 - `claude/cobs-92-correction.md` — a worked example of the failure mode
 
 ## Attack in this order
