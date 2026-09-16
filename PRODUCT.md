@@ -49,7 +49,14 @@ and coach advisers from real calls, without adding reviewers.
 - **The sale, not just the call.** Multiple calls with one customer are scored
   together as one compliance unit (a journey), triggered by the sale in the CRM.
 - **Call checked against paperwork.** Reconciliation compares what the customer
-  said on the call with the answers submitted on the insurer's application.
+  said on the call with the answers submitted on the insurer's application. Fixed
+  rules decide which questions were put to the customer and whether absence is
+  meaningful; a model (Haiku) then reads the customer's answer from the passages
+  around each located question, never the whole call; rules compare the two
+  answers, and a model is consulted only where they return unclear
+  (`services/reconciliation.ts`, `services/reconciliation-values.ts`). A redacted
+  answer, or one that cannot be read, is `undetermined` ("Could not verify"), not a
+  match, and Reconciliation does not flag an answer that changed between calls.
 - **Personal data redacted before scoring.** Names and other personal, payment and
   health details are replaced with tags in the transcript before it is stored or
   scored. Not absolute (claims audit, 14 Sep 2026): call audio is stored encrypted,
@@ -143,7 +150,7 @@ Save — never "one click");
 Consumer Duty outcomes" evidenced on a call (only PRIN 2A.5 and 2A.6 are
 call-visible); MCOB affordability as an adviser duty (MCOB 11.6 binds lenders);
 "correction applied" (a correction is one of up to five calibration examples; the AI can
-still decide otherwise); "when the AI isn't confident, it goes to review" (the AI-confidence
+still decide otherwise); "not guessed by a model" or "deterministic matching" for Reconciliation (a model reads every call answer; only the locating and the comparison are rules); "each finding shows the evidence it was based on" (the passage shown is where the question was found, which may not be where the answer was read); "when the AI isn't confident, it goes to review" (the AI-confidence
 floor is off by default; what always routes a consent item to review is uncertainty
 about who answered it); "streamed calls are scored the same as recorded calls" (consent
 questions on streamed calls always go to review, no clean-up pass, no audio kept);

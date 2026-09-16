@@ -67,7 +67,7 @@
           "name": "What does consent-gated mean in CallGuard's scoring?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "A clear affirmative from the customer is required for that item, and it cannot be inferred from silence or from the adviser simply reading a script. Where the AI is not confident either way, the item routes to a manual review queue for a human to decide rather than being auto-scored, because a false pass on a consent item is the worst outcome available."
+            "text": "A clear affirmative from the customer is required for that item, and it cannot be inferred from silence or from the adviser simply reading a script. Where CallGuard cannot reliably tell which speaker gave the answer, the item routes to a manual review queue for a human to decide rather than being auto-scored, because a false pass on a consent item is the worst outcome available."
           }
         },
         {
@@ -183,7 +183,7 @@
             <li>Only an unambiguous customer affirmative passes</li>
             <li>A vague or inaudible answer cannot pass</li>
             <li>Silence is never read as agreement</li>
-            <li>Low-confidence cases route to a human, not an auto-pass</li>
+            <li>If it can't tell who answered, a human decides, not an auto-pass</li>
           </ul>
         </div>
       </div>
@@ -205,7 +205,7 @@
           </thead>
           <tbody>
             <tr><td>Data-sharing consent</td><td>Customer explicitly agrees their answers can be shared with the insurer for underwriting, before any health question is asked.</td><td>Sensitive health data processed without a clear basis for doing so.</td></tr>
-            <tr><td>Accuracy confirmation</td><td>Customer confirms, in their own words, that everything they have said is true and complete to the best of their knowledge.</td><td>The core CIDRA duty of reasonable care — the single most common ground insurers cite to decline a claim.</td></tr>
+            <tr><td>Accuracy confirmation</td><td>Customer confirms, in their own words, that everything they have said is true and complete to the best of their knowledge.</td><td>Under CIDRA the customer's duty is to take reasonable care not to misrepresent. A confirmation in their own words shows they were given the chance to check their answers.</td></tr>
             <tr><td>Smoker / vaper status</td><td>Customer states their smoking or vaping status directly, rather than the adviser inferring it or reading a default.</td><td>Understated risk rating, and a claim declined for material non-disclosure.</td></tr>
             <tr><td>Existing conditions, asked individually</td><td>Each listed condition is confirmed one at a time rather than a single blanket "no" to a list read at speed.</td><td>A condition buried in a long list gets missed rather than genuinely disclosed.</td></tr>
             <tr><td>Family medical history</td><td>Where the product's underwriting depends on it (commonly critical illness), family history is confirmed explicitly.</td><td>Hereditary risk factors omitted because the question felt like small talk.</td></tr>
@@ -267,7 +267,7 @@
         </details>
         <details class="faq-item">
           <summary>What does consent-gated mean in CallGuard's scoring?</summary>
-          <div class="faq-body"><p>A clear affirmative from the customer is required for that item, and it cannot be inferred from silence or from the adviser simply reading a script. Where the AI is not confident either way, the item routes to a manual review queue for a human to decide rather than being auto-scored, because a false pass on a consent item is the worst outcome available.</p></div>
+          <div class="faq-body"><p>A clear affirmative from the customer is required for that item, and it cannot be inferred from silence or from the adviser simply reading a script. Where CallGuard cannot reliably tell which speaker gave the answer, the item routes to a manual review queue for a human to decide rather than being auto-scored, because a false pass on a consent item is the worst outcome available.</p></div>
         </details>
         <details class="faq-item">
           <summary>Does this replace an insurer's own application questions?</summary>

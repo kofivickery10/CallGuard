@@ -38,6 +38,18 @@ typo — it is the thing a prospective buyer's compliance officer finds first.
 
 | Ref | R/G | Binds | Last updated | URL |
 |---|---|---|---|---|
+| CIDRA 2012 s1 | statutory | definitions: consumer, consumer insurance contract, insurer | — | https://www.legislation.gov.uk/ukpga/2012/6/section/1 |
+| CIDRA 2012 s2 | statutory | **the consumer, owed to the insurer**: "It is the duty of the consumer to take reasonable care not to make a misrepresentation to the insurer"; s2(4) replaces the old duty of disclosure | — | https://www.legislation.gov.uk/ukpga/2012/6/section/2 |
+| CIDRA 2012 s3 | statutory | how reasonable care is judged; s3(2) examples include (c) how clear and specific the insurer's questions were and (e) whether an agent was acting for the consumer; s3(3) reasonable-consumer standard | — | https://www.legislation.gov.uk/ukpga/2012/6/section/3 |
+| CIDRA 2012 s4 | statutory | insurer's remedy needs a **qualifying** misrepresentation: a breach of s2(2) **and** the insurer would not have entered the contract, or would have on different terms | — | https://www.legislation.gov.uk/ukpga/2012/6/section/4 |
+| CIDRA 2012 s5 | statutory | deliberate or reckless vs careless; s5(4) the insurer proves deliberate or reckless; s5(5)(b) a clear and specific question raises a rebuttable presumption the consumer knew it was relevant | — | https://www.legislation.gov.uk/ukpga/2012/6/section/5 |
+| CIDRA 2012 s9 | statutory | opened with the above; not relied on in copy | — | https://www.legislation.gov.uk/ukpga/2012/6/section/9 |
+| CIDRA 2012 Sch 1 Pt 1 | statutory | remedies: deliberate or reckless, avoid and refuse all claims, premiums kept unless unfair; careless, based on what the insurer would have done (avoid and return premiums, different terms, or proportionate reduction of the claim) | — | https://www.legislation.gov.uk/ukpga/2012/6/schedule/1 |
+| CIDRA 2012 Sch 2 | statutory | whose agent the intermediary is: the insurer's when an appointed representative of it, or collecting information with its express authority; otherwise presumed the consumer's | — | https://www.legislation.gov.uk/ukpga/2012/6/schedule/2 |
+| ICOBS 5.1.4G | **G** | insurance distributors; (3) explaining the consumer's responsibility to take reasonable care and the consequences, (4) asking clear and specific questions, are "ways of ensuring a customer knows what he must disclose". **(1) and (2) are about commercial customers** | — | https://www.handbook.fca.org.uk/handbook/ICOBS/5/1.html |
+| ICOBS 8.1.1R(3) | R | **insurers**: must "not unreasonably reject a claim (including by terminating or avoiding a policy)" | — | https://www.handbook.fca.org.uk/handbook/ICOBS/8/1.html |
+| FOS "Misrepresentation and non-disclosure" | consumer explainer, binds nobody | n/a; says the insurer must evidence what was asked and answered, naming recordings of the sale call and copies of the application form. **Misnames the Act — use the statutory title** | — | https://www.financial-ombudsman.org.uk/consumers/complaints-can-help/insurance/misrepresentation-non-disclosure |
+| ABI Code of Practice: Managing Claims Involving Misrepresentation For Individual and Group Life, Critical Illness and Income Protection Insurance Products | **voluntary code**, addressed to insurers | ABI member insurers; paras 3.1, 3.2.1, 3.2.2.2, 3.4.3 (audit trail that clear questions were asked and understood and the customer could check answers), 3.4.4 (an intermediary clearly acting for the customer should be accountable for a misrepresentation from its own action or omission), 9.1, appendix Case 14 | published 21/07/2023, effective 31/07/2023 | https://www.abi.org.uk/globalassets/files/publications/public/protection/abi-code-of-practice---managing-claims-involving-misrepresentation-for-insurance-products-july-2023.pdf |
 | ICOBS 5.2.2 | R | insurance distributors carrying on insurance distribution activities (per 5.2.1R); every sale, advised or not; **not firms that have made the COBS election for pure protection** | 01/10/2018 | https://www.handbook.fca.org.uk/handbook/ICOBS/5/2.html |
 | ICOBS 5.2.2A | **G** | as 5.2.2; says how information "may" be obtained — examples, never a requirement | 01/10/2018 | https://www.handbook.fca.org.uk/handbook/ICOBS/5/2.html |
 | ICOBS 5.2.2B | R | as 5.2.2; applies when "proposing" a contract | 01/10/2018 | https://www.handbook.fca.org.uk/handbook/ICOBS/5/2.html |
@@ -80,6 +92,16 @@ were, because a second failed attempt looks identical to a success in a diff:
   FG21/1 contains outdated pre-Consumer Duty references.
 - **ICOBS 7 and COBS 15 cancellation periods.** Cooling-off is
   product-dependent; "14 days" is not a general minimum.
+- **ICOBS 5.1.1G as a disclosure provision** (checked 2026-09-16). It is about
+  eligibility to claim benefits (qualifying requirements, age limits), not
+  disclosure. Do not cite it for non-disclosure.
+- **ICOBS 8.1.2, 8.1.2A and 8.1.2B.** Reads conflicted on whether each is a
+  rule or guidance (2026-09-16). Do not cite until settled.
+- **Whether a newer ABI misrepresentation Code exists.** The July 2023 edition
+  was due for review by July 2026 and no later edition could be confirmed
+  (2026-09-16). Always call it the July 2023 edition, and voluntary.
+- **Any adviser duty to record calls, check the application against the call,
+  or monitor disclosure answers.** Nothing verified imposes one (2026-09-16).
 - **CP26/22's effect on ICOBS 5** (checked 16 Sep 2026). The FCA page names no ICOBS
   provision and the PDF could not be read. Do not say it changes demands and needs,
   suitability, or ICOBS 4.2.
@@ -125,11 +147,14 @@ Recorded here because each one was found on a live page:
 9. **ICOBS covers general insurance and pure protection.** An investment advice
    example needs COBS.
 10. **Energy supply is regulated by Ofgem, not the FCA.**
-11. **Not every protection sale is under ICOBS.** A firm that has elected to apply COBS
+11. **The CIDRA duty is the consumer's, owed to the insurer** (s2). An adviser
+    does not owe it. The "clear and specific question" wording is s3(2)(c) and
+    s5(5)(b), not s3(4).
+12. **Not every protection sale is under ICOBS.** A firm that has elected to apply COBS
     to its pure protection business is outside ICOBS (except ICOBS 4.6) for that business
     (ICOBS 1 Annex 1 Part 2, 3.1R). Write "firms selling protection under ICOBS", never
     "every protection sale is subject to ICOBS 5.2", and do not name the COBS rules that
     apply instead.
-12. **Demands and needs is not suitability.** ICOBS 5.2 applies to every sale, advised or
+13. **Demands and needs is not suitability.** ICOBS 5.2 applies to every sale, advised or
     not; ICOBS 5.3 applies only where advice is given. ICOBS 5.2.2AG is guidance ("may"),
     and the pure protection suitability provision is ICOBS 5.3.2G(1)(a), not "5.3.2G(a)".
