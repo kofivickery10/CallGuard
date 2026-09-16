@@ -42,7 +42,24 @@
  *   npx tsx src/scripts/score-prospect-calls.ts --dir <dir> --org-name "<name>" \
  *     [--industry "<free text, frames the scoring prompt>"] \
  *     [--admin-email you@callguardai.co.uk] [--retention-days 7] \
- *     [--scorecard <path-to-csv>] --yes
+ *     [--scorecard <path-to-csv>] [--pass-threshold 90] \
+ *     [--mono-first-speaker customer] [--transcription-mode stereo_multichannel] \
+ *     [--adviser-channel 0|1] [--kb-scripts <path-to-text-file>] \
+ *     [--keyterms "term one,term two"] --yes
+ *
+ *   --pass-threshold sets the prospect's own pass mark (0-100) instead of the
+ *   org default. --mono-first-speaker customer is for outbound diallers, where
+ *   the customer answers before the agent speaks: without it, mono recordings
+ *   assume the agent speaks first and the Agent/Customer labels can come out
+ *   swapped. --transcription-mode stereo_multichannel is for recordings with
+ *   the agent and customer on separate channels (check with
+ *   scripts/probe-audio.sh first), and --adviser-channel pins which channel is
+ *   the agent (0 = left, 1 = right). --kb-scripts loads a text file into the
+ *   Knowledge Base "Scripts" section, which cleanup and scoring both read.
+ *   --keyterms is a comma-separated list of the prospect's own vocabulary
+ *   (company name, product names, script phrases) for Deepgram to listen for.
+ *   All of these are applied before any call is ingested, so the first scores
+ *   already use them.
  *
  *   --scorecard defaults to sample_scorecards/mortgage/mcob-mortgage-advice.csv
  *   (CallGuard's actual market). Point it at a different card under
@@ -171,16 +188,55 @@ async function runIngest(): Promise<void> {
   const scorecardArg = arg('--scorecard');
   const scorecardCsv = scorecardArg ? path.resolve(process.cwd(), scorecardArg) : DEFAULT_SCORECARD_CSV;
   const scorecardName = scorecardArg ? `${path.basename(scorecardArg, '.csv')} (demo)` : DEFAULT_SCORECARD_NAME;
+  const passThresholdArg = arg('--pass-threshold');
+  const passThreshold = passThresholdArg === null ? null : Number(passThresholdArg);
+  const monoFirstSpeaker = arg('--mono-first-speaker');
+  const transcriptionMode = arg('--transcription-mode');
+  const adviserChannelArg = arg('--adviser-channel');
+  const adviserChannel = adviserChannelArg === null ? null : Number(adviserChannelArg);
+  const kbScriptsArg = arg('--kb-scripts');
+  const kbScriptsPath = kbScriptsArg ? path.resolve(process.cwd(), kbScriptsArg) : null;
+  const keytermsArg = arg('--keyterms');
+  const keyterms = keytermsArg === null ? null : keytermsArg.split(',').map((t) => t.trim()).filter(Boolean);
 
   if (!dir) {
     console.error(
       'Usage: score-prospect-calls.ts --dir <path-to-audio-dir> [--org-name "<name>"] ' +
         '[--industry "<text>"] [--admin-email <email>] [--retention-days 14] ' +
-        '[--scorecard <path-to-csv>] [--yes]'
+        '[--scorecard <path-to-csv>] [--pass-threshold 90] [--mono-first-speaker customer] ' +
+        '[--transcription-mode stereo_multichannel] [--adviser-channel 0|1] [--kb-scripts <file>] [--keyterms "a,b"] [--yes]'
     );
     process.exitCode = 1;
     return;
   }
+
+  if (passThreshold !== null && !(passThreshold >= 0 && passThreshold <= 100)) {
+    console.error(`--pass-threshold must be a number from 0 to 100 (got "${passThresholdArg}")`);
+    process.exitCode = 1;
+    return;
+  }
+  if (monoFirstSpeaker !== null && !['agent', 'customer'].includes(monoFirstSpeaker)) {
+    console.error(`--mono-first-speaker must be "agent" or "customer" (got "${monoFirstSpeaker}")`);
+    process.exitCode = 1;
+    return;
+  }
+
+  if (transcriptionMode !== null && !['mono_diarize', 'stereo_multichannel'].includes(transcriptionMode)) {
+    console.error(`--transcription-mode must be "mono_diarize" or "stereo_multichannel" (got "${transcriptionMode}")`);
+    process.exitCode = 1;
+    return;
+  }
+  if (adviserChannel !== null && adviserChannel !== 0 && adviserChannel !== 1) {
+    console.error(`--adviser-channel must be 0 (left) or 1 (right) (got "${adviserChannelArg}")`);
+    process.exitCode = 1;
+    return;
+  }
+  if (kbScriptsPath !== null && !fs.existsSync(kbScriptsPath)) {
+    console.error(`--kb-scripts file not found: ${kbScriptsPath}`);
+    process.exitCode = 1;
+    return;
+  }
+  const kbScripts = kbScriptsPath ? fs.readFileSync(kbScriptsPath, 'utf8').trim() : null;
 
   assertScorecardAllowed(scorecardCsv);
 
@@ -212,6 +268,12 @@ async function runIngest(): Promise<void> {
       `(${scorecardItems.filter((i) => i.consent_gate).length} consent gate(s))`
   );
   console.log(`Retention horizon: ${retentionDays} day(s)`);
+  console.log(`Pass mark:         ${passThreshold === null ? 'org default' : `${passThreshold}%`}`);
+  console.log(`Mono first speaker: ${monoFirstSpeaker ?? 'org default'}`);
+  console.log(`Transcription:     ${transcriptionMode ?? 'org default'}`);
+  console.log(`Adviser channel:   ${adviserChannel === null ? 'org default' : adviserChannel === 0 ? '0 (left)' : '1 (right)'}`);
+  console.log(`Keyterms:          ${keyterms === null ? 'org default' : keyterms.join(', ')}`);
+  console.log(`KB scripts:        ${kbScripts === null ? 'none' : `${kbScriptsPath} (${kbScripts.length} chars)`}`);
   if (candidates.length === 0) {
     console.log('\nNo audio files found in that directory — nothing to do.');
     return;
@@ -233,11 +295,31 @@ async function runIngest(): Promise<void> {
        scoring_scope = 'everything',
        retention_days = $2,
        industry = COALESCE($3, industry),
+       pass_threshold = COALESCE($4, pass_threshold),
+       mono_first_speaker = COALESCE($5, mono_first_speaker),
+       transcription_mode = COALESCE($6, transcription_mode),
+       adviser_channel = COALESCE($7, adviser_channel),
+       keyterms = COALESCE($8, keyterms),
        updated_at = now()
      WHERE id = $1`,
-    [orgId, retentionDays, industry]
+    [orgId, retentionDays, industry, passThreshold, monoFirstSpeaker, transcriptionMode, adviserChannel, keyterms]
   );
-  console.log(`  org ${orgId} created (scoring_scope=everything, retention_days=${retentionDays})`);
+  console.log(
+    `  org ${orgId} created (scoring_scope=everything, retention_days=${retentionDays}` +
+      `${passThreshold === null ? '' : `, pass_threshold=${passThreshold}`}` +
+      `${monoFirstSpeaker === null ? '' : `, mono_first_speaker=${monoFirstSpeaker}`}` +
+      `${transcriptionMode === null ? '' : `, transcription_mode=${transcriptionMode}`}` +
+      `${adviserChannel === null ? '' : `, adviser_channel=${adviserChannel}`}` +
+      `${keyterms === null ? '' : `, ${keyterms.length} keyterm(s)`})`
+  );
+  if (kbScripts !== null) {
+    await query(
+      `INSERT INTO knowledge_base_sections (organization_id, section_type, content)
+       VALUES ($1, 'scripts', $2)`,
+      [orgId, kbScripts]
+    );
+    console.log(`  knowledge base scripts loaded (${kbScripts.length} chars)`);
+  }
 
   console.log('Creating demo admin login...');
   const adminEmail = adminEmailArg || `prospect-demo+${randomBytes(4).toString('hex')}@callguardai.co.uk`;
@@ -263,12 +345,13 @@ async function runIngest(): Promise<void> {
     await query(
       `INSERT INTO scorecard_items
          (scorecard_id, label, description, score_type, weight, sort_order,
-          severity, section, item_type, applies_when, expectation, ai_check, consent_gate)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+          severity, section, item_type, applies_when, expectation, ai_check, consent_gate,
+          vulnerability_related)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
       [
         scorecardId, it.label, it.description || null, it.score_type, it.weight, i,
         it.severity, it.section, it.item_type, branchToAppliesWhen(it.branch),
-        it.expectation, it.ai_check, it.consent_gate,
+        it.expectation, it.ai_check, it.consent_gate, it.vulnerability_related,
       ]
     );
   }
@@ -411,6 +494,9 @@ async function main(): Promise<void> {
     await runIngest();
   }
   await pool.end();
+  // ingestCall opens a BullMQ/Redis connection that would otherwise keep the
+  // process alive after the work is done.
+  process.exit(process.exitCode ?? 0);
 }
 
 main().catch(async (err) => {
