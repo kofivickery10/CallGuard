@@ -111,27 +111,50 @@ Non-negotiables (the rest is in the docs):
 The implemented tokens in `packages/web/tailwind.config.js` + `src/index.css` are the
 source of truth; keep the docs in step with them.
 
-### The design skill: Impeccable
+### The `impeccable` skill: use it, but our design system wins
 
 `.claude/skills/impeccable/` (vendored from [pbakaus/impeccable](https://github.com/pbakaus/impeccable)
-v4.3.1, Apache 2.0) is the project's design skill: `/impeccable critique`, `audit`, `polish`,
-`distill`, `harden`, `clarify`, `adapt` and so on. It replaced `ui-ux-pro-max` in Sep 2026 after a
-side-by-side trial on the sale page, where it measured contrast and overflow failures the other
-skill could not see.
+v4.3.1, Apache-2.0) is the project's design skill: `/impeccable audit | critique | polish | distill |
+harden | clarify | adapt | …`. It replaced `ui-ux-pro-max` in Sep 2026 after a side-by-side trial on
+the sale page, where it measured contrast and overflow failures the other skill could not see. It
+also ships four helper agents (`.claude/agents/impeccable-*.md`) and a design-detector hook in
+`.claude/settings.json` that scans UI files after every Edit/Write and again on Stop. Its launcher
+(`scripts/impeccable`) downloads a checksum-verified engine binary to `~/.impeccable/bin/` on first
+run. Its working files live in `.impeccable/`, gitignored apart from `config.json`.
 
-- **Our docs still win on the live app.** BRAND_GUIDELINES.md, DESIGN_SYSTEM.md and the tokens are
-  the authority. Impeccable's own craft rules ban things CallGuard does on purpose (the Inter font,
-  coloured left-border callouts, uppercase labels above headings, progress rings); follow ours
-  unless the user has explicitly asked for a redesign that sets them aside.
-- **Critique and audit need the running app with data.** Its source-only `detect` cannot resolve
-  Tailwind token classes and reports nothing on this codebase; the useful findings come from the
-  in-page scan. Run the app against the **local** database only — the repo `.env` points at production.
-- **No automatic hooks.** Don't run `/impeccable hooks on` without asking. If it is ever enabled,
-  first ignore `overused-font` (Inter) and `side-tab`, and the `text-nav-label` size under `undersized-ui-text`.
-- **Don't create a competing design doc.** Don't run `/impeccable document` (it writes `DESIGN.md`)
-  unless reconciling it with DESIGN_SYSTEM.md is the task. `PRODUCT.md` (product facts) is fine.
-- **It downloads its engine.** On first run the launcher fetches a compiled binary from the
-  pbakaus/impeccable GitHub releases into `~/.impeccable/bin/` and verifies its checksum.
+It is written to push for bold, distinctive design. CallGuard's app UI is its "Operate" mode
+and already has a design system, so:
 
-Its working files live in `.impeccable/` (gitignored apart from `config.json`). To update it,
-re-copy `.claude/skills/impeccable/` from the upstream repo's built `.claude/skills/impeccable/`.
+- **BRAND_GUIDELINES.md / DESIGN_SYSTEM.md and the implemented tokens are the design authority.**
+  Treat them as the incumbent system: refine and extend it, never replace it. No redesign or
+  "replacement visual world" flows. Impeccable's craft rules ban things CallGuard does on purpose
+  (the Inter font, coloured left-border callouts, uppercase labels above headings, progress rings);
+  follow ours unless the user has explicitly asked for a redesign that sets them aside.
+- **Don't create a second source of truth.** Never run `init`, `document` or `extract` to write
+  `PRODUCT.md`, `DESIGN.md` or `.impeccable/design.json` without asking first. If asked, derive them
+  from our docs, not from the skill's interview or taste. `PRODUCT.md` (product facts, owner-approved)
+  already exists and is the one to keep current; the marketing homepage's design rules live in
+  DESIGN_SYSTEM.md §11, not in a separate DESIGN.md.
+- `bolder`, `colorize`, `typeset`, `delight`, `animate` and `overdrive` may not introduce colours,
+  fonts, gradients, glows or motion outside the tokens and component recipes.
+- **Good uses:** `audit`, `critique`, `polish`, `harden`, `clarify`, `adapt`, `layout`, `onboard`
+  (empty and first-run states), all within the tokens.
+- **On the app, critique and audit need the running app with data.** Its source-only `detect` cannot
+  resolve Tailwind token classes and reports nothing useful on `packages/web`; there the findings
+  come from the in-page scan. Run the app against the **local** database only — the repo `.env`
+  points at production. On the static site in `landing/`, `detect` works directly on the files.
+- **Monorepo:** run `scripts/impeccable context` from `packages/web` or `packages/admin-web`.
+  At the repo root it only asks which app to target. Run `scripts/impeccable detect packages/web/src`
+  from the **repo root**, though: the shared `.impeccable/config.json` lives there, and a scan
+  started inside a package ignores it and re-flags sanctioned exceptions.
+- **Hook findings:** fix real problems. A finding that contradicts a documented brand choice is a
+  sanctioned exception. Suppress it with `scripts/impeccable hooks ignore-value <rule> <value>
+  --reason "BRAND_GUIDELINES.md: …"`, which writes the tracked `.impeccable/config.json`.
+  `ignore-rule` / `ignore-file` need the user's approval. `scripts/impeccable hooks off` disables
+  the hook for the project. When the hook first runs over the app, expect `overused-font` (Inter),
+  `side-tab`, and the `text-nav-label` size under `undersized-ui-text` — all deliberate.
+
+Never run `npx impeccable install` or `update`: they write into other harness folders and
+`settings.local.json`. To update, re-copy upstream's built `.claude/skills/impeccable/`,
+`.claude/agents/impeccable-*.md` and the hook block of `.claude/settings.json`, then add its
+`LICENSE` and `NOTICE.md` into the skill folder.
