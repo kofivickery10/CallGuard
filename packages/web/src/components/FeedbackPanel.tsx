@@ -182,11 +182,14 @@ export function FeedbackPanel({
   journeyId,
   canAction,
   composeSignal = 0,
+  embedded = false,
 }: {
   journeyId: string;
   canAction: boolean;
   /** Increments when the header action is clicked; opens the compose box. */
   composeSignal?: number;
+  /** Rendered inside a section that already carries the heading (and the id). */
+  embedded?: boolean;
 }) {
   const qc = useQueryClient();
   const [message, setMessage] = useState('');
@@ -238,7 +241,9 @@ export function FeedbackPanel({
   // not a surface for them to act on.
   if (!canAction) return null;
 
-  const shell = (children: React.ReactNode) => (
+  const shell = (children: React.ReactNode) => embedded ? (
+    <div>{children}</div>
+  ) : (
     // id + scroll-mt: the header action scrolls here rather than duplicating the
     // send form, so the findings and any warning are always seen before sending.
     <div

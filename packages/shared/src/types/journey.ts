@@ -148,6 +148,11 @@ export interface JourneyWithDetail extends Journey {
     // that turns on who said something is unsafe on such a call, so the UI warns
     // rather than presenting the result as settled.
     speaker_integrity_flag: string | null;
+    // Whether the call has a transcript. The scorer only numbers transcribed
+    // calls ("Call 1", "Call 2" in its evidence and reasoning — score-journey.ts
+    // withTranscript), so the page must number the same set or its "Call 2"
+    // points at a different call from the AI's.
+    has_transcript: boolean;
   }>;
   item_scores: Array<
     JourneyItemScore & {
