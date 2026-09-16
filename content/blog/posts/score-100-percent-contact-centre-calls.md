@@ -47,7 +47,7 @@ The cost is not the headline though. The headline is what you can do with 100% c
 
 ## What 100% coverage actually unlocks
 
-**Breach detection in seconds, not weeks.** A critical compliance failure (urgency-language, missing consent capture, mini-Miranda failure, fair-value misstep) is currently caught when a customer complains weeks later. With live mid-call breach detection, a high-confidence breach fires a webhook to your CRM or agent desktop while the call is still happening. Coaching can be in the next call rather than the next month.
+**Breach detection during the call, not weeks later.** A critical compliance failure (urgency language, an ignored objection to marketing, a missed mini-Miranda) is currently caught when a customer complains weeks later. With live mid-call breach detection, a high-confidence breach fires a webhook to your CRM or agent desktop while the call is still happening. Coaching can be in the next call rather than the next month.
 
 **Real coaching, on every agent, every week.** Per-call coaching drafts feed into per-agent coaching memory. The coaching the agent receives next time builds on what was said last time. If they have improved on the flagged area, the AI acknowledges it. If they have not, the language escalates. Manual QA cannot do this because no human has the time to remember every coaching note for every agent.
 

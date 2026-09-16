@@ -13,6 +13,7 @@ import { prepareMediaForIngest } from '../services/media.js';
 import { recordAuditEvent } from '../services/audit.js';
 import { getScoringSettings } from '../services/tenant-settings.js';
 import { resolveTranscriptAccess, withheldTranscript } from '../services/transcript-access.js';
+import { evaluateAlertsForResolvedItem } from '../services/alert-evaluator.js';
 import type { Call, CallScore, CallItemScore, BreachSeverity } from '@callguard/shared';
 import { deriveSeverity, isItemPass, callPasses } from '@callguard/shared';
 
@@ -690,6 +691,17 @@ callRouter.post('/:id/scores/items/:itemScoreId/correct', requireActioner, async
       summary: `Corrected scorecard item ${req.params.itemScoreId} on call ${req.params.id} to ${corrected_pass ? 'pass' : 'fail'}`,
       metadata: { call_id: req.params.id, corrected_pass, reason: reason || null, new_overall: newOverall, new_pass: newPass },
       req,
+    });
+
+    // A verdict corrected to a fail is a failure the firm may never have been
+    // told about — the AI passed it, so no rule ever matched. Evaluate the
+    // rules for this checkpoint now. A correction back to pass matches nothing,
+    // and a checkpoint already alerted on is not announced twice (migration
+    // 117). Fire-and-forget, after the writes.
+    void evaluateAlertsForResolvedItem({
+      kind: 'call',
+      entityId: call.id,
+      scorecardItemId: itemScore.scorecard_item_id,
     });
 
     res.json({ message: 'Correction saved', overall_score: newOverall, pass: newPass });

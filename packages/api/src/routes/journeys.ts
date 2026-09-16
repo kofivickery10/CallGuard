@@ -7,6 +7,7 @@ import { recordAuditEvent } from '../services/audit.js';
 import { latestConfirmedAskSql, openRemediationExistsSql, OPEN_ASK_PREDICATE } from './remediations.js';
 import { getScoringSettings } from '../services/tenant-settings.js';
 import { pushJourneyScoreUpdate } from '../services/score-writeback.js';
+import { evaluateAlertsForResolvedItem } from '../services/alert-evaluator.js';
 import { deriveSeverity, isItemPass, callPasses } from '@callguard/shared';
 import type {
   Journey,
@@ -1326,6 +1327,17 @@ journeysRouter.post('/:id/scores/items/:itemScoreId/correct', requireActioner, a
 
     // Push the corrected score downstream (webhook + Zoho), after the writes.
     void pushJourneyScoreUpdate(orgId, journey.id);
+
+    // A verdict corrected to a fail is a failure the firm may never have been
+    // told about — the AI passed it, so no rule ever matched. Evaluate the
+    // rules for this checkpoint now. A correction back to pass matches nothing,
+    // and a checkpoint already alerted on is not announced twice (migration
+    // 117). Fire-and-forget, after the writes.
+    void evaluateAlertsForResolvedItem({
+      kind: 'journey',
+      entityId: journey.id,
+      scorecardItemId: itemScore.scorecard_item_id,
+    });
 
     res.json({ message: 'Correction saved', overall_score: newOverall, pass: newPass });
   } catch (err) {

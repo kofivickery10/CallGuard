@@ -15,6 +15,10 @@ import {
   CONSENT_SPEAKER_CONFIDENCE_FLOOR,
   routesToReviewOnConfidence,
 } from '../../services/checkpoint-classification.js';
+import {
+  transcriptSupportsAttribution,
+  type SpeakerIntegrityFlag,
+} from '../../services/speaker-integrity.js';
 import { hasFeature, isItemPass, deriveSeverity, callPasses, resolveBranch } from '@callguard/shared';
 import type { Call, Scorecard, ScorecardItem, Plan, WebhookCallScoredPayload } from '@callguard/shared';
 
@@ -118,6 +122,28 @@ export async function processScoring(job: Job<{ callId: string }>) {
     // branches (e.g. On Risk vs Referred) applies, before anything is scored.
     const branch = resolveBranch(call.transcript_text, scorecard.branch_config);
 
+    // Can this call support a claim about who said something at all? The same
+    // question sale scoring asks of a sale's wrap-up (score-journey.ts). If the
+    // transcript is one-sided or its labels are flagged, every applicable
+    // checkpoint goes to a person with the AI's provisional verdict attached,
+    // and the call reports no score until they work through it.
+    //
+    // The speaker-confidence floor below does not cover this. It only protects
+    // consent gates, and a call can be unattributable while still carrying 0.5
+    // or more: a stereo channel pin is 1.0 or 0.7 whether or not both channels
+    // had speech in them, older one-sided rows were lifted to 0.75, and repair
+    // scripts write the value directly.
+    const attribution = transcriptSupportsAttribution(
+      call.transcript_text,
+      call.speaker_integrity_flag as SpeakerIntegrityFlag | null
+    );
+    if (!attribution.ok) {
+      console.warn(
+        `[Scoring] Call ${callId} cannot be attributed — ${attribution.reason}. ` +
+          `Every applicable checkpoint routes to review; the call reports no score.`
+      );
+    }
+
     // Split into what's actually sent to Claude vs what resolves to a
     // terminal na/manual_review state up front — na (branch-excluded) and
     // manual (item_type='manual', or a consent_gate item whose speaker
@@ -126,7 +152,10 @@ export async function processScoring(job: Job<{ callId: string }>) {
     const { scoreable, na, manualReview, provisional } = classifyItems(
       items,
       branch,
-      call.speaker_attribution_confidence
+      call.speaker_attribution_confidence,
+      undefined,
+      [],
+      attribution.ok
     );
     // Provisional items (consent gates under the speaker-confidence floor) are
     // AI-scored alongside the rest; their verdict is stored on the
@@ -148,11 +177,16 @@ export async function processScoring(job: Job<{ callId: string }>) {
 
     // Score with Claude (inject KB context + tenant learning context)
     const kbContext = await getKBContext(call.organization_id);
+    // Calibration examples for every checkpoint sent to the model, provisional
+    // ones included. A consent gate below the speaker floor is still AI-scored
+    // and its verdict is what the reviewer sees first, so it needs the firm's
+    // examples as much as any other. This changes only the prompt: what goes to
+    // review is decided by classifyItems above and the routing below.
     const learning = org
       ? await getLearningContext(
           call.organization_id,
           org.plan,
-          scoreable.map((i) => i.id),
+          aiItems.map((i) => i.id),
           call.agent_id
         )
       : undefined;

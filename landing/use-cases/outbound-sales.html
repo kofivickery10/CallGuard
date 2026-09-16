@@ -180,7 +180,7 @@
           <h3>Sample-based outbound QA</h3>
           <ul>
             <li>1 to 3% of calls reviewed manually</li>
-            <li>Consent capture failures discovered weeks later</li>
+            <li>Ignored objections to marketing discovered weeks later</li>
             <li>TPS list breaches absorbed before the audit catches them</li>
             <li>Pressure-language failures only surface in customer complaints</li>
             <li>Variance between reviewers is meaningful</li>
@@ -212,8 +212,8 @@
 
       <div class="feature-grid feature-grid-2">
         <div class="feature">
-          <h3>PECR consent capture</h3>
-          <p>Verifies the customer gave explicit consent for the marketing call before any product information is shared, and that the consent was specific (not implied from a generic privacy policy). Calls without proper consent capture are flagged as critical breaches.</p>
+          <h3>Caller identification and objections</h3>
+          <p>Checks the agent gave their name, which PECR regulation 24 requires, and that an objection to marketing ended the pitch. Once a customer has objected, calling them again for marketing breaches PECR, so the objection needs to reach your suppression list.</p>
         </div>
         <div class="feature">
           <h3>TPS / CTPS list compliance</h3>
@@ -253,8 +253,8 @@
           <p>If the agent uses urgency tactics, false scarcity or coercive close language, a webhook fires to the floor manager. They can step in before the customer agrees to a sale they were pressured into.</p>
         </div>
         <div class="feature">
-          <h3>Consent missing alert</h3>
-          <p>If product details are being discussed without proper PECR consent captured at the start, a webhook fires for floor-manager intervention. The breach has already happened, but the manager can stop the agent from compounding it.</p>
+          <h3>Objection ignored alert</h3>
+          <p>If the customer objects to marketing and the agent keeps pitching, a webhook fires for floor-manager intervention. The manager can step in before the call goes further and make sure the objection is recorded.</p>
         </div>
         <div class="feature">
           <h3>Vulnerability disclosure alert</h3>

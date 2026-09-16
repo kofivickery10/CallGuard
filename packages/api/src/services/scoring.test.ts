@@ -80,6 +80,59 @@ describe('buildScoringPrompt — prompt-injection guard', () => {
   });
 });
 
+// Calibration examples: a reviewer's "not applicable" ruling (corrected_pass
+// NULL, migration 108) used to render as "Human judged: FAIL — Not applicable to
+// this sale", the opposite of the ruling.
+describe('buildScoringPrompt — calibration examples', () => {
+  const item = { id: 'item-1', label: 'Trustee contact', description: null, score_type: 'binary' as const };
+
+  it('never shows a not-applicable ruling to the model, and never as FAIL', () => {
+    const { cached, dynamic } = buildScoringPrompt('transcript', [item], '', false, {
+      correctionsByItem: {
+        'item-1': [
+          { corrected_pass: null, reason: 'Not applicable to this sale', transcript_excerpt: 'no trust here' },
+          { corrected_pass: true, reason: 'Trustee contact arranged', transcript_excerpt: 'I will contact the trustee' },
+        ],
+      },
+      exemplars: [],
+      priorCoaching: [],
+    });
+
+    const prompt = cached + dynamic;
+    expect(prompt).not.toContain('Not applicable to this sale');
+    expect(prompt).not.toContain('no trust here');
+    expect(prompt).not.toMatch(/Human judged: FAIL/);
+    // The real verdict alongside it still renders, and is numbered first.
+    expect(prompt).toContain('1. Human judged: PASS - Trustee contact arranged');
+  });
+
+  it('omits the calibration block when a criterion only has not-applicable rulings', () => {
+    const { cached } = buildScoringPrompt('transcript', [item], '', false, {
+      correctionsByItem: {
+        'item-1': [{ corrected_pass: null, reason: 'Not applicable to this sale', transcript_excerpt: null }],
+      },
+      exemplars: [],
+      priorCoaching: [],
+    });
+    expect(cached).not.toContain('Tenant calibration');
+  });
+
+  it('renders at most five examples per criterion, still FAIL for a real fail', () => {
+    const corrections = Array.from({ length: 7 }, (_, i) => ({
+      corrected_pass: false,
+      reason: `fail reason ${i + 1}`,
+      transcript_excerpt: null,
+    }));
+    const { cached } = buildScoringPrompt('transcript', [item], '', false, {
+      correctionsByItem: { 'item-1': corrections },
+      exemplars: [],
+      priorCoaching: [],
+    });
+    expect(cached).toContain('5. Human judged: FAIL - fail reason 5');
+    expect(cached).not.toContain('fail reason 6');
+  });
+});
+
 // Fix 2: consensus voting must use the tenant's real pass threshold, not the
 // shared PASS_THRESHOLD default, or a checkpoint near a customised threshold
 // gets voted "agreed" against the wrong bar and skips manual review.

@@ -88,10 +88,10 @@
         },
         {
           "@type": "Question",
-          "name": "How do we handle consent capture?",
+          "name": "How is consent handled on a Twilio stream?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "The streaming protocol takes a consent.captured event before scoring proceeds, with the consent excerpt and timestamp captured in the call record. For Twilio specifically, you can inject the consent event from your TwiML <Say> or <Play> flow when the customer's \"yes\" is recorded."
+            "text": "Your telephony layer handles it. A Twilio stream carries the call audio and the end of the call, not consent events. The generic WebSocket API does accept a consent.captured event, which records the time and an excerpt against the live session. It does not hold back breach detection."
           }
         },
         {
@@ -264,8 +264,8 @@
           <div class="faq-body"><p>Yes. Push the Twilio recording URL or the audio file into our REST ingest endpoint after the call ends. You get the same scoring output, just without the mid-call breach webhooks. You can run streaming for compliance-critical campaigns and post-call ingest for the rest.</p></div>
         </details>
         <details class="faq-item">
-          <summary>How do we handle consent capture?</summary>
-          <div class="faq-body"><p>The streaming protocol takes a <code>consent.captured</code> event before scoring proceeds, with the consent excerpt and timestamp captured in the call record. For Twilio specifically, you can inject the consent event from your TwiML &lt;Say&gt; or &lt;Play&gt; flow when the customer's "yes" is recorded.</p></div>
+          <summary>How is consent handled on a Twilio stream?</summary>
+          <div class="faq-body"><p>Your telephony layer handles it. A Twilio stream carries the call audio and the end of the call, not consent events. The generic WebSocket API does accept a <code>consent.captured</code> event, which records the time and an excerpt against the live session. It does not hold back breach detection.</p></div>
         </details>
         <details class="faq-item">
           <summary>What happens if the WebSocket disconnects mid-call?</summary>
