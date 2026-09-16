@@ -14,7 +14,7 @@ content. It is to break it.
 
 ## Load first
 
-- `PRODUCT.md`'s "False, never repeat" list — the claims register, forbidden and required
+- `PRODUCT.md` → Capabilities and Constraints, its "False, never repeat" and "Claims that need verification" lists — the claims register: what is forbidden, and what must be checked first
 - `docs/landing/handbook-citations-verified.md` — the canonical citations
 - `claude/cobs-92-correction.md` — a worked example of the failure mode
 

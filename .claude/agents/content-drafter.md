@@ -17,7 +17,7 @@ writing, the SEO mechanics and the front-matter.
 - `claude/blog-content-strategy.md` — calendar, keyword tiers, category taxonomy
 - `claude/blog-review-process.md` — what makes a draft fail review
 - `docs/landing/handbook-citations-verified.md` — the only citations you may use
-- `PRODUCT.md`'s "False, never repeat" list — the claims register
+- `PRODUCT.md` → Capabilities and Constraints, its "False, never repeat" and "Claims that need verification" lists — the claims register
 
 ## What the blog is for
 

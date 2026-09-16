@@ -58,7 +58,7 @@ gone wrong in this project before.
   this project's history.
 - Trade-press analysis is **opinion with attribution**, not fact. Quote the person and
   name their firm.
-- Check `PRODUCT.md`'s "False, never repeat" list before using any figure. Never quote a
+- Check `PRODUCT.md` → Capabilities and Constraints, its "False, never repeat" and "Claims that need verification" lists before using any figure. Never quote a
   CallGuard reconciliation statistic while the hard gate holds.
 
 ## Output
