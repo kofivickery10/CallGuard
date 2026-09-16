@@ -26,35 +26,88 @@ export function clearToken() {
   localStorage.removeItem(REFRESH_KEY);
 }
 
-// In-flight refresh promise — prevents multiple concurrent refreshes.
+// In-flight refresh promise — prevents multiple concurrent refreshes in this tab.
 let refreshPromise: Promise<string> | null = null;
 
-async function attemptTokenRefresh(): Promise<string> {
+// The API rotates the refresh token on every use, and both tokens live in
+// localStorage, which every tab on the origin shares. Two tabs whose access
+// token expired together would each send the same refresh token; the second is
+// refused because the first has just rotated it, and clearing the tokens on
+// that refusal signed out every tab — including the one that refreshed. So the
+// refresh is serialised across tabs with a Web Lock, and a refusal is only
+// treated as a dead session when no other tab has since stored a newer token.
+const REFRESH_LOCK = 'callguard-refresh';
+
+// Without Web Locks the losing tab's refusal can arrive before the winning tab
+// has stored its new tokens, so wait this long for them before giving up.
+const ROTATION_GRACE_MS = 1500;
+
+async function attemptTokenRefresh(rejectedToken: string | null): Promise<string> {
   if (refreshPromise) return refreshPromise;
 
-  refreshPromise = (async () => {
-    const rt = getRefreshToken();
-    if (!rt) throw new Error('No refresh token');
+  const locks = typeof navigator !== 'undefined' ? navigator.locks : undefined;
+  const run = () => refreshTokens(rejectedToken, !locks);
 
-    const res = await fetch(`${BASE_URL}/auth/refresh`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refresh_token: rt }),
-    });
-
-    if (!res.ok) {
-      clearToken();
-      throw new Error('Session expired. Please log in again.');
-    }
-
-    const data = (await res.json()) as { token: string; refresh_token: string };
-    setTokens(data.token, data.refresh_token);
-    return data.token;
-  })().finally(() => {
+  // lib.dom types request()'s result as a promise of the callback's return
+  // value, itself a promise here; the .then() flattens it for the type checker.
+  const pending = locks ? locks.request(REFRESH_LOCK, run).then((token) => token) : run();
+  const promise = pending.finally(() => {
     refreshPromise = null;
   });
+  refreshPromise = promise;
 
-  return refreshPromise;
+  return promise;
+}
+
+async function refreshTokens(rejectedToken: string | null, unlocked: boolean): Promise<string> {
+  // Another tab refreshed while this one's request was in flight, or while it
+  // waited for the lock: the rejected token has already been replaced.
+  const current = getToken();
+  if (current && current !== rejectedToken) return current;
+
+  const rt = getRefreshToken();
+  if (!rt) throw new Error('No refresh token');
+
+  const res = await fetch(`${BASE_URL}/auth/refresh`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refresh_token: rt }),
+  });
+
+  if (!res.ok) {
+    const rotated = rotatedElsewhere(rt) ?? (unlocked ? await waitForRotation(rt) : null);
+    if (rotated) return rotated;
+    clearToken();
+    throw new Error('Session expired. Please log in again.');
+  }
+
+  const data = (await res.json()) as { token: string; refresh_token: string };
+  setTokens(data.token, data.refresh_token);
+  return data.token;
+}
+
+// The access token another tab stored after rotating `sentRefreshToken`, if any.
+function rotatedElsewhere(sentRefreshToken: string): string | null {
+  const stored = getRefreshToken();
+  const token = getToken();
+  return stored && stored !== sentRefreshToken && token ? token : null;
+}
+
+function waitForRotation(sentRefreshToken: string): Promise<string | null> {
+  return new Promise((resolve) => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== REFRESH_KEY) return;
+      const token = rotatedElsewhere(sentRefreshToken);
+      if (token) finish(token);
+    };
+    const timer = window.setTimeout(() => finish(rotatedElsewhere(sentRefreshToken)), ROTATION_GRACE_MS);
+    function finish(token: string | null) {
+      window.clearTimeout(timer);
+      window.removeEventListener('storage', onStorage);
+      resolve(token);
+    }
+    window.addEventListener('storage', onStorage);
+  });
 }
 
 async function request<T>(
@@ -89,7 +142,7 @@ async function request<T>(
   if (res.status === 401 && path !== '/auth/refresh' && path !== '/auth/login') {
     if (!isRetry) {
       try {
-        await attemptTokenRefresh();
+        await attemptTokenRefresh(token);
         return request<T>(path, options, true);
       } catch {
         // fall through to the session-expired handling below
