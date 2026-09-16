@@ -61,7 +61,7 @@ The scorecard is yours, not the vendor's. That is the most important sentence on
 
 For financial services advice, that scorecard typically encodes ICOBS 5 suitability checks, FG21/1 vulnerable client indicators, charges and Consumer Duty fair-value tests, and DB-transfer specialist-pathway gates. [We cover financial services scoring in detail elsewhere on the site.](/use-cases/financial-services)
 
-For a contact centre, the scorecard typically covers empathy and rapport, first-call resolution, compliance and consent, product knowledge, escalation handling, and outbound regulatory rules (TPS list checks, PECR consent, mini-Miranda statements where applicable). [More on contact centre and BPO scoring here.](/use-cases/bpo)
+For a contact centre, the scorecard typically covers empathy and rapport, first-call resolution, compliance and consent, product knowledge, escalation handling, and outbound regulatory rules (TPS list checks, PECR caller identification and objections, mini-Miranda statements where applicable). [More on contact centre and BPO scoring here.](/use-cases/bpo)
 
 The point is that the engine does not care what regime you are scoring against. It cares that each criterion is well-defined and that the verdict can be justified by a quote.
 
@@ -71,7 +71,7 @@ There are two operating modes worth understanding. Most legacy speech analytics 
 
 **After-call scoring** processes the recording once the call has ended. The transcript and score are ready shortly after. This is appropriate for compliance review, breach detection, agent coaching and reporting. It is also the only mode you need if your audio is uploaded as files (recordings from a dialer, exported from a compliance recorder, or pushed in via API).
 
-**Mid-call scoring** runs while the conversation is still happening. Audio streams over a WebSocket from the dialer (Twilio, Amazon Connect via a customer-run Lambda bridge, generic WebRTC). The system transcribes live, runs scoring against a rolling transcript, and emits high-confidence breach alerts via webhook, HMAC-signed once you set a signing secret, to your CRM or agent desktop before the call ends. This mode matters for outbound campaigns where a critical breach (urgency-language, missing consent capture, mini-Miranda failure) is regulator-grade and you need to intervene mid-call rather than file a finding three weeks later.
+**Mid-call breach detection** runs while the conversation is still happening. Audio streams over a WebSocket from the dialer (Twilio, Amazon Connect via a customer-run Lambda bridge, generic WebRTC). The system transcribes live, checks a rolling transcript for breaches, and emits high-confidence breach alerts via webhook, HMAC-signed once you set a signing secret, to your CRM or agent desktop before the call ends. This mode matters for outbound campaigns where a critical breach (urgency language, an ignored objection to marketing, a missed mini-Miranda) is regulator-grade and you need to intervene mid-call rather than file a finding three weeks later.
 
 Both modes use the same scorecard and the same calibration layer. The mid-call mode adds a confidence threshold, so it only emits a breach when it is confident the criterion has already failed, rather than firing on every borderline signal.
 
