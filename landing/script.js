@@ -3,20 +3,35 @@
   var toggle = document.querySelector('.nav-toggle');
   var drawer = document.getElementById('mobile-drawer');
   if (toggle && drawer) {
-    var setOpen = function (open) {
+    var setOpen = function (open, restoreFocus) {
       toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
       toggle.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
       drawer.classList.toggle('is-open', open);
       document.body.classList.toggle('no-scroll', open);
+      if (open) {
+        var first = drawer.querySelector('a, button');
+        if (first) first.focus();
+      } else if (restoreFocus) {
+        toggle.focus();
+      }
     };
     toggle.addEventListener('click', function () {
-      setOpen(toggle.getAttribute('aria-expanded') !== 'true');
+      setOpen(toggle.getAttribute('aria-expanded') !== 'true', true);
     });
     drawer.addEventListener('click', function (e) {
       if (e.target.tagName === 'A') setOpen(false);
     });
     document.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape' && drawer.classList.contains('is-open')) setOpen(false);
+      if (!drawer.classList.contains('is-open')) return;
+      if (e.key === 'Escape') { setOpen(false, true); return; }
+      if (e.key !== 'Tab') return;
+      // Keep keyboard focus inside the open menu: the toggle plus the drawer's links.
+      var items = [toggle].concat(Array.prototype.slice.call(drawer.querySelectorAll('a, button')));
+      var i = items.indexOf(document.activeElement);
+      if (e.shiftKey ? i <= 0 : (i === -1 || i === items.length - 1)) {
+        e.preventDefault();
+        (e.shiftKey ? items[items.length - 1] : items[0]).focus();
+      }
     });
     var mq = window.matchMedia('(min-width: 769px)');
     mq.addEventListener('change', function (e) { if (e.matches) setOpen(false); });
@@ -156,7 +171,7 @@
     demoModal.body.innerHTML = [
       '<div class="modal-success">',
       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>',
-      '<h2 class="modal-title" id="demoModalTitle" tabindex="-1">Thanks — we’ll be in touch shortly</h2>',
+      '<h2 class="modal-title" id="demoModalTitle" tabindex="-1">Thanks. We usually reply the same working day.</h2>',
       '<p>We’ve received your request and a member of the CallGuard AI team will reach out soon.</p>',
       '</div>'
     ].join('');
@@ -229,7 +244,7 @@
   var renderDemoForm = function (subjectText) {
     demoModal.body.innerHTML = [
       '<h2 class="modal-title" id="demoModalTitle">Request a demo</h2>',
-      '<p class="modal-sub" id="demoModalSub">Tell us a bit about your team and we’ll be in touch shortly.</p>',
+      '<p class="modal-sub" id="demoModalSub">Tell us a bit about your team. We usually reply the same working day.</p>',
       '<div class="form-status" id="demoFormStatus" role="status" aria-live="polite"></div>',
       '<form class="modal-form" id="demoForm" novalidate>',
       '<div class="form-field">',
@@ -262,12 +277,13 @@
       '<p class="form-error" id="demoMessageError"></p>',
       '</div>',
       '<button type="submit" class="btn btn-primary btn-lg" id="demoSubmit">Send request</button>',
+      '<p class="modal-note">Read how we use your details in our <a href="/privacy">privacy policy</a>.</p>',
       '</form>'
     ].join('');
 
     var subEl = demoModal.body.querySelector('#demoModalSub');
     if (subEl && subjectText) {
-      subEl.textContent = 'Re: ' + subjectText + '. Tell us a bit about your team and we’ll be in touch shortly.';
+      subEl.textContent = 'Re: ' + subjectText + '. Tell us a bit about your team. We usually reply the same working day.';
     }
 
     var form = demoModal.body.querySelector('#demoForm');

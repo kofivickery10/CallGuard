@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta name="description" content="CallGuard AI scores and coaches 100% of your calls for quality and compliance, live and mid-call. For FCA advisers, contact centres, BPOs and collections." />
+<meta name="description" content="CallGuard AI scores protection and mortgage advice calls against your own compliance scorecard, with the transcript evidence behind each verdict." />
 <meta name="theme-color" content="#4a9e6e" />
 <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1" />
 <meta name="author" content="CallGuard AI" />
@@ -16,7 +16,8 @@
 <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 <link rel="manifest" href="/site.webmanifest" />
 <link rel="preload" as="font" type="font/woff2" href="/fonts/InterVariable.woff2" crossorigin>
-<link rel="stylesheet" href="/style.css?v=15" />
+<link rel="stylesheet" href="/style.css?v=16" />
+<link rel="stylesheet" href="/home.css?v=12" />
 
 <!-- Open Graph -->
 <meta property="og:type" content="website" />
@@ -24,7 +25,7 @@
 <meta property="og:locale" content="en_GB" />
 <meta property="og:url" content="https://callguardai.co.uk/" />
 <meta property="og:title" content="AI Call QA &amp; Compliance Scoring Software | CallGuard AI" />
-<meta property="og:description" content="CallGuard AI scores and coaches 100% of your calls for quality and compliance, live and mid-call. For FCA advisers, contact centres, BPOs and collections." />
+<meta property="og:description" content="CallGuard AI scores protection and mortgage advice calls against your own compliance scorecard, with the transcript evidence behind each verdict." />
 <meta property="og:image" content="https://callguardai.co.uk/og-image.jpg" />
 <meta property="og:image:width" content="1200" />
 <meta property="og:image:height" content="630" />
@@ -33,7 +34,7 @@
 <!-- Twitter / X card -->
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="AI Call QA &amp; Compliance Scoring Software | CallGuard AI" />
-<meta name="twitter:description" content="CallGuard AI scores and coaches 100% of your calls for quality and compliance, live and mid-call. For FCA advisers, contact centres, BPOs and collections." />
+<meta name="twitter:description" content="CallGuard AI scores protection and mortgage advice calls against your own compliance scorecard, with the transcript evidence behind each verdict." />
 <meta name="twitter:image" content="https://callguardai.co.uk/og-image.jpg" />
 <meta name="twitter:image:alt" content="CallGuard AI: AI call QA and compliance scoring software" />
 
@@ -48,7 +49,7 @@
       "name": "CallGuard AI",
       "url": "https://callguardai.co.uk/",
       "logo": "https://callguardai.co.uk/og-image.jpg",
-      "description": "AI-powered call QA and compliance scoring software for FCA-regulated advice firms, contact centres, BPOs, debt collections and outbound sales teams.",
+      "description": "AI call QA and compliance scoring software for FCA-regulated protection and mortgage advice firms, contact centres, debt collections and outbound sales teams.",
       "email": "hello@callguardai.co.uk",
       "address": {
         "@type": "PostalAddress",
@@ -77,7 +78,7 @@
       "operatingSystem": "Web",
       "applicationCategory": "BusinessApplication",
       "applicationSubCategory": "Call Quality Assurance Software",
-      "description": "AI-powered call QA and compliance scoring. Transcribes and scores 100% of calls against your scorecard, flags critical compliance breaches mid-call, and produces per-agent coaching drafts.",
+      "description": "AI call QA and compliance scoring. Transcribes calls, redacts personal data, and scores each call or multi-call sale against your own scorecard, with the transcript evidence behind each verdict.",
       "url": "https://callguardai.co.uk/",
       "offers": {
         "@type": "AggregateOffer",
@@ -90,12 +91,14 @@
       },
       "publisher": { "@id": "https://callguardai.co.uk/#organization" },
       "featureList": [
-        "AI scoring against your own scorecard",
-        "Live mid-call breach detection (>75% confidence threshold)",
-        "Twilio Media Streams and AWS Connect Voice Streams adapters",
-        "HMAC-signed webhooks on breach + scored events",
-        "Per-tenant AI learning from compliance corrections",
-        "Exemplar call library and per-agent coaching memory",
+        "AI scoring against your own scorecard, with transcript evidence for each verdict",
+        "Multi-call sale scoring",
+        "Reconciliation of call answers against submitted insurer applications",
+        "Personal data redacted from transcripts before storage or scoring",
+        "Live mid-call breach detection",
+        "Twilio Media Streams adapter and Amazon Connect live media streaming through a Lambda bridge",
+        "Webhooks on breach and scored events, HMAC-signed when a signing secret is set",
+        "Learning from compliance corrections and example calls",
         "REST API to push calls in and pull results out",
         "AES-256-GCM encryption at rest"
       ]
@@ -106,58 +109,50 @@
       "mainEntity": [
         {
           "@type": "Question",
-          "name": "What is AI call QA and why does it matter?",
+          "name": "How does CallGuard AI score a call?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "AI call quality assurance uses speech recognition and large language models to transcribe and score every call your team takes against your scorecard, instead of a manual 5% sample done in spreadsheets. For contact centres and regulated businesses it means 100% coverage rather than statistical guesswork, breach detection in seconds rather than weeks, and systematic compliance evidence rather than anecdotes."
+            "text": "Each call is transcribed with the adviser and customer separated, and personal details in the transcript are replaced with tags. The AI gives each criterion on your scorecard its own verdict, with the transcript evidence it was decided on, or a note that none was found. Your corrections and example calls shape how future calls are scored."
           }
         },
         {
           "@type": "Question",
-          "name": "How does CallGuard AI score calls?",
+          "name": "Does it support Consumer Duty, ICOBS and MCOB?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "Each call is transcribed with speaker separation, then Claude scores it against your scorecard one criterion at a time. Every verdict is backed by a direct quote from the transcript so you can see why the AI passed or failed an item. Your knowledge base, prior compliance corrections and exemplar calls all feed into the prompt so the AI calibrates to your company's interpretation rather than a generic baseline."
+            "text": "CallGuard AI scores against your firm's own scorecard, so it checks what your compliance team sets: ICOBS 5 suitability for protection, MCOB 4.4A initial disclosure and MCOB 4.7A suitability for mortgages, the vulnerability characteristics described in FCA guidance FG21/1, and call-level evidence for the consumer understanding and consumer support outcomes (PRIN 2A.5 and 2A.6). Each verdict shows the transcript evidence behind it."
           }
         },
         {
           "@type": "Question",
-          "name": "Does it integrate with Twilio, AWS Connect or our existing dialer?",
+          "name": "Can it score a sale made over several calls?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "Yes. There are first-class adapters for Twilio Media Streams and AWS Connect Voice Streams. Other dialers can connect via our generic WebSocket protocol. You can also drag-and-drop recordings or push calls in via our REST API."
+            "text": "Yes, on the Pro plan. When a sale is recorded in Zoho CRM, CallGuard AI gathers that customer's calls from the sale window and scores them together as one sale, so a disclosure made on an earlier call counts when the application is submitted on a later one."
           }
         },
         {
           "@type": "Question",
-          "name": "Can I display CallGuard results inside my own CRM or agent desktop?",
+          "name": "How is customer data protected?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "Yes. Mint an API key in the dashboard, push calls in with a POST, then pull the result back per call. The result includes the score percentage, pass/fail per criterion, evidence quotes, breach list and the coaching draft. Render it however you want. Live streaming sessions also fire HMAC-signed webhooks on breach and scored events to your own CRM or agent desktop."
+            "text": "Names, payment details and health information are replaced with tags in the transcript before it is stored or scored. Call audio is kept, encrypted at rest with AES-256-GCM. Customer data is stored in the UK, and advisers can only see their own calls. The providers that process audio and transcripts, some of them outside the UK, are named on our sub-processor list, and our Data Processing Agreement is published."
           }
         },
         {
           "@type": "Question",
-          "name": "Does this support FCA Consumer Duty and the four outcomes?",
+          "name": "Which diallers and systems does it work with?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "Yes. CallGuard AI scores against your firm's own scorecard, which can encode ICOBS 5 suitability, FG21/1 vulnerable client indicators, charges and fair-value tests, and the four Consumer Duty outcomes (products and services, price and value, consumer understanding, consumer support). Every verdict is evidenced by a transcript quote, which is the audit trail the FCA expects."
+            "text": "CloudTalk calls are pulled in and scored automatically, and results can be written back to Zoho CRM. On the Pro plan, Twilio Media Streams calls, and Amazon Connect calls through a small Lambda bridge, can stream in live. You can also upload recordings or send calls through the REST API."
           }
         },
         {
           "@type": "Question",
-          "name": "How is customer data secured?",
+          "name": "How do we get started?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "All audio is encrypted at rest with AES-256-GCM. Transport is TLS 1.2+. Access to the dashboard is JWT-authenticated with role-based access control. Data is hosted in the UK. A UK GDPR Article 28 Data Processing Agreement is available, and we publish our sub-processor list publicly so you know exactly who handles your data."
-          }
-        },
-        {
-          "@type": "Question",
-          "name": "How long does it take to set up?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "Onboard at 9am and have 100 calls scored before lunch. Each call is transcribed and scored in under a minute. There is no 90-day pilot, no solution architects, and no integration project. Upload an existing scorecard CSV, drop in any QA manuals or product cheatsheets to the knowledge base, and start scoring."
+            "text": "Share your existing scorecard and we set up your account. We put a DPA in place before you share any real recordings, and connecting CloudTalk or Zoho CRM can follow once you are happy with the results; sale scoring, and Reconciliation where it is switched on, start once Zoho CRM is connected. There is no 90-day pilot and no integration project to begin."
           }
         },
         {
@@ -165,7 +160,7 @@
           "name": "How does pricing work?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "Pricing starts from £199 per seat, per month, with volume discounts as your team grows and no multi-year minimum. The AI learning, exemplar library and coaching memory are included on Growth and Pro plans. Full details at callguardai.co.uk/pricing, or get an exact quote by emailing hello@callguardai.co.uk."
+            "text": "Plans start from £199, £299 and £399 per seat, per month, with volume discounts and no multi-year minimum. Full details are on the pricing page."
           }
         }
       ]
@@ -183,7 +178,7 @@
   })();
 </script>
 </head>
-<body>
+<body class="hp">
 
 <!-- ============== Sticky nav ============== -->
 <header class="nav" role="banner">
@@ -192,509 +187,399 @@
 
     <nav class="nav-links" aria-label="Primary">
       <a href="#how-it-works">How it works</a>
-      <a href="#live">Live &amp; embedded</a>
-      <a href="#learning">AI learning</a>
       <a href="#data-forms">Reconciliation</a>
-      <a href="#use-cases">Use cases</a>
+      <a href="#security">Security</a>
       <a href="/pricing">Pricing</a>
       <a href="/blog/">Blog</a>
     </nav>
 
     <a href="https://app.callguardai.co.uk/" class="nav-login">Log in</a>
-    <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request" class="btn btn-primary nav-cta">Book a demo</a>
+    <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request" class="btn btn-primary nav-cta">Request a demo</a>
 
     <button class="theme-switch" type="button" aria-label="Toggle dark mode" aria-pressed="false">
-      <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-      <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+      <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
     </button>
-    <button class="nav-toggle" aria-label="Open menu" aria-controls="mobile-drawer" aria-expanded="false">
-      <svg class="icon-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="7"  x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>
-      <svg class="icon-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="6" y1="6"  x2="18" y2="18"/><line x1="6" y1="18" x2="18" y2="6"/></svg>
+    <button class="nav-toggle" type="button" aria-label="Open menu" aria-controls="mobile-drawer" aria-expanded="false">
+      <svg class="icon-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><line x1="4" y1="7"  x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>
+      <svg class="icon-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><line x1="6" y1="6"  x2="18" y2="18"/><line x1="6" y1="18" x2="18" y2="6"/></svg>
     </button>
   </div>
 
-  <div class="nav-drawer" id="mobile-drawer" aria-label="Mobile menu">
+  <nav class="nav-drawer" id="mobile-drawer" aria-label="Mobile menu">
     <a href="#how-it-works">How it works</a>
-    <a href="#live">Live &amp; embedded</a>
-    <a href="#learning">AI learning</a>
     <a href="#data-forms">Reconciliation</a>
-    <a href="#use-cases">Use cases</a>
+    <a href="#learning">Your standard</a>
+    <a href="#security">Security</a>
     <a href="/pricing">Pricing</a>
-    <a href="/blog/">Blog</a>
     <a href="#faq">FAQ</a>
+    <a href="/blog/">Blog</a>
     <a href="https://app.callguardai.co.uk/">Log in</a>
-    <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request" class="btn btn-primary">Book a demo</a>
-  </div>
+    <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request" class="btn btn-primary">Request a demo</a>
+  </nav>
 </header>
 
 <main id="top">
 
   <!-- ============== Hero ============== -->
-  <section class="hero">
-    <div class="container">
-      <span class="eyebrow">AI compliance scoring · Live &amp; after the call</span>
-      <h1 class="hero-headline">
-        Every customer conversation. <br/>
-        <span class="accent">Scored, live, by AI</span> <br/>
-        that learns from your compliance team.
-      </h1>
-      <p class="hero-sub">
-        CallGuard AI listens to every call your team takes (desk phone, dialer or recorded file), scores against your scorecard, and flags critical compliance breaches <strong>before the call ends</strong>. Built for FCA-regulated advice firms, contact centres, BPOs, collections and outbound sales teams that can't keep up with 5% sample QA reviews.
-      </p>
-      <div class="hero-ctas">
-        <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20demo%20request" class="btn btn-primary btn-lg">Book a 15-min demo</a>
-        <a href="#how-it-works" class="btn btn-ghost btn-lg">See how it works ↓</a>
+  <section class="hp-hero" aria-labelledby="hp-title">
+    <div class="container hp-hero-grid">
+      <div>
+        <h1 class="hp-h1" id="hp-title">Score every advice call or sale. See the evidence behind each verdict.</h1>
+        <p class="hp-lede">
+          CallGuard AI scores protection and mortgage advice calls, one by one or as a sale, against your own compliance scorecard. Each verdict shows the transcript evidence it was decided on, or tells you none was found, so you can review every call or sale instead of a sample.
+        </p>
+        <div class="hp-hero-actions">
+          <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request" class="btn btn-primary btn-lg">Request a demo</a>
+          <a href="#how-it-works" class="hp-link">See how it works<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12l7 7 7-7"/></svg></a>
+        </div>
+        <ul class="hp-trust">
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>Customer data stored in the UK</li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><a href="/pricing">Prices published, from £199 per seat</a></li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><span><a href="/dpa">DPA</a> and <a href="/sub-processors">sub-processors</a> published</span></li>
+        </ul>
       </div>
 
-      <div class="hero-trust">
-        <span class="trust-label">Built for compliance teams in</span>
-        <span class="trust-items">
-          FCA-regulated advice · Contact centres &amp; BPOs · Collections · Outbound sales
-        </span>
-      </div>
-    </div>
-  </section>
-
-  <!-- ============== Problem ============== -->
-  <section class="section section-problem" id="problem">
-    <div class="container">
-      <span class="section-tag">The problem</span>
-      <h2 class="section-h2">
-        You're flying blind on <span class="accent">99% of calls.</span>
-      </h2>
-      <p class="lead">
-        Most compliance teams sample 5 to 10% of calls manually. Each file takes a senior reviewer 60 to 90 minutes. Variation between reviewers is meaningful. And regulators (post-Consumer Duty in financial services, under PECR and the TPS regime in outbound) expect systematic evidence, not a sampled spot-check three months after the recommendation went out.
-      </p>
-
-      <div class="stat-row">
-        <div class="stat-card">
-          <div class="stat-num">5-10%</div>
-          <div class="stat-label">Calls QA'd today</div>
-          <div class="stat-sub">Industry sample rate for manual file checking and call reviews</div>
+      <figure class="hp-panel" aria-label="Example of a scored protection advice call">
+        <div class="hp-panel-head">
+          <div>
+            <div class="hp-panel-title">Protection advice call</div>
+            <div class="hp-panel-meta"><span class="hp-num">18:42</span> · Protection sales scorecard</div>
+          </div>
+          <span class="hp-pill hp-pill--fail"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>1 breach</span>
         </div>
-        <div class="stat-card">
-          <div class="stat-num">90 min</div>
-          <div class="stat-label">Per file review</div>
-          <div class="stat-sub">Senior reviewer time per advice file or scored call</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-num">100%</div>
-          <div class="stat-label">With CallGuard AI</div>
-          <div class="stat-sub">Every call transcribed, scored and flagged automatically</div>
-        </div>
-      </div>
-
-      <div class="problem-grid">
-        <div class="problem-card problem-fail">
-          <h3>The status quo</h3>
-          <ul>
-            <li>Single-digit sample rate, the rest are invisible</li>
-            <li>Subjective scoring varies between checkers</li>
-            <li>Reviews land days or weeks after the call</li>
-            <li>Vulnerable customer signals slip past unflagged</li>
-            <li>Outcomes evidenced anecdotally, not systematically</li>
-            <li>QA team capacity caps how much you can grow</li>
-          </ul>
-        </div>
-        <div class="problem-card problem-win">
-          <h3>With CallGuard AI</h3>
-          <ul>
-            <li>100% of calls transcribed and scored automatically</li>
-            <li>One AI scorer calibrated to your company's interpretation</li>
-            <li>Critical breaches flagged within seconds of the call</li>
-            <li>Vulnerability indicators screened on every conversation</li>
-            <li>Outcomes evidenced systematically with hard numbers</li>
-            <li>Capacity scales without hiring more QA staff</li>
-          </ul>
-        </div>
-      </div>
+        <ol class="hp-criteria">
+          <li class="hp-scan" aria-hidden="true"></li>
+          <li class="hp-criterion">
+            <span class="hp-pill hp-pill--pass"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>Pass</span>
+            <span class="hp-criterion-name">Explained what the policy does not cover</span>
+            <span class="hp-time">09:12</span>
+          </li>
+          <li class="hp-criterion">
+            <span class="hp-pill hp-pill--pass"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>Pass</span>
+            <span class="hp-criterion-name">Checked the premium is affordable for the customer</span>
+            <span class="hp-time">11:48</span>
+          </li>
+          <li class="hp-criterion">
+            <span class="hp-pill hp-pill--review"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 8v5M12 16.5v.5"/><circle cx="12" cy="12" r="9"/></svg>Review</span>
+            <span class="hp-criterion-name">Responded to possible signs of vulnerability</span>
+            <span class="hp-time">06:03</span>
+          </li>
+          <li class="hp-criterion hp-criterion--open">
+            <span class="hp-pill hp-pill--fail"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>Fail</span>
+            <span class="hp-criterion-name">Asked for consent before submitting the application</span>
+            <span class="hp-time">14:31</span>
+            <div class="hp-evidence">
+              <ol class="hp-lines">
+                <li class="hp-line"><span class="hp-time">14:24</span><span><span class="hp-speaker hp-speaker--customer">Customer:</span>Yes, it's <span class="hp-nowrap"><span class="hp-tag">[NAME_GIVEN_1]</span>,</span> that's all correct.</span></li>
+                <li class="hp-line hp-line--hit"><span class="hp-time">14:31</span><span><span class="hp-speaker hp-speaker--agent">Adviser:</span>Lovely, I'll submit that to the insurer for you now.</span></li>
+                <li class="hp-line"><span class="hp-time">14:36</span><span><span class="hp-speaker hp-speaker--customer">Customer:</span>Oh. Okay.</span></li>
+              </ol>
+              <p class="hp-reason">The application was submitted without the customer being asked to agree to it.</p>
+            </div>
+          </li>
+        </ol>
+        <figcaption class="hp-caption">Illustrative example with synthetic call data.</figcaption>
+      </figure>
     </div>
   </section>
 
   <!-- ============== How it works ============== -->
-  <section class="section section-alt" id="how-it-works">
+  <section class="hp-section" id="how-it-works" aria-labelledby="hp-how">
     <div class="container">
-      <span class="section-tag">How it works</span>
-      <h2 class="section-h2">
-        Calls in. <span class="accent">Compliance evidence out.</span>
-      </h2>
-      <p class="lead">
-        CallGuard AI sits alongside your existing telephony or recording infrastructure. Whether your team uses a desk dialer, a compliance recorder, Microsoft Teams, or simply uploads recorded advice files, audio flows in, gets scored against your company's scorecard, and surfaces in a dashboard your compliance director actually wants to open.
-      </p>
+      <h2 class="hp-h2" id="hp-how">From the call to the evidence.</h2>
+      <p class="hp-lede">CallGuard AI sits alongside the dialler and CRM you already use. Nothing about how your advisers work has to change.</p>
 
-      <div class="steps">
-        <div class="step">
-          <div class="step-num">1</div>
-          <h3>Ingest, live or batch</h3>
-          <p>
-            Drag-and-drop, REST API (including pushing a recording URL), a native <a href="/integrations/cloudtalk">CloudTalk</a> webhook that pulls and scores calls automatically, or <strong>live WebSocket streaming</strong> from Twilio, AWS Connect, or any dialer that can stream over our generic WebSocket protocol. Encrypted at rest with AES-256-GCM.
-          </p>
+      <ol class="hp-steps">
+        <li class="hp-step">
+          <h3 class="hp-h3">Calls come in</h3>
+          <p class="hp-body">CloudTalk calls arrive automatically, or upload recordings and send calls through the API.</p>
+        </li>
+        <li class="hp-step">
+          <h3 class="hp-h3">Checked against your scorecard</h3>
+          <p class="hp-body">Each call is transcribed and redacted, then scored against your scorecard, alone or as part of a sale. Each criterion gets a verdict with its evidence or a note that none was found, or goes to your review queue.</p>
+        </li>
+        <li class="hp-step">
+          <h3 class="hp-h3">Evidence you can act on</h3>
+          <p class="hp-body">Breaches alert your team by email, Slack or webhook, and results can be written back to Zoho CRM.</p>
+        </li>
+      </ol>
+
+      <p class="hp-works-with">
+        Works with <a href="/integrations/cloudtalk">CloudTalk</a>, <a href="/integrations/twilio">Twilio</a>, <a href="/integrations/aws-connect">Amazon Connect</a> and <a href="/integrations/microsoft-teams">Microsoft Teams</a> recordings.
+      </p>
+    </div>
+  </section>
+
+  <!-- ============== The sale + Reconciliation + live ============== -->
+  <section class="hp-section hp-section--white" id="data-forms" aria-labelledby="hp-sale">
+    <div class="container">
+      <div class="hp-split">
+        <div>
+          <h2 class="hp-h2" id="hp-sale">Scored as a sale, not just a call.</h2>
+          <p class="hp-lede">A protection sale is rarely one conversation. When the sale is recorded in Zoho CRM, CallGuard AI gathers that customer's calls from the sale window and scores them together, so a disclosure on the first call still counts when the application goes in on the <span class="hp-nowrap">third. <span class="hp-plan">Pro plan</span></span></p>
         </div>
-        <div class="step">
-          <div class="step-num">2</div>
-          <h3>Score, as it happens</h3>
-          <p>
-            Best-in-class speech recognition produces a live transcript with speaker separation. Claude scores against your company's scorecard, factoring in your knowledge base, prior compliance corrections, and exemplar calls. Mid-call breach detection runs every 30 seconds on the rolling transcript.
-          </p>
+        <figure class="hp-panel" aria-label="Example of three calls scored as one sale">
+          <div class="hp-panel-head">
+            <div>
+              <div class="hp-panel-title">Sale · Level term life cover</div>
+              <div class="hp-panel-meta">3 calls with one customer</div>
+            </div>
+          </div>
+          <div class="hp-sale">
+            <ol class="hp-sale-calls">
+              <li class="hp-call"><div class="hp-call-dot">1</div><div class="hp-call-name">Fact find</div><div class="hp-call-meta hp-num">22 min</div></li>
+              <li class="hp-call"><div class="hp-call-dot">2</div><div class="hp-call-name">Advice</div><div class="hp-call-meta hp-num">31 min</div></li>
+              <li class="hp-call"><div class="hp-call-dot">3</div><div class="hp-call-name">Application</div><div class="hp-call-meta hp-num">12 min</div></li>
+            </ol>
+            <div class="hp-sale-result">
+              <span><strong class="hp-num">14 of 15</strong> criteria met across the sale</span>
+              <span class="hp-pill hp-pill--fail"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>1 breach</span>
+            </div>
+          </div>
+          <figcaption class="hp-caption">Illustrative example with synthetic data.</figcaption>
+        </figure>
+      </div>
+
+      <div class="hp-wide">
+        <div class="hp-wide-intro">
+          <h3 class="hp-h2">Checked against the application.</h3>
+          <p class="hp-lede">Once Reconciliation is switched on for your firm and the insurer's application PDF is attached to the sale in Zoho CRM, it compares each answer with what the customer said on the calls. A mismatch is flagged for your team to raise with the insurer, and later amendments are classified so a routine fix isn't treated like a real discrepancy.</p>
+          <p class="hp-body"><a class="hp-link" href="/templates/protection-consent-gate-checklist">Get the protection consent-gate checklist</a></p>
         </div>
-        <div class="step">
-          <div class="step-num">3</div>
-          <h3>Act, before the call ends</h3>
-          <p>
-            Pass / fail per criterion, weighted overall score, exact quote evidence, an agent-specific coaching brief. Critical breaches fire instantly to email and Slack, and stream via HMAC-signed webhooks straight into your own CRM, dialer or agent desktop.
-          </p>
+        <figure class="hp-panel" aria-label="Example of an application answer that does not match the call">
+          <div class="hp-panel-head">
+            <div>
+              <div class="hp-panel-title">Reconciliation</div>
+              <div class="hp-panel-meta">Health and lifestyle questions</div>
+            </div>
+            <span class="hp-pill hp-pill--fail"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>1 does not match</span>
+          </div>
+          <div class="hp-recon">
+            <div class="hp-recon-row hp-recon-head" aria-hidden="true"><span>Question and submitted answer</span><span>Said on the call</span><span>Result</span></div>
+            <div class="hp-recon-row">
+              <div><div class="hp-compare-q">Have you smoked in the last 12 months?</div><div class="hp-compare-a">No</div></div>
+              <div><div class="hp-compare-label">Call 1 · <span class="hp-num">16:05</span></div><div class="hp-compare-quote"><span class="hp-speaker hp-speaker--customer">Customer:</span>I only stopped smoking in March, to be honest.</div></div>
+              <div><span class="hp-pill hp-pill--fail"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>Does not match</span></div>
+            </div>
+            <div class="hp-recon-row">
+              <div><div class="hp-compare-q">Have you been treated for a heart condition?</div><div class="hp-compare-a">No</div></div>
+              <div><div class="hp-compare-label">Call 1 · <span class="hp-num">17:48</span></div><div class="hp-compare-quote"><span class="hp-speaker hp-speaker--customer">Customer:</span>No, nothing like that.</div></div>
+              <div><span class="hp-pill hp-pill--pass"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>Matches</span></div>
+            </div>
+            <div class="hp-recon-row">
+              <div><div class="hp-compare-q">What is your occupation?</div><div class="hp-compare-a">Office manager</div></div>
+              <div><div class="hp-compare-label">Call 2 · <span class="hp-num">04:12</span></div><div class="hp-compare-quote"><span class="hp-speaker hp-speaker--customer">Customer:</span>I'm an office manager at a builders' merchant.</div></div>
+              <div><span class="hp-pill hp-pill--pass"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>Matches</span></div>
+            </div>
+          </div>
+          <figcaption class="hp-caption">Illustrative example with synthetic data.</figcaption>
+        </figure>
+      </div>
+
+      <div class="hp-split" id="live">
+        <div>
+          <h3 class="hp-h2">Breaches flagged while the call is live.</h3>
+          <p class="hp-lede">For calls streamed from Twilio, Amazon Connect or our WebSocket API, CallGuard AI flags breaches it is confident have already happened and sends them to your own systems, over the stream or a webhook signed when you set a secret, before the call <span class="hp-nowrap">ends. <span class="hp-plan">Pro plan</span></span></p>
+          <p class="hp-body">When a streamed call ends, its full transcript is scored against your scorecard like a recorded call. Consent questions on streamed calls always go to your review queue, because a live stream can't confirm who said what. <a class="hp-link" href="/integrations/twilio">How live streaming connects</a></p>
         </div>
+        <figure class="hp-panel" aria-label="Example of a breach alert raised during a live call">
+          <div class="hp-panel-head">
+            <div>
+              <div class="hp-panel-title"><span class="hp-live-dot" aria-hidden="true"></span>Live call in progress</div>
+              <div class="hp-panel-meta">Streamed from Twilio</div>
+            </div>
+            <span class="hp-pill hp-pill--fail"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>Breach</span>
+          </div>
+          <div class="hp-alert-quote">
+            <div class="hp-compare-label">Avoided pressuring the customer to decide · <span class="hp-num">07:42</span></div>
+            <div class="hp-compare-quote"><span class="hp-speaker hp-speaker--agent">Adviser:</span>It's a great price, but you'd really need to decide today.</div>
+          </div>
+          <div class="hp-alert-row"><span>Flagged over the live stream</span><span class="hp-pill hp-pill--pass"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>Sent</span></div>
+          <div class="hp-alert-row"><span>Webhook to your CRM</span><span class="hp-pill hp-pill--pass"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>Delivered</span></div>
+          <figcaption class="hp-caption">Illustrative example with synthetic call data.</figcaption>
+        </figure>
       </div>
     </div>
   </section>
 
-  <!-- ============== Live & Embedded ============== -->
-  <section class="section section-feature" id="live">
-    <div class="container">
-      <span class="section-tag">Live &amp; embedded</span>
-      <h2 class="section-h2">
-        Score the call <span class="accent">while it's still happening.</span>
-      </h2>
-      <p class="lead">
-        Most QA tools wait until a call is over. CallGuard AI streams audio live from your dialer or compliance recorder, transcribes in real time, and flags critical compliance breaches mid-call, before the rep finishes the pitch. One WebSocket protocol covers desk phones, soft-phones and video meeting tools.
-      </p>
+  <!-- ============== Your firm's standard ============== -->
+  <section class="hp-section" id="learning" aria-labelledby="hp-learning">
+    <div class="container hp-split">
+      <div>
+        <h2 class="hp-h2" id="hp-learning">Scored to your firm's standard.</h2>
+        <p class="hp-lede">Every firm writes its own scorecard for what a good advice call looks like. When your compliance team corrects a verdict, CallGuard AI uses your most recent corrections as examples when it scores later calls on that <span class="hp-nowrap">criterion. <span class="hp-plan">Growth and Pro</span></span></p>
+        <dl class="hp-facts" style="margin-top: 32px">
+          <div class="hp-fact">
+            <dt>Unclear consent goes to a person</dt>
+            <dd>When CallGuard can't be sure it was the customer who answered a consent question, the item goes to your review queue instead of being passed automatically.</dd>
+          </div>
+          <div class="hp-fact">
+            <dt>Your best calls as the benchmark</dt>
+            <dd>Mark calls that show good practice, and they become the reference for what good looks like at your firm.</dd>
+          </div>
+          <div class="hp-fact">
+            <dt>Coaching that remembers</dt>
+            <dd>Coaching drafts build on what each adviser was told before, and an insights brief, generated on request, summarises the last week's patterns.</dd>
+          </div>
+        </dl>
+      </div>
+      <figure class="hp-panel" aria-label="Example of a compliance officer correcting a verdict">
+        <div class="hp-panel-head">
+          <div>
+            <div class="hp-panel-title">Score correction</div>
+            <div class="hp-panel-meta">Explained what the policy does not cover</div>
+          </div>
+        </div>
+        <div class="hp-alert-row"><span>AI verdict</span><span class="hp-pill hp-pill--fail"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>Fail</span></div>
+        <div class="hp-alert-row"><span>Corrected by your compliance team</span><span class="hp-pill hp-pill--pass"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>Pass</span></div>
+        <div class="hp-alert-quote">
+          <div class="hp-compare-label">Reason</div>
+          <div class="hp-compare-quote">The adviser read out the exclusions from the policy summary. We count that as covered.</div>
+        </div>
+        <div class="hp-alert-row"><span>Later calls on this criterion</span><span class="hp-pill hp-pill--neutral">Used as a calibration example</span></div>
+        <figcaption class="hp-caption">Illustrative example with synthetic data.</figcaption>
+      </figure>
+    </div>
+  </section>
 
-      <div class="feature-grid feature-grid-3">
-        <div class="feature">
-          <div class="feature-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/>
-            </svg>
+  <!-- ============== Security ============== -->
+  <section class="hp-section hp-section--white" id="security" aria-labelledby="hp-security">
+    <div class="container hp-split hp-split--flip">
+      <div>
+        <h2 class="hp-h2" id="hp-security">Personal data is redacted before scoring.</h2>
+        <p class="hp-lede">Names, payment details and health information are replaced with tags in the transcript before it is stored or scored. Call audio is kept, encrypted, and our transcription provider is named on the sub-processor list. Every redaction category is on by default. Your firm can ask us to turn some off, backed by a DPIA, but payment details can never be turned off.</p>
+        <dl class="hp-facts" style="margin-top: 32px">
+          <div class="hp-fact">
+            <dt>Stored in the UK</dt>
+            <dd>Customer data is stored in a UK region. Audio and transcripts are also processed by the providers named on our <a href="/sub-processors">sub-processor list</a>, some of them outside the UK.</dd>
           </div>
-          <h3>Dialer streaming</h3>
-          <p>First-class adapters for Twilio Media Streams and AWS Connect Voice Streams. Other dialers can connect via our generic WebSocket protocol.</p>
-        </div>
-        <div class="feature">
-          <div class="feature-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
-            </svg>
+          <div class="hp-fact">
+            <dt>Encrypted and scoped</dt>
+            <dd>Audio is encrypted at rest with AES-256-GCM, and advisers can only see their own calls.</dd>
           </div>
-          <h3>Browser audio streaming</h3>
-          <p>Any modern browser can stream audio over the same WebSocket protocol. Useful for soft-phone agent desktops, embedded customer-facing forms, and reference clients you can drop into your own web app without writing the streaming layer.</p>
-        </div>
-        <div class="feature">
-          <div class="feature-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-            </svg>
+          <div class="hp-fact">
+            <dt>Published, not on request</dt>
+            <dd>Read our <a href="/dpa">Data Processing Agreement</a> and <a href="/privacy">privacy policy</a> before you talk to us.</dd>
           </div>
-          <h3>Mid-call breach webhooks</h3>
-          <p>HMAC-SHA256 signed POST to your endpoint within 30 seconds of detection. Retry with exponential backoff. Full audit log of every delivery attempt visible in your dashboard.</p>
-        </div>
-        <div class="feature">
-          <div class="feature-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>
-            </svg>
+        </dl>
+      </div>
+      <figure class="hp-panel" aria-label="Example of a redacted transcript">
+        <div class="hp-panel-head">
+          <div>
+            <div class="hp-panel-title">Transcript as stored</div>
+            <div class="hp-panel-meta">Personal details redacted at transcription</div>
           </div>
-          <h3>Confidence-gated alerts</h3>
-          <p>Live scoring only emits a breach when the AI is &gt;75% confident the criterion has clearly already failed, not "might be" or "could happen." Designed to avoid alert fatigue from day one.</p>
         </div>
-        <div class="feature">
-          <div class="feature-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-            </svg>
-          </div>
-          <h3>Consent capture, audited</h3>
-          <p>The streaming protocol takes a verbal-yes <code>consent.captured</code> event before scoring proceeds. Consent timestamps and excerpts are stored with the call and surfaced in the dashboard, giving you the GDPR Article 6 evidence trail without writing your own logic.</p>
-        </div>
+        <ol class="hp-lines hp-redacted">
+          <li class="hp-line"><span class="hp-time">02:10</span><span><span class="hp-speaker hp-speaker--agent">Adviser:</span>Can I take your full name, please?</span></li>
+          <li class="hp-line"><span class="hp-time">02:13</span><span><span class="hp-speaker hp-speaker--customer">Customer:</span>It's <span class="hp-tag">[NAME_GIVEN_1]</span> <span class="hp-nowrap"><span class="hp-tag">[NAME_FAMILY_1]</span>.</span></span></li>
+          <li class="hp-line"><span class="hp-time">02:20</span><span><span class="hp-speaker hp-speaker--agent">Adviser:</span>Thank you. And the best number to reach you on?</span></li>
+          <li class="hp-line"><span class="hp-time">02:24</span><span><span class="hp-speaker hp-speaker--customer">Customer:</span>It's <span class="hp-nowrap"><span class="hp-tag">[PHONE_NUMBER_1]</span>.</span></span></li>
+        </ol>
+        <figcaption class="hp-caption">Illustrative example with synthetic call data.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <!-- ============== Pricing ============== -->
+  <section class="hp-section" aria-labelledby="hp-pricing">
+    <div class="container hp-pricing">
+      <div>
+        <h2 class="hp-h2" id="hp-pricing">Prices you can see before you call us.</h2>
+        <p class="hp-body">Starting prices per seat, per month, with volume discounts and no multi-year minimum.</p>
+        <ul class="hp-tiers">
+          <li class="hp-tier"><div class="hp-tier-top"><span class="hp-tier-name">Starter</span><span class="hp-price">£199</span></div><p class="hp-tier-adds">Your own scorecard, per-criterion verdicts with the evidence behind them, and email breach alerts.</p></li>
+          <li class="hp-tier"><div class="hp-tier-top"><span class="hp-tier-name">Growth</span><span class="hp-price">£299</span></div><p class="hp-tier-adds">Adds learning from corrections, example calls, coaching memory, Slack alerts and CRM write-back.</p></li>
+          <li class="hp-tier"><div class="hp-tier-top"><span class="hp-tier-name">Pro</span><span class="hp-price">£399</span></div><p class="hp-tier-adds">Adds sale scoring, live mid-call breach detection and priority support.</p></li>
+        </ul>
+        <p class="hp-body"><a class="hp-link" href="/pricing">Compare plans</a></p>
+      </div>
+      <div>
+        <p class="hp-includes-title">Every plan includes</p>
+        <ul class="hp-includes">
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>Transcription with the adviser and customer separated</li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>Personal data redacted from transcripts before scoring</li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>A verdict on each criterion, with the evidence behind it or a note that none was found</li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>Coaching drafts for advisers</li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>No separate per-minute transcription bill</li>
+        </ul>
       </div>
     </div>
   </section>
 
-  <!-- ============== AI Learning ============== -->
-  <section class="section section-alt" id="learning">
+  <!-- ============== Sectors ============== -->
+  <section class="hp-section hp-section--white" id="use-cases" aria-labelledby="hp-sectors">
     <div class="container">
-      <span class="section-tag">AI learning</span>
-      <h2 class="section-h2">
-        An AI that <span class="accent">gets better at your company</span> every week.
-      </h2>
-      <p class="lead">
-        Generic AI scoring is wallpaper. CallGuard AI calibrates to your company's interpretation of "suitable," "fair value" and "good outcome" using your team's own corrections, exemplars and coaching history. After 50 to 100 corrections the AI scores like your senior compliance reviewer, not a baseline that drifts.
-      </p>
-
-      <div class="feature-grid feature-grid-2">
-        <div class="feature">
-          <h3>Per-company corrections feedback loop</h3>
-          <p>Your compliance officer corrects the AI on borderline calls. Each correction becomes a few-shot example feeding the next batch of scoring. The AI learns "your fail" vs "industry fail" automatically.</p>
+      <h2 class="hp-h2" id="hp-sectors">Made for protection and mortgage advice.</h2>
+      <div class="hp-sectors">
+        <div class="hp-sector">
+          <h3 class="hp-h3">Protection advice</h3>
+          <p class="hp-sector-copy">Your scorecard can check ICOBS suitability and demands and needs, consent before an application is submitted, and vulnerability and consumer understanding. Reconciliation, where enabled, checks disclosure answers against the insurer application.</p>
+          <a class="hp-link" href="/use-cases/financial-services">Call monitoring for advice firms</a>
         </div>
-        <div class="feature">
-          <h3>Exemplar call library</h3>
-          <p>Mark gold-standard calls. The AI uses them as the reference bar when scoring future calls, so your company's "good" defines the AI's "good," not someone else's.</p>
-        </div>
-        <div class="feature">
-          <h3>AI Insights, written for your CO</h3>
-          <p>A weekly strategic brief: what changed this week, the patterns worth attention, and 3 to 4 specific actions a compliance director will actually take. Written by Claude, not boilerplate.</p>
-        </div>
-        <div class="feature">
-          <h3>Per-agent coaching memory</h3>
-          <p>Coaching builds on what was said to that agent last week. If they've improved on the flagged area, the AI acknowledges it. If they haven't, it escalates the language. Personalised, not template.</p>
+        <div class="hp-sector">
+          <h3 class="hp-h3">Mortgage advice</h3>
+          <p class="hp-sector-copy">Our MCOB template checks scope of service and fee disclosure, that the recommendation links to stated needs, and the end-of-rate and payment-shock discussion, including uploaded Teams and Zoom recordings.</p>
+          <a class="hp-link" href="/use-cases/mortgage-advice">MCOB mortgage call monitoring</a>
         </div>
       </div>
-    </div>
-  </section>
-
-  <!-- ============== Reconciliation ============== -->
-  <section class="section section-feature" id="data-forms">
-    <div class="container">
-      <span class="section-tag">Reconciliation</span>
-      <h2 class="section-h2">
-        Reconcile the call <span class="accent">against the paperwork.</span>
-      </h2>
-      <p class="lead">
-        For sales teams whose products mean working through a fixed set of provider or lender questions, Reconciliation checks what the customer told your rep against what was submitted on their behalf on the insurer's application. It catches a non-disclosure gap while the paperwork can still be corrected, not after a claim gets declined. Selling protection? Start from our free <a href="/templates/protection-consent-gate-checklist">consent-gate checklist</a>.
+      <p class="hp-also">
+        The same scoring also runs for <a href="/use-cases/bpo">contact centres and BPOs</a>, <a href="/use-cases/collections">debt collections</a> and <a href="/use-cases/outbound-sales">outbound sales</a>.
       </p>
-
-      <div class="feature-grid feature-grid-3">
-        <div class="feature">
-          <div class="feature-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
-            </svg>
-          </div>
-          <h3>Call-to-paperwork reconciliation</h3>
-          <p>Each submitted answer is checked against what the customer actually said on the call, and any answer that doesn't match what was recorded is flagged. That comparison, not the paperwork on its own, is what Reconciliation is for.</p>
-        </div>
-        <div class="feature">
-          <div class="feature-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
-            </svg>
-          </div>
-          <h3>Reading the submitted form</h3>
-          <p>Every answer on the insurer's submitted application PDF is parsed and lined up against the question it belongs to, no manual re-keying. It's the input the reconciliation step above runs on, not a standalone export.</p>
-        </div>
-        <div class="feature">
-          <div class="feature-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="8" y="2" width="8" height="4" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
-            </svg>
-          </div>
-          <h3>Amendment classification</h3>
-          <p>Where the insurer's own audit trail shows an answer was changed after submission, Reconciliation classifies the amendment rather than just flagging a difference, so a benign correction doesn't get treated the same as one that needs a look.</p>
-        </div>
-        <div class="feature">
-          <div class="feature-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/>
-            </svg>
-          </div>
-          <h3>Per-insurer parse profiles</h3>
-          <p>Reconciliation learns the layout of each insurer's application form the first time it sees one, then reuses that parse profile on every submission that follows, so the call-to-form check stays reliable as volume grows.</p>
-        </div>
-        <div class="feature">
-          <div class="feature-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-              <polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>
-            </svg>
-          </div>
-          <h3>Form-change detection, with a fallback</h3>
-          <p>If an insurer changes their form, Reconciliation detects the change rather than silently mis-parsing it. For an insurer it hasn't seen before, it falls back to model-based extraction, so reconciliation still runs on day one.</p>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ============== Use cases ============== -->
-  <section class="section" id="use-cases">
-    <div class="container">
-      <span class="section-tag">Built for</span>
-      <h2 class="section-h2">
-        One <span class="accent">call QA and compliance software</span> engine. Four sectors.
-      </h2>
-      <p class="lead">
-        CallGuard AI is built for any regulated voice conversation, from FCA-regulated advice calls to inbound customer support, debt collections and outbound telesales. The compliance pain is the same; the scorecard differs.
-      </p>
-
-      <div class="usecase-grid">
-        <article class="usecase-card">
-          <div class="usecase-role">For FCA-regulated firms</div>
-          <h3>Financial planning &amp; advice</h3>
-          <p>Score every advice call against ICOBS 5 suitability, FG21/1 vulnerable client indicators, charges + Consumer Duty fair-value tests, and DB-transfer specialist-pathway gates. Compliance evidence the regulator actually expects.</p>
-          <ul class="usecase-list">
-            <li>ATR + capacity for loss screening</li>
-            <li>Vulnerable customer indicators</li>
-            <li>Pension transfer oversight</li>
-            <li>Consumer Duty outcomes evidence</li>
-          </ul>
-          <a href="/use-cases/financial-services" class="usecase-link">FCA call monitoring for advice firms →</a>
-        </article>
-
-        <article class="usecase-card">
-          <div class="usecase-role">For mortgage advisers &amp; brokers</div>
-          <h3>Mortgage advice</h3>
-          <p>Score every mortgage advice conversation against MCOB: scope of service, fee and procuration-fee disclosure, repayment-method rationale, payment shock at the end of the initial rate, and affordability tested at a higher rate. Screen-share appointments score the same as dialer calls.</p>
-          <ul class="usecase-list">
-            <li>Fee and commission disclosure</li>
-            <li>Suitability linked to stated needs</li>
-            <li>Affordability and vulnerability screening</li>
-            <li>Teams and Zoom recordings ingested</li>
-          </ul>
-          <a href="/use-cases/mortgage-advice" class="usecase-link">MCOB mortgage call monitoring →</a>
-        </article>
-
-        <article class="usecase-card">
-          <div class="usecase-role">For contact centres &amp; BPOs</div>
-          <h3>Customer service &amp; outbound</h3>
-          <p>100% QA coverage replaces a 5% sample. Multi-tenant client portals for BPOs running multiple programmes. Mid-call breach detection catches urgency-language and consent failures before the customer hangs up.</p>
-          <ul class="usecase-list">
-            <li>Empathy + first-call-resolution scoring</li>
-            <li>TPS / TCPA outbound compliance</li>
-            <li>Multi-tenant client scorecards</li>
-            <li>Customer share links, read-only client portals</li>
-          </ul>
-          <a href="/use-cases/bpo" class="usecase-link">Contact centre &amp; BPO QA software →</a>
-        </article>
-
-        <article class="usecase-card">
-          <div class="usecase-role">For collections teams</div>
-          <h3>Debt collections</h3>
-          <p>CONC, Ofcom and mini-Miranda rules scored on 100% of collections calls. Live breach alerts before the call ends, a full audit trail for the regulator, and vulnerability handling screened on every conversation.</p>
-          <ul class="usecase-list">
-            <li>FCA CONC forbearance and fairness rules</li>
-            <li>Ofcom no-call windows and dialler conduct</li>
-            <li>Mini-Miranda on US-facing books</li>
-            <li>Vulnerability and complaint-route triggers</li>
-          </ul>
-          <a href="/use-cases/collections" class="usecase-link">CONC collections call compliance →</a>
-        </article>
-
-        <article class="usecase-card">
-          <div class="usecase-role">For outbound sales &amp; lead gen</div>
-          <h3>Outbound sales</h3>
-          <p>PECR consent capture, TPS list checks, no-pressure-language rules and Consumer Duty fair-value tests scored on every connected call. Catch the breach before the ICO does, with mid-call alerts on the calls that matter.</p>
-          <ul class="usecase-list">
-            <li>PECR consent and TPS compliance</li>
-            <li>Pressure and urgency-language detection</li>
-            <li>Consent capture, timestamped and audited</li>
-            <li>Per-campaign scorecards and alerts</li>
-          </ul>
-          <a href="/use-cases/outbound-sales" class="usecase-link">Outbound sales call compliance →</a>
-        </article>
-
-      </div>
     </div>
   </section>
 
   <!-- ============== FAQ ============== -->
-  <section class="section section-alt" id="faq">
-    <div class="container">
-      <span class="section-tag">FAQ</span>
-      <h2 class="section-h2">
-        Common questions, <span class="accent">answered.</span>
-      </h2>
-
-      <div class="faq-list">
-        <details class="faq-item">
-          <summary>What is AI call QA and why does it matter?</summary>
-          <div class="faq-body">
-            <p>AI call quality assurance uses speech recognition and large language models to transcribe and score every call your team takes against your scorecard, instead of a manual 5% sample done in spreadsheets. For contact centres and regulated businesses it means 100% coverage rather than statistical guesswork, breach detection in seconds rather than weeks, and systematic compliance evidence rather than anecdotes.</p>
-          </div>
+  <section class="hp-section" id="faq" aria-labelledby="hp-faq">
+    <div class="container hp-faq">
+      <div>
+        <h2 class="hp-h2" id="hp-faq">Questions compliance teams ask.</h2>
+        <p class="hp-body">Something else? Email <a class="hp-link" href="mailto:hello@callguardai.co.uk" data-demo-skip="true">hello@callguardai.co.uk</a>.</p>
+      </div>
+      <div class="hp-faq-list">
+        <details class="hp-q">
+          <summary>How does CallGuard AI score a call?<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></summary>
+          <div class="hp-a"><p>Each call is transcribed with the adviser and customer separated, and personal details in the transcript are replaced with tags. The AI gives each criterion on your scorecard its own verdict, with the transcript evidence it was decided on, or a note that none was found. Your corrections and example calls shape how future calls are scored.</p></div>
         </details>
-
-        <details class="faq-item">
-          <summary>How does CallGuard AI score calls?</summary>
-          <div class="faq-body">
-            <p>Each call is transcribed with speaker separation, then Claude scores it against your scorecard one criterion at a time. Every verdict is backed by a direct quote from the transcript so you can see why the AI passed or failed an item. Your knowledge base, prior compliance corrections and exemplar calls all feed into the prompt so the AI calibrates to your company's interpretation rather than a generic baseline.</p>
-          </div>
+        <details class="hp-q">
+          <summary>Does it support Consumer Duty, ICOBS and MCOB?<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></summary>
+          <div class="hp-a"><p>CallGuard AI scores against your firm's own scorecard, so it checks what your compliance team sets: ICOBS 5 suitability for protection, MCOB 4.4A initial disclosure and MCOB 4.7A suitability for mortgages, the vulnerability characteristics described in FCA guidance FG21/1, and call-level evidence for the consumer understanding and consumer support outcomes (PRIN 2A.5 and 2A.6). Each verdict shows the transcript evidence behind it.</p></div>
         </details>
-
-        <details class="faq-item">
-          <summary>Does it integrate with Twilio, AWS Connect or our existing dialer?</summary>
-          <div class="faq-body">
-            <p>Yes. There are first-class adapters for Twilio Media Streams and AWS Connect Voice Streams. Other dialers can connect via our generic WebSocket protocol. You can also drag-and-drop recordings or push calls in via our REST API.</p>
-          </div>
+        <details class="hp-q">
+          <summary>Can it score a sale made over several calls?<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></summary>
+          <div class="hp-a"><p>Yes, on the Pro plan. When a sale is recorded in Zoho CRM, CallGuard AI gathers that customer's calls from the sale window and scores them together as one sale, so a disclosure made on an earlier call counts when the application is submitted on a later one.</p></div>
         </details>
-
-        <details class="faq-item">
-          <summary>Can I display CallGuard results inside my own CRM or agent desktop?</summary>
-          <div class="faq-body">
-            <p>Yes. Mint an API key in the dashboard, push calls in with a POST, then pull the result back per call. The result includes the score percentage, pass/fail per criterion, evidence quotes, breach list and the coaching draft. Render it however you want. Live streaming sessions also fire HMAC-signed webhooks on breach + scored events to your own CRM or agent desktop.</p>
-          </div>
+        <details class="hp-q">
+          <summary>How is customer data protected?<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></summary>
+          <div class="hp-a"><p>Names, payment details and health information are replaced with tags in the transcript before it is stored or scored. Call audio is kept, encrypted at rest with AES-256-GCM. Customer data is stored in the UK, and advisers can only see their own calls. The providers that process audio and transcripts, some of them outside the UK, are named on our <a href="/sub-processors">sub-processor list</a>, and our <a href="/dpa">Data Processing Agreement</a> is published.</p></div>
         </details>
-
-        <details class="faq-item">
-          <summary>Does this support FCA Consumer Duty and the four outcomes?</summary>
-          <div class="faq-body">
-            <p>Yes. CallGuard AI scores against your firm's own scorecard, which can encode ICOBS 5 suitability, FG21/1 vulnerable client indicators, charges and fair-value tests, and the four Consumer Duty outcomes (products and services, price and value, consumer understanding, consumer support). Every verdict is evidenced by a transcript quote, which is the audit trail the FCA expects.</p>
-          </div>
+        <details class="hp-q">
+          <summary>Which diallers and systems does it work with?<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></summary>
+          <div class="hp-a"><p>CloudTalk calls are pulled in and scored automatically, and results can be written back to Zoho CRM. On the Pro plan, Twilio Media Streams calls, and Amazon Connect calls through a small Lambda bridge, can stream in live. You can also upload recordings or send calls through the REST API.</p></div>
         </details>
-
-        <details class="faq-item">
-          <summary>How is customer data secured?</summary>
-          <div class="faq-body">
-            <p>All audio is encrypted at rest with AES-256-GCM. Transport is TLS 1.2+. Access to the dashboard is JWT-authenticated with role-based access control. Data is hosted in the UK. A UK GDPR Article 28 Data Processing Agreement is available, and we publish our sub-processor list publicly so you know exactly who handles your data.</p>
-          </div>
+        <details class="hp-q">
+          <summary>How do we get started?<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></summary>
+          <div class="hp-a"><p>Share your existing scorecard and we set up your account. We put a DPA in place before you share any real recordings, and connecting CloudTalk or Zoho CRM can follow once you are happy with the results; sale scoring, and Reconciliation where it is switched on, start once Zoho CRM is connected. There is no 90-day pilot and no integration project to begin.</p></div>
         </details>
-
-        <details class="faq-item">
-          <summary>How long does it take to set up?</summary>
-          <div class="faq-body">
-            <p>Onboard at 9am and have 100 calls scored before lunch. Each call is transcribed and scored in under a minute. There is no 90-day pilot, no solution architects, and no integration project. Upload an existing scorecard CSV, drop in any QA manuals or product cheatsheets to the knowledge base, and start scoring.</p>
-          </div>
-        </details>
-
-        <details class="faq-item">
-          <summary>How does pricing work?</summary>
-          <div class="faq-body">
-            <p>Pricing starts from £199 per seat, per month, with volume discounts as your team grows and no multi-year minimum. The AI learning, exemplar library and coaching memory are included on Growth and Pro plans. Full details on the <a href="/pricing">pricing page</a>, or get an exact quote by emailing <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20pricing">hello@callguardai.co.uk</a>.</p>
-          </div>
+        <details class="hp-q">
+          <summary>How does pricing work?<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></summary>
+          <div class="hp-a"><p>Plans start from £199, £299 and £399 per seat, per month, with volume discounts and no multi-year minimum. Full details are on the <a href="/pricing">pricing page</a>.</p></div>
         </details>
       </div>
     </div>
   </section>
 
-  <!-- ============== Coming next ============== -->
-  <section class="section section-coming" id="whats-coming">
-    <div class="container">
-      <span class="section-tag section-tag-light">What's coming</span>
-      <h2 class="section-h2 section-h2-light">
-        Live in-call coaching <span class="accent-light">·</span> Field-sales mobile.
-      </h2>
-      <p class="lead lead-light">
-        Beyond breach detection: a real-time AI coach that whispers context-aware nudges to the rep mid-call, things like <em>"ask about capacity for loss now," "soften the close," "screen for vulnerability,"</em> via earpiece, on-screen prompt or haptic pulse. Personalised to each rep using your company's prior coaching memory.
-      </p>
-      <p class="lead lead-light">
-        For doorstep and in-person field sales, a native iOS / Android mobile capture layer is on the roadmap, scoped against the first design partner. The streaming protocol is already live; the SDK gets built to fit a real customer's dialer and CRM rather than speculatively.
-      </p>
-      <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20design%20partner%20pilot" class="btn btn-light btn-lg">Talk to us about a design-partner pilot →</a>
-    </div>
-  </section>
-
-  <!-- ============== Final CTA ============== -->
-  <section class="section section-cta" id="contact">
-    <div class="container">
-      <div class="cta-card">
-        <h2 class="cta-headline">See your floor scored, today.</h2>
-        <p class="cta-sub">
-          No 90-day pilot. No solution architects. No integration project. 15 minutes with a real engineer (not a BDR) and you'll see CallGuard AI scoring real conversations against your scorecard. Bring 5 sample recordings; we'll demo on your data, not ours.
-        </p>
-        <div class="cta-buttons">
-          <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20demo%20request" class="btn btn-primary btn-lg">Book a 15-min demo</a>
-          <a href="mailto:hello@callguardai.co.uk" class="btn btn-ghost btn-lg">hello@callguardai.co.uk</a>
-        </div>
-
-        <div class="cta-meta">
-          <span>UK-based</span>
-          <span class="dot">·</span>
-          <span>UK-hosted</span>
-          <span class="dot">·</span>
-          <span>Privacy-by-design build</span>
-          <span class="dot">·</span>
-          <span>DPA on request</span>
-          <span class="dot">·</span>
-          <span>AES-256-GCM file encryption</span>
-          <span class="dot">·</span>
-          <span><a href="/sub-processors">Sub-processor list</a></span>
-        </div>
+  <!-- ============== Closing CTA ============== -->
+  <section class="hp-section hp-close" id="contact" aria-labelledby="hp-close">
+    <div class="container hp-close-inner">
+      <h2 class="hp-h2" id="hp-close">See calls scored against a scorecard like yours.</h2>
+      <p class="hp-lede">In a short demo we score synthetic calls against a scorecard like yours. When you want to try your own recordings, we'll put a DPA in place before you share any.</p>
+      <div class="hp-close-actions">
+        <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request" class="btn btn-primary btn-lg">Request a demo</a>
+        <a href="mailto:hello@callguardai.co.uk" class="hp-link" data-demo-skip="true">Or email hello@callguardai.co.uk</a>
       </div>
+      <p class="hp-body hp-reassure">We usually reply the same working day. Read how we use your details in our <a class="hp-link" href="/privacy">privacy policy</a>.</p>
     </div>
   </section>
 
@@ -706,16 +591,17 @@
     <div class="footer-brand">
       <a class="brand brand-footer" href="#top" aria-label="CallGuard AI home"><img class="brand-logo brand-logo--footer" src="/brand/svg/callguard-logo-horizontal-dark.svg" alt="CallGuard AI" width="160" height="34" /></a>
       <p class="footer-strapline">Smarter calls. Safer business.</p>
-      <p class="footer-tag">AI compliance scoring for every customer conversation.</p>
+      <p class="footer-tag">AI compliance scoring for protection and mortgage advice calls.</p>
     </div>
 
     <div class="footer-links">
       <div class="footer-col">
-        <h5>Product</h5>
+        <h2 class="footer-heading">Product</h2>
         <a href="#how-it-works">How it works</a>
-        <a href="#live">Live &amp; embedded</a>
-        <a href="#learning">AI learning</a>
         <a href="#data-forms">Reconciliation</a>
+        <a href="#live">Live scoring</a>
+        <a href="#learning">Your standard</a>
+        <a href="#security">Security</a>
         <a href="/pricing">Pricing</a>
         <a href="/compare/">Compare</a>
         <a href="/about">About</a>
@@ -723,7 +609,7 @@
         <a href="/blog/">Blog</a>
       </div>
       <div class="footer-col">
-        <h5>Use cases</h5>
+        <h2 class="footer-heading">Use cases</h2>
         <a href="/use-cases/financial-services">Financial services</a>
         <a href="/use-cases/mortgage-advice">Mortgage advice</a>
         <a href="/use-cases/bpo">Contact centres &amp; BPOs</a>
@@ -731,14 +617,14 @@
         <a href="/use-cases/outbound-sales">Outbound sales</a>
       </div>
       <div class="footer-col">
-        <h5>Integrations</h5>
+        <h2 class="footer-heading">Integrations</h2>
         <a href="/integrations/twilio">Twilio</a>
         <a href="/integrations/cloudtalk">CloudTalk</a>
         <a href="/integrations/microsoft-teams">Microsoft Teams</a>
-        <a href="/integrations/aws-connect">AWS Connect</a>
+        <a href="/integrations/aws-connect">Amazon Connect</a>
       </div>
       <div class="footer-col">
-        <h5>Legal</h5>
+        <h2 class="footer-heading">Legal</h2>
         <a href="/privacy">Privacy policy</a>
         <a href="/terms">Terms of service</a>
         <a href="/dpa">Data processing agreement</a>
@@ -749,11 +635,12 @@
 
   <div class="container footer-bottom">
     <span>© 2026 CallGuard AI.</span>
-    <span>UK-based · GDPR-compliant by default</span>
+    <span>UK-based · Data stored in the UK</span>
   </div>
 </footer>
 
-<script defer src="/script.js?v=4"></script>
+<script defer src="/script.js?v=5"></script>
+<script defer src="/home.js?v=2"></script>
 <script defer src="/analytics.js?v=2"></script>
 
 </body>
