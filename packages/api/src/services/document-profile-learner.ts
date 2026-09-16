@@ -18,6 +18,12 @@ import {
   type QuestionCheckMode,
   type RiskDirection,
 } from './reconciliation.js';
+import {
+  answerCategoryOf,
+  EMAIL_PATTERN,
+  UK_POSTCODE_PATTERN,
+  type AnswerCategory,
+} from './application-redaction.js';
 
 // ============================================================
 // Learning a document profile.
@@ -42,6 +48,218 @@ import {
 // ============================================================
 
 const DEFAULT_LEARNER_MODEL = CLAUDE_MODELS.HAIKU;
+
+// ============================================================
+// Redacting a document BEFORE it is learned from.
+//
+// verifyProposal (below) runs the proposed config against the real, unredacted
+// rawText — that is what makes the profile trustworthy. But the model that
+// PROPOSES the config only ever needs to see labels, delimiters and section
+// boundaries: it is describing how to read the document, not what is in it
+// (see the module comment above). What was actually happening was the whole
+// document going to Claude unredacted — up to HEAD_CHARS + TAIL_CHARS of an
+// insurance application, which is a name, a date of birth, a home address, a
+// policy number and, for anything underwritten, the health disclosures
+// themselves. None of that is needed to describe a document's shape.
+//
+// This mirrors the redaction a transcript already gets before it is stored or
+// scored (typed placeholders in place of values — see application-redaction.ts
+// and transcription.ts's Deepgram categories) applied to the other side of a
+// reconciliation: the document rather than the call. It runs unconditionally,
+// not behind a tenant's transcript redaction settings, because this protects
+// one specific model call rather than implementing the tenant's DPIA.
+// ============================================================
+
+/** Values the parser itself prints to mean "no answer given" — not PII, and
+ *  worth the model seeing intact so it can propose unansweredMarkers. */
+const NON_PII_MARKER =
+  /^(unanswered|not\s*answered|n\/?a|none|not\s*provided|no\s*answer|unknown|not\s*applicable|not\s*given|blank|-)$/i;
+
+/** A label naming an identifier the insurer issued for this sale — a policy,
+ *  plan, application, quote or membership number. Not itself personal data,
+ *  but it identifies one customer's paperwork as precisely as a name would. */
+const POLICY_LABEL = /\b(?:polic(?:y)?|plan|application|quote|membership)\s*(?:no\.?|number|ref(?:erence)?)\b/i;
+
+/** A label whose value is (or plausibly is) a person's name — broader than
+ *  answerCategoryOf's, which is scoped to the narrower set of exact labels a
+ *  CONFIRMED profile's fields carry. Raw document text says "Your name",
+ *  "Adviser name", "Next of kin name" — none of which that stricter matcher
+ *  claims. Product/company/scheme names are excluded because they are not a
+ *  person's. */
+const NON_PERSONAL_NAME_LABEL = /\b(company|product|plan|scheme|policy|fund|employer|business|firm)\s+name\b/i;
+/** A label that names a PERSON by their role rather than by saying "name" at
+ *  all — "Applicant: Mr Sample Applicant", "Person covered: ...". Whatever
+ *  answer sits against one of these identifies whose paperwork this is. */
+const PERSONAL_ROLE_LABEL =
+  /^(applicant|customer|client|policyholder|adviser|advisor|account\s*holder|payer|next\s+of\s+kin|beneficiary|life\s+assured|person\s+covered)$/i;
+function looksLikePersonalNameLabel(label: string): boolean {
+  if (PERSONAL_ROLE_LABEL.test(label.trim())) return true;
+  return /\bname\b/i.test(label) && !NON_PERSONAL_NAME_LABEL.test(label);
+}
+
+/** Strip a leading possessive so "Your DOB" and "The applicant's address" read
+ *  as the bare field answerCategoryOf already recognises. */
+const LABEL_POSSESSIVE_PREFIX = /^\s*(your|the|applicant'?s?|customer'?s?|client'?s?)\s+/i;
+
+/** The literal that separates a question from its answer in the question_answer
+ *  strategy's dominant real phrasing ("Your answer(s):", "Your answer:"). Every
+ *  value that follows one — health disclosures included — is masked the same
+ *  way regardless of what the question was about, because the point is the
+ *  document's shape, not its content. */
+const ANSWER_DELIMITER_LABEL = /^\s*(?:your\s+)?(?:answer(?:\(s\))?|response)\s*$/i;
+
+const CATEGORY_TAGS: Partial<Record<AnswerCategory, string>> = {
+  email_address: 'EMAIL_ADDRESS',
+  location_address: 'LOCATION_ADDRESS',
+  dob: 'DOB',
+  numbers: 'PHONE_NUMBER',
+};
+
+/** Which typed tag, if any, a "Label:" line's value should be replaced with. */
+function resolveLabelTag(label: string): string | null {
+  if (ANSWER_DELIMITER_LABEL.test(label)) return 'VALUE';
+  if (POLICY_LABEL.test(label)) return 'POLICY_NUMBER';
+  if (looksLikePersonalNameLabel(label)) return 'NAME';
+  const normalised = label.replace(LABEL_POSSESSIVE_PREFIX, '').trim();
+  const category = answerCategoryOf(normalised) ?? answerCategoryOf(label);
+  return category && category !== 'name' ? (CATEGORY_TAGS[category] ?? null) : null;
+}
+
+/** A line that continues the PREVIOUS line's value, for a field extraction has
+ *  wrapped onto its own line (a multi-line address is the case that matters —
+ *  "1 Sample Street\nSampletown\nAB12 3CD"). Anything that looks like the start
+ *  of something else — blank, a fresh "Label:" line, a question, or an
+ *  ALL-CAPS heading — ends the value instead. */
+function looksLikeContinuationLine(line: string): boolean {
+  const trimmed = line.trim();
+  if (trimmed === '') return false;
+  if (trimmed.includes(':')) return false;
+  if (trimmed.endsWith('?')) return false;
+  const letters = trimmed.replace(/[^A-Za-z]/g, '');
+  if (letters.length >= 4 && letters === letters.toUpperCase()) return false;
+  return true;
+}
+
+/**
+ * Mask "Label: value" lines (label_value strategy, and the inline identity
+ * fields at the top of a question_answer pack) and the value that follows a
+ * "Your answer(s):" delimiter (question_answer strategy), wherever the label
+ * says the value is personal.
+ *
+ * Line-based rather than a single regex, because a masked value's extent is
+ * not always the rest of the line — an address wraps onto lines with no label
+ * of their own, and has to be told apart from the next real field.
+ */
+function redactLabelledLines(text: string): string {
+  const lines = text.split('\n');
+  const out: string[] = [];
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i]!;
+    const match = /^([^\n:]{1,80}):[ \t]*(.*)$/.exec(line);
+    if (!match) {
+      out.push(line);
+      i++;
+      continue;
+    }
+    const rawLabel = match[1];
+    const rawValue = match[2];
+    const tag = resolveLabelTag(rawLabel.trim());
+    if (!tag) {
+      out.push(line);
+      i++;
+      continue;
+    }
+    const inlineValue = rawValue.trim();
+    const maskInline = inlineValue !== '' && !NON_PII_MARKER.test(inlineValue);
+    out.push(maskInline ? `${rawLabel}: [${tag}]` : line);
+    i++;
+
+    // A wrapped value is only expected for an address, or a label whose value
+    // was pushed onto the next line entirely (the common "Label:\nvalue" shape
+    // seen from two-column extraction).
+    if (tag === 'LOCATION_ADDRESS' || inlineValue === '') {
+      let consumed = false;
+      while (i < lines.length && looksLikeContinuationLine(lines[i]!)) {
+        consumed = true;
+        i++;
+      }
+      if (consumed) out.push(`[${tag}]`);
+    }
+  }
+  return out.join('\n');
+}
+
+/**
+ * Mask the quote-portal export's answer lines — "<timestamp> - <value>
+ * (<name recorded by>)", with the value sometimes wrapping onto the line
+ * before the attribution. Both the disclosed value and the name of whoever
+ * recorded it are masked; the timestamp is kept, because it carries no
+ * identity and the model needs the surrounding shape intact to write a
+ * three-group answer_line_pattern.
+ *
+ * Two passes because an attribution can be missing (the withdrawn-disclosures
+ * section) as well as present, and a single pattern permissive enough to catch
+ * both ends up unable to tell "no attribution on this line" from "attribution
+ * two lines down" — see PORTAL_WITHDRAWN_SECTION in application-pdf.fixtures.ts
+ * for why both shapes are real.
+ */
+function redactPortalAnswerLines(text: string): string {
+  const TIMESTAMP = String.raw`\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\s+\d{1,2}:\d{2}`;
+  // Attributed, possibly wrapping one line before the "(name)": bounded to at
+  // most one extra line, which is the only wrap real exports have produced —
+  // an unbounded scan would risk reaching across unrelated content to the next
+  // attribution in the document. That extra line must not itself start a new
+  // timestamped entry, or two consecutive amendments to the same answer (the
+  // portal keeps every edit) collapse into one match and one of them vanishes
+  // from what the model sees instead of being masked in place.
+  const attributed = new RegExp(
+    `^(${TIMESTAMP})\\s*-\\s*([^\\n]*(?:\\n(?!${TIMESTAMP})[^\\n]*)?)\\s*\\(([^)\\n]*)\\)[ \\t]*$`,
+    'gm'
+  );
+  let out = text.replace(attributed, (_m, ts: string) => `${ts} - [VALUE] ([NAME])`);
+  // Unattributed: only reached for lines the pass above did not already
+  // replace, which the marker text it left behind makes checkable. The
+  // lookahead sits directly after the literal "-", before either side's
+  // \s*, because a \s* AFTER it is backtrackable — an engine that cannot
+  // satisfy the rest of the pattern will give the lookahead's position back
+  // one whitespace character at a time until it no longer lands on
+  // "[VALUE]", defeating the guard silently.
+  const unattributed = new RegExp(`^(${TIMESTAMP})\\s*-(?!\\s*\\[VALUE\\])\\s*(.+)$`, 'gm');
+  out = out.replace(unattributed, (_m, ts: string) => `${ts} - [VALUE]`);
+  return out;
+}
+
+/** "Your plan number 900000001" — the same identifier POLICY_LABEL catches on
+ *  a "Label:" line, but stated inline in a sentence with no colon at all. */
+function redactInlinePolicyNumbers(text: string): string {
+  return text.replace(
+    /\b((?:polic(?:y)?|plan|application|quote|membership)\s*(?:no\.?|number|ref(?:erence)?))\b[ \t]*:?[ \t]*([A-Z0-9][A-Z0-9\-/]{3,})/gi,
+    (_m, label: string) => `${label} [POLICY_NUMBER]`
+  );
+}
+
+/**
+ * Redact values from a raw document's text before any of it is sent to Claude
+ * to propose a parse profile.
+ *
+ * Deliberately over-inclusive rather than precise: this text is discarded the
+ * moment the model call returns (verifyProposal re-parses the untouched
+ * rawText — see learnDocumentProfile), so a value masked that did not strictly
+ * need to be costs nothing. A value that should have been masked and was not
+ * costs a customer's personal data landing in a third party's logs.
+ */
+export function redactValuesForLearning(rawText: string): string {
+  let text = redactPortalAnswerLines(rawText);
+  text = redactLabelledLines(text);
+  text = redactInlinePolicyNumbers(text);
+  // Freestanding safety nets for values that reached here without a
+  // recognisable label at all — the same shapes application-redaction.ts
+  // scrubs out of a contaminated field on the parsed side of a reconciliation.
+  text = text.replace(EMAIL_PATTERN, '[EMAIL_ADDRESS]');
+  text = text.replace(UK_POSTCODE_PATTERN, '[LOCATION_ZIP]');
+  return text;
+}
 
 /**
  * How much of the document the model sees. The structure is established in the
@@ -258,7 +476,9 @@ export async function learnDocumentProfile(
   const { default: Anthropic } = await import('@anthropic-ai/sdk');
   const client = new Anthropic({ apiKey: config.anthropic.apiKey });
   const model = modelOverride ?? DEFAULT_LEARNER_MODEL;
-  const prompt = buildLearningPrompt(sampleForLearning(rawText));
+  // Only the redacted sample leaves the process. verifyProposal below re-parses
+  // the real rawText, so nothing about the parse's accuracy depends on this.
+  const prompt = buildLearningPrompt(sampleForLearning(redactValuesForLearning(rawText)));
 
   const response = await client.messages.stream(
     {
