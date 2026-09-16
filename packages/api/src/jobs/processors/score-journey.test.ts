@@ -475,4 +475,154 @@ describe('processScoreJourney — attributable sales route as before', () => {
     expect(itemScoreInsert('consentFromContext')!.sql).toContain("'manual_review'");
     expect(journeyUpdate().params[3]).toBe(100);
   });
+
+  // The same shape with a two-sided, unflagged context call: it is under the
+  // floor on confidence alone, and that is still the only thing that holds a
+  // checkpoint. The wrap-up carries the score.
+  it('on a multi-call sale, an unflagged earlier call at 0.3 holds only the consent gate quoted from it', async () => {
+    setup({
+      calls: [
+        call('call-1', 'context', { transcript_text: ATTRIBUTABLE, speaker_attribution_confidence: 0.3 }),
+        call('call-2', 'wrap_up', {
+          call_date: '2026-09-02',
+          created_at: '2026-09-02T10:00:00Z',
+          transcript_text: ATTRIBUTABLE,
+          speaker_attribution_confidence: 0.8,
+        }),
+      ],
+      items: [
+        item('disclosure'),
+        item('consentFromWrapUp', { consent_gate: true }),
+        item('consentFromContext', { consent_gate: true }),
+      ],
+      aiScores: { disclosure: 0, consentFromWrapUp: 1, consentFromContext: 1 },
+      evidence: {
+        disclosure: '[Call 1] "quote"',
+        consentFromWrapUp: '[Call 2] "quote"',
+        consentFromContext: '[Call 1] "quote"',
+      },
+    });
+
+    await run();
+
+    expect(itemScoreInsert('disclosure')!.params[2]).toBe('fail');
+    expect(txCalls.some((c) => c.sql.includes('INSERT INTO breaches') && c.params.includes('disclosure'))).toBe(true);
+    expect(itemScoreInsert('consentFromWrapUp')!.params[2]).toBe('pass');
+    expect(itemScoreInsert('consentFromContext')!.sql).toContain("'manual_review'");
+    expect(journeyUpdate().params[3]).toBe(50);
+  });
+});
+
+// An earlier call on a sale whose wrap-up IS attributable. The sale-level rule
+// does not fire, so what decides a consent gate quoted from the earlier call is
+// the per-checkpoint release. That release must ask the same question the
+// sale-level rule asks of the wrap-up (can this call be attributed at all?) as
+// well as checking the confidence number, because a flagged or one-sided call
+// can still carry 0.5 or more.
+describe('processScoreJourney — an earlier call that cannot be attributed', () => {
+  it('keeps a consent gate in review when it is quoted from an earlier call with flagged labels at 0.75', async () => {
+    setup({
+      calls: [
+        call('call-1', 'context', {
+          transcript_text: ATTRIBUTABLE,
+          speaker_attribution_confidence: 0.75,
+          speaker_integrity_flag: 'model_verdict_conflict',
+        }),
+        call('call-2', 'wrap_up', {
+          call_date: '2026-09-02',
+          created_at: '2026-09-02T10:00:00Z',
+          transcript_text: ATTRIBUTABLE,
+          speaker_attribution_confidence: 0.8,
+        }),
+      ],
+      items: [
+        item('disclosure'),
+        item('consentFromWrapUp', { consent_gate: true }),
+        item('consentFromFlagged', { consent_gate: true }),
+      ],
+      aiScores: { disclosure: 1, consentFromWrapUp: 1, consentFromFlagged: 1 },
+      evidence: {
+        disclosure: '[Call 1] "quote"',
+        consentFromWrapUp: '[Call 2] "quote"',
+        consentFromFlagged: '[Call 1] "quote"',
+      },
+    });
+
+    await run();
+
+    expect(itemScoreInsert('consentFromFlagged')!.sql).toContain("'manual_review'");
+    expect(itemScoreInsert('consentFromFlagged')!.sql).not.toMatch(/'pass'|'fail'/);
+    // The wrap-up still carries the sale: nothing else is withheld.
+    expect(itemScoreInsert('disclosure')!.params[2]).toBe('pass');
+    expect(itemScoreInsert('consentFromWrapUp')!.params[2]).toBe('pass');
+    expect(journeyUpdate().params[3]).toBe(100);
+  });
+
+  // Same, with a third call under the floor, so every consent gate is held
+  // before scoring and the flagged call's quote reaches the post-scoring release
+  // rather than being auto-scored at classification.
+  it('does not release a consent gate quoted from a flagged call at 0.75 when another call already held it', async () => {
+    setup({
+      calls: [
+        call('call-1', 'context', {
+          transcript_text: ATTRIBUTABLE,
+          speaker_attribution_confidence: 0.75,
+          speaker_integrity_flag: 'partial_inversion',
+        }),
+        call('call-2', 'context', {
+          call_date: '2026-09-02',
+          created_at: '2026-09-02T09:00:00Z',
+          transcript_text: ATTRIBUTABLE,
+          speaker_attribution_confidence: 0.3,
+        }),
+        call('call-3', 'wrap_up', {
+          call_date: '2026-09-03',
+          created_at: '2026-09-03T10:00:00Z',
+          transcript_text: ATTRIBUTABLE,
+          speaker_attribution_confidence: 0.8,
+        }),
+      ],
+      items: [
+        item('disclosure'),
+        item('consentFromWrapUp', { consent_gate: true }),
+        item('consentFromFlagged', { consent_gate: true }),
+      ],
+      aiScores: { disclosure: 1, consentFromWrapUp: 1, consentFromFlagged: 1 },
+      evidence: {
+        disclosure: '[Call 1] "quote"',
+        consentFromWrapUp: '[Call 3] "quote"',
+        consentFromFlagged: '[Call 1] "quote"',
+      },
+    });
+
+    await run();
+
+    expect(itemScoreInsert('consentFromFlagged')!.sql).toContain("'manual_review'");
+    expect(itemScoreInsert('consentFromWrapUp')!.params[2]).toBe('pass');
+    expect(itemScoreInsert('disclosure')!.params[2]).toBe('pass');
+    expect(journeyUpdate().params[3]).toBe(100);
+  });
+
+  it('keeps a consent gate in review when it is quoted from a one-sided earlier call at 1.0', async () => {
+    setup({
+      calls: [
+        call('call-1', 'context', { transcript_text: ONE_SIDED, speaker_attribution_confidence: 1.0 }),
+        call('call-2', 'wrap_up', {
+          call_date: '2026-09-02',
+          created_at: '2026-09-02T10:00:00Z',
+          transcript_text: ATTRIBUTABLE,
+          speaker_attribution_confidence: 0.8,
+        }),
+      ],
+      items: [item('disclosure'), item('consent', { consent_gate: true })],
+      aiScores: { disclosure: 1, consent: 1 },
+      evidence: { disclosure: '[Call 1] "quote"', consent: '[Call 1] "quote"' },
+    });
+
+    await run();
+
+    expect(itemScoreInsert('consent')!.sql).toContain("'manual_review'");
+    expect(itemScoreInsert('disclosure')!.params[2]).toBe('pass');
+    expect(journeyUpdate().params[3]).toBe(100);
+  });
 });
