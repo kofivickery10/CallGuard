@@ -63,7 +63,11 @@ function mockScoredCall(
     .mockResolvedValueOnce(rules)
     .mockResolvedValueOnce(
       itemScores.map((s) => ({ scorecard_item_id: ITEM, label: 'Consent to proceed', ...s }))
-    );
+    )
+    // Everything after that is the alert_events claim (migration 117), which
+    // returns the row it inserted when this firm has not already been told
+    // about this checkpoint. These calls are all first-time alerts.
+    .mockResolvedValue([{ id: 'alert-event-1' }]);
 }
 
 beforeEach(() => {

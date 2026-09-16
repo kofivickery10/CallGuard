@@ -11,6 +11,7 @@ import {
   type SpeakerIntegrityFlag,
 } from '../../services/speaker-integrity.js';
 import { deliverCallScored } from '../../services/webhook-delivery.js';
+import { evaluateAlertsForJourney } from '../../services/alert-evaluator.js';
 import { sendOpsAlert } from '../../services/ops-alert.js';
 import { pushJourneyScored, fetchSaleProducts } from '../../services/zoho.js';
 import { maybeStartJourneyCapture } from '../../services/capture-runs.js';
@@ -1002,6 +1003,36 @@ export async function processScoreJourney(job: Job<ScoreJourneyJobData>) {
         });
       }
     }
+
+    // Alert rules for the sale — the sales_only firm's "Item failed" and "Low
+    // score" alerts, which until now were never raised at all: the calls behind
+    // a sale are not scored on their own, so nothing ever evaluated a rule for
+    // them (services/alert-evaluator.ts).
+    //
+    // Held on exactly the two conditions the webhook above is held on, and for
+    // the same reasons:
+    //
+    //  - nothingAutoScored: every applicable checkpoint is with a reviewer, so
+    //    there is no verdict to report. Telling a firm a checkpoint failed
+    //    before anyone ruled on it is the defect #208 closed for calls; the
+    //    reviewer's ruling raises it instead (routes/review.ts).
+    //  - suppressCrm: a bulk backfill re-scores historical sales in one sweep.
+    //    Its whole point is to correct CallGuard's own numbers quietly, and an
+    //    alert is even less ignorable than a CRM write — it would put months of
+    //    old sales through the team's inbox and Slack channel as though they
+    //    had just happened. Live scoring never sets it, so real sales alert as
+    //    normal, and alert_events means the first real alert is still the one
+    //    they get if the backfill is later re-run.
+    if (suppressCrm || nothingAutoScored) {
+      console.log(
+        `[ScoreJourney] Holding alert evaluation for ${journeyId} — ${suppressCrm ? 'bulk re-score' : 'no checkpoint auto-scored, all await review'}`
+      );
+    } else {
+      evaluateAlertsForJourney(journeyId).catch((alertErr) => {
+        console.error(`[ScoreJourney] Alert evaluation failed for journey ${journeyId}:`, alertErr);
+      });
+    }
+
     // Data capture runs strictly after (and independently of) scoring — a
     // capture failure never affects the journey's score. No-op unless the
     // org has capture_enabled and a form resolves.
