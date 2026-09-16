@@ -153,7 +153,7 @@ export function DataCapture() {
                 aria-pressed={days === d}
                 className={`px-2.5 py-1 rounded-btn text-badge font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
                   days === d
-                    ? 'bg-primary text-white'
+                    ? 'bg-primary-ink text-on-solid'
                     : 'text-text-secondary hover:bg-table-header'
                 }`}
               >

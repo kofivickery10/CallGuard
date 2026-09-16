@@ -58,7 +58,7 @@ export default function TenantList() {
           <TableSearch value={table.search} onChange={table.setSearch} placeholder="Search tenants…" />
           <button
             onClick={() => setShowModal(true)}
-            className="bg-primary hover:bg-primary-hover text-white text-sm font-semibold px-4 py-2 rounded-btn transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+            className="bg-primary-ink hover:bg-primary-ink-hover text-on-solid text-sm font-semibold px-4 py-2 rounded-btn transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
           >
             + New tenant
           </button>
@@ -100,7 +100,7 @@ export default function TenantList() {
                   {new Date(t.created_at).toLocaleDateString('en-GB')}
                 </td>
                 <td className="px-4 py-3">
-                  <Link to={`/tenants/${t.id}`} className="text-primary hover:underline text-xs font-medium">
+                  <Link to={`/tenants/${t.id}`} className="text-primary-ink hover:underline text-xs font-medium">
                     View
                   </Link>
                 </td>

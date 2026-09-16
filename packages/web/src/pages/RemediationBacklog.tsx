@@ -73,7 +73,7 @@ function ItemRow({ item }: { item: RemediationBacklogItem }) {
         <span className="text-table-cell text-text-primary font-semibold">{item.item_label}</span>
         <Link
           to={`/journeys/${item.journey_id}`}
-          className="text-table-cell text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
+          className="text-table-cell text-primary-ink hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
         >
           {item.customer_name || 'the sale'}
         </Link>
@@ -262,7 +262,7 @@ export function RemediationBacklog() {
             {isAdmin && (
               <Link
                 to="/scorecards"
-                className="inline-block mt-3 text-table-cell font-semibold text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
+                className="inline-block mt-3 text-table-cell font-semibold text-primary-ink hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
               >
                 Go to scorecards
               </Link>

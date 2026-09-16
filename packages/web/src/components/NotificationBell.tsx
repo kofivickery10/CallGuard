@@ -50,7 +50,7 @@ export function NotificationBell() {
           <path d="M13.73 21a2 2 0 0 1-3.46 0" />
         </svg>
         {count > 0 && (
-          <span className="absolute top-1 right-1 min-w-[18px] h-[18px] bg-fail text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1">
+          <span className="absolute top-1 right-1 min-w-[18px] h-[18px] bg-fail text-on-solid text-[10px] font-bold rounded-full flex items-center justify-center px-1">
             {count > 99 ? '99+' : count}
           </span>
         )}
@@ -60,7 +60,7 @@ export function NotificationBell() {
         <div className="absolute right-0 top-12 w-80 bg-card border border-border rounded-card shadow-lg z-50">
           <div className="px-4 py-3 border-b border-border flex items-center justify-between">
             <span className="text-table-cell font-semibold text-text-primary">Notifications</span>
-            <Link to="/notifications" onClick={() => setOpen(false)} className="text-xs text-primary font-medium hover:underline">
+            <Link to="/notifications" onClick={() => setOpen(false)} className="text-xs text-primary-ink font-medium hover:underline">
               View all
             </Link>
           </div>
@@ -89,7 +89,7 @@ export function NotificationBell() {
                           setOpen(false);
                           markRead(n.id);
                         }}
-                        className="text-[11px] text-primary font-medium hover:underline flex-shrink-0"
+                        className="text-[11px] text-primary-ink font-medium hover:underline flex-shrink-0"
                       >
                         View
                       </Link>

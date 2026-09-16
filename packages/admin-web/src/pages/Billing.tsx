@@ -81,7 +81,7 @@ export default function Billing() {
         ].map(({ label, value, accent }) => (
           <div key={label} className={`bg-card rounded-card p-4 border ${accent ? 'border-primary' : 'border-border'}`}>
             <p className="text-xs font-semibold uppercase tracking-wider text-text-muted mb-1">{label}</p>
-            <p className={`text-card-value ${accent ? 'text-primary' : 'text-text-primary'}`}>{value}</p>
+            <p className={`text-card-value ${accent ? 'text-primary-ink' : 'text-text-primary'}`}>{value}</p>
           </div>
         ))}
       </div>
@@ -117,7 +117,7 @@ export default function Billing() {
                   <td className="px-4 py-3 font-semibold text-text-primary">
                     £{r.monthly_income.toFixed(2)}
                     {r.seat_price_override != null && (
-                      <span className="ml-1.5 text-[10px] font-semibold uppercase tracking-wider text-primary bg-primary/10 px-1.5 py-0.5 rounded">
+                      <span className="ml-1.5 text-[10px] font-semibold uppercase tracking-wider text-primary-ink bg-primary/10 px-1.5 py-0.5 rounded">
                         £{r.seat_price_override.toFixed(0)}/seat
                       </span>
                     )}
@@ -137,7 +137,7 @@ export default function Billing() {
                     )}
                   </td>
                   <td className="px-4 py-3">
-                    <Link to={`/tenants/${r.org_id}`} className="text-primary hover:underline text-xs font-medium">
+                    <Link to={`/tenants/${r.org_id}`} className="text-primary-ink hover:underline text-xs font-medium">
                       Detail
                     </Link>
                   </td>

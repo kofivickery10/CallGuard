@@ -81,7 +81,7 @@ function ProductForm({
           type="button"
           onClick={save}
           disabled={saving}
-          className="bg-primary text-white px-[18px] py-[9px] rounded-btn font-semibold text-table-cell hover:bg-primary-hover disabled:opacity-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+          className="bg-primary-ink text-on-solid px-[18px] py-[9px] rounded-btn font-semibold text-table-cell hover:bg-primary-ink-hover disabled:opacity-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
         >
           {saving ? 'Saving…' : initial ? 'Save changes' : 'Add product'}
         </button>
@@ -189,7 +189,7 @@ export default function Products() {
                 setAdding(true);
                 setEditing(null);
               }}
-              className="bg-primary text-white px-[18px] py-[9px] rounded-btn font-semibold text-table-cell hover:bg-primary-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+              className="bg-primary-ink text-on-solid px-[18px] py-[9px] rounded-btn font-semibold text-table-cell hover:bg-primary-ink-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
             >
               + Add product
             </button>
@@ -272,7 +272,7 @@ export default function Products() {
                         setEditing(p.id);
                         setAdding(false);
                       }}
-                      className="text-table-cell text-primary font-semibold hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
+                      className="text-table-cell text-primary-ink font-semibold hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
                     >
                       Edit
                     </button>
@@ -306,7 +306,7 @@ export default function Products() {
                       <button
                         type="button"
                         onClick={() => reactivate(p)}
-                        className="text-table-cell text-primary font-semibold hover:underline shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
+                        className="text-table-cell text-primary-ink font-semibold hover:underline shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
                       >
                         Reactivate
                       </button>

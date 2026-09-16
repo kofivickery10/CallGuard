@@ -75,7 +75,7 @@ export default function Customers() {
       <div className="bg-card border border-border rounded-card p-8 text-center max-w-md mx-auto">
         <p className="text-text-subtle text-table-cell mb-2">Customer tracking is available on the Core plan and above.</p>
         {user?.role === 'admin' && (
-          <Link to="/settings/organization" className="text-primary font-medium hover:underline text-table-cell focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40">Upgrade plan</Link>
+          <Link to="/settings/organization" className="text-primary-ink font-medium hover:underline text-table-cell focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40">Upgrade plan</Link>
         )}
       </div>
     );
@@ -151,7 +151,7 @@ export default function Customers() {
                     <td className="px-5 py-3.5">
                       <Link
                         to={`/customers/${c.id}`}
-                        className="text-primary font-medium hover:underline text-table-cell focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                        className="text-primary-ink font-medium hover:underline text-table-cell focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
                       >
                         {c.name || formatPhone(c.phone_normalized)}
                       </Link>

@@ -50,7 +50,7 @@ export default function CreateTenantModal({ onClose, onCreated }: Props) {
               </p>
             </div>
             <p className="text-xs text-text-muted">Share these credentials securely. The admin should change their password on first login.</p>
-            <button onClick={onClose} className="w-full mt-2 bg-primary text-white py-2 rounded-btn text-sm font-semibold hover:bg-primary-hover">
+            <button onClick={onClose} className="w-full mt-2 bg-primary-ink text-on-solid py-2 rounded-btn text-sm font-semibold hover:bg-primary-ink-hover">
               Done
             </button>
           </div>
@@ -89,7 +89,7 @@ export default function CreateTenantModal({ onClose, onCreated }: Props) {
               <button type="button" onClick={onClose} className="flex-1 border border-border text-text-secondary py-2 rounded-btn text-sm hover:bg-sidebar-hover">
                 Cancel
               </button>
-              <button type="submit" disabled={loading} className="flex-1 bg-primary text-white py-2 rounded-btn text-sm font-semibold hover:bg-primary-hover disabled:opacity-60">
+              <button type="submit" disabled={loading} className="flex-1 bg-primary-ink text-on-solid py-2 rounded-btn text-sm font-semibold hover:bg-primary-ink-hover disabled:opacity-60">
                 {loading ? 'Creating…' : 'Create tenant'}
               </button>
             </div>

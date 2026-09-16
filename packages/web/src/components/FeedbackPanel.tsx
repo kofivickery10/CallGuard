@@ -320,7 +320,7 @@ export function FeedbackPanel({
         <button
           onClick={() => send.mutate()}
           disabled={send.isPending}
-          className="mt-3 text-xs text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded disabled:opacity-50"
+          className="mt-3 text-xs text-primary-ink hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded disabled:opacity-50"
         >
           {send.isPending ? 'Sending…' : 'Send it again'}
         </button>
@@ -531,7 +531,7 @@ export function FeedbackPanel({
                 <button
                   onClick={() => send.mutate()}
                   disabled={send.isPending || recipientId === null}
-                  className="bg-primary text-white px-4 py-2 rounded-btn text-table-cell font-medium hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:opacity-50"
+                  className="bg-primary-ink text-on-solid px-4 py-2 rounded-btn text-table-cell font-medium hover:bg-primary-ink-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:opacity-50"
                 >
                   {send.isPending ? 'Sending…' : 'Send to adviser'}
                 </button>
@@ -546,7 +546,7 @@ export function FeedbackPanel({
           ) : (
             <button
               onClick={() => setComposing(true)}
-              className="mt-3 bg-primary text-white px-4 py-2 rounded-btn text-table-cell font-medium hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+              className="mt-3 bg-primary-ink text-on-solid px-4 py-2 rounded-btn text-table-cell font-medium hover:bg-primary-ink-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
             >
               Feed back to adviser
             </button>

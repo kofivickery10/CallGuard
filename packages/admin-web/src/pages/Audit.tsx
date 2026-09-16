@@ -84,7 +84,7 @@ export default function Audit() {
           <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="border border-border rounded-btn px-3 py-2 text-sm" />
         </div>
         {(action || from || to) && (
-          <button onClick={() => { setAction(''); setFrom(''); setTo(''); }} className="text-sm text-primary hover:underline pb-2">Clear</button>
+          <button onClick={() => { setAction(''); setFrom(''); setTo(''); }} className="text-sm text-primary-ink hover:underline pb-2">Clear</button>
         )}
       </div>
 
@@ -105,7 +105,7 @@ export default function Audit() {
                 <td className="px-4 py-2.5 text-text-muted whitespace-nowrap">{new Date(e.created_at).toLocaleString('en-GB')}</td>
                 <td className="px-4 py-2.5">
                   {e.org_name
-                    ? <Link to={`/tenants/${e.organization_id}`} className="text-primary hover:underline">{e.org_name}</Link>
+                    ? <Link to={`/tenants/${e.organization_id}`} className="text-primary-ink hover:underline">{e.org_name}</Link>
                     : <span className="text-text-muted">—</span>}
                 </td>
                 <td className="px-4 py-2.5 text-text-secondary">{e.user_email ?? 'system'}</td>

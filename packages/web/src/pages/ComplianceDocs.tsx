@@ -105,7 +105,7 @@ hr { border: none; border-top: 1px solid #e2e8e2; margin: 24px 0; }
           >
             <h3 className="text-section-title text-text-primary mb-2">{doc.title}</h3>
             <p className="text-table-cell text-text-subtle leading-relaxed">{doc.description}</p>
-            <div className="mt-4 text-xs text-primary font-semibold">
+            <div className="mt-4 text-xs text-primary-ink font-semibold">
               Generate &rarr;
             </div>
           </button>
@@ -160,7 +160,7 @@ hr { border: none; border-top: 1px solid #e2e8e2; margin: 24px 0; }
                   <button
                     type="submit"
                     disabled={generating}
-                    className="flex-1 bg-primary text-white px-[18px] py-[9px] rounded-btn font-semibold text-table-cell hover:bg-primary-hover disabled:opacity-50 transition-colors"
+                    className="flex-1 bg-primary-ink text-on-solid px-[18px] py-[9px] rounded-btn font-semibold text-table-cell hover:bg-primary-ink-hover disabled:opacity-50 transition-colors"
                   >
                     {generating ? 'Generating...' : 'Generate'}
                   </button>
@@ -185,7 +185,7 @@ hr { border: none; border-top: 1px solid #e2e8e2; margin: 24px 0; }
                   </button>
                   <button
                     onClick={handleOpenPrintable}
-                    className="flex-1 bg-primary text-white px-[18px] py-[9px] rounded-btn font-semibold text-table-cell hover:bg-primary-hover transition-colors"
+                    className="flex-1 bg-primary-ink text-on-solid px-[18px] py-[9px] rounded-btn font-semibold text-table-cell hover:bg-primary-ink-hover transition-colors"
                   >
                     Open Printable PDF
                   </button>

@@ -148,7 +148,7 @@ export function JourneyDetail() {
         <div className="mt-4">
           <Link
             to="/journeys"
-            className="text-primary text-table-cell font-semibold hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+            className="text-primary-ink text-table-cell font-semibold hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
           >
             Back to Sales
           </Link>
@@ -243,7 +243,7 @@ export function JourneyDetail() {
                 {' — '}
                 <Link
                   to={`/customers/${journey.customer_id}`}
-                  className="text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                  className="text-primary-ink hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
                 >
                   {customerLabel}
                 </Link>
@@ -582,7 +582,7 @@ export function JourneyDetail() {
                         {item.source_call_id && (
                           <Link
                             to={`/calls/${item.source_call_id}?evidence=journey:${item.id}`}
-                            className="not-italic ml-2 text-primary hover:underline"
+                            className="not-italic ml-2 text-primary-ink hover:underline"
                           >
                             source call →
                           </Link>
@@ -600,14 +600,14 @@ export function JourneyDetail() {
                         <button
                           onClick={() => resolve(item.id, 'pass')}
                           disabled={resolvingId === item.id}
-                          className="text-badge text-pass hover:text-white hover:bg-pass px-2 py-1 rounded-btn border border-pass/30 hover:border-pass transition-colors disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                          className="text-badge text-pass hover:text-on-solid hover:bg-pass px-2 py-1 rounded-btn border border-pass/30 hover:border-pass transition-colors disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
                         >
                           Pass
                         </button>
                         <button
                           onClick={() => resolve(item.id, 'fail')}
                           disabled={resolvingId === item.id}
-                          className="text-badge text-fail hover:text-white hover:bg-fail px-2 py-1 rounded-btn border border-fail/30 hover:border-fail transition-colors disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                          className="text-badge text-fail hover:text-on-solid hover:bg-fail px-2 py-1 rounded-btn border border-fail/30 hover:border-fail transition-colors disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
                         >
                           Fail
                         </button>
@@ -635,7 +635,7 @@ export function JourneyDetail() {
                             evidence: item.evidence,
                           })
                         }
-                        className="text-badge text-text-muted hover:text-primary font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
+                        className="text-badge text-text-muted hover:text-primary-ink font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
                         title="Override this verdict — saved as a calibration example for the AI"
                       >
                         Correct

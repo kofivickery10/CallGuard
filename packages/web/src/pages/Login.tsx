@@ -87,7 +87,7 @@ export function Login() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-primary text-white py-[9px] px-[18px] rounded-btn font-semibold text-table-cell hover:bg-primary-hover disabled:opacity-50 transition-colors"
+              className="w-full bg-primary-ink text-on-solid py-[9px] px-[18px] rounded-btn font-semibold text-table-cell hover:bg-primary-ink-hover disabled:opacity-50 transition-colors"
             >
               {loading ? 'Loading...' : 'Sign In'}
             </button>
@@ -173,7 +173,7 @@ function TwoFactorChallenge({
         <button
           type="button"
           onClick={sendEmail}
-          className="w-full bg-primary text-white py-[9px] px-[18px] rounded-btn font-semibold text-table-cell hover:bg-primary-hover transition-colors"
+          className="w-full bg-primary-ink text-on-solid py-[9px] px-[18px] rounded-btn font-semibold text-table-cell hover:bg-primary-ink-hover transition-colors"
         >
           Email me a code
         </button>
@@ -197,7 +197,7 @@ function TwoFactorChallenge({
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-primary text-white py-[9px] px-[18px] rounded-btn font-semibold text-table-cell hover:bg-primary-hover disabled:opacity-50 transition-colors"
+            className="w-full bg-primary-ink text-on-solid py-[9px] px-[18px] rounded-btn font-semibold text-table-cell hover:bg-primary-ink-hover disabled:opacity-50 transition-colors"
           >
             {loading ? 'Verifying…' : 'Verify'}
           </button>

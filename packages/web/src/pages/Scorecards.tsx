@@ -36,7 +36,7 @@ export function Scorecards() {
                   {scorecard.description}
                 </p>
               )}
-              <div className="mt-3 text-xs text-primary font-semibold">
+              <div className="mt-3 text-xs text-primary-ink font-semibold">
                 {scorecard.is_active ? 'Active' : 'Inactive'}
               </div>
             </Link>
@@ -45,7 +45,7 @@ export function Scorecards() {
           {/* Create new card */}
           <Link
             to="/scorecards/new"
-            className="border-2 border-dashed border-border rounded-card p-5 flex flex-col items-center justify-center text-text-muted cursor-pointer transition-all hover:text-primary hover:border-primary min-h-[120px]"
+            className="border-2 border-dashed border-border rounded-card p-5 flex flex-col items-center justify-center text-text-muted cursor-pointer transition-all hover:text-primary-ink hover:border-primary min-h-[120px]"
           >
             <span className="text-[28px] font-light leading-none mb-1">+</span>
             <span className="text-xs font-medium">Create New Scorecard</span>

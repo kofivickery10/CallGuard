@@ -237,7 +237,7 @@ export function BoardPack() {
           <button
             onClick={handlePrint}
             disabled={!p}
-            className="px-[18px] py-[9px] rounded-btn text-table-cell font-semibold bg-primary text-white hover:bg-primary-hover disabled:opacity-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+            className="px-[18px] py-[9px] rounded-btn text-table-cell font-semibold bg-primary-ink text-on-solid hover:bg-primary-ink-hover disabled:opacity-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
           >
             Print / Save as PDF
           </button>

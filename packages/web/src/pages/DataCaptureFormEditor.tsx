@@ -158,7 +158,7 @@ export function DataCaptureFormEditor() {
       <div className="bg-card border border-border rounded-card p-10 text-center">
         <div className="bg-fail-bg text-fail px-3 py-2 rounded-btn inline-block">{loadError}</div>
         <div className="mt-4">
-          <Link to="/capture-forms" className="text-primary text-table-cell font-semibold hover:underline">
+          <Link to="/capture-forms" className="text-primary-ink text-table-cell font-semibold hover:underline">
             Back to Data Capture Forms
           </Link>
         </div>
@@ -334,7 +334,7 @@ export function DataCaptureFormEditor() {
       <div className="flex items-center justify-between mb-8">
         <button
           onClick={() => setFields((prev) => [...prev, blankField()])}
-          className="px-3 py-2 rounded-btn text-table-cell border border-border text-text-secondary font-semibold hover:border-primary hover:text-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+          className="px-3 py-2 rounded-btn text-table-cell border border-border text-text-secondary font-semibold hover:border-primary hover:text-primary-ink transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
         >
           + Add question
         </button>
@@ -348,7 +348,7 @@ export function DataCaptureFormEditor() {
           <button
             onClick={handleSave}
             disabled={saving}
-            className="px-3.5 py-2 rounded-btn text-table-cell border border-primary bg-primary text-white font-semibold hover:bg-primary-hover disabled:opacity-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+            className="px-3.5 py-2 rounded-btn text-table-cell border border-primary bg-primary-ink text-on-solid font-semibold hover:bg-primary-ink-hover disabled:opacity-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
           >
             {saving ? 'Saving…' : isNew ? 'Create form' : 'Save changes'}
           </button>

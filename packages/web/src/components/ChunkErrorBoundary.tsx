@@ -52,7 +52,7 @@ export class ChunkErrorBoundary extends Component<Props, State> {
         className="flex flex-col items-center justify-center gap-3 rounded-card border border-border bg-card px-6 py-12 text-center shadow-card"
       >
         <svg
-          className={stale ? 'h-8 w-8 text-primary' : 'h-8 w-8 text-fail'}
+          className={stale ? 'h-8 w-8 text-primary-ink' : 'h-8 w-8 text-fail'}
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
@@ -87,7 +87,7 @@ export class ChunkErrorBoundary extends Component<Props, State> {
         <button
           type="button"
           onClick={this.reload}
-          className="mt-1 rounded-btn bg-primary px-[18px] py-[9px] text-table-cell font-semibold text-white transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+          className="mt-1 rounded-btn bg-primary-ink px-[18px] py-[9px] text-table-cell font-semibold text-on-solid transition-colors hover:bg-primary-ink-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
           aria-label="Reload the page"
         >
           Reload page

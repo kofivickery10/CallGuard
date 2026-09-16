@@ -47,7 +47,7 @@ export function CoachingPanel({ coaching: rawCoaching, plan, callStatus, isAdmin
           {isAdmin ? (
             <Link
               to="/settings/organization"
-              className="inline-block bg-primary text-white px-4 py-2 rounded-btn text-table-cell font-semibold hover:bg-primary-hover transition-colors"
+              className="inline-block bg-primary-ink text-on-solid px-4 py-2 rounded-btn text-table-cell font-semibold hover:bg-primary-ink-hover transition-colors"
             >
               Upgrade your plan
             </Link>

@@ -225,7 +225,7 @@ function FindingCard({
                   onClick={() => setChosen(o)}
                   className={`inline-flex items-center gap-1.5 px-3 py-[7px] rounded-btn text-table-cell font-semibold border transition-colors disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
                     active
-                      ? 'bg-primary-light border-primary text-primary'
+                      ? 'bg-primary-light border-primary text-primary-ink'
                       : 'bg-card border-border text-text-secondary hover:bg-table-header'
                   }`}
                 >
@@ -274,7 +274,7 @@ function FindingCard({
                 disabled={state.saving || !dirty}
                 onClick={() => save(finding.id, chosen, note)}
                 aria-label={`Save what you did about: ${finding.label}`}
-                className="px-[14px] py-[7px] rounded-btn text-table-cell font-semibold bg-primary text-white hover:bg-primary-hover disabled:opacity-40 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                className="px-[14px] py-[7px] rounded-btn text-table-cell font-semibold bg-primary-ink text-on-solid hover:bg-primary-ink-hover disabled:opacity-40 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
               >
                 {state.saving ? 'Saving…' : 'Save this answer'}
               </button>
@@ -494,7 +494,7 @@ export function FeedbackConfirm() {
                 onClick={handleConfirm}
                 disabled={confirming}
                 aria-label="Confirm I have seen this feedback"
-                className="px-[18px] py-[9px] rounded-btn text-table-cell font-semibold bg-primary text-white hover:bg-primary-hover disabled:opacity-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                className="px-[18px] py-[9px] rounded-btn text-table-cell font-semibold bg-primary-ink text-on-solid hover:bg-primary-ink-hover disabled:opacity-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
               >
                 {confirming ? 'Confirming…' : 'Confirm I have seen this'}
               </button>
@@ -577,7 +577,7 @@ export function FeedbackConfirm() {
               type="button"
               onClick={() => setAttempt((n) => n + 1)}
               aria-label="Try checking this link again"
-              className="mt-4 px-[18px] py-[9px] rounded-btn text-table-cell font-semibold bg-primary text-white hover:bg-primary-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+              className="mt-4 px-[18px] py-[9px] rounded-btn text-table-cell font-semibold bg-primary-ink text-on-solid hover:bg-primary-ink-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
             >
               Try again
             </button>

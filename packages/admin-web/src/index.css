@@ -16,6 +16,19 @@
   --cg-primary-light: 232 240 232;
   --cg-primary-light-hover: 240 245 240;
 
+  /* Text and icons on a solid status or brand fill (bg-primary, bg-fail…).
+     White in light mode; dark ink in dark mode, where the fills are light
+     enough that white text fails AA. */
+  /* The brand green is #4A9E6E (landing/style.css --primary) and stays the fill
+     colour. White text on it is only 3.3:1, and it is 3.3:1 as text on white,
+     so anything that must be READ uses this darker companion instead: brand
+     links and labels, and the fill behind a solid button's white text. Matches
+     the landing page's --hp-accent. */
+  --cg-primary-ink: 56 129 87;
+  --cg-primary-ink-hover: 47 111 75;
+
+  --cg-on-solid: 255 255 255;
+
   --cg-page: 248 250 248;
   --cg-card: 255 255 255;
   --cg-border: 226 232 226;
@@ -23,8 +36,8 @@
 
   --cg-text-primary: 26 46 26;
   --cg-text-secondary: 90 110 90;
-  --cg-text-muted: 138 158 138;
-  --cg-text-subtle: 106 126 106;
+  --cg-text-muted: 96 116 96;
+  --cg-text-subtle: 92 112 92;
   --cg-text-cell: 58 78 58;
 
   --cg-icon-muted: 170 189 170;
@@ -33,7 +46,7 @@
   --cg-pass-bg: 232 245 232;
   --cg-fail: 192 57 43;
   --cg-fail-bg: 253 232 232;
-  --cg-review: 184 134 11;
+  --cg-review: 134 98 0;
   --cg-review-bg: 254 243 224;
   --cg-processing: 45 90 158;
   --cg-processing-bg: 232 240 250;
@@ -63,6 +76,11 @@
   --cg-primary-hover: 106 187 138;
   --cg-primary-light: 31 46 36;
   --cg-primary-light-hover: 38 54 43;
+
+  --cg-primary-ink: 87 171 122;
+  --cg-primary-ink-hover: 106 187 138;
+
+  --cg-on-solid: 15 21 18;
 
   --cg-page: 15 21 18;
   --cg-card: 24 33 27;

@@ -151,7 +151,7 @@ export function CallDetail() {
           Could not load this call.{' '}
           <Link
             to="/calls"
-            className="text-primary underline font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+            className="text-primary-ink underline font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
           >
             Back to Calls
           </Link>
@@ -311,7 +311,7 @@ export function CallDetail() {
               )}
               <Link
                 to={`/journeys/${call.journey.id}`}
-                className="inline-flex items-center gap-2 bg-primary text-white px-[18px] py-[9px] rounded-btn text-table-cell font-semibold hover:bg-primary-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                className="inline-flex items-center gap-2 bg-primary-ink text-on-solid px-[18px] py-[9px] rounded-btn text-table-cell font-semibold hover:bg-primary-ink-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
               >
                 View sale
               </Link>

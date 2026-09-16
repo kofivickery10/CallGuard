@@ -64,7 +64,7 @@ export function FileDropzone({ onFileSelected, disabled }: FileDropzoneProps) {
             Audio (MP3, WAV, M4A) up to 100MB, or a Teams/Zoom recording (MP4, MOV, WebM, MKV) up to 500MB
           </div>
           <div className="mt-5">
-            <span className="inline-block px-[18px] py-[9px] bg-primary text-white rounded-btn text-table-cell font-semibold hover:bg-primary-hover transition-colors">
+            <span className="inline-block px-[18px] py-[9px] bg-primary-ink text-on-solid rounded-btn text-table-cell font-semibold hover:bg-primary-ink-hover transition-colors">
               Select Files
             </span>
           </div>

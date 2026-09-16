@@ -88,7 +88,7 @@ function DialerConnectionSection() {
         <h3 className="text-section-title text-text-primary">CloudTalk</h3>
         <button
           onClick={() => setEditing(true)}
-          className="bg-primary text-white px-[18px] py-[9px] rounded-btn text-table-cell font-semibold hover:bg-primary-hover transition-colors"
+          className="bg-primary-ink text-on-solid px-[18px] py-[9px] rounded-btn text-table-cell font-semibold hover:bg-primary-ink-hover transition-colors"
         >
           {conn ? 'Edit' : 'Configure CloudTalk'}
         </button>
@@ -243,7 +243,7 @@ function DialerConnectionModal({ initial, onClose }: { initial: DialerFormState;
             <button type="button" onClick={onClose} className="flex-1 px-[18px] py-[9px] rounded-btn border border-border text-text-cell font-semibold text-table-cell hover:bg-sidebar-hover transition-colors">
               Cancel
             </button>
-            <button type="submit" disabled={saving} className="flex-1 bg-primary text-white px-[18px] py-[9px] rounded-btn font-semibold text-table-cell hover:bg-primary-hover disabled:opacity-50 transition-colors">
+            <button type="submit" disabled={saving} className="flex-1 bg-primary-ink text-on-solid px-[18px] py-[9px] rounded-btn font-semibold text-table-cell hover:bg-primary-ink-hover disabled:opacity-50 transition-colors">
               {saving ? 'Saving...' : 'Save'}
             </button>
           </div>
@@ -306,7 +306,7 @@ function ApiKeysSection() {
         <h3 className="text-section-title text-text-primary">API Keys</h3>
         <button
           onClick={() => setCreateOpen(true)}
-          className="bg-primary text-white px-[18px] py-[9px] rounded-btn text-table-cell font-semibold hover:bg-primary-hover transition-colors"
+          className="bg-primary-ink text-on-solid px-[18px] py-[9px] rounded-btn text-table-cell font-semibold hover:bg-primary-ink-hover transition-colors"
         >
           Generate API Key
         </button>
@@ -421,7 +421,7 @@ function ApiKeysSection() {
                   </button>
                   <button
                     onClick={handleCloseModal}
-                    className="flex-1 bg-primary text-white px-[18px] py-[9px] rounded-btn font-semibold text-table-cell hover:bg-primary-hover transition-colors"
+                    className="flex-1 bg-primary-ink text-on-solid px-[18px] py-[9px] rounded-btn font-semibold text-table-cell hover:bg-primary-ink-hover transition-colors"
                   >
                     Done
                   </button>
@@ -446,7 +446,7 @@ function ApiKeysSection() {
                   <button type="button" onClick={handleCloseModal} className="flex-1 px-[18px] py-[9px] rounded-btn border border-border text-text-cell font-semibold text-table-cell hover:bg-sidebar-hover transition-colors">
                     Cancel
                   </button>
-                  <button type="submit" disabled={creating} className="flex-1 bg-primary text-white px-[18px] py-[9px] rounded-btn font-semibold text-table-cell hover:bg-primary-hover disabled:opacity-50 transition-colors">
+                  <button type="submit" disabled={creating} className="flex-1 bg-primary-ink text-on-solid px-[18px] py-[9px] rounded-btn font-semibold text-table-cell hover:bg-primary-ink-hover disabled:opacity-50 transition-colors">
                     {creating ? 'Generating...' : 'Generate'}
                   </button>
                 </div>
@@ -522,7 +522,7 @@ function SFTPSourcesSection() {
         <h3 className="text-section-title text-text-primary">SFTP Sources</h3>
         <button
           onClick={() => setEditing(emptyForm)}
-          className="bg-primary text-white px-[18px] py-[9px] rounded-btn text-table-cell font-semibold hover:bg-primary-hover transition-colors"
+          className="bg-primary-ink text-on-solid px-[18px] py-[9px] rounded-btn text-table-cell font-semibold hover:bg-primary-ink-hover transition-colors"
         >
           Add SFTP Source
         </button>
@@ -737,7 +737,7 @@ function SFTPSourceModal({ initial, onClose }: { initial: SFTPFormState; onClose
                 {testing ? 'Testing...' : 'Test Connection'}
               </button>
             )}
-            <button type="submit" disabled={saving} className="flex-1 bg-primary text-white px-[18px] py-[9px] rounded-btn font-semibold text-table-cell hover:bg-primary-hover disabled:opacity-50 transition-colors">
+            <button type="submit" disabled={saving} className="flex-1 bg-primary-ink text-on-solid px-[18px] py-[9px] rounded-btn font-semibold text-table-cell hover:bg-primary-ink-hover disabled:opacity-50 transition-colors">
               {saving ? 'Saving...' : isEdit ? 'Save' : 'Add Source'}
             </button>
           </div>
@@ -873,7 +873,7 @@ function ZohoSection() {
         {!conn && (
           <button
             onClick={() => setEditing(true)}
-            className="bg-primary text-white px-[18px] py-[9px] rounded-btn text-table-cell font-semibold hover:bg-primary-hover transition-colors"
+            className="bg-primary-ink text-on-solid px-[18px] py-[9px] rounded-btn text-table-cell font-semibold hover:bg-primary-ink-hover transition-colors"
           >
             Connect Zoho
           </button>
@@ -1124,7 +1124,7 @@ function ZohoConnectModal({ initial, onClose }: { initial: ZohoConnection | null
               type="checkbox"
               checked={saleTriggerEnabled}
               onChange={(e) => setSaleTriggerEnabled(e.target.checked)}
-              className="mt-0.5 h-4 w-4 rounded border-border text-primary focus:ring-2 focus:ring-focus-ring"
+              className="mt-0.5 h-4 w-4 rounded border-border text-primary-ink focus:ring-2 focus:ring-focus-ring"
             />
             <label htmlFor="sale-trigger-enabled" className="text-table-cell text-text-secondary">
               <span className="font-semibold text-text-primary">Sale trigger configured</span> — tick once the
@@ -1192,7 +1192,7 @@ function ZohoConnectModal({ initial, onClose }: { initial: ZohoConnection | null
             <button type="button" onClick={onClose} className="flex-1 px-[18px] py-[9px] rounded-btn border border-border text-text-cell font-semibold text-table-cell hover:bg-sidebar-hover transition-colors">
               Cancel
             </button>
-            <button type="submit" disabled={saving} className="flex-1 bg-primary text-white px-[18px] py-[9px] rounded-btn font-semibold text-table-cell hover:bg-primary-hover disabled:opacity-50 transition-colors">
+            <button type="submit" disabled={saving} className="flex-1 bg-primary-ink text-on-solid px-[18px] py-[9px] rounded-btn font-semibold text-table-cell hover:bg-primary-ink-hover disabled:opacity-50 transition-colors">
               {isEdit && !clientSecret
                 ? saving ? 'Saving…' : 'Save settings'
                 : saving ? 'Redirecting…' : 'Save & Authorize'}

@@ -143,7 +143,7 @@ function SectionCard({
               <div className="flex items-center gap-2 min-w-0">
                 <svg
                   viewBox="0 0 24 24"
-                  className="w-4 h-4 flex-shrink-0 text-primary"
+                  className="w-4 h-4 flex-shrink-0 text-primary-ink"
                   fill="none"
                   stroke="currentColor"
                   strokeWidth="1.8"
@@ -200,7 +200,7 @@ function SectionCard({
             type="button"
             onClick={handleSave}
             disabled={!isDirty || saving}
-            className="bg-primary text-white px-[18px] py-[7px] rounded-btn text-table-cell font-semibold hover:bg-primary-hover disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            className="bg-primary-ink text-on-solid px-[18px] py-[7px] rounded-btn text-table-cell font-semibold hover:bg-primary-ink-hover disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
             {saving ? 'Saving...' : 'Save'}
           </button>

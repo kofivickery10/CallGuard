@@ -92,7 +92,7 @@ function RecheckAction({ journeyId, detail }: { journeyId: string; detail: strin
         onClick={() => recheck.mutate()}
         disabled={recheck.isPending}
         aria-label="Check this sale against its application again"
-        className="px-3 py-1.5 rounded-btn text-badge font-semibold bg-primary text-white hover:bg-primary-hover disabled:opacity-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+        className="px-3 py-1.5 rounded-btn text-badge font-semibold bg-primary-ink text-on-solid hover:bg-primary-ink-hover disabled:opacity-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
       >
         {recheck.isPending ? 'Checking again…' : 'Check this sale again'}
       </button>
@@ -391,7 +391,7 @@ export function ReconciliationPanel({
             {isAdmin ? (
               <>
                 Read {unrecognised ? 'the document' : 'the new version'} below, then confirm it on{' '}
-                <Link to="/reconciliation" className="text-primary hover:underline">
+                <Link to="/reconciliation" className="text-primary-ink hover:underline">
                   Reconciliation
                 </Link>
                 . This sale is reconciled automatically once you do, and every future sale on
@@ -642,7 +642,7 @@ function ReconciliationRow({ item }: { item: ReconciliationItem }) {
             <blockquote className="text-xs text-text-muted italic border-l-2 border-border pl-2.5 mt-1.5 leading-relaxed">
               {item.evidence}
               {evidenceHref && (
-                <Link to={evidenceHref} className="not-italic ml-2 text-primary hover:underline">
+                <Link to={evidenceHref} className="not-italic ml-2 text-primary-ink hover:underline">
                   {item.source_timestamp != null ? 'hear it in the call →' : 'source call →'}
                 </Link>
               )}

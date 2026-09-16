@@ -97,7 +97,7 @@ export function SupportWidget() {
               <div key={m.id} className={`flex ${m.from_staff ? 'justify-start' : 'justify-end'}`}>
                 <div
                   className={`max-w-[80%] px-3 py-2 rounded-lg text-table-cell leading-relaxed ${
-                    m.from_staff ? 'bg-table-header text-text-primary' : 'bg-primary text-white'
+                    m.from_staff ? 'bg-table-header text-text-primary' : 'bg-primary-ink text-on-solid'
                   }`}
                 >
                   {m.from_staff && <div className="text-[10px] font-semibold opacity-70 mb-0.5">Support</div>}
@@ -125,7 +125,7 @@ export function SupportWidget() {
             <button
               type="submit"
               disabled={send.isPending || !draft.trim()}
-              className="bg-primary text-white px-3 py-2 rounded-btn text-table-cell font-semibold hover:bg-primary-hover disabled:opacity-50"
+              className="bg-primary-ink text-on-solid px-3 py-2 rounded-btn text-table-cell font-semibold hover:bg-primary-ink-hover disabled:opacity-50"
             >
               Send
             </button>
@@ -135,7 +135,7 @@ export function SupportWidget() {
 
       <button
         onClick={() => setOpen((v) => !v)}
-        className="fixed bottom-6 right-6 z-40 w-14 h-14 rounded-full bg-primary text-white shadow-lg flex items-center justify-center hover:bg-primary-hover transition-colors"
+        className="fixed bottom-6 right-6 z-40 w-14 h-14 rounded-full bg-primary-ink text-on-solid shadow-lg flex items-center justify-center hover:bg-primary-ink-hover transition-colors"
         title="Support"
         aria-label={unreadCount > 0 ? `Support chat, ${unreadCount} new replies` : 'Support chat'}
       >
@@ -143,7 +143,7 @@ export function SupportWidget() {
           <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
         </svg>
         {unreadCount > 0 && (
-          <span className="absolute -top-1 -right-1 min-w-[20px] h-5 px-1 rounded-full bg-fail text-white text-[11px] font-bold flex items-center justify-center border-2 border-page">
+          <span className="absolute -top-1 -right-1 min-w-[20px] h-5 px-1 rounded-full bg-fail text-on-solid text-[11px] font-bold flex items-center justify-center border-2 border-page">
             {unreadCount > 99 ? '99+' : unreadCount}
           </span>
         )}

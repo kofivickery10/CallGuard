@@ -637,7 +637,7 @@ export function ScorecardEditor() {
               <button type="button" onClick={() => csvInputRef.current?.click()} className="px-[18px] py-[9px] rounded-btn text-table-cell font-semibold border border-border text-text-cell hover:bg-sidebar-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40">
                 Import CSV
               </button>
-              <button type="button" onClick={addItem} className="text-primary font-semibold text-table-cell hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded">
+              <button type="button" onClick={addItem} className="text-primary-ink font-semibold text-table-cell hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded">
                 + Add Criterion
               </button>
             </div>
@@ -690,7 +690,7 @@ export function ScorecardEditor() {
                       onClick={() => setFilterType(val)}
                       aria-pressed={filterType === val}
                       className={`px-3 py-1.5 rounded-btn text-table-cell font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
-                        filterType === val ? 'bg-primary text-white' : 'border border-border text-text-secondary hover:bg-sidebar-hover'
+                        filterType === val ? 'bg-primary-ink text-on-solid' : 'border border-border text-text-secondary hover:bg-sidebar-hover'
                       }`}
                     >
                       {lbl}
@@ -699,7 +699,7 @@ export function ScorecardEditor() {
                   <div className="flex-1" />
                   <span className="text-xs text-text-muted tabular-nums">Showing {visible.length} of {items.length}</span>
                   {filtersActive && (
-                    <button type="button" onClick={resetFilters} className="text-table-cell text-primary font-semibold hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded">
+                    <button type="button" onClick={resetFilters} className="text-table-cell text-primary-ink font-semibold hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded">
                       Clear
                     </button>
                   )}
@@ -711,7 +711,7 @@ export function ScorecardEditor() {
           {shown.length === 0 ? (
             <div className="bg-card border border-border rounded-card p-10 text-center">
               <p className="text-table-cell text-text-muted">No criteria match your filters.</p>
-              <button type="button" onClick={resetFilters} className="text-primary font-semibold text-table-cell hover:underline mt-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded">
+              <button type="button" onClick={resetFilters} className="text-primary-ink font-semibold text-table-cell hover:underline mt-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded">
                 Clear filters
               </button>
             </div>
@@ -832,7 +832,7 @@ export function ScorecardEditor() {
                                 aria-pressed={selected}
                                 className={`px-3 py-1.5 rounded-btn text-table-cell font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
                                   selected
-                                    ? 'bg-primary text-white'
+                                    ? 'bg-primary-ink text-on-solid'
                                     : 'border border-border text-text-secondary hover:bg-sidebar-hover'
                                 }`}
                               >
@@ -902,7 +902,7 @@ export function ScorecardEditor() {
         </div>
 
         <div className="flex gap-3 pt-1">
-          <button type="submit" disabled={saving} className="bg-primary text-white px-[18px] py-[9px] rounded-btn font-semibold text-table-cell hover:bg-primary-hover disabled:opacity-50 transition-colors">
+          <button type="submit" disabled={saving} className="bg-primary-ink text-on-solid px-[18px] py-[9px] rounded-btn font-semibold text-table-cell hover:bg-primary-ink-hover disabled:opacity-50 transition-colors">
             {saving ? 'Saving...' : isNew ? 'Create Scorecard' : 'Save Changes'}
           </button>
           <button type="button" onClick={() => navigate('/scorecards')} className="px-[18px] py-[9px] rounded-btn text-text-cell font-semibold border border-border hover:bg-sidebar-hover text-table-cell transition-colors">

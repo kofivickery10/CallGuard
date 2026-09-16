@@ -340,7 +340,7 @@ export function AlertRuleModal({ open, initial, onClose }: AlertRuleModalProps) 
             <button type="button" onClick={onClose} className="flex-1 px-[18px] py-[9px] rounded-btn border border-border text-text-cell font-semibold text-table-cell hover:bg-sidebar-hover transition-colors">
               Cancel
             </button>
-            <button type="submit" disabled={saving} className="flex-1 bg-primary text-white px-[18px] py-[9px] rounded-btn font-semibold text-table-cell hover:bg-primary-hover disabled:opacity-50 transition-colors">
+            <button type="submit" disabled={saving} className="flex-1 bg-primary-ink text-on-solid px-[18px] py-[9px] rounded-btn font-semibold text-table-cell hover:bg-primary-ink-hover disabled:opacity-50 transition-colors">
               {saving ? 'Saving...' : initial ? 'Save Changes' : 'Create Rule'}
             </button>
           </div>

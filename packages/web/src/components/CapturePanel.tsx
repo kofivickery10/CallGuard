@@ -105,7 +105,7 @@ export function CapturePanel({ journeyId, isAdmin }: { journeyId: string; isAdmi
           <div className="flex items-center gap-2">
             <button
               onClick={handleExport}
-              className="px-3 py-1.5 rounded-btn text-badge font-semibold border border-border text-text-secondary hover:border-primary hover:text-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+              className="px-3 py-1.5 rounded-btn text-badge font-semibold border border-border text-text-secondary hover:border-primary hover:text-primary-ink transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
             >
               Export CSV
             </button>
@@ -113,7 +113,7 @@ export function CapturePanel({ journeyId, isAdmin }: { journeyId: string; isAdmi
               <button
                 onClick={handleRerun}
                 disabled={runMutation.isPending}
-                className="px-3 py-1.5 rounded-btn text-badge font-semibold border border-border text-text-secondary hover:border-primary hover:text-primary transition-colors disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                className="px-3 py-1.5 rounded-btn text-badge font-semibold border border-border text-text-secondary hover:border-primary hover:text-primary-ink transition-colors disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
               >
                 Re-run
               </button>
@@ -146,7 +146,7 @@ export function CapturePanel({ journeyId, isAdmin }: { journeyId: string; isAdmi
               <button
                 onClick={() => selectedFormId && runMutation.mutate(selectedFormId)}
                 disabled={!selectedFormId || runMutation.isPending}
-                className="px-3 py-2 rounded-btn text-table-cell border border-primary bg-primary text-white font-semibold hover:bg-primary-hover disabled:opacity-50 transition-colors"
+                className="px-3 py-2 rounded-btn text-table-cell border border-primary bg-primary-ink text-on-solid font-semibold hover:bg-primary-ink-hover disabled:opacity-50 transition-colors"
               >
                 {runMutation.isPending ? 'Queuing…' : 'Run capture'}
               </button>
@@ -172,7 +172,7 @@ export function CapturePanel({ journeyId, isAdmin }: { journeyId: string; isAdmi
               <button
                 onClick={() => runMutation.mutate(undefined)}
                 disabled={runMutation.isPending}
-                className="px-3 py-2 rounded-btn text-table-cell border border-primary bg-primary text-white font-semibold hover:bg-primary-hover disabled:opacity-50 transition-colors"
+                className="px-3 py-2 rounded-btn text-table-cell border border-primary bg-primary-ink text-on-solid font-semibold hover:bg-primary-ink-hover disabled:opacity-50 transition-colors"
               >
                 Try again
               </button>
@@ -221,7 +221,7 @@ export function CapturePanel({ journeyId, isAdmin }: { journeyId: string; isAdmi
                         {a.source_call_id && (
                           <Link
                             to={`/calls/${a.source_call_id}`}
-                            className="not-italic ml-2 text-primary hover:underline"
+                            className="not-italic ml-2 text-primary-ink hover:underline"
                           >
                             source call →
                           </Link>

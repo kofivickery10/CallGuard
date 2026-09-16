@@ -128,7 +128,7 @@ export function Journeys() {
                 aria-pressed={status === f.value}
                 className={`px-3 py-1.5 rounded-btn text-table-cell font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
                   status === f.value
-                    ? 'bg-primary text-white'
+                    ? 'bg-primary-ink text-on-solid'
                     : 'border border-border text-text-secondary hover:bg-sidebar-hover'
                 }`}
               >
@@ -165,7 +165,7 @@ export function Journeys() {
             <button
               type="button"
               onClick={() => onFilterChange(setFeedback)('awaiting')}
-              className="ml-auto text-table-cell font-semibold text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
+              className="ml-auto text-table-cell font-semibold text-primary-ink hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
             >
               Show them
             </button>
@@ -198,14 +198,14 @@ export function Journeys() {
               <button
                 type="button"
                 onClick={() => onFilterChange(setFeedback)('awaiting_remediation')}
-                className="text-table-cell font-semibold text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
+                className="text-table-cell font-semibold text-primary-ink hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
               >
                 Show them
               </button>
             )}
             <Link
               to="/remediation"
-              className="text-table-cell font-semibold text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
+              className="text-table-cell font-semibold text-primary-ink hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
             >
               By adviser
             </Link>
@@ -225,7 +225,7 @@ export function Journeys() {
               value={adviser}
               onChange={(e) => onFilterChange(setAdviser)(e.target.value)}
               className={`px-3 py-1.5 rounded-btn text-table-cell font-semibold border bg-card transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
-                adviser ? 'border-primary text-primary' : 'border-border text-text-secondary hover:bg-sidebar-hover'
+                adviser ? 'border-primary text-primary-ink' : 'border-border text-text-secondary hover:bg-sidebar-hover'
               }`}
             >
               <option value="">All advisers</option>
@@ -242,7 +242,7 @@ export function Journeys() {
               value={branch}
               onChange={(e) => onFilterChange(setBranch)(e.target.value)}
               className={`px-3 py-1.5 rounded-btn text-table-cell font-semibold border bg-card transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
-                branch ? 'border-primary text-primary' : 'border-border text-text-secondary hover:bg-sidebar-hover'
+                branch ? 'border-primary text-primary-ink' : 'border-border text-text-secondary hover:bg-sidebar-hover'
               }`}
             >
               <option value="">All branches</option>
@@ -259,7 +259,7 @@ export function Journeys() {
               value={result}
               onChange={(e) => onFilterChange(setResult)(e.target.value as '' | 'pass' | 'fail')}
               className={`px-3 py-1.5 rounded-btn text-table-cell font-semibold border bg-card transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
-                result ? 'border-primary text-primary' : 'border-border text-text-secondary hover:bg-sidebar-hover'
+                result ? 'border-primary text-primary-ink' : 'border-border text-text-secondary hover:bg-sidebar-hover'
               }`}
             >
               <option value="">Pass or fail</option>
@@ -279,7 +279,7 @@ export function Journeys() {
             value={feedback}
             onChange={(e) => onFilterChange(setFeedback)(e.target.value as '' | FeedbackStatus)}
             className={`px-3 py-1.5 rounded-btn text-table-cell font-semibold border bg-card transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
-              feedback ? 'border-primary text-primary' : 'border-border text-text-secondary hover:bg-sidebar-hover'
+              feedback ? 'border-primary text-primary-ink' : 'border-border text-text-secondary hover:bg-sidebar-hover'
             }`}
           >
             <option value="">Any feedback state</option>
@@ -415,7 +415,7 @@ export function Journeys() {
                   }`}
                 >
                   <td className="px-5 py-3.5 text-table-cell">
-                    <Link to={`/customers/${j.customer_id}`} className="text-primary font-semibold hover:underline">
+                    <Link to={`/customers/${j.customer_id}`} className="text-primary-ink font-semibold hover:underline">
                       {j.customer_name || 'Unknown customer'}
                     </Link>
                     <div className="text-xs text-text-muted">{formatPhone(j.customer_phone) || '—'}</div>
@@ -498,7 +498,7 @@ export function Journeys() {
                     )}
                   </td>
                   <td className="px-5 py-3.5 text-right">
-                    <Link to={`/journeys/${j.id}`} className="text-primary text-table-cell font-semibold hover:underline">
+                    <Link to={`/journeys/${j.id}`} className="text-primary-ink text-table-cell font-semibold hover:underline">
                       View
                     </Link>
                   </td>

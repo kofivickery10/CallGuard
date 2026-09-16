@@ -193,7 +193,7 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-card rounded-card p-5 border border-primary">
           <p className="text-xs font-semibold uppercase tracking-wider text-text-muted mb-1">Monthly recurring revenue</p>
-          <p className="text-card-value text-primary">£{data.platform_mrr.toFixed(2)}</p>
+          <p className="text-card-value text-primary-ink">£{data.platform_mrr.toFixed(2)}</p>
           <p className="text-xs text-text-muted mt-1">Active seats × tier/override price</p>
         </div>
         <StatCard label="AI + transcription (MTD)" value={`£${totalCostMtd.toFixed(2)}`} sub="Claude + Deepgram estimate" />

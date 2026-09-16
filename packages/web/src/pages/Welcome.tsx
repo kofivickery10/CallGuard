@@ -18,7 +18,7 @@ export function Welcome() {
             <Link to="/login" className="text-text-secondary hover:text-text-primary">Sign In</Link>
             <a
               href="#demo"
-              className="bg-primary text-white px-4 py-2 rounded-btn text-table-cell font-semibold hover:bg-primary-hover transition-colors"
+              className="bg-primary-ink text-on-solid px-4 py-2 rounded-btn text-table-cell font-semibold hover:bg-primary-ink-hover transition-colors"
             >
               Request Demo
             </a>
@@ -41,7 +41,7 @@ export function Welcome() {
         <div className="flex items-center justify-center gap-3 mt-10">
           <a
             href="#demo"
-            className="bg-primary text-white px-6 py-3 rounded-btn text-section-title hover:bg-primary-hover transition-colors"
+            className="bg-primary-ink text-on-solid px-6 py-3 rounded-btn text-section-title hover:bg-primary-ink-hover transition-colors"
           >
             Request Demo
           </a>
@@ -223,7 +223,7 @@ function PricingCard({
       <ul className="mt-6 space-y-2 text-table-cell text-text-cell">
         {features.map((f) => (
           <li key={f} className="flex items-start gap-2">
-            <svg viewBox="0 0 24 24" className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <svg viewBox="0 0 24 24" className="w-4 h-4 text-primary-ink mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth="2.5">
               <path d="M5 13l4 4L19 7" />
             </svg>
             {f}
@@ -234,7 +234,7 @@ function PricingCard({
         href="#demo"
         className={`mt-6 block text-center py-2.5 rounded-btn font-semibold text-table-cell transition-colors ${
           featured
-            ? 'bg-primary text-white hover:bg-primary-hover'
+            ? 'bg-primary-ink text-on-solid hover:bg-primary-ink-hover'
             : 'border border-border text-text-cell hover:bg-sidebar-hover'
         }`}
       >
@@ -284,7 +284,7 @@ function DemoForm() {
         <div className="text-lg font-semibold text-pass mb-1">Thanks - we'll be in touch shortly.</div>
         <p className="text-table-cell text-text-subtle">
           Expect a reply within one business day. In the meantime,{' '}
-          <Link to="/login" className="text-primary font-semibold hover:underline">
+          <Link to="/login" className="text-primary-ink font-semibold hover:underline">
             sign in
           </Link>{' '}
           if you already have an account.
@@ -350,7 +350,7 @@ function DemoForm() {
       <button
         type="submit"
         disabled={submitting}
-        className="w-full bg-primary text-white px-6 py-3 rounded-btn font-semibold text-[15px] hover:bg-primary-hover disabled:opacity-50 transition-colors"
+        className="w-full bg-primary-ink text-on-solid px-6 py-3 rounded-btn font-semibold text-[15px] hover:bg-primary-ink-hover disabled:opacity-50 transition-colors"
       >
         {submitting ? 'Submitting...' : 'Request Demo'}
       </button>

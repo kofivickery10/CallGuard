@@ -161,7 +161,7 @@ function Card({ label, value, sub, accent }: { label: string; value: string; sub
   return (
     <div className={`bg-card rounded-card p-4 border ${accent ? 'border-primary' : 'border-border'}`}>
       <p className="text-xs font-semibold uppercase tracking-wider text-text-muted mb-1">{label}</p>
-      <p className={`text-card-value ${accent ? 'text-primary' : 'text-text-primary'}`}>{value}</p>
+      <p className={`text-card-value ${accent ? 'text-primary-ink' : 'text-text-primary'}`}>{value}</p>
       {sub && <p className="text-xs text-text-muted mt-1">{sub}</p>}
     </div>
   );

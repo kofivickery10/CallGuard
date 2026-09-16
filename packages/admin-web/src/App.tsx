@@ -34,7 +34,7 @@ function NavItem({ to, label, badge = 0 }: { to: string; label: string; badge?: 
     >
       <span>{label}</span>
       {badge > 0 && (
-        <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-fail text-white text-[11px] font-bold flex items-center justify-center">
+        <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-fail text-on-solid text-[11px] font-bold flex items-center justify-center">
           {badge > 99 ? '99+' : badge}
         </span>
       )}
