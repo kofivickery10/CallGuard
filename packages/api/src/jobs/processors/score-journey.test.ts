@@ -71,17 +71,58 @@ function item(id: string, extra: Record<string, unknown> = {}) {
   };
 }
 
+function call(id: string, role: CallRow['role'], extra: Partial<CallRow> = {}): CallRow {
+  return {
+    id,
+    role,
+    call_date: '2026-09-01',
+    created_at: '2026-09-01T10:00:00Z',
+    agent_id: AGENT,
+    agent_name: 'Adviser One',
+    transcript_text: null,
+    speaker_attribution_confidence: 0.9,
+    speaker_integrity_flag: null,
+    ...extra,
+  };
+}
+
+interface CallRow {
+  id: string;
+  role: 'wrap_up' | 'context';
+  call_date: string | null;
+  created_at: string;
+  agent_id: string | null;
+  agent_name: string | null;
+  transcript_text: string | null;
+  speaker_attribution_confidence: number | null;
+  speaker_integrity_flag: string | null;
+}
+
 interface Setup {
-  transcript: string;
+  transcript?: string;
   items: ReturnType<typeof item>[];
   aiScores: Record<string, number>;
   rulings?: Array<{ scorecard_item_id: string; corrected_score: string | null; corrected_pass: boolean | null }>;
   speakerConfidence?: number;
+  // The sale's calls, oldest first (the order the processor's query returns
+  // them in). Defaults to one wrap-up call built from transcript and
+  // speakerConfidence.
+  calls?: CallRow[];
+  // The model's evidence per checkpoint. Defaults to a quote from call 1.
+  evidence?: Record<string, string>;
 }
 
 let txCalls: Array<{ sql: string; params: unknown[] }> = [];
 
-function setup({ transcript, items, aiScores, rulings = [], speakerConfidence = 0.9 }: Setup) {
+function setup({
+  transcript = '',
+  items,
+  aiScores,
+  rulings = [],
+  speakerConfidence = 0.9,
+  calls,
+  evidence = {},
+}: Setup) {
   txCalls = [];
   vi.mocked(queryOne).mockImplementation((async (sql: string) => {
     if (sql.includes('FROM journeys')) {
@@ -105,19 +146,11 @@ function setup({ transcript, items, aiScores, rulings = [], speakerConfidence = 
 
   vi.mocked(query).mockImplementation((async (sql: string) => {
     if (sql.includes('FROM journey_calls')) {
-      return [
-        {
-          id: 'call-1',
-          role: 'wrap_up',
-          call_date: '2026-09-01',
-          created_at: '2026-09-01T10:00:00Z',
-          agent_id: AGENT,
-          agent_name: 'Adviser One',
-          transcript_text: transcript,
-          speaker_attribution_confidence: speakerConfidence,
-          speaker_integrity_flag: null,
-        },
-      ];
+      return (
+        calls ?? [
+          call('call-1', 'wrap_up', { transcript_text: transcript, speaker_attribution_confidence: speakerConfidence }),
+        ]
+      );
     }
     if (sql.includes('FROM scorecard_items')) return items;
     if (sql.includes('FROM score_corrections')) return rulings;
@@ -138,7 +171,7 @@ function setup({ transcript, items, aiScores, rulings = [], speakerConfidence = 
       scorecard_item_id: id,
       score,
       confidence: 0.9,
-      evidence: '[Call 1] "quote"',
+      evidence: evidence[id] ?? '[Call 1] "quote"',
       reasoning: 'model reasoning',
       disputed: false,
       agreement: 1,
@@ -247,5 +280,199 @@ describe('processScoreJourney — calibration context for provisional checkpoint
     expect(itemScoreInsert('trust')!.sql).toContain("'manual_review'");
     expect(itemScoreInsert('consent')!.sql).toContain("'manual_review'");
     expect(txCalls.some((c) => c.sql.includes('INSERT INTO breaches'))).toBe(false);
+  });
+});
+
+// Review routing on sales whose speakers cannot be told apart.
+//
+// Two rules decide whether a checkpoint is held for a person, and they key on
+// different signals:
+//
+//  - the SALE-level rule: if the wrap-up call is one-sided or its labels are
+//    flagged (transcriptSupportsAttribution), every applicable checkpoint goes
+//    to review and the sale reports no score;
+//  - the per-checkpoint release: a consent gate held only because some call on
+//    the sale sat under the speaker-confidence floor is released once its
+//    evidence turns out to come from a call at or above the floor.
+//
+// A call can be unattributable and still carry a confidence of 0.5 or more — a
+// stereo pin is 1.0 whether or not both channels carried speech, and one-sided
+// calls were lifted to 0.75 by the cleanup pass before that lift was guarded.
+// The release must never undo the sale-level rule.
+
+function journeyUpdate() {
+  return txCalls.find((c) => c.sql.includes("UPDATE journeys SET\n           status = 'scored'"))!;
+}
+
+const ONE_SIDED = 'Agent: Are you happy for me to go ahead?\nAgent: Yes, go ahead.';
+
+describe('processScoreJourney — a sale whose wrap-up cannot be attributed', () => {
+  it('keeps a consent gate in review on a one-call sale even when the call clears the speaker floor', async () => {
+    setup({
+      transcript: ONE_SIDED,
+      items: [item('consent', { consent_gate: true })],
+      aiScores: { consent: 1 },
+      evidence: { consent: '[Call 1] "Yes, go ahead."' },
+      speakerConfidence: 0.8,
+    });
+
+    await run();
+
+    expect(itemScoreInsert('consent')!.sql).toContain("'manual_review'");
+    expect(itemScoreInsert('consent')!.sql).not.toMatch(/'pass'|'fail'/);
+    // No score on a sale nobody has judged.
+    expect(journeyUpdate().params[3]).toBeNull();
+    expect(journeyUpdate().params[4]).toBeNull();
+  });
+
+  it('keeps every non-consent checkpoint in review too, passes and fails alike', async () => {
+    setup({
+      transcript: ONE_SIDED,
+      items: [item('disclosure'), item('trust'), item('consent', { consent_gate: true })],
+      aiScores: { disclosure: 1, trust: 0, consent: 1 },
+      // A stereo-pinned call: full confidence, and still only one party heard.
+      speakerConfidence: 1.0,
+    });
+
+    await run();
+
+    for (const id of ['disclosure', 'trust', 'consent']) {
+      expect(itemScoreInsert(id)!.sql).toContain("'manual_review'");
+    }
+    expect(txCalls.some((c) => c.sql.includes('INSERT INTO breaches'))).toBe(false);
+    expect(journeyUpdate().params[3]).toBeNull();
+    const history = txCalls.find((c) => c.sql.includes('INSERT INTO journey_score_runs'))!;
+    expect(history.params[8]).toBe(0); // items_passed
+    expect(history.params[9]).toBe(0); // items_failed
+    expect(history.params[11]).toBe(3); // items_manual_review
+  });
+
+  it('keeps everything in review when the wrap-up labels are flagged, whatever the stored confidence', async () => {
+    setup({
+      calls: [
+        call('call-1', 'wrap_up', {
+          transcript_text: ATTRIBUTABLE,
+          speaker_attribution_confidence: 0.75,
+          speaker_integrity_flag: 'inverted_labels',
+        }),
+      ],
+      items: [item('disclosure'), item('consent', { consent_gate: true })],
+      aiScores: { disclosure: 1, consent: 1 },
+    });
+
+    await run();
+
+    expect(itemScoreInsert('disclosure')!.sql).toContain("'manual_review'");
+    expect(itemScoreInsert('consent')!.sql).toContain("'manual_review'");
+    expect(journeyUpdate().params[3]).toBeNull();
+  });
+
+  it('keeps a consent gate in review on a multi-call sale even when its evidence is from a well-attributed earlier call', async () => {
+    setup({
+      calls: [
+        call('call-1', 'context', { transcript_text: ATTRIBUTABLE, speaker_attribution_confidence: 0.9 }),
+        call('call-2', 'wrap_up', {
+          call_date: '2026-09-02',
+          created_at: '2026-09-02T10:00:00Z',
+          transcript_text: ONE_SIDED,
+          speaker_attribution_confidence: 0.8,
+        }),
+      ],
+      items: [item('disclosure'), item('consent', { consent_gate: true })],
+      aiScores: { disclosure: 1, consent: 1 },
+      evidence: { disclosure: '[Call 1] "quote"', consent: '[Call 1] "quote"' },
+    });
+
+    await run();
+
+    expect(itemScoreInsert('disclosure')!.sql).toContain("'manual_review'");
+    expect(itemScoreInsert('consent')!.sql).toContain("'manual_review'");
+    expect(journeyUpdate().params[3]).toBeNull();
+  });
+
+  it('still lets a reviewer ruling settle a checkpoint on an unattributable sale', async () => {
+    setup({
+      transcript: ONE_SIDED,
+      items: [item('disclosure'), item('consent', { consent_gate: true })],
+      aiScores: { disclosure: 1, consent: 1 },
+      speakerConfidence: 0.8,
+      rulings: [{ scorecard_item_id: 'consent', corrected_score: '1', corrected_pass: true }],
+    });
+
+    await run();
+
+    expect(itemScoreInsert('consent')!.params[2]).toBe('pass');
+    expect(itemScoreInsert('disclosure')!.sql).toContain("'manual_review'");
+  });
+});
+
+describe('processScoreJourney — attributable sales route as before', () => {
+  it('auto-scores a consent gate and an ordinary checkpoint on a well-attributed one-call sale', async () => {
+    setup({
+      transcript: ATTRIBUTABLE,
+      items: [item('disclosure'), item('consent', { consent_gate: true })],
+      aiScores: { disclosure: 0, consent: 1 },
+      speakerConfidence: 0.8,
+    });
+
+    await run();
+
+    expect(itemScoreInsert('disclosure')!.params[2]).toBe('fail');
+    expect(itemScoreInsert('consent')!.params[2]).toBe('pass');
+    expect(txCalls.some((c) => c.sql.includes('INSERT INTO breaches') && c.params.includes('disclosure'))).toBe(true);
+    expect(journeyUpdate().params[3]).toBe(50);
+  });
+
+  it('holds only the consent gate on a one-call sale under the speaker floor', async () => {
+    setup({
+      transcript: ATTRIBUTABLE,
+      items: [item('disclosure'), item('consent', { consent_gate: true })],
+      aiScores: { disclosure: 1, consent: 1 },
+      speakerConfidence: 0.3,
+    });
+
+    await run();
+
+    expect(itemScoreInsert('disclosure')!.params[2]).toBe('pass');
+    expect(itemScoreInsert('consent')!.sql).toContain("'manual_review'");
+    expect(journeyUpdate().params[3]).toBe(100);
+  });
+
+  // The wrap-up is attributable, an earlier context call is not. The sale-level
+  // rule is deliberately keyed on the wrap-up alone ("a scrappy 20-second
+  // context call should not withhold a score the wrap-up can carry"), so it does
+  // not fire. What remains is the per-checkpoint rule: the weak context call
+  // holds every consent gate before scoring, and each is released only if its
+  // quote came from a call at or above the floor. Ordinary checkpoints score.
+  it('on a multi-call sale with an attributable wrap-up, holds only consent gates quoted from the weak call', async () => {
+    setup({
+      calls: [
+        call('call-1', 'context', { transcript_text: ONE_SIDED, speaker_attribution_confidence: 0.3 }),
+        call('call-2', 'wrap_up', {
+          call_date: '2026-09-02',
+          created_at: '2026-09-02T10:00:00Z',
+          transcript_text: ATTRIBUTABLE,
+          speaker_attribution_confidence: 0.8,
+        }),
+      ],
+      items: [
+        item('disclosure'),
+        item('consentFromWrapUp', { consent_gate: true }),
+        item('consentFromContext', { consent_gate: true }),
+      ],
+      aiScores: { disclosure: 1, consentFromWrapUp: 1, consentFromContext: 1 },
+      evidence: {
+        disclosure: '[Call 1] "quote"',
+        consentFromWrapUp: '[Call 2] "quote"',
+        consentFromContext: '[Call 1] "quote"',
+      },
+    });
+
+    await run();
+
+    expect(itemScoreInsert('disclosure')!.params[2]).toBe('pass');
+    expect(itemScoreInsert('consentFromWrapUp')!.params[2]).toBe('pass');
+    expect(itemScoreInsert('consentFromContext')!.sql).toContain("'manual_review'");
+    expect(journeyUpdate().params[3]).toBe(100);
   });
 });

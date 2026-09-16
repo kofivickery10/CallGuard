@@ -571,7 +571,16 @@ export async function processScoreJourney(job: Job<ScoreJourneyJobData>) {
         ruledNotApplicableWrites.push({ item, itemScore, normalized, sourceCallId });
         continue;
       }
-      const stillProvisional = provisionalIds.has(item.id) && !evidenceIsWellAttributed;
+      // The release above answers one question: was a consent gate held only
+      // because SOME call on the sale sat under the speaker floor? It must not
+      // answer a different one. When the wrap-up itself cannot be attributed,
+      // every applicable checkpoint was held for that reason (classifyItems with
+      // attribution.ok false), and no call's confidence number can undo it: a
+      // one-sided or flagged call can still carry 0.5 or more (a stereo pin is
+      // 1.0 whether or not both channels had speech in them). Releasing on
+      // confidence there auto-scored consent gates, and every other checkpoint,
+      // on exactly the sales the platform had decided it could not read.
+      const stillProvisional = provisionalIds.has(item.id) && (!attribution.ok || !evidenceIsWellAttributed);
       if (!ruledIds.has(item.id) && (stillProvisional || disputedIds.has(item.id) || lowConfidence)) {
         provisionalWrites.push({ item, itemScore, normalized, sourceCallId });
         if (lowConfidence) lowConfidenceCount++;
