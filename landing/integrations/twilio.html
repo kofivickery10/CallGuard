@@ -3,25 +3,25 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta name="description" content="AI call QA for Twilio Media Streams. Stream live audio over WebSocket, score every call against your scorecard, and fire signed webhooks on breaches." />
+<meta name="description" content="AI call QA for Twilio Media Streams. Stream live audio over WebSocket, score calls against your scorecard, and fire webhooks on breaches." />
 <meta name="theme-color" content="#4a9e6e" />
 <meta name="robots" content="index,follow,max-image-preview:large" />
 <meta name="author" content="CallGuard AI" />
-<title>Twilio Call QA Integration: Live AI Scoring | CallGuard AI</title>
+<title>Twilio Call QA: Live Breach Detection | CallGuard AI</title>
 <link rel="canonical" href="https://callguardai.co.uk/integrations/twilio" />
 <link rel="icon" href="/favicon.ico" sizes="48x48" />
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 <link rel="manifest" href="/site.webmanifest" />
 <link rel="preload" as="font" type="font/woff2" href="/fonts/InterVariable.woff2" crossorigin>
-<link rel="stylesheet" href="/style.css?v=15" />
+<link rel="stylesheet" href="/style.css?v=17" />
 
 <meta property="og:type" content="article" />
 <meta property="og:site_name" content="CallGuard AI" />
 <meta property="og:locale" content="en_GB" />
 <meta property="og:url" content="https://callguardai.co.uk/integrations/twilio" />
-<meta property="og:title" content="Twilio Call QA Integration: Live AI Scoring | CallGuard AI" />
-<meta property="og:description" content="AI call QA for Twilio Media Streams. Live scoring, signed webhooks, mid-call breach detection." />
+<meta property="og:title" content="Twilio Call QA: Live Breach Detection | CallGuard AI" />
+<meta property="og:description" content="AI call QA for Twilio Media Streams. Live breach detection, webhooks, full scoring after the call." />
 <meta property="og:image" content="https://callguardai.co.uk/og-image.jpg" />
 
 <meta name="twitter:card" content="summary_large_image" />
@@ -37,7 +37,7 @@
       "@type": "BreadcrumbList",
       "itemListElement": [
         {"@type": "ListItem", "position": 1, "name": "Home", "item": "https://callguardai.co.uk/"},
-        {"@type": "ListItem", "position": 2, "name": "Integrations", "item": "https://callguardai.co.uk/#live"},
+        {"@type": "ListItem", "position": 2, "name": "Integrations", "item": "https://callguardai.co.uk/integrations/"},
         {"@type": "ListItem", "position": 3, "name": "Twilio"}
       ]
     },
@@ -46,7 +46,7 @@
       "@id": "https://callguardai.co.uk/integrations/twilio#webpage",
       "name": "Twilio Call QA Integration",
       "url": "https://callguardai.co.uk/integrations/twilio",
-      "description": "Live AI scoring on Twilio Media Streams.",
+      "description": "Live breach detection on Twilio Media Streams.",
       "isPartOf": {"@id": "https://callguardai.co.uk/#website"},
       "about": {"@id": "https://callguardai.co.uk/#software"}
     },
@@ -88,10 +88,10 @@
         },
         {
           "@type": "Question",
-          "name": "How do we handle consent capture?",
+          "name": "How is consent handled on a Twilio stream?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "The streaming protocol takes a consent.captured event before scoring proceeds, with the consent excerpt and timestamp captured in the call record. For Twilio specifically, you can inject the consent event from your TwiML <Say> or <Play> flow when the customer's \"yes\" is recorded."
+            "text": "Your telephony layer handles it. A Twilio stream carries the call audio and the end of the call, not consent events. The generic WebSocket API does accept a consent.captured event, which records the time and an excerpt against the live session. It does not hold back breach detection."
           }
         },
         {
@@ -122,38 +122,39 @@
 <header class="nav" role="banner">
   <div class="container nav-inner">
     <a class="brand" href="/" aria-label="CallGuard AI home"><img class="brand-logo brand-logo--light" src="/brand/svg/callguard-logo-horizontal.svg" alt="CallGuard AI" width="152" height="32" /><img class="brand-logo brand-logo--dark" src="/brand/svg/callguard-logo-horizontal-dark.svg" alt="CallGuard AI" width="152" height="32" /></a>
+
     <nav class="nav-links" aria-label="Primary">
       <a href="/#how-it-works">How it works</a>
-      <a href="/#live">Live &amp; embedded</a>
-      <a href="/#learning">AI learning</a>
-      <a href="/#data-forms">Reconciliation</a>
-      <a href="/#use-cases">Use cases</a>
-      <a href="/pricing">Pricing</a>
+      <a href="/application-reconciliation">Reconciliation</a>
+      <a href="/#security">Security</a>
+      <a href="/pricing">Plans</a>
       <a href="/blog/">Blog</a>
     </nav>
+
     <a href="https://app.callguardai.co.uk/" class="nav-login">Log in</a>
-    <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request" class="btn btn-primary nav-cta">Book a demo</a>
+    <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request" class="btn btn-primary nav-cta">Request a demo</a>
+
     <button class="theme-switch" type="button" aria-label="Toggle dark mode" aria-pressed="false">
-      <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-      <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+      <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
     </button>
-    <button class="nav-toggle" aria-label="Open menu" aria-controls="mobile-drawer" aria-expanded="false">
-      <svg class="icon-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="7"  x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>
-      <svg class="icon-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="6" y1="6"  x2="18" y2="18"/><line x1="6" y1="18" x2="18" y2="6"/></svg>
+    <button class="nav-toggle" type="button" aria-label="Open menu" aria-controls="mobile-drawer" aria-expanded="false">
+      <svg class="icon-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><line x1="4" y1="7"  x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>
+      <svg class="icon-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><line x1="6" y1="6"  x2="18" y2="18"/><line x1="6" y1="18" x2="18" y2="6"/></svg>
     </button>
   </div>
-  <div class="nav-drawer" id="mobile-drawer" aria-label="Mobile menu">
+
+  <nav class="nav-drawer" id="mobile-drawer" aria-label="Mobile menu">
     <a href="/#how-it-works">How it works</a>
-    <a href="/#live">Live &amp; embedded</a>
-    <a href="/#learning">AI learning</a>
-    <a href="/#data-forms">Reconciliation</a>
-    <a href="/#use-cases">Use cases</a>
-    <a href="/pricing">Pricing</a>
+    <a href="/application-reconciliation">Reconciliation</a>
+    <a href="/#learning">Your standard</a>
+    <a href="/#security">Security</a>
+    <a href="/pricing">Plans</a>
+    <a href="/#faq">FAQ</a>
     <a href="/blog/">Blog</a>
-      <a href="/#faq">FAQ</a>
     <a href="https://app.callguardai.co.uk/">Log in</a>
-    <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request" class="btn btn-primary">Book a demo</a>
-  </div>
+    <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request" class="btn btn-primary">Request a demo</a>
+  </nav>
 </header>
 
 <main id="top">
@@ -165,10 +166,10 @@
         AI call QA for <span class="accent">Twilio Media Streams.</span>
       </h1>
       <p class="hero-sub">
-        First-class adapter for Twilio's Media Streams WebSocket. Live transcription with speaker separation, scoring against your own scorecard, mid-call breach detection within 30 seconds, and HMAC-signed webhooks back to your CRM or supervisor screen. No middleware, no Lambda bridge.
+        First-class adapter for Twilio's Media Streams WebSocket. Live transcription with speaker separation, scoring against your own scorecard, mid-call breach detection while the call is still happening, and webhooks, HMAC-signed once you set a signing secret, back to your CRM or agent desktop. No middleware, no Lambda bridge. It sits alongside CallGuard's other <a href="/integrations/">call and meeting integrations</a>.
       </p>
       <div class="hero-ctas">
-        <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20Twilio%20demo" class="btn btn-primary btn-lg">Book a 15-min demo</a>
+        <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20Twilio%20demo" class="btn btn-primary btn-lg">Request a demo</a>
         <a href="#how" class="btn btn-ghost btn-lg">How the integration works ↓</a>
       </div>
     </div>
@@ -193,12 +194,12 @@
         <div class="step">
           <div class="step-num">2</div>
           <h3>We score in real time</h3>
-          <p>The adapter consumes Twilio's media frames, runs live transcription with speaker separation, and feeds the rolling transcript into Claude every 30 seconds for breach detection at over 75% confidence.</p>
+          <p>The adapter consumes Twilio's media frames, runs live transcription with speaker separation, and feeds the rolling transcript into Claude for breach detection, only emitting a breach when it is confident the criterion has already failed.</p>
         </div>
         <div class="step">
           <div class="step-num">3</div>
           <h3>Webhooks fire back</h3>
-          <p>HMAC-SHA256 signed POST to your endpoint within 30 seconds of a breach being detected, plus a final scored event when the call ends. Retry with exponential backoff. Full audit log in the dashboard.</p>
+          <p>A POST to your endpoint, HMAC-SHA256 signed once you set a signing secret, sent as soon as a breach is detected, plus a final scored event when the call ends. Retry with exponential backoff. Full audit log in the dashboard.</p>
         </div>
       </div>
     </div>
@@ -221,16 +222,16 @@
           <p>Speaker separation distinguishes agent and customer turns. Production-grade speech recognition with keyterm boosting for product names, regional accents and acronyms.</p>
         </div>
         <div class="feature">
-          <h3>30-second breach cadence</h3>
-          <p>Mid-call breach detection runs every 30 seconds against the rolling transcript. Only emits a breach when the AI is over 75% confident a criterion has clearly already failed. No alert fatigue.</p>
+          <h3>Confidence-gated breach detection</h3>
+          <p>The rolling transcript is checked about every 30 seconds as the call happens, and a breach is sent only when the model rates it at 0.75 confidence or higher. No alert fatigue.</p>
         </div>
         <div class="feature">
           <h3>HMAC-SHA256 signed webhooks</h3>
-          <p>Every webhook is signed so your endpoint can verify the payload came from CallGuard. Headers include <code>X-CallGuardAI-Event</code> and <code>X-CallGuardAI-Signature: sha256=...</code>. Retries on failure with exponential backoff.</p>
+          <p>Set a signing secret and every webhook carries a signature so your endpoint can verify the payload came from CallGuard. Headers include <code>X-CallGuardAI-Event</code> and <code>X-CallGuardAI-Signature: sha256=...</code>. Retries on failure with exponential backoff.</p>
         </div>
         <div class="feature">
           <h3>Final scored event</h3>
-          <p>When the call ends, a final webhook fires with the overall score, pass/fail per scorecard criterion, evidence quotes, breach list and coaching draft. Same payload as the REST result endpoint.</p>
+          <p>When the call ends, a final webhook fires with the overall score, pass/fail per scorecard criterion, transcript evidence, breach list and coaching draft. Same payload as the REST result endpoint.</p>
         </div>
         <div class="feature">
           <h3>Encryption at rest</h3>
@@ -263,8 +264,8 @@
           <div class="faq-body"><p>Yes. Push the Twilio recording URL or the audio file into our REST ingest endpoint after the call ends. You get the same scoring output, just without the mid-call breach webhooks. You can run streaming for compliance-critical campaigns and post-call ingest for the rest.</p></div>
         </details>
         <details class="faq-item">
-          <summary>How do we handle consent capture?</summary>
-          <div class="faq-body"><p>The streaming protocol takes a <code>consent.captured</code> event before scoring proceeds, with the consent excerpt and timestamp captured in the call record. For Twilio specifically, you can inject the consent event from your TwiML &lt;Say&gt; or &lt;Play&gt; flow when the customer's "yes" is recorded.</p></div>
+          <summary>How is consent handled on a Twilio stream?</summary>
+          <div class="faq-body"><p>Your telephony layer handles it. A Twilio stream carries the call audio and the end of the call, not consent events. The generic WebSocket API does accept a <code>consent.captured</code> event, which records the time and an excerpt against the live session. It does not hold back breach detection.</p></div>
         </details>
         <details class="faq-item">
           <summary>What happens if the WebSocket disconnects mid-call?</summary>
@@ -273,7 +274,7 @@
       </div>
 
       <div style="margin-top: 36px; text-align: center;">
-        <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20Twilio%20demo" class="btn btn-primary btn-lg">Book a 15-min demo</a>
+        <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20Twilio%20demo" class="btn btn-primary btn-lg">Request a demo</a>
       </div>
     </div>
   </section>
@@ -287,50 +288,51 @@
       <p class="footer-tag">AI compliance scoring for every regulated conversation.</p>
     </div>
     <div class="footer-links">
-      <div class="footer-col">
-        <h5>Product</h5>
+      <nav class="footer-col" aria-labelledby="footer-product">
+        <p class="footer-heading" id="footer-product">Product</p>
         <a href="/#how-it-works">How it works</a>
         <a href="/#live">Live &amp; embedded</a>
-        <a href="/#learning">AI learning</a>
-        <a href="/#data-forms">Reconciliation</a>
+        <a href="/scoring-calibration">Scoring calibration</a>
+        <a href="/application-reconciliation">Reconciliation</a>
         <a href="/#use-cases">Use cases</a>
-        <a href="/pricing">Pricing</a>
+        <a href="/pricing">Plans</a>
         <a href="/compare/">Compare</a>
         <a href="/about">About</a>
         <a href="/blog/">Blog</a>
       <a href="/#faq">FAQ</a>
-      </div>
-      <div class="footer-col">
-        <h5>Use cases</h5>
+      </nav>
+      <nav class="footer-col" aria-labelledby="footer-use-cases">
+        <p class="footer-heading" id="footer-use-cases">Use cases</p>
         <a href="/use-cases/financial-services">Financial services</a>
         <a href="/use-cases/mortgage-advice">Mortgage advice</a>
         <a href="/use-cases/bpo">Contact centres &amp; BPOs</a>
         <a href="/use-cases/collections">Debt collections</a>
         <a href="/use-cases/outbound-sales">Outbound sales</a>
-      </div>
-      <div class="footer-col">
-        <h5>Integrations</h5>
+      </nav>
+      <nav class="footer-col" aria-labelledby="footer-integrations">
+        <p class="footer-heading" id="footer-integrations">Integrations</p>
         <a href="/integrations/twilio">Twilio</a>
         <a href="/integrations/cloudtalk">CloudTalk</a>
         <a href="/integrations/microsoft-teams">Microsoft Teams</a>
         <a href="/integrations/aws-connect">AWS Connect</a>
-      </div>
-      <div class="footer-col">
-        <h5>Legal</h5>
+        <a href="/integrations/">All integrations</a>
+      </nav>
+      <nav class="footer-col" aria-labelledby="footer-legal">
+        <p class="footer-heading" id="footer-legal">Legal</p>
         <a href="/privacy">Privacy policy</a>
         <a href="/terms">Terms of service</a>
         <a href="/dpa">DPA</a>
         <a href="/sub-processors">Sub-processors</a>
-      </div>
+      </nav>
     </div>
   </div>
   <div class="container footer-bottom">
     <span>© 2026 CallGuard AI.</span>
-    <span>UK-based · GDPR-compliant by default</span>
+    <span>UK-based · Data stored in the UK</span>
   </div>
 </footer>
 
-<script defer src="/script.js?v=4"></script>
+<script defer src="/script.js?v=6"></script>
 
 <script defer src="/analytics.js?v=2"></script>
 </body>

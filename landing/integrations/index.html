@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="description" content="Native call QA adapters for Twilio, Amazon Connect, CloudTalk and Microsoft Teams, plus a REST API, SFTP and webhooks that work with any dialler." />
+<meta name="theme-color" content="#4a9e6e" />
+<meta name="robots" content="index,follow,max-image-preview:large" />
+<meta name="author" content="CallGuard AI" />
+<title>Call QA Integrations | CallGuard AI</title>
+<link rel="canonical" href="https://callguardai.co.uk/integrations/" />
+<link rel="icon" href="/favicon.ico" sizes="48x48" />
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+<link rel="manifest" href="/site.webmanifest" />
+<link rel="preload" as="font" type="font/woff2" href="/fonts/InterVariable.woff2" crossorigin>
+<link rel="stylesheet" href="/style.css?v=17" />
+
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="CallGuard AI" />
+<meta property="og:locale" content="en_GB" />
+<meta property="og:url" content="https://callguardai.co.uk/integrations/" />
+<meta property="og:title" content="Call QA Integrations | CallGuard AI" />
+<meta property="og:description" content="How CallGuard AI connects to your dialler and your CRM: native adapters for Twilio, Amazon Connect, CloudTalk and Microsoft Teams, plus a REST API, SFTP pickup, signed webhooks and a WebSocket streaming protocol for everything else." />
+<meta property="og:image" content="https://callguardai.co.uk/og-image.jpg" />
+
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Call QA Integrations | CallGuard AI" />
+<meta name="twitter:description" content="Native adapters for Twilio, Amazon Connect, CloudTalk and Microsoft Teams, plus a REST API, SFTP and webhooks for any dialler." />
+<meta name="twitter:image" content="https://callguardai.co.uk/og-image.jpg" />
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        {"@type": "ListItem", "position": 1, "name": "Home", "item": "https://callguardai.co.uk/"},
+        {"@type": "ListItem", "position": 2, "name": "Integrations"}
+      ]
+    },
+    {
+      "@type": "CollectionPage",
+      "@id": "https://callguardai.co.uk/integrations/#webpage",
+      "name": "Call QA Integrations",
+      "url": "https://callguardai.co.uk/integrations/",
+      "description": "How CallGuard AI connects to a dialler, a meeting platform or a CRM: native adapters for Twilio, Amazon Connect, CloudTalk and Microsoft Teams, plus a REST API, SFTP pickup, signed webhooks and a WebSocket streaming protocol for anything else.",
+      "isPartOf": {"@id": "https://callguardai.co.uk/#website"},
+      "about": {"@id": "https://callguardai.co.uk/#software"},
+      "mainEntity": {
+        "@type": "ItemList",
+        "itemListElement": [
+          {"@type": "ListItem", "position": 1, "url": "https://callguardai.co.uk/integrations/twilio"},
+          {"@type": "ListItem", "position": 2, "url": "https://callguardai.co.uk/integrations/aws-connect"},
+          {"@type": "ListItem", "position": 3, "url": "https://callguardai.co.uk/integrations/cloudtalk"},
+          {"@type": "ListItem", "position": 4, "url": "https://callguardai.co.uk/integrations/microsoft-teams"}
+        ]
+      }
+    }
+  ]
+}
+</script>
+<script>
+  (function () {
+    try {
+      var s = localStorage.getItem('cg-theme');
+      var d = s ? s === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+      document.documentElement.setAttribute('data-theme', d ? 'dark' : 'light');
+    } catch (e) {}
+  })();
+</script>
+</head>
+<body>
+
+<header class="nav" role="banner">
+  <div class="container nav-inner">
+    <a class="brand" href="/" aria-label="CallGuard AI home"><img class="brand-logo brand-logo--light" src="/brand/svg/callguard-logo-horizontal.svg" alt="CallGuard AI" width="152" height="32" /><img class="brand-logo brand-logo--dark" src="/brand/svg/callguard-logo-horizontal-dark.svg" alt="CallGuard AI" width="152" height="32" /></a>
+
+    <nav class="nav-links" aria-label="Primary">
+      <a href="/#how-it-works">How it works</a>
+      <a href="/application-reconciliation">Reconciliation</a>
+      <a href="/#security">Security</a>
+      <a href="/pricing">Plans</a>
+      <a href="/blog/">Blog</a>
+    </nav>
+
+    <a href="https://app.callguardai.co.uk/" class="nav-login">Log in</a>
+    <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request" class="btn btn-primary nav-cta">Request a demo</a>
+
+    <button class="theme-switch" type="button" aria-label="Toggle dark mode" aria-pressed="false">
+      <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+    </button>
+    <button class="nav-toggle" type="button" aria-label="Open menu" aria-controls="mobile-drawer" aria-expanded="false">
+      <svg class="icon-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><line x1="4" y1="7"  x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>
+      <svg class="icon-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><line x1="6" y1="6"  x2="18" y2="18"/><line x1="6" y1="18" x2="18" y2="6"/></svg>
+    </button>
+  </div>
+
+  <nav class="nav-drawer" id="mobile-drawer" aria-label="Mobile menu">
+    <a href="/#how-it-works">How it works</a>
+    <a href="/application-reconciliation">Reconciliation</a>
+    <a href="/#learning">Your standard</a>
+    <a href="/#security">Security</a>
+    <a href="/pricing">Plans</a>
+    <a href="/#faq">FAQ</a>
+    <a href="/blog/">Blog</a>
+    <a href="https://app.callguardai.co.uk/">Log in</a>
+    <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request" class="btn btn-primary">Request a demo</a>
+  </nav>
+</header>
+
+<main id="top">
+
+  <section class="hero">
+    <div class="container">
+      <h1 class="hero-headline">Every way a call reaches <span class="accent">CallGuard.</span></h1>
+      <p class="hero-sub">
+        CallGuard AI works with your dialler and your CRM, not just one of each. Twilio, Amazon Connect, CloudTalk and Microsoft Teams each have a native adapter built for how that system actually sends a call; a REST API, SFTP pickup and a WebSocket streaming protocol cover everything else. On the CRM side, Zoho CRM is the connector already built; for any other CRM, CallGuard builds that same connection as part of setting your account up.
+      </p>
+      <div class="hero-ctas">
+        <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request" class="btn btn-primary btn-lg">Request a demo</a>
+        <a href="#connectors" class="btn btn-light btn-lg">See the integrations ↓</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="recorded-or-live">
+    <div class="container">
+      <h2 class="section-h2">Two different jobs, <span class="accent">not one blurred together.</span></h2>
+      <p class="lead">
+        Some of these routes send CallGuard a call while it is still happening; most send it once it has already finished. Which one you're on decides what you get back, and when.
+      </p>
+
+      <div class="feature-grid feature-grid-2">
+        <div class="feature">
+          <h3>Streamed live</h3>
+          <p>Twilio, Amazon Connect and CallGuard's own WebSocket API send audio as the call happens. The rolling transcript is checked about every 30 seconds, and a breach is sent only when the model rates it at 0.75 confidence or higher, straight to your own systems over the stream or a signed webhook — never as an email or a Slack message to a supervisor. Amazon Connect needs a small Lambda bridge, run in your own AWS account, to re-emit its voice stream to us; Twilio and the WebSocket API don't. When a streamed call ends, its full transcript is scored exactly like a recorded call, except that any consent question on it always goes to your review queue, because a live stream can't confirm who actually answered.</p>
+        </div>
+        <div class="feature">
+          <h3>Sent after the call</h3>
+          <p>CloudTalk, Microsoft Teams (and any Zoom or Google Meet export), the REST API and SFTP pickup all hand CallGuard a call once it has already been recorded. CallGuard fetches or receives the file, transcribes it and scores it against your scorecard the same way either route works — nothing is flagged mid-call, because there is no mid-call to flag.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section-alt" id="connectors">
+    <div class="container">
+      <h2 class="section-h2">Four native connectors. <span class="accent">Any dialler behind them.</span></h2>
+      <p class="lead">
+        Each of these has a purpose-built adapter: vendor-specific frame parsing, its own ID matching, and setup steps of its own. Read the one for your system.
+      </p>
+
+      <div class="usecase-grid">
+        <article class="usecase-card">
+          <div class="usecase-role">Live streaming</div>
+          <h3>Twilio Media Streams</h3>
+          <p>Point your Twilio Voice TwiML at CallGuard's streaming endpoint. Live transcription, mid-call breach detection and HMAC-signed webhooks, with no middleware and no Lambda bridge to run.</p>
+          <a href="/integrations/twilio" class="usecase-link">The Twilio integration →</a>
+        </article>
+
+        <article class="usecase-card">
+          <div class="usecase-role">Live streaming</div>
+          <h3>Amazon Connect</h3>
+          <p>A small Lambda you deploy and run in your own AWS account re-emits Connect's Kinesis Video voice stream to CallGuard's WebSocket endpoint, so audio never leaves your account until it reaches us.</p>
+          <a href="/integrations/aws-connect" class="usecase-link">The AWS Connect integration →</a>
+        </article>
+
+        <article class="usecase-card">
+          <div class="usecase-role">Recorded call</div>
+          <h3>CloudTalk</h3>
+          <p>CloudTalk's "Call Ended" webhook points at CallGuard directly — no code to deploy. Recordings are fetched automatically, matched to the right agent by CloudTalk's stable ID, and call history can be backfilled for journey scoring.</p>
+          <a href="/integrations/cloudtalk" class="usecase-link">The CloudTalk integration →</a>
+        </article>
+
+        <article class="usecase-card">
+          <div class="usecase-role">Recorded call</div>
+          <h3>Microsoft Teams</h3>
+          <p>Send a Teams meeting recording — or a Zoom or Google Meet export in the same formats — and CallGuard strips the video at ingest, keeping only the audio it needs to transcribe and score the conversation.</p>
+          <a href="/integrations/microsoft-teams" class="usecase-link">The Microsoft Teams integration →</a>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="generic-routes">
+    <div class="container">
+      <h2 class="section-h2">No adapter for your dialler? <span class="accent">These work with any of them.</span></h2>
+      <p class="lead">
+        A named adapter above is the fastest route to set up, but none of them is a requirement. Underneath every one of them are the same general-purpose routes, open to any dialler, archive or in-house system that can post a file, a URL or a stream.
+      </p>
+
+      <div class="usecase-grid">
+        <article class="usecase-card">
+          <div class="usecase-role">Recorded call</div>
+          <h3>REST API</h3>
+          <p>Push a recording in as a file or a URL, and CallGuard queues it, transcribes it and scores it. Poll the same endpoint for the result, or bulk-import a CSV of historical calls to backfill an archive.</p>
+        </article>
+
+        <article class="usecase-card">
+          <div class="usecase-role">Recorded call</div>
+          <h3>SFTP pickup</h3>
+          <p>Point CallGuard at a folder your dialler or recording archive already writes to. We poll it on a schedule, over password or private-key authentication, and pull down anything matching the file pattern you set.</p>
+        </article>
+
+        <article class="usecase-card">
+          <div class="usecase-role">Live streaming</div>
+          <h3>WebSocket API</h3>
+          <p>The same streaming protocol behind the Twilio and Amazon Connect adapters, open to any dialler or your own agent desktop: mint a session token, stream audio over the socket, and get transcript and breach events back the same way.</p>
+        </article>
+
+        <article class="usecase-card">
+          <div class="usecase-role">Delivery, not ingestion</div>
+          <h3>Signed webhooks</h3>
+          <p>Once you set a signing secret, a streamed call's breach alerts and its final score arrive as HMAC-SHA256-signed POSTs to your endpoint. Any call's result, streamed or recorded, can also be pulled at any time from the REST results endpoint.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section-alt" id="crm">
+    <div class="container">
+      <h2 class="section-h2">Connects to your CRM. <span class="accent">Whichever one that is.</span></h2>
+      <p class="lead">
+        CallGuard AI connects to whatever CRM your firm runs. Zoho CRM is the connector already built: a sale trigger in Zoho starts journey scoring, Reconciliation picks up the insurer's application once it lands, and the compliance score and a task for any breach write straight back to the record. For any other CRM, CallGuard builds that same connection — sale-triggered scoring, Reconciliation and result write-back — as part of getting your account set up. Either way, a scored call also reaches you the same way regardless of CRM: a signed webhook the moment it's scored, or a call to the REST results endpoint whenever you want to check.
+      </p>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="container" style="text-align: center;">
+      <h2 class="section-h2" style="margin-left: auto; margin-right: auto;">Not sure which route fits your setup? <span class="accent">Ask us.</span></h2>
+      <p class="lead" style="margin-left: auto; margin-right: auto;">Tell us what your dialler, meeting platform or CRM already does, and we'll tell you honestly which of these gets you scoring fastest.</p>
+      <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20Integrations%20question" class="btn btn-primary btn-lg">Request a demo</a>
+    </div>
+  </section>
+
+</main>
+
+<footer class="footer">
+  <div class="container footer-inner">
+    <div class="footer-brand">
+      <a class="brand brand-footer" href="/" aria-label="CallGuard AI home"><img class="brand-logo brand-logo--footer" src="/brand/svg/callguard-logo-horizontal-dark.svg" alt="CallGuard AI" width="160" height="34" /></a>
+      <p class="footer-tag">AI compliance scoring for every regulated conversation.</p>
+    </div>
+    <div class="footer-links">
+      <nav class="footer-col" aria-labelledby="footer-product">
+        <p class="footer-heading" id="footer-product">Product</p>
+        <a href="/#how-it-works">How it works</a>
+        <a href="/#live">Live &amp; embedded</a>
+        <a href="/scoring-calibration">Scoring calibration</a>
+        <a href="/application-reconciliation">Reconciliation</a>
+        <a href="/#use-cases">Use cases</a>
+        <a href="/pricing">Plans</a>
+        <a href="/compare/">Compare</a>
+        <a href="/about">About</a>
+        <a href="/blog/">Blog</a>
+      <a href="/#faq">FAQ</a>
+      </nav>
+      <nav class="footer-col" aria-labelledby="footer-use-cases">
+        <p class="footer-heading" id="footer-use-cases">Use cases</p>
+        <a href="/use-cases/financial-services">Financial services</a>
+        <a href="/use-cases/mortgage-advice">Mortgage advice</a>
+        <a href="/use-cases/bpo">Contact centres &amp; BPOs</a>
+        <a href="/use-cases/collections">Debt collections</a>
+        <a href="/use-cases/outbound-sales">Outbound sales</a>
+      </nav>
+      <nav class="footer-col" aria-labelledby="footer-integrations">
+        <p class="footer-heading" id="footer-integrations">Integrations</p>
+        <a href="/integrations/twilio">Twilio</a>
+        <a href="/integrations/cloudtalk">CloudTalk</a>
+        <a href="/integrations/microsoft-teams">Microsoft Teams</a>
+        <a href="/integrations/aws-connect">AWS Connect</a>
+        <a href="/integrations/">All integrations</a>
+      </nav>
+      <nav class="footer-col" aria-labelledby="footer-legal">
+        <p class="footer-heading" id="footer-legal">Legal</p>
+        <a href="/privacy">Privacy policy</a>
+        <a href="/terms">Terms of service</a>
+        <a href="/dpa">DPA</a>
+        <a href="/sub-processors">Sub-processors</a>
+      </nav>
+    </div>
+  </div>
+  <div class="container footer-bottom">
+    <span>© 2026 CallGuard AI.</span>
+    <span>UK-based · Data stored in the UK</span>
+  </div>
+</footer>
+
+<script defer src="/script.js?v=6"></script>
+
+<script defer src="/analytics.js?v=2"></script>
+</body>
+</html>

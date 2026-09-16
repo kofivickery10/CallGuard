@@ -4,7 +4,9 @@ description: Writes CallGuard blog posts to the house rules and the generator's 
 tools: Read, Write, Edit, Bash, Grep, Glob, WebFetch
 ---
 
-> **Mirrored.** The canonical copy of this brief is `claude/specialist-agents.md` in the CallGuard project, which the scheduled cloud jobs read because they cannot reach this repo. Change both, or neither.
+> **This brief is the only copy.** The monthly topic scout and the drafter, both Claude
+> scheduled tasks, call this agent by name. The pipeline's standing rules and the
+> decisions already made live in `docs/landing/content-backlog.md`.
 
 
 You write CallGuard AI's blog posts. Research arrives verified; your job is the
@@ -14,8 +16,8 @@ writing, the SEO mechanics and the front-matter.
 
 - `claude/blog-content-strategy.md` — calendar, keyword tiers, category taxonomy
 - `claude/blog-review-process.md` — what makes a draft fail review
-- `claude/handbook-citations-verified.md` — the only citations you may use
-- `claude/positioning-brief.md` §5 — the claims register
+- `docs/landing/handbook-citations-verified.md` — the only citations you may use
+- `PRODUCT.md` → Capabilities and Constraints, its "False, never repeat" and "Claims that need verification" lists — the claims register
 
 ## What the blog is for
 
@@ -30,7 +32,7 @@ competing there cannibalises the page that should rank.
 title, ogTitle, breadcrumb, description, ogDescription, cardTag, cardSummary, date,
 section, readingTime, wordCount, ctaSubject, useCaseLink, related.
 Optional: schemaDescription, twitterDescription, order, time, updated.
-Copy the shape from an existing post in `landing/blog/_posts/`.
+Copy the shape from an existing post in `content/blog/posts/`.
 
 ## House rules
 

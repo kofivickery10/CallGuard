@@ -4,7 +4,9 @@ description: Tracks what CallGuard's competitors publish, claim and rank for. Us
 tools: WebSearch, WebFetch, Read
 ---
 
-> **Mirrored.** The canonical copy of this brief is `claude/specialist-agents.md` in the CallGuard project, which the scheduled cloud jobs read because they cannot reach this repo. Change both, or neither.
+> **This brief is the only copy.** The monthly topic scout and the drafter, both Claude
+> scheduled tasks, call this agent by name. The pipeline's standing rules and the
+> decisions already made live in `docs/landing/content-backlog.md`.
 
 
 You watch the call QA and compliance market for CallGuard AI.
@@ -15,15 +17,26 @@ You watch the call QA and compliance market for CallGuard AI.
 Aveni, Recordsure.
 
 **Named but no page yet:** Callytics — closest to CallGuard's positioning, prices per
-hour of audio, scores individual calls and does not bundle a case.
+hour of audio, scores individual calls and does not bundle a case. Its financial-services
+case study now describes extracting eligibility data from calls, which is one step short
+of reconciliation.
 
 **The credible threat:** Voyc. Already in UK protection, already ingesting the calls.
 Call-to-application reconciliation would be a feature extension for them, not a new
 product. Anything Voyc publishes about disclosure, application accuracy or
-reconciliation is the highest-priority signal in this brief.
+reconciliation is the highest-priority signal in this brief. Silent since 11 Aug 2026;
+report the moment it resumes.
 
-**Adjacent:** Sedric, MaestroQA, LexisNexis Risk, Munich Re ALLFINANZ, UnderwriteMe,
-iPipeline.
+**Closing the UK-regulated gap:** Sedric, which is building an FCA resource hub citing
+PRIN 2A.5, COBS 4, ICOBS 2, CONC 3 and FG21/1 by designation. "UK-regulated content" is
+no longer an open gap, so check each scan whether it has moved from rules to scorecards.
+
+**UK QA platform:** EvaluAgent — added to the watch list Sep 2026 and not yet profiled.
+Establish first what it actually claims: whether it scores for compliance or only for
+quality and coaching, and which terms its content ranks for. Then watch for
+regulated-sector framing and any FCA-specific scorecard content.
+
+**Adjacent:** MaestroQA, LexisNexis Risk, Munich Re ALLFINANZ, UnderwriteMe, iPipeline.
 
 ## What to report
 

@@ -154,10 +154,19 @@ h1, h2, h3, h4, h5 { color: var(--text-primary); font-weight: 700; line-height: 
   position: sticky;
   top: 0;
   z-index: 50;
+  border-bottom: 1px solid var(--border-light);
+}
+/* The blur lives on a pseudo-element: backdrop-filter on .nav itself makes the
+   header the containing block for the position:fixed mobile drawer, which then
+   collapses to the header's height instead of filling the screen. */
+.nav::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
   background: var(--nav-bg);
   backdrop-filter: saturate(180%) blur(12px);
   -webkit-backdrop-filter: saturate(180%) blur(12px);
-  border-bottom: 1px solid var(--border-light);
 }
 .nav-inner {
   display: flex;
@@ -235,7 +244,7 @@ h1, h2, h3, h4, h5 { color: var(--text-primary); font-weight: 700; line-height: 
 .btn-primary:hover {
   background: #1f5a37;
   transform: translateY(-1px);
-  box-shadow: 0 3px 8px rgba(45, 110, 74, 0.3);
+  box-shadow: 0 1px 2px rgba(26, 46, 26, 0.12), 0 3px 6px -3px rgba(26, 46, 26, 0.22);  /* neutral: a coloured glow reads as decoration */
 }
 .btn-ghost {
   background: transparent;
@@ -1116,13 +1125,17 @@ h1, h2, h3, h4, h5 { color: var(--text-primary); font-weight: 700; line-height: 
   grid-template-columns: repeat(4, 1fr);
   gap: 24px;
 }
-.footer-col h5 {
-  font-size: 12px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.6px;
+/* An h2, not an h5: these are the top-level labels inside the footer
+   landmark, and jumping from the page's last h2 straight to an h5 broke the
+   document outline a screen reader navigates by. Sentence case, following
+   the homepage — the redesign dropped the uppercase micro-label and the
+   rest of the site had not caught up. */
+.footer-col .footer-heading {
+  font-size: 14px;
+  font-weight: 600;
   color: white;
-  margin-bottom: 14px;
+  line-height: 1.4;
+  margin: 0 0 14px;
 }
 .footer-col a {
   display: block;
@@ -1374,6 +1387,9 @@ h1, h2, h3, h4, h5 { color: var(--text-primary); font-weight: 700; line-height: 
   padding: 14px 24px;
   font-size: 16px;
 }
+/* .nav-drawer a sets text-primary, which outranks .btn-primary's white text: keep the drawer CTA legible (was 2.4:1 in light mode). */
+.nav-drawer .btn-primary,
+.nav-drawer .btn-primary:hover { color: #ffffff; }
 body.no-scroll { overflow: hidden; }
 
 /* ============================================================
@@ -1704,6 +1720,8 @@ body.no-scroll { overflow: hidden; }
 }
 
 .modal-form .btn { width: 100%; margin-top: 4px; }
+.modal-note { margin: 12px 0 0; font-size: 13px; line-height: 1.5; color: var(--text-muted); text-align: center; }
+.modal-note a { color: var(--primary-dark); text-decoration: underline; text-underline-offset: 3px; }
 
 .modal-success {
   text-align: center;

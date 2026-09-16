@@ -1,0 +1,655 @@
+/* ============================================================
+   CallGuard AI · Blog
+   Loaded only by /blog/ and the post pages, after style.css, and
+   scoped to body.blog so nothing here can reach the rest of the
+   site. Every colour is a token from style.css, so dark mode falls
+   out of the theme rather than needing a second set of rules.
+
+   Two layouts live here:
+     · the index — one featured briefing, then topic columns;
+     · the post  — a reading column with a contents list beside it.
+   ============================================================ */
+
+/* Skip link. The blog is the one part of the site a reader arrives
+   at to read rather than to scan, so getting a keyboard user past
+   the ten-link header matters more here than anywhere else. */
+body.blog .skip-link {
+  /* Fixed, not absolute: the page clips horizontal overflow, and an
+     absolutely-positioned link parked above the top of the document is
+     clipped away with it — so it never appeared when tabbed to, which is
+     the only moment it exists for. */
+  position: fixed;
+  left: 16px;
+  top: -64px;
+  z-index: 100;
+  padding: 12px 18px;
+  background: var(--primary-dark);
+  color: var(--on-primary-dark);
+  border-radius: var(--radius-btn);
+  font-size: 15px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: top 120ms ease;
+}
+body.blog .skip-link:focus { top: 16px; }
+
+body.blog .visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ── index: masthead ──────────────────────────────────────── */
+
+body.blog .blog-masthead {
+  padding: 64px 0 40px;
+  background: var(--section-alt);
+  border-bottom: 1px solid var(--border);
+}
+
+body.blog .blog-masthead h1 {
+  margin: 14px 0 0;
+  font-size: clamp(32px, 4.4vw, 46px);
+  line-height: 1.16;
+  letter-spacing: -0.015em;
+  color: var(--text-primary);
+  max-width: 17ch;
+  text-wrap: balance;
+}
+
+body.blog .blog-masthead-sub {
+  margin: 18px 0 0;
+  max-width: 62ch;
+  font-size: 18px;
+  line-height: 1.65;
+  color: var(--text-secondary);
+  text-wrap: pretty;
+}
+
+body.blog .blog-masthead-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px 28px;
+  margin-top: 30px;
+  padding-top: 22px;
+  border-top: 1px solid var(--border-light);
+}
+
+body.blog .topic-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+}
+
+body.blog .topic-nav a {
+  padding: 7px 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--card-bg);
+  color: var(--text-cell);
+  font-size: 15px;
+  text-decoration: none;
+  transition: border-color 140ms ease, color 140ms ease;
+}
+
+body.blog .topic-nav a:hover,
+body.blog .topic-nav a:focus-visible {
+  border-color: var(--primary);
+  color: var(--text-primary);
+}
+
+body.blog .blog-masthead-updated {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+body.blog .blog-masthead-updated a {
+  color: var(--text-cell);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--border);
+}
+body.blog .blog-masthead-updated a:hover {
+  color: var(--primary-dark);
+  text-decoration-color: var(--primary);
+}
+
+/* ── index: the featured briefing ─────────────────────────── */
+
+body.blog .blog-featured { padding: 44px 0 8px; }
+
+/* One panel, one job: the briefing the firm should read first. It is
+   a whole-block link rather than a card with a "read more" button,
+   so the target is the size of the content, not of a word. */
+body.blog .brief {
+  display: block;
+  padding: 36px 38px 32px;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--primary);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  text-decoration: none;
+  transition: box-shadow 160ms ease, border-color 160ms ease;
+}
+
+body.blog .brief:hover,
+body.blog .brief:focus-visible {
+  box-shadow: var(--shadow-card-hover);
+  border-color: var(--border);
+  border-left-color: var(--primary-hover);
+}
+
+body.blog .brief-label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 15px;
+  color: var(--text-muted);
+}
+
+body.blog .brief-topic { color: var(--primary-dark); font-weight: 600; }
+
+body.blog .brief-flag::before { content: "·"; margin-right: 6px; color: var(--text-muted); }
+
+body.blog .brief-title {
+  margin: 12px 0 0;
+  font-size: clamp(25px, 3vw, 33px);
+  line-height: 1.22;
+  letter-spacing: -0.012em;
+  color: var(--text-primary);
+  max-width: 24ch;
+  text-wrap: balance;
+}
+
+body.blog .brief-summary {
+  margin: 16px 0 0;
+  max-width: 68ch;
+  font-size: 17px;
+  line-height: 1.7;
+  color: var(--text-secondary);
+  text-wrap: pretty;
+}
+
+body.blog .brief-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 20px;
+  font-size: 15px;
+  color: var(--text-muted);
+}
+
+body.blog .brief-more {
+  display: inline-block;
+  margin-top: 20px;
+  color: var(--primary-dark);
+  font-size: 16px;
+  font-weight: 600;
+}
+body.blog .brief-more::after { content: " →"; }
+body.blog .brief:hover .brief-more { text-decoration: underline; }
+
+/* ── index: topic columns ─────────────────────────────────── */
+
+body.blog .blog-topics { padding: 44px 0 16px; }
+
+/* auto-fit rather than a fixed three: a topic whose briefings are all held
+   is omitted, and a fixed grid would hold its empty column open. */
+body.blog .topic-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 40px 36px;
+  align-items: start;
+}
+
+/* Each topic is a hub, so it keeps its own heading, its own standing
+   description and its own anchor — the description is what makes a
+   column with one briefing in it read as deliberate rather than thin. */
+body.blog .topic { scroll-margin-top: 96px; }
+
+body.blog .topic-name {
+  margin: 0;
+  padding-bottom: 12px;
+  border-bottom: 2px solid var(--primary);
+  font-size: 23px;
+  line-height: 1.3;
+  color: var(--text-primary);
+}
+
+body.blog .topic-blurb {
+  margin: 14px 0 0;
+  font-size: 15px;
+  line-height: 1.65;
+  color: var(--text-muted);
+  text-wrap: pretty;
+}
+
+body.blog .topic-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+}
+
+body.blog .topic-item { border-top: 1px solid var(--border-light); }
+/* Closing rule: with three topics and six briefings the columns are never
+   the same length, so each one needs to end deliberately rather than just
+   stop where it ran out. */
+body.blog .topic-item:last-child { border-bottom: 1px solid var(--border-light); }
+
+body.blog .topic-item a {
+  display: block;
+  padding: 20px 0 22px;
+  text-decoration: none;
+}
+
+body.blog .topic-item-title {
+  margin: 0;
+  font-size: 17px;
+  line-height: 1.4;
+  color: var(--text-primary);
+  text-wrap: pretty;
+}
+
+body.blog .topic-item a:hover .topic-item-title,
+body.blog .topic-item a:focus-visible .topic-item-title { color: var(--primary-dark); }
+
+body.blog .topic-item-summary {
+  margin: 8px 0 0;
+  font-size: 15px;
+  line-height: 1.65;
+  color: var(--text-secondary);
+  text-wrap: pretty;
+}
+
+body.blog .topic-item-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 12px;
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+/* ── index: closing call to action ────────────────────────── */
+
+body.blog .blog-cta {
+  padding: 16px 0 72px;
+  text-align: center;
+}
+body.blog .blog-cta h2 {
+  margin: 0 auto;
+  max-width: 24ch;
+  font-size: clamp(24px, 2.6vw, 30px);
+  line-height: 1.28;
+  color: var(--text-primary);
+  text-wrap: balance;
+}
+body.blog .blog-cta p {
+  margin: 16px auto 26px;
+  max-width: 58ch;
+  font-size: 17px;
+  line-height: 1.7;
+  color: var(--text-secondary);
+  text-wrap: pretty;
+}
+
+/* ── post: hero ───────────────────────────────────────────── */
+
+body.blog .article-hero {
+  padding: 56px 0 34px;
+  background: var(--section-alt);
+  border-bottom: 1px solid var(--border);
+}
+
+body.blog .article-hero h1 {
+  max-width: 21ch;
+  font-size: clamp(31px, 4.2vw, 44px);
+  line-height: 1.17;
+  letter-spacing: -0.015em;
+  text-wrap: balance;
+}
+
+body.blog .article-meta,
+body.blog .article-byline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 18px 0 0;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+
+body.blog .article-byline {
+  margin-top: 8px;
+  color: var(--text-cell);
+}
+body.blog .article-byline a {
+  color: var(--text-primary);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--border);
+}
+body.blog .article-byline a:hover { text-decoration-color: var(--primary); }
+
+/* ── post: reading layout ─────────────────────────────────── */
+
+/* The contents list sits beside the prose rather than above it, so the
+   reading column starts at the top of the page and the list stays
+   available while the reader is a thousand words down a rule. */
+body.blog .article-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+  padding-top: 8px;
+}
+
+body.blog .article-contents {
+  margin: 34px 0 0;
+  padding: 20px 22px;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+}
+
+body.blog .article-contents h2 {
+  margin: 0 0 12px;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.4;
+  color: var(--text-primary);
+}
+
+body.blog .article-contents ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  counter-reset: contents;
+}
+
+body.blog .article-contents li {
+  counter-increment: contents;
+  border-top: 1px solid var(--border-light);
+}
+body.blog .article-contents li:first-child { border-top: 0; }
+
+body.blog .article-contents a {
+  display: block;
+  padding: 9px 0 9px 26px;
+  position: relative;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--text-cell);
+  text-decoration: none;
+}
+
+body.blog .article-contents a::before {
+  content: counter(contents);
+  position: absolute;
+  left: 0;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+body.blog .article-contents a:hover,
+body.blog .article-contents a:focus-visible { color: var(--primary-dark); }
+
+body.blog .article-body {
+  max-width: 68ch;
+  padding-top: 34px;
+}
+
+body.blog .article-body .lead {
+  font-size: 20px;
+  line-height: 1.62;
+  color: var(--text-primary);
+}
+
+body.blog .article-body p {
+  font-size: 17.5px;
+  line-height: 1.75;
+  color: var(--text-secondary);
+}
+
+body.blog .article-body h2 {
+  margin: 48px 0 14px;
+  font-size: 26px;
+  line-height: 1.28;
+  letter-spacing: -0.008em;
+  color: var(--text-primary);
+  scroll-margin-top: 92px;
+  text-wrap: balance;
+}
+
+body.blog .article-body h3 {
+  margin: 32px 0 10px;
+  font-size: 19px;
+  line-height: 1.38;
+  color: var(--text-primary);
+  scroll-margin-top: 92px;
+}
+
+body.blog .article-body ul li,
+body.blog .article-body ol li {
+  font-size: 17.5px;
+  line-height: 1.7;
+}
+
+/* The anchor is a link, not a hover trick: it is reachable by keyboard
+   and visible on a phone, where "reveal on hover" means "never". */
+body.blog .heading-anchor {
+  margin-left: 10px;
+  color: var(--text-muted);
+  font-size: 0.7em;
+  font-weight: 500;
+  text-decoration: none;
+  opacity: 0.55;
+  transition: opacity 140ms ease, color 140ms ease;
+}
+body.blog .heading-anchor:hover,
+body.blog .heading-anchor:focus-visible {
+  opacity: 1;
+  color: var(--primary-dark);
+}
+
+/* ── post: everything after the prose ─────────────────────── */
+
+body.blog .article-foot {
+  max-width: 68ch;
+  margin-left: 0;
+  padding-bottom: 72px;
+}
+
+body.blog .article-sources,
+body.blog .article-author {
+  margin-top: 44px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border);
+}
+
+body.blog .article-sources h2,
+body.blog .article-author h2 {
+  margin: 0 0 12px;
+  font-size: 17px;
+  line-height: 1.4;
+  color: var(--text-primary);
+}
+
+body.blog .article-sources ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+body.blog .article-sources li {
+  padding: 8px 0;
+  font-size: 15.5px;
+  line-height: 1.65;
+}
+
+body.blog .article-sources a {
+  color: var(--text-cell);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--border);
+}
+body.blog .article-sources a:hover {
+  color: var(--primary-dark);
+  text-decoration-color: var(--primary);
+}
+
+body.blog .article-author p {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.7;
+  color: var(--text-secondary);
+}
+
+body.blog .article-cta {
+  margin-top: 44px;
+  padding: 30px 32px;
+  background: var(--primary-50);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  text-align: left;
+}
+
+body.blog .article-cta h2 {
+  margin: 0;
+  font-size: 21px;
+  line-height: 1.32;
+  color: var(--text-primary);
+  text-wrap: balance;
+}
+
+body.blog .article-cta p {
+  margin: 12px 0 22px;
+  font-size: 16px;
+  line-height: 1.7;
+  color: var(--text-secondary);
+  text-wrap: pretty;
+}
+
+body.blog .article-related { margin-top: 48px; }
+
+body.blog .article-related h2 {
+  margin: 0 0 4px;
+  font-size: 17px;
+  line-height: 1.4;
+  color: var(--text-primary);
+}
+
+body.blog .article-related ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+body.blog .article-related li { border-top: 1px solid var(--border-light); }
+
+body.blog .article-related a {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 16px;
+  align-items: baseline;
+  padding: 16px 0;
+  text-decoration: none;
+}
+
+body.blog .related-topic {
+  grid-column: 1 / -1;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--primary-dark);
+}
+
+body.blog .related-title {
+  font-size: 17px;
+  line-height: 1.45;
+  color: var(--text-primary);
+  text-wrap: pretty;
+}
+
+body.blog .article-related a:hover .related-title,
+body.blog .article-related a:focus-visible .related-title { color: var(--primary-dark); }
+
+body.blog .related-meta {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* ── wide screens ─────────────────────────────────────────── */
+
+@media (min-width: 1040px) {
+  /* The prose keeps the container's left edge, so it lines up with the H1
+     above it, and the contents list occupies the right margin. Putting the
+     list on the left instead pushed the whole article inwards and left a
+     column of nothing down the right-hand side. */
+  body.blog .article-shell {
+    grid-template-columns: minmax(0, 1fr) 244px;
+    gap: 0 64px;
+  }
+
+  body.blog .article-contents {
+    grid-column: 2;
+    grid-row: 1;
+    position: sticky;
+    top: 92px;
+    margin-top: 40px;
+    /* A long contents list must not grow past the viewport and strand
+       its own last entries where no amount of scrolling reaches them. */
+    max-height: calc(100vh - 124px);
+    overflow-y: auto;
+  }
+
+  body.blog .article-body {
+    grid-column: 1;
+    grid-row: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body.blog .skip-link,
+  body.blog .topic-nav a,
+  body.blog .brief,
+  body.blog .heading-anchor { transition: none; }
+}
+
+/* ── narrow screens ───────────────────────────────────────── */
+
+@media (max-width: 640px) {
+  body.blog .blog-masthead { padding: 44px 0 30px; }
+  body.blog .blog-masthead h1 { max-width: none; }
+  body.blog .blog-masthead-sub { font-size: 17px; }
+  body.blog .blog-masthead-foot { margin-top: 24px; }
+
+  body.blog .brief { padding: 26px 22px 24px; }
+  body.blog .brief-title { max-width: none; }
+  body.blog .brief-summary { font-size: 16.5px; }
+
+  body.blog .topic-columns { gap: 32px; }
+
+  body.blog .article-hero { padding: 40px 0 26px; }
+  body.blog .article-hero h1 { max-width: none; }
+  body.blog .article-body { padding-top: 26px; }
+  body.blog .article-body .lead { font-size: 18px; }
+  body.blog .article-body p,
+  body.blog .article-body ul li,
+  body.blog .article-body ol li { font-size: 16.5px; }
+  body.blog .article-body h2 { margin: 38px 0 12px; font-size: 24px; }
+  body.blog .article-body h3 { font-size: 18px; }
+  body.blog .article-cta { padding: 24px 22px; }
+}

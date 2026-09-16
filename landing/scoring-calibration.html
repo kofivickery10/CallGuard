@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="description" content="When your compliance team corrects a verdict, CallGuard AI uses your recent corrections as examples when scoring later calls on that criterion. Growth and Pro." />
+<meta name="theme-color" content="#4a9e6e" />
+<meta name="robots" content="index,follow,max-image-preview:large" />
+<meta name="author" content="CallGuard AI" />
+<title>AI Call Scoring Calibration | CallGuard AI</title>
+<link rel="canonical" href="https://callguardai.co.uk/scoring-calibration" />
+<link rel="icon" href="/favicon.ico" sizes="48x48" />
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+<link rel="manifest" href="/site.webmanifest" />
+<link rel="preload" as="font" type="font/woff2" href="/fonts/InterVariable.woff2" crossorigin>
+<link rel="stylesheet" href="/style.css?v=17" />
+<link rel="stylesheet" href="/home.css?v=12" />
+
+<meta property="og:type" content="article" />
+<meta property="og:site_name" content="CallGuard AI" />
+<meta property="og:locale" content="en_GB" />
+<meta property="og:url" content="https://callguardai.co.uk/scoring-calibration" />
+<meta property="og:title" content="AI Call Scoring Calibration | CallGuard AI" />
+<meta property="og:description" content="When your compliance team corrects a verdict, CallGuard AI uses your recent corrections as examples when scoring later calls on that criterion. Growth and Pro." />
+<meta property="og:image" content="https://callguardai.co.uk/og-image.jpg" />
+
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="AI Call Scoring Calibration | CallGuard AI" />
+<meta name="twitter:description" content="How CallGuard AI uses your compliance team's own corrections as scoring examples, criterion by criterion." />
+<meta name="twitter:image" content="https://callguardai.co.uk/og-image.jpg" />
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        {"@type": "ListItem", "position": 1, "name": "Home", "item": "https://callguardai.co.uk/"},
+        {"@type": "ListItem", "position": 2, "name": "Scoring Calibration"}
+      ]
+    },
+    {
+      "@type": "WebPage",
+      "@id": "https://callguardai.co.uk/scoring-calibration#webpage",
+      "name": "Scoring Calibration",
+      "url": "https://callguardai.co.uk/scoring-calibration",
+      "description": "When your compliance team corrects a verdict, CallGuard AI uses your recent corrections as examples when scoring later calls on that criterion, on Growth and Pro.",
+      "isPartOf": {"@id": "https://callguardai.co.uk/#website"},
+      "about": {"@id": "https://callguardai.co.uk/#software"}
+    },
+    {
+      "@type": "FAQPage",
+      "@id": "https://callguardai.co.uk/scoring-calibration#faq",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "What happens when my compliance team disagrees with a verdict?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "They choose Pass or Fail, add a reason if they want to, and save. That correction is stored with the transcript excerpt the AI based its verdict on, plus the reason if one was given. The next time CallGuard scores that criterion on a different call, it's shown up to five of the most recent corrections on that criterion, as examples of how your firm reads it, not rules it must follow: the AI can still reach a different verdict on a call that genuinely differs."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Which plans include scoring calibration?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Growth and Pro. Starter doesn't include calibration from corrections, exemplar calls or coaching memory. See what else each plan includes on the plans page."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Does CallGuard ever send a checkpoint to a person on its own?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes, in two situations, both driven by speaker attribution rather than the AI's confidence. When CallGuard can't reliably tell which speaker is the customer, a consent question goes to your review queue. When a sale's main call can't be attributed at all, every checkpoint on that sale goes to review. Routing works per checkpoint, not per call. There's also a threshold on the AI's own confidence, but it's off by default."
+          }
+        }
+      ]
+    }
+  ]
+}
+</script>
+<script>
+  (function () {
+    try {
+      var s = localStorage.getItem('cg-theme');
+      var d = s ? s === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+      document.documentElement.setAttribute('data-theme', d ? 'dark' : 'light');
+    } catch (e) {}
+  })();
+</script>
+</head>
+<body class="hp">
+
+<header class="nav" role="banner">
+  <div class="container nav-inner">
+    <a class="brand" href="/" aria-label="CallGuard AI home"><img class="brand-logo brand-logo--light" src="/brand/svg/callguard-logo-horizontal.svg" alt="CallGuard AI" width="152" height="32" /><img class="brand-logo brand-logo--dark" src="/brand/svg/callguard-logo-horizontal-dark.svg" alt="CallGuard AI" width="152" height="32" /></a>
+
+    <nav class="nav-links" aria-label="Primary">
+      <a href="/#how-it-works">How it works</a>
+      <a href="/application-reconciliation">Reconciliation</a>
+      <a href="/#security">Security</a>
+      <a href="/pricing">Plans</a>
+      <a href="/blog/">Blog</a>
+    </nav>
+
+    <a href="https://app.callguardai.co.uk/" class="nav-login">Log in</a>
+    <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20Scoring%20calibration" class="btn btn-primary nav-cta">Request a demo</a>
+
+    <button class="theme-switch" type="button" aria-label="Toggle dark mode" aria-pressed="false">
+      <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+    </button>
+    <button class="nav-toggle" type="button" aria-label="Open menu" aria-controls="mobile-drawer" aria-expanded="false">
+      <svg class="icon-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><line x1="4" y1="7"  x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>
+      <svg class="icon-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><line x1="6" y1="6"  x2="18" y2="18"/><line x1="6" y1="18" x2="18" y2="6"/></svg>
+    </button>
+  </div>
+
+  <nav class="nav-drawer" id="mobile-drawer" aria-label="Mobile menu">
+    <a href="/#how-it-works">How it works</a>
+    <a href="/application-reconciliation">Reconciliation</a>
+    <a href="/#learning">Your standard</a>
+    <a href="/#security">Security</a>
+    <a href="/pricing">Plans</a>
+    <a href="/#faq">FAQ</a>
+    <a href="/blog/">Blog</a>
+    <a href="https://app.callguardai.co.uk/">Log in</a>
+    <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20Scoring%20calibration" class="btn btn-primary">Request a demo</a>
+  </nav>
+</header>
+
+<main id="top">
+
+  <section class="hero">
+    <div class="container">
+      <h1 class="hero-headline">
+        Your scorecard, read the way <span class="accent">your compliance team reads it.</span>
+      </h1>
+      <p class="hero-sub">
+        Two advisers can read the same exclusions out in different words. One compliance officer counts a fact find from an earlier call as covering the customer's budget; another wants it repeated at the point of sale. When your compliance team corrects a verdict like that, CallGuard AI uses your most recent corrections as examples the next time it scores that criterion. <span class="hp-plan">Growth and Pro</span>
+      </p>
+      <p class="hero-sub">See what's included on <a href="/pricing">Growth and Pro</a>, or ask us about upgrading.</p>
+      <div class="hero-ctas">
+        <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20Scoring%20calibration" class="btn btn-primary btn-lg">Request a demo</a>
+        <a href="#how" class="btn btn-light btn-lg">How it works ↓</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="container">
+      <h2 class="section-h2">
+        A scorecard is not self-explanatory. <span class="accent">Your compliance team already knows what it means.</span>
+      </h2>
+      <p class="lead">
+        An AI that only reads the words of your scorecard still has to settle judgement calls somehow, without knowing which reading your compliance team would choose. "Explained the exclusions" can mean read verbatim from the policy document to one reviewer, and summarised in the customer's own understanding to another. Both are defensible. Only one is yours.
+      </p>
+
+      <div class="feature-grid feature-grid-2">
+        <div class="feature">
+          <h3>A generic reading</h3>
+          <p>Scored against the scorecard's words alone, an AI has no way to know which side of a judgement call your firm sits on — so every borderline criterion gets a generic answer, not your firm's answer.</p>
+        </div>
+        <div class="feature">
+          <h3>Calibrated to your corrections</h3>
+          <p>When your compliance team corrects a verdict and gives a reason, that correction — with the transcript evidence it was made on — is shown to the AI as an example the next time it scores that criterion, on a different call.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section-alt" id="how">
+    <div class="container hp-wide" style="margin-top: 0;">
+      <div class="hp-wide-intro">
+        <h2 class="section-h2">
+          Examples for the AI to weigh, <span class="accent">not rules for it to follow.</span>
+        </h2>
+        <p class="lead">
+          Correct a verdict — choose Pass or Fail, add a reason if you want to, and save — and it's stored with the transcript excerpt the AI based its verdict on, plus your reason if you gave one. The next time CallGuard scores that same criterion — on a different call — it's shown up to five of the most recent corrections on that criterion. They're shown as examples of how your firm reads that criterion, not as rules the AI must follow: it can still reach a different verdict on a call that genuinely differs.
+        </p>
+        <p class="lead">
+          Exemplar calls work alongside corrections. Mark a call or a sale as an example of what good looks like at your firm, and the AI is shown the first 1,500 characters of the two most recently marked exemplars — for a sale, that's its closing call — alongside any written guidance from your knowledge base: your product rules, your house style for explaining exclusions, whatever your compliance team has documented.
+        </p>
+      </div>
+
+      <figure class="hp-panel" aria-label="Example of a compliance officer correcting a verdict and the correction becoming a calibration example">
+        <div class="hp-panel-head">
+          <div>
+            <div class="hp-panel-title">Score correction</div>
+            <div class="hp-panel-meta">Confirmed the customer understood the waiting period before cover starts</div>
+          </div>
+        </div>
+        <div class="hp-alert-row"><span>AI verdict</span><span class="hp-pill hp-pill--fail"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>Fail</span></div>
+        <div class="hp-alert-row"><span>Corrected by your compliance team</span><span class="hp-pill hp-pill--pass"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>Pass</span></div>
+        <div class="hp-alert-quote">
+          <div class="hp-compare-label">Reason</div>
+          <div class="hp-compare-quote">The adviser covered the waiting period earlier in the call, while reading through the policy summary. We count that as covered — it doesn't need repeating at the point of sale.</div>
+        </div>
+        <div class="hp-alert-row"><span>Later calls on this criterion</span><span class="hp-pill hp-pill--neutral">Used as a calibration example</span></div>
+        <figcaption class="hp-caption">Illustrative example with synthetic data.</figcaption>
+      </figure>
+
+      <dl class="hp-facts" style="margin-top: 48px">
+        <div class="hp-fact">
+          <dt>Unclear consent goes to a person</dt>
+          <dd>When CallGuard can't be sure it was the customer who answered a consent question, that item goes to your review queue rather than being scored automatically — the routing is about who answered, not a general confidence score.</dd>
+        </div>
+        <div class="hp-fact">
+          <dt>Your best calls as the benchmark</dt>
+          <dd>Mark a call or sale as good practice, and the AI is shown the first 1,500 characters of the two most recently marked exemplars as what good looks like at your firm.</dd>
+        </div>
+        <div class="hp-fact">
+          <dt>Coaching that remembers</dt>
+          <dd>On calls scored individually, each coaching draft is written with that adviser's last three coaching drafts in view. An insights brief, generated on request over a period you choose, summarises patterns for your compliance team.</dd>
+        </div>
+      </dl>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="container">
+      <h2 class="section-h2">
+        Calibrated by your team, <span class="accent">not by itself.</span>
+      </h2>
+      <p class="lead">
+        Calibration is deliberately narrow about what it changes. Here's what it does not do.
+      </p>
+
+      <div class="feature-grid feature-grid-2">
+        <div class="feature">
+          <h3>Examples, not rules</h3>
+          <p>Corrections shape what the AI is shown, not what it must conclude. It can still score a similar call differently if the transcript genuinely warrants it — the one exception is the same sale that was corrected: if that sale is re-scored, the correction's ruling stands.</p>
+        </div>
+        <div class="feature">
+          <h3>No fine-tuning, no model per firm</h3>
+          <p>Nothing is fine-tuned, and there's no separate model per tenant. Every firm's corrections, exemplars and guidance are fed to the same underlying model as context, each time it scores.</p>
+        </div>
+        <div class="feature">
+          <h3>Consent routing isn't a confidence dial</h3>
+          <p>The AI-confidence floor that could route uncertain scores to review is off by default. What always sends a consent item to your review queue is CallGuard being unable to tell who answered it — the customer or the adviser.</p>
+        </div>
+        <div class="feature">
+          <h3>No accuracy or agreement figure, published</h3>
+          <p>We don't publish a figure for how closely calibrated scoring tracks a human reviewer's judgement. What you get instead is the transcript evidence each verdict was decided on, or a note that none was found, and any reason your reviewer gave for a correction, so your team can check it directly.</p>
+        </div>
+      </div>
+
+      <p class="lead" style="margin-top: 28px;">
+        If you're weighing this against another vendor's approach to per-tenant scoring, see how we compare to <a href="/compare/aveni-alternative">Aveni</a> and <a href="/compare/recordsure-alternative">Recordsure</a>, or browse the <a href="/compare/">full comparison hub</a>.
+      </p>
+    </div>
+  </section>
+
+  <section class="section section-alt" id="faq">
+    <div class="container">
+      <h2 class="section-h2">Questions about scoring calibration, <span class="accent">answered.</span></h2>
+
+      <div class="faq-list">
+        <details class="faq-item">
+          <summary>What happens when my compliance team disagrees with a verdict?</summary>
+          <div class="faq-body"><p>They choose Pass or Fail, add a reason if they want to, and save. That correction is stored with the transcript excerpt the AI based its verdict on, plus the reason if one was given. The next time CallGuard scores that criterion on a different call, it's shown up to five of the most recent corrections on that criterion, as examples of how your firm reads it, not rules it must follow: the AI can still reach a different verdict on a call that genuinely differs.</p></div>
+        </details>
+        <details class="faq-item">
+          <summary>Which plans include scoring calibration?</summary>
+          <div class="faq-body"><p>Growth and Pro. Starter doesn't include calibration from corrections, exemplar calls or coaching memory. See what else each plan includes on the <a href="/pricing">plans page</a>.</p></div>
+        </details>
+        <details class="faq-item">
+          <summary>Does CallGuard ever send a checkpoint to a person on its own?</summary>
+          <div class="faq-body"><p>Yes, in two situations, both driven by speaker attribution rather than the AI's confidence. When CallGuard can't reliably tell which speaker is the customer, a consent question goes to your review queue. When a sale's main call can't be attributed at all, every checkpoint on that sale goes to review. Routing works per checkpoint, not per call. There's also a threshold on the AI's own confidence, but it's off by default.</p></div>
+        </details>
+      </div>
+
+      <div style="margin-top: 36px; text-align: center;">
+        <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20Scoring%20calibration" class="btn btn-primary btn-lg">Request a demo</a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="footer">
+  <div class="container footer-inner">
+    <div class="footer-brand">
+      <a class="brand brand-footer" href="/" aria-label="CallGuard AI home"><img class="brand-logo brand-logo--footer" src="/brand/svg/callguard-logo-horizontal-dark.svg" alt="CallGuard AI" width="160" height="34" /></a>
+      <p class="footer-tag">AI compliance scoring for every regulated conversation.</p>
+    </div>
+    <div class="footer-links">
+      <nav class="footer-col" aria-labelledby="footer-product">
+        <p class="footer-heading" id="footer-product">Product</p>
+        <a href="/#how-it-works">How it works</a>
+        <a href="/#live">Live &amp; embedded</a>
+        <a href="/scoring-calibration">Scoring calibration</a>
+        <a href="/application-reconciliation">Reconciliation</a>
+        <a href="/#use-cases">Use cases</a>
+        <a href="/pricing">Plans</a>
+        <a href="/compare/">Compare</a>
+        <a href="/about">About</a>
+        <a href="/blog/">Blog</a>
+      <a href="/#faq">FAQ</a>
+      </nav>
+      <nav class="footer-col" aria-labelledby="footer-use-cases">
+        <p class="footer-heading" id="footer-use-cases">Use cases</p>
+        <a href="/use-cases/financial-services">Financial services</a>
+        <a href="/use-cases/mortgage-advice">Mortgage advice</a>
+        <a href="/use-cases/bpo">Contact centres &amp; BPOs</a>
+        <a href="/use-cases/collections">Debt collections</a>
+        <a href="/use-cases/outbound-sales">Outbound sales</a>
+      </nav>
+      <nav class="footer-col" aria-labelledby="footer-integrations">
+        <p class="footer-heading" id="footer-integrations">Integrations</p>
+        <a href="/integrations/twilio">Twilio</a>
+        <a href="/integrations/cloudtalk">CloudTalk</a>
+        <a href="/integrations/microsoft-teams">Microsoft Teams</a>
+        <a href="/integrations/aws-connect">AWS Connect</a>
+        <a href="/integrations/">All integrations</a>
+      </nav>
+      <nav class="footer-col" aria-labelledby="footer-legal">
+        <p class="footer-heading" id="footer-legal">Legal</p>
+        <a href="/privacy">Privacy policy</a>
+        <a href="/terms">Terms of service</a>
+        <a href="/dpa">DPA</a>
+        <a href="/sub-processors">Sub-processors</a>
+      </nav>
+    </div>
+  </div>
+  <div class="container footer-bottom">
+    <span>© 2026 CallGuard AI.</span>
+    <span>UK-based · Data stored in the UK</span>
+  </div>
+</footer>
+
+<script defer src="/script.js?v=6"></script>
+
+<script defer src="/analytics.js?v=2"></script>
+</body>
+</html>

@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 <link rel="manifest" href="/site.webmanifest" />
 <link rel="preload" as="font" type="font/woff2" href="/fonts/InterVariable.woff2" crossorigin>
-<link rel="stylesheet" href="/style.css?v=15" />
+<link rel="stylesheet" href="/style.css?v=17" />
 <meta property="og:type" content="article" />
 <meta property="og:site_name" content="CallGuard AI" />
 <meta property="og:locale" content="en_GB" />
@@ -40,13 +40,39 @@
 <header class="nav" role="banner">
   <div class="container nav-inner">
     <a class="brand" href="/" aria-label="CallGuard AI home"><img class="brand-logo brand-logo--light" src="/brand/svg/callguard-logo-horizontal.svg" alt="CallGuard AI" width="152" height="32" /><img class="brand-logo brand-logo--dark" src="/brand/svg/callguard-logo-horizontal-dark.svg" alt="CallGuard AI" width="152" height="32" /></a>
-    <button class="theme-switch" type="button" aria-label="Toggle dark mode" aria-pressed="false">
-      <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-      <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
-    </button>
+
+    <nav class="nav-links" aria-label="Primary">
+      <a href="/#how-it-works">How it works</a>
+      <a href="/application-reconciliation">Reconciliation</a>
+      <a href="/#security">Security</a>
+      <a href="/pricing">Plans</a>
+      <a href="/blog/">Blog</a>
+    </nav>
+
     <a href="https://app.callguardai.co.uk/" class="nav-login">Log in</a>
-    <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20demo%20request" class="btn btn-primary nav-cta">Book a demo</a>
+    <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20demo%20request" class="btn btn-primary nav-cta">Request a demo</a>
+
+    <button class="theme-switch" type="button" aria-label="Toggle dark mode" aria-pressed="false">
+      <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+    </button>
+    <button class="nav-toggle" type="button" aria-label="Open menu" aria-controls="mobile-drawer" aria-expanded="false">
+      <svg class="icon-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><line x1="4" y1="7"  x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>
+      <svg class="icon-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><line x1="6" y1="6"  x2="18" y2="18"/><line x1="6" y1="18" x2="18" y2="6"/></svg>
+    </button>
   </div>
+
+  <nav class="nav-drawer" id="mobile-drawer" aria-label="Mobile menu">
+    <a href="/#how-it-works">How it works</a>
+    <a href="/application-reconciliation">Reconciliation</a>
+    <a href="/#learning">Your standard</a>
+    <a href="/#security">Security</a>
+    <a href="/pricing">Plans</a>
+    <a href="/#faq">FAQ</a>
+    <a href="/blog/">Blog</a>
+    <a href="https://app.callguardai.co.uk/">Log in</a>
+    <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20demo%20request" class="btn btn-primary">Request a demo</a>
+  </nav>
 </header>
 
 <section class="legal-hero">
@@ -89,7 +115,7 @@
 
   <h3>When you visit our website or contact us (we are the controller)</h3>
   <ul>
-    <li><strong>Identity and contact data:</strong> name, work email, employer, job title, phone number when you submit a demo request, sign up for an account, or email us.</li>
+    <li><strong>Identity and contact data:</strong> name, work email, employer, job title, phone number when you submit a demo request, sign up for an account, or email us, and anything you tell us in a demo request form.</li>
     <li><strong>Technical data:</strong> IP address (logged transiently for abuse prevention), browser type, time of visit. With your consent, we use Google Analytics to understand how visitors use this website (see <a href="#cookies">Cookies and tracking</a>); we do not run advertising pixels or behavioural ad trackers.</li>
     <li><strong>Communication data:</strong> the content of emails and meeting notes when you correspond with us.</li>
   </ul>
@@ -97,7 +123,7 @@
   <h3>When you (a customer) use the Services (we are the processor)</h3>
   <ul>
     <li><strong>Account data:</strong> names, work emails and roles of users you grant access to. Treated as controller-supplied data.</li>
-    <li><strong>Audio recordings:</strong> call audio you upload or stream from a dialer. May contain personal data of your end-customers (voice, name, financial details, health data).</li>
+    <li><strong>Audio recordings:</strong> call audio you upload or stream from a dialler. May contain personal data of your end-customers (voice, name, financial details, health data).</li>
     <li><strong>Transcripts and metadata:</strong> text transcripts derived from audio, plus call metadata you supply (agent ID, customer ID, date, duration, GPS for field visits).</li>
     <li><strong>Scoring outputs:</strong> pass/fail per scorecard item, breach records, coaching briefs, AI-generated insight digests.</li>
     <li><strong>Usage data:</strong> logs of which users took which actions in the platform, for security, audit and billing purposes.</li>
@@ -235,6 +261,6 @@
 </footer>
 
 <script defer src="/analytics.js?v=2"></script>
-<script src="/script.js?v=4" defer></script>
+<script src="/script.js?v=6" defer></script>
 </body>
 </html>

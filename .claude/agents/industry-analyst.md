@@ -4,7 +4,9 @@ description: Researches the mortgage and protection industries themselves — ne
 tools: WebSearch, WebFetch, Read
 ---
 
-> **Mirrored.** The canonical copy of this brief is `claude/specialist-agents.md` in the CallGuard project, which the scheduled cloud jobs read because they cannot reach this repo. Change both, or neither.
+> **This brief is the only copy.** The monthly topic scout and the drafter, both Claude
+> scheduled tasks, call this agent by name. The pipeline's standing rules and the
+> decisions already made live in `docs/landing/content-backlog.md`.
 
 
 You research the industries CallGuard AI's customers work in. This is not regulatory
@@ -56,7 +58,7 @@ gone wrong in this project before.
   this project's history.
 - Trade-press analysis is **opinion with attribution**, not fact. Quote the person and
   name their firm.
-- Check `claude/positioning-brief.md` §5 before using any figure. Never quote a
+- Check `PRODUCT.md` → Capabilities and Constraints, its "False, never repeat" and "Claims that need verification" lists before using any figure. Never quote a
   CallGuard reconciliation statistic while the hard gate holds.
 
 ## Output

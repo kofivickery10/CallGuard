@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:dc="http://purl.org/dc/elements/1.1/">
+<channel>
+  <title>CallGuard AI briefings</title>
+  <link>https://callguardai.co.uk/blog/</link>
+  <atom:link href="https://callguardai.co.uk/blog/feed.xml" rel="self" type="application/rss+xml" />
+  <description>Briefings on call compliance for FCA-regulated protection and mortgage advice firms.</description>
+  <language>en-GB</language>
+  <copyright>© 2026 CallGuard AI Ltd</copyright>
+  <lastBuildDate>Tue, 15 Sep 2026 09:30:00 +0100</lastBuildDate>
+  <item>
+    <title>AI vs human call scoring: when each makes sense</title>
+    <link>https://callguardai.co.uk/blog/ai-vs-human-call-scoring</link>
+    <guid isPermaLink="true">https://callguardai.co.uk/blog/ai-vs-human-call-scoring</guid>
+    <pubDate>Tue, 05 May 2026 09:30:00 +0100</pubDate>
+    <category>How the scoring works</category>
+    <dc:creator>Kofi Vickery</dc:creator>
+    <description>An honest comparison from someone selling AI scoring tooling. What AI is genuinely better at, what humans still beat AI on, and the right division of labour for production QA teams.</description>
+  </item>
+  <item>
+    <title>How to score 100% of contact centre calls without hiring more QA staff</title>
+    <link>https://callguardai.co.uk/blog/score-100-percent-contact-centre-calls</link>
+    <guid isPermaLink="true">https://callguardai.co.uk/blog/score-100-percent-contact-centre-calls</guid>
+    <pubDate>Tue, 05 May 2026 09:00:00 +0100</pubDate>
+    <category>Running QA</category>
+    <dc:creator>Kofi Vickery</dc:creator>
+    <description>The QA bottleneck explained from first principles, the maths of manual versus AI scoring, and what the architecture of 100% coverage actually looks like in production.</description>
+  </item>
+  <item>
+    <title>What is AI call QA and how does it actually work?</title>
+    <link>https://callguardai.co.uk/blog/what-is-ai-call-qa</link>
+    <guid isPermaLink="true">https://callguardai.co.uk/blog/what-is-ai-call-qa</guid>
+    <pubDate>Tue, 05 May 2026 09:00:00 +0100</pubDate>
+    <category>How the scoring works</category>
+    <dc:creator>Kofi Vickery</dc:creator>
+    <description>A plain-English walkthrough of how speech recognition, large language models and per-tenant calibration combine to score your team's calls against your scorecard.</description>
+  </item>
+</channel>
+</rss>

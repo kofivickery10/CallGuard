@@ -14,7 +14,7 @@
 <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 <link rel="manifest" href="/site.webmanifest" />
 <link rel="preload" as="font" type="font/woff2" href="/fonts/InterVariable.woff2" crossorigin>
-<link rel="stylesheet" href="/style.css?v=15" />
+<link rel="stylesheet" href="/style.css?v=17" />
 
 <meta property="og:type" content="article" />
 <meta property="og:site_name" content="CallGuard AI" />
@@ -67,7 +67,7 @@
           "name": "What evidence does CallGuard produce for an FCA visit?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "For each scored call you get the full transcript, the per-criterion verdicts with direct evidence quotes, the breach register entry (if applicable) with severity and resolution status, the AI's coaching draft, and any compliance corrections made by your CO with their reason. Exportable as a per-call PDF or via the API for your case-management system."
+            "text": "For each scored call you get the full transcript, the per-criterion verdicts with transcript evidence, the breach register entry (if applicable) with severity and resolution status, the AI's coaching draft, and any compliance corrections made by your CO, with any reason given. Exportable as a per-call PDF or via the API for your case-management system."
           }
         },
         {
@@ -75,7 +75,7 @@
           "name": "Can compliance officers override AI scores?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "Yes. Every AI verdict can be flipped by a compliance officer with a one-click correction and a reason. The corrected verdict becomes the official record, the correction feeds back into future scoring, and the original AI verdict is retained alongside for audit purposes."
+            "text": "Yes. A compliance officer can flip any AI verdict: choose Pass or Fail, add a reason if they want to, and save. The corrected verdict becomes the official record, the correction is shown to the AI as a calibration example on future calls, and the original AI verdict is retained alongside for audit purposes."
           }
         },
         {
@@ -83,7 +83,7 @@
           "name": "How is client data secured?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "All audio is encrypted at rest with AES-256-GCM. Transport is TLS 1.2+. Hosted in the UK. UK GDPR Article 28 DPA is published at /dpa and our sub-processor list at /sub-processors. We do not train any model on your data."
+            "text": "All audio is encrypted at rest with AES-256-GCM. Transport is TLS 1.2+. Customer data is stored in the UK; some sub-processors that process audio and transcripts are outside the UK, and they are named on our sub-processor list. UK GDPR Article 28 DPA is published at /dpa and our sub-processor list at /sub-processors. We do not train any model on your data."
           }
         },
         {
@@ -91,7 +91,7 @@
           "name": "Does this work alongside our existing case management system?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "Yes. Push call recordings into CallGuard via REST API, and pull the scoring result back via the same API to render inside your case-management UI. Integrators can also subscribe to HMAC-signed webhooks to be notified the moment a critical breach is detected on a live call."
+            "text": "Yes. Push call recordings into CallGuard via REST API, and pull the scoring result back via the same API to render inside your case-management UI. Integrators can also subscribe to webhooks, HMAC-signed once you set a signing secret, to be notified the moment a critical breach is detected on a live call."
           }
         }
       ]
@@ -117,39 +117,36 @@
 
     <nav class="nav-links" aria-label="Primary">
       <a href="/#how-it-works">How it works</a>
-      <a href="/#live">Live &amp; embedded</a>
-      <a href="/#learning">AI learning</a>
-      <a href="/#data-forms">Reconciliation</a>
-      <a href="/#use-cases">Use cases</a>
-      <a href="/pricing">Pricing</a>
+      <a href="/application-reconciliation">Reconciliation</a>
+      <a href="/#security">Security</a>
+      <a href="/pricing">Plans</a>
       <a href="/blog/">Blog</a>
     </nav>
 
     <a href="https://app.callguardai.co.uk/" class="nav-login">Log in</a>
-    <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request" class="btn btn-primary nav-cta">Book a demo</a>
+    <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request" class="btn btn-primary nav-cta">Request a demo</a>
 
     <button class="theme-switch" type="button" aria-label="Toggle dark mode" aria-pressed="false">
-      <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-      <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+      <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
     </button>
-    <button class="nav-toggle" aria-label="Open menu" aria-controls="mobile-drawer" aria-expanded="false">
-      <svg class="icon-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="7"  x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>
-      <svg class="icon-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="6" y1="6"  x2="18" y2="18"/><line x1="6" y1="18" x2="18" y2="6"/></svg>
+    <button class="nav-toggle" type="button" aria-label="Open menu" aria-controls="mobile-drawer" aria-expanded="false">
+      <svg class="icon-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><line x1="4" y1="7"  x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>
+      <svg class="icon-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><line x1="6" y1="6"  x2="18" y2="18"/><line x1="6" y1="18" x2="18" y2="6"/></svg>
     </button>
   </div>
 
-  <div class="nav-drawer" id="mobile-drawer" aria-label="Mobile menu">
+  <nav class="nav-drawer" id="mobile-drawer" aria-label="Mobile menu">
     <a href="/#how-it-works">How it works</a>
-    <a href="/#live">Live &amp; embedded</a>
-    <a href="/#learning">AI learning</a>
-    <a href="/#data-forms">Reconciliation</a>
-    <a href="/#use-cases">Use cases</a>
-    <a href="/pricing">Pricing</a>
+    <a href="/application-reconciliation">Reconciliation</a>
+    <a href="/#learning">Your standard</a>
+    <a href="/#security">Security</a>
+    <a href="/pricing">Plans</a>
+    <a href="/#faq">FAQ</a>
     <a href="/blog/">Blog</a>
-      <a href="/#faq">FAQ</a>
     <a href="https://app.callguardai.co.uk/">Log in</a>
-    <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request" class="btn btn-primary">Book a demo</a>
-  </div>
+    <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request" class="btn btn-primary">Request a demo</a>
+  </nav>
 </header>
 
 <main id="top">
@@ -164,7 +161,7 @@
         CallGuard AI is FCA call monitoring software for mortgage brokers, protection advisers, IFAs and pension specialists. Score every advice call against ICOBS 5 suitability, FG21/1 vulnerable customer indicators, charges and Consumer Duty fair-value tests, and DB-transfer specialist-pathway gates. Audit-ready evidence on 100% of conversations, not a 5% sample.
       </p>
       <div class="hero-ctas">
-        <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20FCA%20demo" class="btn btn-primary btn-lg">Book a 15-min demo</a>
+        <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20FCA%20demo" class="btn btn-primary btn-lg">Request a demo</a>
         <a href="#how" class="btn btn-ghost btn-lg">How it works ↓</a>
       </div>
     </div>
@@ -195,7 +192,7 @@
         <div class="problem-card problem-win">
           <h3>CallGuard AI on every advice call</h3>
           <ul>
-            <li>100% of calls transcribed and scored automatically</li>
+            <li>Every call transcribed automatically, ready to score one by one or as part of a sale</li>
             <li>One AI calibrated to your company's interpretation</li>
             <li>Critical breaches flagged within seconds of the call</li>
             <li>Vulnerability indicators screened on every conversation</li>
@@ -211,16 +208,16 @@
     <div class="container">
       <span class="section-tag">What gets scored</span>
       <h2 class="section-h2">
-        Your scorecard, <span class="accent">built around the FCA's four outcomes.</span>
+        Your scorecard, <span class="accent">built around what a call can evidence.</span>
       </h2>
       <p class="lead">
-        CallGuard AI scores against the scorecard you upload. For IFAs, mortgage brokers, protection and pension advisers, that typically maps to ICOBS 5 suitability, FG21/1 vulnerable customer call monitoring, the four Consumer Duty outcomes, and your firm's own conduct rules. Every verdict on every criterion is backed by a direct quote from the call transcript, which is the evidence trail the regulator expects.
+        CallGuard AI scores against the scorecard you upload. For IFAs, mortgage brokers, protection and pension advisers, that typically maps to ICOBS 5 suitability, FG21/1 vulnerable customer call monitoring, the Consumer Duty outcomes visible on a call, and your firm's own conduct rules. Each verdict shows the transcript evidence it was decided on, or a note that none was found, which is the evidence trail the regulator expects.
       </p>
 
       <div class="feature-grid feature-grid-2">
         <div class="feature">
           <h3>Demands, needs and suitability (ICOBS 5)</h3>
-          <p>Demands and needs established before any recommendation. Existing cover, eligibility and affordability checked. The recommendation explained against the needs the customer actually stated, not the ones implied for them. Pass/fail per criterion with the quote that proved it.</p>
+          <p>Demands and needs established before any recommendation. Existing cover, eligibility and affordability checked. The recommendation explained against the needs the customer actually stated, not the ones implied for them. Pass or fail per criterion, with the transcript evidence where the call has it. For a protection sale, <a href="/application-reconciliation">Reconciliation</a> then checks those same disclosures against the answers submitted on the insurer's application, on the Pro plan.</p>
         </div>
         <div class="feature">
           <h3>Vulnerable client indicators (FG21/1)</h3>
@@ -231,8 +228,8 @@
           <p>Was the product genuinely suited to the target market the client falls into? Were features explained in a way the client understood? Was distribution appropriate? CallGuard AI scores against your firm's target-market definitions for each product line.</p>
         </div>
         <div class="feature">
-          <h3>Consumer Duty: price and value</h3>
-          <p>Charges disclosed clearly. Ongoing fees explained against the ongoing service the client receives. Comparable alternatives considered. Fair-value justifications captured in the recording rather than implied.</p>
+          <h3>Consumer Duty: charges explained</h3>
+          <p>Fair value is assessed at product level and evidenced in the file, and for non-investment insurance PRIN 2A.4 does not apply. What the call can evidence is the client's understanding of it: charges disclosed clearly, and ongoing fees explained against the ongoing service the client receives.</p>
         </div>
         <div class="feature">
           <h3>Consumer Duty: consumer understanding</h3>
@@ -250,28 +247,28 @@
     <div class="container">
       <span class="section-tag">Per-firm AI learning</span>
       <h2 class="section-h2">
-        An AI that <span class="accent">scores like your senior compliance reviewer</span>, not a generic baseline.
+        An AI that's <span class="accent">shown your compliance reviewer's own corrections</span>, not a generic baseline.
       </h2>
       <p class="lead">
-        Generic AI scoring drifts. CallGuard AI calibrates to your firm's interpretation of "suitable", "fair value" and "good outcome" using your team's own corrections, exemplars and coaching history. After 50 to 100 corrections, the AI scores like the person who currently signs off your file checks.
+        Generic AI scoring reads only the scorecard's words. CallGuard AI is also shown your team's own corrections, exemplars and coaching history, so it sees how your firm has read "suitable", "fair value" and "good outcome" before, not only the scorecard's wording. When your compliance officer corrects a verdict, up to five of the most recent corrections on that criterion are shown to the AI as examples the next time it scores that criterion. They are examples for the AI to weigh, not rules it must follow. <a href="/scoring-calibration">More on how scoring calibration works</a>.
       </p>
 
       <div class="feature-grid feature-grid-2">
         <div class="feature">
           <h3>Compliance officer corrections feed back</h3>
-          <p>When your compliance officer disagrees with an AI verdict, they correct it in one click. The correction becomes a few-shot example in the next batch of scoring, with the transcript excerpt and the reason captured. The AI learns "your fail" vs "industry fail" automatically.</p>
+          <p>When your compliance officer disagrees with an AI verdict, they choose Pass or Fail, add a reason if they want to, and save. The correction — with the transcript excerpt it was based on and any reason given — becomes one of the examples shown to the AI the next time it scores that criterion elsewhere on the scorecard.</p>
         </div>
         <div class="feature">
           <h3>Exemplar advice calls</h3>
-          <p>Mark gold-standard advice calls. The AI uses them as the reference bar when scoring future calls. Your "good" defines the AI's "good". The library is per-firm, not shared across customers.</p>
+          <p>Mark gold-standard advice calls or sales as exemplars. The AI is shown the first 1,500 characters of the two most recently marked exemplars — for a sale, that's its closing call — as what good looks like at your firm. The library is per-firm, not shared across customers.</p>
         </div>
         <div class="feature">
           <h3>Per-adviser coaching memory</h3>
-          <p>Coaching builds on what was said to that adviser last week. If they have improved on the flagged area, the AI acknowledges it. If they have not, the language escalates. Personalised coaching, not template feedback.</p>
+          <p>On calls scored individually, each coaching draft is written with that adviser's last three coaching drafts in view. Personalised coaching, not template feedback.</p>
         </div>
         <div class="feature">
           <h3>Strategic insights for the CO</h3>
-          <p>A weekly digest summarising what changed, the patterns worth attention, and 3 to 4 specific actions a compliance director will actually take. Written for the CO, not as boilerplate.</p>
+          <p>An AI insights brief, generated on request, summarising what changed, the patterns worth attention, and 3 to 4 specific actions a compliance director will actually take. Written for the CO, not as boilerplate.</p>
         </div>
       </div>
     </div>
@@ -289,28 +286,28 @@
         </details>
         <details class="faq-item">
           <summary>What evidence does CallGuard produce for an FCA visit?</summary>
-          <div class="faq-body"><p>For each scored call you get the full transcript, the per-criterion verdicts with direct evidence quotes, the breach register entry (if applicable) with severity and resolution status, the AI's coaching draft, and any compliance corrections made by your CO with their reason. Exportable as a per-call PDF or via the API for your case-management system.</p></div>
+          <div class="faq-body"><p>For each scored call you get the full transcript, the per-criterion verdicts with transcript evidence, the breach register entry (if applicable) with severity and resolution status, the AI's coaching draft, and any compliance corrections made by your CO, with any reason given. Exportable as a per-call PDF or via the API for your case-management system.</p></div>
         </details>
         <details class="faq-item">
           <summary>Can compliance officers override AI scores?</summary>
-          <div class="faq-body"><p>Yes. Every AI verdict can be flipped by a compliance officer with a one-click correction and a reason. The corrected verdict becomes the official record, the correction feeds back into future scoring, and the original AI verdict is retained alongside for audit purposes.</p></div>
+          <div class="faq-body"><p>Yes. A compliance officer can flip any AI verdict: choose Pass or Fail, add a reason if they want to, and save. The corrected verdict becomes the official record, the correction is shown to the AI as a calibration example on future calls, and the original AI verdict is retained alongside for audit purposes.</p></div>
         </details>
         <details class="faq-item">
           <summary>How is client data secured?</summary>
-          <div class="faq-body"><p>All audio is encrypted at rest with AES-256-GCM. Transport is TLS 1.2+. Hosted in the UK. UK GDPR Article 28 DPA is published at <a href="/dpa">/dpa</a> and our sub-processor list at <a href="/sub-processors">/sub-processors</a>. We do not train any model on your data.</p></div>
+          <div class="faq-body"><p>All audio is encrypted at rest with AES-256-GCM. Transport is TLS 1.2+. Customer data is stored in the UK; some sub-processors that process audio and transcripts are outside the UK, and they are named on our sub-processor list. UK GDPR Article 28 DPA is published at <a href="/dpa">/dpa</a> and our sub-processor list at <a href="/sub-processors">/sub-processors</a>. We do not train any model on your data.</p></div>
         </details>
         <details class="faq-item">
           <summary>Does this work alongside our existing case management system?</summary>
-          <div class="faq-body"><p>Yes. Push call recordings into CallGuard via REST API, and pull the scoring result back via the same API to render inside your case-management UI. Integrators can also subscribe to HMAC-signed webhooks to be notified the moment a critical breach is detected on a live call.</p></div>
+          <div class="faq-body"><p>Yes. Push call recordings into CallGuard via REST API, and pull the scoring result back via the same API to render inside your case-management UI. Integrators can also subscribe to webhooks, HMAC-signed once you set a signing secret, to be notified the moment a critical breach is detected on a live call.</p></div>
         </details>
       </div>
 
       <p class="lead" style="margin-top: 36px;">
-        Further reading: <a href="/blog/fca-consumer-duty-call-recordings">7 things your call recordings need to evidence under Consumer Duty</a> and <a href="/blog/ai-vs-human-call-scoring">AI vs human call scoring: accuracy, cost and consistency</a>. If you are weighing CallGuard AI against other call QA vendors, our <a href="/compare/">comparison hub</a> sets out where each one fits.
+        Further reading: <a href="/blog/what-is-ai-call-qa">what AI call QA is and how it actually works</a> and <a href="/blog/ai-vs-human-call-scoring">AI vs human call scoring: when each makes sense</a>. If you are weighing CallGuard AI against other call QA vendors, our <a href="/compare/">comparison hub</a> sets out where each one fits.
       </p>
 
       <div style="margin-top: 36px; text-align: center;">
-        <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20FCA%20demo" class="btn btn-primary btn-lg">Book a 15-min demo</a>
+        <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20FCA%20demo" class="btn btn-primary btn-lg">Request a demo</a>
       </div>
     </div>
   </section>
@@ -324,50 +321,51 @@
       <p class="footer-tag">AI compliance scoring for every regulated conversation.</p>
     </div>
     <div class="footer-links">
-      <div class="footer-col">
-        <h5>Product</h5>
+      <nav class="footer-col" aria-labelledby="footer-product">
+        <p class="footer-heading" id="footer-product">Product</p>
         <a href="/#how-it-works">How it works</a>
         <a href="/#live">Live &amp; embedded</a>
-        <a href="/#learning">AI learning</a>
-        <a href="/#data-forms">Reconciliation</a>
+        <a href="/scoring-calibration">Scoring calibration</a>
+        <a href="/application-reconciliation">Reconciliation</a>
         <a href="/#use-cases">Use cases</a>
-        <a href="/pricing">Pricing</a>
+        <a href="/pricing">Plans</a>
         <a href="/compare/">Compare</a>
         <a href="/about">About</a>
         <a href="/blog/">Blog</a>
       <a href="/#faq">FAQ</a>
-      </div>
-      <div class="footer-col">
-        <h5>Use cases</h5>
+      </nav>
+      <nav class="footer-col" aria-labelledby="footer-use-cases">
+        <p class="footer-heading" id="footer-use-cases">Use cases</p>
         <a href="/use-cases/financial-services">Financial services</a>
         <a href="/use-cases/mortgage-advice">Mortgage advice</a>
         <a href="/use-cases/bpo">Contact centres &amp; BPOs</a>
         <a href="/use-cases/collections">Debt collections</a>
         <a href="/use-cases/outbound-sales">Outbound sales</a>
-      </div>
-      <div class="footer-col">
-        <h5>Integrations</h5>
+      </nav>
+      <nav class="footer-col" aria-labelledby="footer-integrations">
+        <p class="footer-heading" id="footer-integrations">Integrations</p>
         <a href="/integrations/twilio">Twilio</a>
         <a href="/integrations/cloudtalk">CloudTalk</a>
         <a href="/integrations/microsoft-teams">Microsoft Teams</a>
         <a href="/integrations/aws-connect">AWS Connect</a>
-      </div>
-      <div class="footer-col">
-        <h5>Legal</h5>
+        <a href="/integrations/">All integrations</a>
+      </nav>
+      <nav class="footer-col" aria-labelledby="footer-legal">
+        <p class="footer-heading" id="footer-legal">Legal</p>
         <a href="/privacy">Privacy policy</a>
         <a href="/terms">Terms of service</a>
         <a href="/dpa">DPA</a>
         <a href="/sub-processors">Sub-processors</a>
-      </div>
+      </nav>
     </div>
   </div>
   <div class="container footer-bottom">
     <span>© 2026 CallGuard AI.</span>
-    <span>UK-based · GDPR-compliant by default</span>
+    <span>UK-based · Data stored in the UK</span>
   </div>
 </footer>
 
-<script defer src="/script.js?v=4"></script>
+<script defer src="/script.js?v=6"></script>
 
 <script defer src="/analytics.js?v=2"></script>
 </body>

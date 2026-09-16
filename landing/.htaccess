@@ -110,6 +110,42 @@ DirectoryIndex index.html
   Require all denied
 </FilesMatch>
 
+# ─── Blog sources are not public ─────────────────────────────────────────
+# The post Markdown and the page template used to live in this directory, so
+# /blog/_posts/*.md was downloadable and /blog/_template was a real, indexable
+# page. They now live in content/, which is outside the document root — but a
+# deploy only adds and overwrites files, so the old copies stay on the server
+# until someone deletes them. These rules make them unreachable either way,
+# and keep them unreachable if anyone ever puts a source file back.
+<FilesMatch "\.(md|markdown)$">
+  Require all denied
+</FilesMatch>
+RedirectMatch 404 ^/blog/_.*
+
+# ─── Held briefings ──────────────────────────────────────────────────────
+# These three posts were found on 15 Sep 2026 to contain rule references that
+# do not survive a check against the Handbook and PECR. The corrected versions
+# are written but held for a compliance read, so they are not in this deploy —
+# which means the old, wrong copies stay on the server until they are replaced.
+#
+# Telling search engines not to index them is the interim: it stops new readers
+# arriving on advice we know to be wrong, without throwing away the URLs, which
+# will be wanted again the moment the corrected posts ship. Delete this block
+# when they do — and check they are back in the sitemap.
+<IfModule mod_headers.c>
+  <FilesMatch "^(pecr-tps-2026-outbound-compliance|fca-consumer-duty-call-recordings|vulnerable-customer-call-monitoring)\.html$">
+    Header set X-Robots-Tag "noindex, nofollow"
+  </FilesMatch>
+</IfModule>
+
+# ─── Feed ────────────────────────────────────────────────────────────────
+# Scoped to the one file, not to .xml: sitemap.xml must keep its own type, and
+# handing Search Console an RSS content type for a sitemap is a real failure,
+# not a cosmetic one.
+<Files "feed.xml">
+  ForceType application/rss+xml
+</Files>
+
 # ─── Custom error pages ──────────────────────────────────────────────────
 # Serve a real 404 page that returns a 404 status. Pointing this at a static
 # file (not index.html) means Apache responds with the correct 404 code, which

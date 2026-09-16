@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta name="description" content="Automated quality assurance for contact centres and BPOs. Score 100% of calls, coach agents, and give every client its own scorecard and share link." />
+<meta name="description" content="Automated quality assurance for contact centres and BPOs. Score every call or sale, coach agents, and give every client its own scorecard and share link." />
 <meta name="theme-color" content="#4a9e6e" />
 <meta name="robots" content="index,follow,max-image-preview:large" />
 <meta name="author" content="CallGuard AI" />
@@ -14,19 +14,19 @@
 <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 <link rel="manifest" href="/site.webmanifest" />
 <link rel="preload" as="font" type="font/woff2" href="/fonts/InterVariable.woff2" crossorigin>
-<link rel="stylesheet" href="/style.css?v=15" />
+<link rel="stylesheet" href="/style.css?v=17" />
 
 <meta property="og:type" content="article" />
 <meta property="og:site_name" content="CallGuard AI" />
 <meta property="og:locale" content="en_GB" />
 <meta property="og:url" content="https://callguardai.co.uk/use-cases/bpo" />
 <meta property="og:title" content="Contact Centre &amp; BPO QA Software | CallGuard AI" />
-<meta property="og:description" content="Automated quality assurance for contact centres and BPOs. Score 100% of calls, coach agents, and give every client its own scorecard and share link." />
+<meta property="og:description" content="Automated quality assurance for contact centres and BPOs. Score every call or sale, coach agents, and give every client its own scorecard and share link." />
 <meta property="og:image" content="https://callguardai.co.uk/og-image.jpg" />
 
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="Contact Centre &amp; BPO QA Software | CallGuard AI" />
-<meta name="twitter:description" content="Automated quality assurance for contact centres and BPOs. Score 100% of calls." />
+<meta name="twitter:description" content="Automated quality assurance for contact centres and BPOs. Score every call or sale." />
 <meta name="twitter:image" content="https://callguardai.co.uk/og-image.jpg" />
 
 <script type="application/ld+json">
@@ -72,10 +72,10 @@
         },
         {
           "@type": "Question",
-          "name": "Will it integrate with our existing dialer (Genesys, Five9, NICE, etc.)?",
+          "name": "Will it integrate with our existing dialler (Genesys, Five9, NICE, etc.)?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "Twilio Media Streams and AWS Connect Voice Streams are first-class adapters, and other dialers can connect via our generic WebSocket protocol for live streaming. For any dialer, including Genesys, Five9 or NICE, you can also export call recordings and bring them in via upload or our REST API (including pushing a recording URL)."
+            "text": "Twilio Media Streams is a first-class adapter, and Amazon Connect live media streaming is supported via a customer-run Lambda bridge. Other diallers can connect via our generic WebSocket protocol for live streaming. For any dialler, including Genesys, Five9 or NICE, you can also export call recordings and bring them in via upload or our REST API (including pushing a recording URL)."
           }
         },
         {
@@ -83,7 +83,7 @@
           "name": "How do you avoid alert fatigue from live breach detection?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "Live scoring only emits a breach when the AI is over 75% confident a criterion has clearly already failed. Not \"might be\" or \"could happen\". The threshold is set conservatively at 75% to keep false positives low. Confidence is checked every 30 seconds against the rolling transcript."
+            "text": "Live scoring only emits a breach when the AI is confident a criterion has clearly already failed. Not \"might be\" or \"could happen\". The threshold is set conservatively to keep false positives low. Confidence is checked continuously against the rolling transcript."
           }
         },
         {
@@ -114,38 +114,39 @@
 <header class="nav" role="banner">
   <div class="container nav-inner">
     <a class="brand" href="/" aria-label="CallGuard AI home"><img class="brand-logo brand-logo--light" src="/brand/svg/callguard-logo-horizontal.svg" alt="CallGuard AI" width="152" height="32" /><img class="brand-logo brand-logo--dark" src="/brand/svg/callguard-logo-horizontal-dark.svg" alt="CallGuard AI" width="152" height="32" /></a>
+
     <nav class="nav-links" aria-label="Primary">
       <a href="/#how-it-works">How it works</a>
-      <a href="/#live">Live &amp; embedded</a>
-      <a href="/#learning">AI learning</a>
-      <a href="/#data-forms">Reconciliation</a>
-      <a href="/#use-cases">Use cases</a>
-      <a href="/pricing">Pricing</a>
+      <a href="/application-reconciliation">Reconciliation</a>
+      <a href="/#security">Security</a>
+      <a href="/pricing">Plans</a>
       <a href="/blog/">Blog</a>
     </nav>
+
     <a href="https://app.callguardai.co.uk/" class="nav-login">Log in</a>
-    <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request" class="btn btn-primary nav-cta">Book a demo</a>
+    <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request" class="btn btn-primary nav-cta">Request a demo</a>
+
     <button class="theme-switch" type="button" aria-label="Toggle dark mode" aria-pressed="false">
-      <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-      <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+      <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
     </button>
-    <button class="nav-toggle" aria-label="Open menu" aria-controls="mobile-drawer" aria-expanded="false">
-      <svg class="icon-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="7"  x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>
-      <svg class="icon-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="6" y1="6"  x2="18" y2="18"/><line x1="6" y1="18" x2="18" y2="6"/></svg>
+    <button class="nav-toggle" type="button" aria-label="Open menu" aria-controls="mobile-drawer" aria-expanded="false">
+      <svg class="icon-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><line x1="4" y1="7"  x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>
+      <svg class="icon-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><line x1="6" y1="6"  x2="18" y2="18"/><line x1="6" y1="18" x2="18" y2="6"/></svg>
     </button>
   </div>
-  <div class="nav-drawer" id="mobile-drawer" aria-label="Mobile menu">
+
+  <nav class="nav-drawer" id="mobile-drawer" aria-label="Mobile menu">
     <a href="/#how-it-works">How it works</a>
-    <a href="/#live">Live &amp; embedded</a>
-    <a href="/#learning">AI learning</a>
-    <a href="/#data-forms">Reconciliation</a>
-    <a href="/#use-cases">Use cases</a>
-    <a href="/pricing">Pricing</a>
+    <a href="/application-reconciliation">Reconciliation</a>
+    <a href="/#learning">Your standard</a>
+    <a href="/#security">Security</a>
+    <a href="/pricing">Plans</a>
+    <a href="/#faq">FAQ</a>
     <a href="/blog/">Blog</a>
-      <a href="/#faq">FAQ</a>
     <a href="https://app.callguardai.co.uk/">Log in</a>
-    <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request" class="btn btn-primary">Book a demo</a>
-  </div>
+    <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20demo%20request" class="btn btn-primary">Request a demo</a>
+  </nav>
 </header>
 
 <main id="top">
@@ -160,7 +161,7 @@
         CallGuard AI is contact centre QA software that replaces your 5% manual sample with AI scoring on every conversation. Multi-client scorecards for BPOs running multiple programmes. Mid-call breach detection that catches consent failures and urgency-language before the customer hangs up.
       </p>
       <div class="hero-ctas">
-        <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20BPO%20demo" class="btn btn-primary btn-lg">Book a 15-min demo</a>
+        <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20BPO%20demo" class="btn btn-primary btn-lg">Request a demo</a>
         <a href="#how" class="btn btn-ghost btn-lg">See what gets scored ↓</a>
       </div>
     </div>
@@ -189,12 +190,12 @@
           </ul>
         </div>
         <div class="problem-card problem-win">
-          <h3>CallGuard AI on every call</h3>
+          <h3>CallGuard AI on your calls</h3>
           <ul>
-            <li>100% of calls transcribed and scored automatically</li>
+            <li>Every call transcribed automatically, ready to score one by one or as part of a sale</li>
             <li>One AI calibrated to each programme's scorecard</li>
             <li>Coaching draft ready before the agent's next call</li>
-            <li>Critical breaches alert the supervisor mid-call via webhook</li>
+            <li>Critical breaches fire a webhook to your dialler or CRM mid-call</li>
             <li>Clients get read-only share links to live results per programme</li>
             <li>Headcount can grow without QA capacity becoming the constraint</li>
           </ul>
@@ -224,11 +225,11 @@
         </div>
         <div class="feature">
           <h3>Outbound compliance (TPS, PECR, mini-Miranda)</h3>
-          <p>Scores whether the agent gave required caller-identification and consent statements, captured PECR consent before marketing content, and read the mini-Miranda on collections calls. Every connected call scored, not a 5% spot-check.</p>
+          <p>Scores whether the agent identified themselves as the regime requires, stopped the pitch when the customer objected to marketing, and read the mini-Miranda on collections calls. Every call transcribed and ready to score, not a 5% spot-check.</p>
         </div>
         <div class="feature">
           <h3>No-pressure-language detection</h3>
-          <p>Urgency tactics, scarcity language and manipulative closing techniques flagged the moment they appear in a live transcript. Floor managers get a webhook before the customer hangs up.</p>
+          <p>Urgency tactics, scarcity language and manipulative closing techniques flagged the moment they appear in a live transcript. A webhook fires to your dialler or CRM before the customer hangs up, so a floor manager watching can step in.</p>
         </div>
         <div class="feature">
           <h3>Multi-tenant client scorecards</h3>
@@ -245,23 +246,23 @@
   <section class="section">
     <div class="container">
       <span class="section-tag">Live and embedded</span>
-      <h2 class="section-h2">Score the call <span class="accent">while it's still happening.</span></h2>
+      <h2 class="section-h2">Flag the breach <span class="accent">while the call is still happening.</span></h2>
       <p class="lead">
-        Stream audio live from your dialer over our WebSocket protocol. Live transcript builds as it is spoken. Every 30 seconds the AI reviews the rolling transcript and emits high-confidence breach alerts via signed webhook to your dialer, CRM or supervisor's screen.
+        Stream audio live from your dialler over our WebSocket protocol. Live transcript builds as it is spoken. Every 30 seconds the AI reviews the rolling transcript, and a breach is sent only when the model rates it at 0.75 confidence or higher: over the stream, or as a webhook to your own systems, HMAC-signed once you set a signing secret.
       </p>
 
       <div class="feature-grid feature-grid-2">
         <div class="feature">
           <h3>First-class adapters</h3>
-          <p>Twilio Media Streams and AWS Connect Voice Streams supported natively. Other dialers can connect via our generic WebSocket protocol.</p>
+          <p>Twilio Media Streams supported natively, and Amazon Connect live media streaming via a customer-run Lambda bridge. Other diallers can connect via our generic WebSocket protocol.</p>
         </div>
         <div class="feature">
           <h3>HMAC-signed breach webhooks</h3>
-          <p>HMAC-SHA256 signed POST to your endpoint within 30 seconds of detection. Retry with exponential backoff. Full audit log of every delivery attempt.</p>
+          <p>HMAC-SHA256 signed POST to your endpoint, once you set a signing secret, sent as soon as a breach is detected. Retry with exponential backoff. Full audit log of every delivery attempt.</p>
         </div>
         <div class="feature">
           <h3>Confidence-gated alerts</h3>
-          <p>Live scoring only emits a breach when the AI is &gt;75% confident the criterion has clearly already failed. Designed to avoid alert fatigue from day one.</p>
+          <p>Live scoring only emits a breach when the AI is confident the criterion has clearly already failed. Designed to avoid alert fatigue from day one.</p>
         </div>
         <div class="feature">
           <h3>REST API for batch and result fetch</h3>
@@ -286,12 +287,12 @@
           <div class="faq-body"><p>Calls are processed through a queue, so a backlog drains steadily without manual intervention. A single call is transcribed and scored in about a minute; large overnight batches process in the background and are ready by morning. For sustained high-volume programmes we scale processing capacity to match your call rate.</p></div>
         </details>
         <details class="faq-item">
-          <summary>Will it integrate with our existing dialer (Genesys, Five9, NICE, etc.)?</summary>
-          <div class="faq-body"><p>Twilio Media Streams and AWS Connect Voice Streams are first-class adapters, and other dialers can connect via our generic WebSocket protocol for live streaming. For any dialer, including Genesys, Five9 or NICE, you can also export call recordings and bring them in via upload or our REST API (including pushing a recording URL).</p></div>
+          <summary>Will it integrate with our existing dialler (Genesys, Five9, NICE, etc.)?</summary>
+          <div class="faq-body"><p>Twilio Media Streams is a first-class adapter, and Amazon Connect live media streaming is supported via a customer-run Lambda bridge. Other diallers can connect via our generic WebSocket protocol for live streaming. For any dialler, including Genesys, Five9 or NICE, you can also export call recordings and bring them in via upload or our REST API (including pushing a recording URL).</p></div>
         </details>
         <details class="faq-item">
           <summary>How do you avoid alert fatigue from live breach detection?</summary>
-          <div class="faq-body"><p>Live scoring only emits a breach when the AI is over 75% confident a criterion has clearly already failed. Not "might be" or "could happen". The threshold is set conservatively at 75% to keep false positives low. Confidence is checked every 30 seconds against the rolling transcript.</p></div>
+          <div class="faq-body"><p>Live scoring only emits a breach when the AI is confident a criterion has clearly already failed. Not "might be" or "could happen". The threshold is set conservatively to keep false positives low. Confidence is checked continuously against the rolling transcript.</p></div>
         </details>
         <details class="faq-item">
           <summary>Can clients see live scores on their own dashboard rather than ours?</summary>
@@ -304,7 +305,7 @@
       </p>
 
       <div style="margin-top: 36px; text-align: center;">
-        <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20BPO%20demo" class="btn btn-primary btn-lg">Book a 15-min demo</a>
+        <a href="mailto:hello@callguardai.co.uk?subject=CallGuard%20AI%20%E2%80%94%20BPO%20demo" class="btn btn-primary btn-lg">Request a demo</a>
       </div>
     </div>
   </section>
@@ -318,50 +319,51 @@
       <p class="footer-tag">AI compliance scoring for every regulated conversation.</p>
     </div>
     <div class="footer-links">
-      <div class="footer-col">
-        <h5>Product</h5>
+      <nav class="footer-col" aria-labelledby="footer-product">
+        <p class="footer-heading" id="footer-product">Product</p>
         <a href="/#how-it-works">How it works</a>
         <a href="/#live">Live &amp; embedded</a>
-        <a href="/#learning">AI learning</a>
-        <a href="/#data-forms">Reconciliation</a>
+        <a href="/scoring-calibration">Scoring calibration</a>
+        <a href="/application-reconciliation">Reconciliation</a>
         <a href="/#use-cases">Use cases</a>
-        <a href="/pricing">Pricing</a>
+        <a href="/pricing">Plans</a>
         <a href="/compare/">Compare</a>
         <a href="/about">About</a>
         <a href="/blog/">Blog</a>
       <a href="/#faq">FAQ</a>
-      </div>
-      <div class="footer-col">
-        <h5>Use cases</h5>
+      </nav>
+      <nav class="footer-col" aria-labelledby="footer-use-cases">
+        <p class="footer-heading" id="footer-use-cases">Use cases</p>
         <a href="/use-cases/financial-services">Financial services</a>
         <a href="/use-cases/mortgage-advice">Mortgage advice</a>
         <a href="/use-cases/bpo">Contact centres &amp; BPOs</a>
         <a href="/use-cases/collections">Debt collections</a>
         <a href="/use-cases/outbound-sales">Outbound sales</a>
-      </div>
-      <div class="footer-col">
-        <h5>Integrations</h5>
+      </nav>
+      <nav class="footer-col" aria-labelledby="footer-integrations">
+        <p class="footer-heading" id="footer-integrations">Integrations</p>
         <a href="/integrations/twilio">Twilio</a>
         <a href="/integrations/cloudtalk">CloudTalk</a>
         <a href="/integrations/microsoft-teams">Microsoft Teams</a>
         <a href="/integrations/aws-connect">AWS Connect</a>
-      </div>
-      <div class="footer-col">
-        <h5>Legal</h5>
+        <a href="/integrations/">All integrations</a>
+      </nav>
+      <nav class="footer-col" aria-labelledby="footer-legal">
+        <p class="footer-heading" id="footer-legal">Legal</p>
         <a href="/privacy">Privacy policy</a>
         <a href="/terms">Terms of service</a>
         <a href="/dpa">DPA</a>
         <a href="/sub-processors">Sub-processors</a>
-      </div>
+      </nav>
     </div>
   </div>
   <div class="container footer-bottom">
     <span>© 2026 CallGuard AI.</span>
-    <span>UK-based · GDPR-compliant by default</span>
+    <span>UK-based · Data stored in the UK</span>
   </div>
 </footer>
 
-<script defer src="/script.js?v=4"></script>
+<script defer src="/script.js?v=6"></script>
 
 <script defer src="/analytics.js?v=2"></script>
 </body>

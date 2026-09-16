@@ -95,7 +95,7 @@ to a human, never applied silently — a bad one takes the whole site down, not 
 
 ## Rules you do not break
 
-- **The blog is generated.** Optimise `landing/blog/_posts/<slug>.md` and the generator
+- **The blog is generated.** Optimise `content/blog/posts/<slug>.md` and the generator
   in `scripts/build-blog.mjs`, never the emitted `blog/*.html`.
 - **Consent stays.** Analytics loads only after the visitor accepts. No performance
   argument justifies loading it earlier or inlining a tracker.
