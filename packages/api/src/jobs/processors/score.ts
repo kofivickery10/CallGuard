@@ -148,11 +148,16 @@ export async function processScoring(job: Job<{ callId: string }>) {
 
     // Score with Claude (inject KB context + tenant learning context)
     const kbContext = await getKBContext(call.organization_id);
+    // Calibration examples for every checkpoint sent to the model, provisional
+    // ones included. A consent gate below the speaker floor is still AI-scored
+    // and its verdict is what the reviewer sees first, so it needs the firm's
+    // examples as much as any other. This changes only the prompt: what goes to
+    // review is decided by classifyItems above and the routing below.
     const learning = org
       ? await getLearningContext(
           call.organization_id,
           org.plan,
-          scoreable.map((i) => i.id),
+          aiItems.map((i) => i.id),
           call.agent_id
         )
       : undefined;

@@ -49,9 +49,12 @@ export interface ScoringOutput {
 }
 
 export interface LearningContext {
-  // Per-scorecard-item list of past corrections
+  // Per-scorecard-item list of past corrections, most recent first.
   correctionsByItem: Record<string, Array<{
-    corrected_pass: boolean;
+    // NULL = the reviewer ruled the checkpoint did not apply (migration 108).
+    // getLearningContext does not select those, and the prompt skips any that
+    // arrive anyway — see the calibration block in buildScoringPrompt.
+    corrected_pass: boolean | null;
     reason: string | null;
     transcript_excerpt: string | null;
   }>>;
@@ -93,11 +96,23 @@ export function buildScoringPrompt(
         scale_1_10: 'Score from 1 (poor) to 10 (excellent).',
       }[item.score_type];
 
-      // Append any past corrections for this specific criterion
-      const corrections = learning?.correctionsByItem[item.id] || [];
+      // Append any past corrections for this specific criterion.
+      //
+      // A "not applicable" ruling (corrected_pass NULL) is never an example.
+      // `NULL ? 'PASS' : 'FAIL'` used to render it as "Human judged: FAIL — Not
+      // applicable to this sale", the opposite of what the reviewer decided. It
+      // is not rendered as NOT APPLICABLE either: the model cannot return that
+      // (submit_scores takes a number, and unclear criteria get the lowest
+      // score), and whether a checkpoint applies is settled before the model
+      // sees it, by branch and product (checkpoint-classification.ts). An N/A
+      // example would teach it nothing about met versus not met, and would
+      // invite exactly the low score the reviewer overturned.
+      const corrections = (learning?.correctionsByItem[item.id] || []).filter(
+        (c) => c.corrected_pass !== null
+      );
       const correctionsBlock = corrections.length > 0
         ? `\n  Tenant calibration (past human corrections):\n${corrections
-            .slice(0, 5)
+            .slice(0, CALIBRATION_EXAMPLES_PER_ITEM)
             .map((c, idx) => {
               const excerpt = (c.transcript_excerpt || '').slice(0, 200);
               return `    ${idx + 1}. Human judged: ${c.corrected_pass ? 'PASS' : 'FAIL'}${c.reason ? ` - ${c.reason}` : ''}${excerpt ? ` (evidence: "${excerpt}")` : ''}`;
@@ -241,6 +256,12 @@ ${transcript}
 // but lets the model actually see the good behaviour — a compliant close often
 // sits well past the opening 400 chars, especially for a whole-sale exemplar.
 export const EXEMPLAR_EXCERPT_CHARS = 1500;
+
+// How many of a criterion's most recent human corrections are shown to the
+// model as calibration examples. One constant for both the query that fetches
+// them (learning-context.ts) and the prompt that renders them, so the two cannot
+// drift. The in-app copy in ScoreCorrectionModal.tsx states this number too.
+export const CALIBRATION_EXAMPLES_PER_ITEM = 5;
 
 // One strong pass, not a cheap pass plus a second opinion.
 //
