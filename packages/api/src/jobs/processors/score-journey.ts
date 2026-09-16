@@ -11,6 +11,7 @@ import {
   type SpeakerIntegrityFlag,
 } from '../../services/speaker-integrity.js';
 import { deliverCallScored } from '../../services/webhook-delivery.js';
+import { evaluateAlertsForJourney } from '../../services/alert-evaluator.js';
 import { sendOpsAlert } from '../../services/ops-alert.js';
 import { pushJourneyScored, fetchSaleProducts } from '../../services/zoho.js';
 import { maybeStartJourneyCapture } from '../../services/capture-runs.js';
@@ -257,13 +258,31 @@ export async function processScoreJourney(job: Job<ScoreJourneyJobData>) {
       .filter((id): id is string => id !== null);
     const productNames = journeyProducts.map((p) => p.product_name);
 
+    // A call that cannot be attributed (one-sided, or its labels flagged) is no
+    // evidence of who spoke, whatever confidence number it carries: a stereo pin
+    // is 1.0 or 0.7 whether or not both channels had speech, older one-sided
+    // rows were lifted to 0.75, and repair scripts write the value directly. So
+    // for consent-gate routing such a call counts as 0, the value an
+    // unestablished (NULL) confidence already gets below. This is the same
+    // question the wrap-up is asked just below; asked of every call, it keeps a
+    // consent gate quoted from a flagged earlier call from being auto-scored,
+    // either up front or by the release after scoring.
+    const consentConfidenceByCall = new Map(
+      withTranscript.map((c) => [
+        c.id,
+        transcriptSupportsAttribution(c.transcript_text, c.speaker_integrity_flag as SpeakerIntegrityFlag | null).ok
+          ? c.speaker_attribution_confidence
+          : 0,
+      ])
+    );
+
     // Conservative BEFORE scoring: a consent quote could have come from any of
     // the calls, and which one is not known until the scorer cites it. So the
     // weakest call gates the lot here, and anything whose evidence turns out to
     // come from a well-attributed call is released again below, once
     // source_call_id is known.
     const confidences = withTranscript
-      .map((c) => c.speaker_attribution_confidence)
+      .map((c) => consentConfidenceByCall.get(c.id)!)
       .filter((c): c is number => c !== null);
     const journeySpeakerConfidence = confidences.length > 0 ? Math.min(...confidences) : null;
 
@@ -503,9 +522,14 @@ export async function processScoreJourney(job: Job<ScoreJourneyJobData>) {
     // confirms it (see checkpoint-classification.ts).
     const provisionalIds = new Set(provisional.map((i) => i.id));
     // Per-call speaker confidence, for releasing provisional gates whose
-    // evidence came from a call we can actually attribute.
+    // evidence came from a call we can actually attribute. An unattributable
+    // call is already 0 in consentConfidenceByCall, so a flagged or one-sided
+    // call can never release a gate, however high its stored confidence.
     const speakerConfidenceByCall = new Map(
-      withTranscript.map((c) => [c.id, c.speaker_attribution_confidence === null ? 0 : Number(c.speaker_attribution_confidence)])
+      withTranscript.map((c) => {
+        const confidence = consentConfidenceByCall.get(c.id);
+        return [c.id, confidence === null || confidence === undefined ? 0 : Number(confidence)];
+      })
     );
     const provisionalWrites: typeof itemWrites = [];
     // Checkpoints a reviewer ruled not applicable to this sale: written as 'na',
@@ -571,7 +595,16 @@ export async function processScoreJourney(job: Job<ScoreJourneyJobData>) {
         ruledNotApplicableWrites.push({ item, itemScore, normalized, sourceCallId });
         continue;
       }
-      const stillProvisional = provisionalIds.has(item.id) && !evidenceIsWellAttributed;
+      // The release above answers one question: was a consent gate held only
+      // because SOME call on the sale sat under the speaker floor? It must not
+      // answer a different one. When the wrap-up itself cannot be attributed,
+      // every applicable checkpoint was held for that reason (classifyItems with
+      // attribution.ok false), and no call's confidence number can undo it: a
+      // one-sided or flagged call can still carry 0.5 or more (a stereo pin is
+      // 1.0 whether or not both channels had speech in them). Releasing on
+      // confidence there auto-scored consent gates, and every other checkpoint,
+      // on exactly the sales the platform had decided it could not read.
+      const stillProvisional = provisionalIds.has(item.id) && (!attribution.ok || !evidenceIsWellAttributed);
       if (!ruledIds.has(item.id) && (stillProvisional || disputedIds.has(item.id) || lowConfidence)) {
         provisionalWrites.push({ item, itemScore, normalized, sourceCallId });
         if (lowConfidence) lowConfidenceCount++;
@@ -970,6 +1003,36 @@ export async function processScoreJourney(job: Job<ScoreJourneyJobData>) {
         });
       }
     }
+
+    // Alert rules for the sale — the sales_only firm's "Item failed" and "Low
+    // score" alerts, which until now were never raised at all: the calls behind
+    // a sale are not scored on their own, so nothing ever evaluated a rule for
+    // them (services/alert-evaluator.ts).
+    //
+    // Held on exactly the two conditions the webhook above is held on, and for
+    // the same reasons:
+    //
+    //  - nothingAutoScored: every applicable checkpoint is with a reviewer, so
+    //    there is no verdict to report. Telling a firm a checkpoint failed
+    //    before anyone ruled on it is the defect #208 closed for calls; the
+    //    reviewer's ruling raises it instead (routes/review.ts).
+    //  - suppressCrm: a bulk backfill re-scores historical sales in one sweep.
+    //    Its whole point is to correct CallGuard's own numbers quietly, and an
+    //    alert is even less ignorable than a CRM write — it would put months of
+    //    old sales through the team's inbox and Slack channel as though they
+    //    had just happened. Live scoring never sets it, so real sales alert as
+    //    normal, and alert_events means the first real alert is still the one
+    //    they get if the backfill is later re-run.
+    if (suppressCrm || nothingAutoScored) {
+      console.log(
+        `[ScoreJourney] Holding alert evaluation for ${journeyId} — ${suppressCrm ? 'bulk re-score' : 'no checkpoint auto-scored, all await review'}`
+      );
+    } else {
+      evaluateAlertsForJourney(journeyId).catch((alertErr) => {
+        console.error(`[ScoreJourney] Alert evaluation failed for journey ${journeyId}:`, alertErr);
+      });
+    }
+
     // Data capture runs strictly after (and independently of) scoring — a
     // capture failure never affects the journey's score. No-op unless the
     // org has capture_enabled and a form resolves.
