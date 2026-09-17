@@ -14,7 +14,30 @@ import { recordAuditEvent } from '../services/audit.js';
 import { getScoringSettings } from '../services/tenant-settings.js';
 import { resolveTranscriptAccess, withheldTranscript } from '../services/transcript-access.js';
 import { evaluateAlertsForResolvedItem } from '../services/alert-evaluator.js';
-import type { Call, CallScore, CallItemScore, BreachSeverity } from '@callguard/shared';
+import {
+  FEEDBACK_STATUS_SQL,
+  FEEDBACK_SENT_AT_SQL,
+  FEEDBACK_CONFIRMED_AT_SQL,
+} from '../db/feedback-status.js';
+import {
+  parseTranscriptBlocks,
+  extractUtterances,
+  locateEvidenceAgainst,
+  blockStartTimesAgainst,
+} from '../services/evidence-locator.js';
+import type {
+  Call,
+  CallScore,
+  CallItemScore,
+  BreachSeverity,
+  ItemResult,
+  JourneyStatus,
+  FeedbackStatus,
+  CallJourneyContext,
+  CallJourneySibling,
+  CallPositionsResponse,
+  CallItemPosition,
+} from '@callguard/shared';
 import { deriveSeverity, isItemPass, callPasses } from '@callguard/shared';
 
 export const callRouter = Router();
@@ -322,22 +345,121 @@ callRouter.get('/:id', async (req, res, next) => {
     // checkpoints whose evidence came from THIS call, so the call view can link
     // to and surface its journey (per-call scoring doesn't run for journey
     // calls — the score lives on the journey; see jobs/processors/score-journey).
-    let journey = null;
+    let journey: CallJourneyContext | null = null;
     if (call.journey_id) {
-      const j = await queryOne<{ id: string; status: string; branch: string | null; overall_score: string | null; pass: boolean | null }>(
-        'SELECT id, status, branch, overall_score, pass FROM journeys WHERE id = $1 AND organization_id = $2',
+      const j = await queryOne<{
+        id: string;
+        status: JourneyStatus;
+        branch: string | null;
+        overall_score: string | null;
+        pass: boolean | null;
+        customer_id: string;
+        feedback_status: FeedbackStatus;
+        feedback_sent_at: string | null;
+        feedback_confirmed_at: string | null;
+      }>(
+        `SELECT j.id, j.status, j.branch, j.overall_score, j.pass, j.customer_id,
+                ${FEEDBACK_STATUS_SQL} AS feedback_status,
+                ${FEEDBACK_SENT_AT_SQL} AS feedback_sent_at,
+                ${FEEDBACK_CONFIRMED_AT_SQL} AS feedback_confirmed_at
+           FROM journeys j
+          WHERE j.id = $1 AND j.organization_id = $2`,
         [call.journey_id, req.user!.organizationId]
       );
       if (j) {
-        const thisCallItems = await query(
-          `SELECT jis.result, jis.normalized_score, jis.evidence, si.label, si.weight, si.severity
+        const itemRows = await query<{
+          id: string;
+          scorecard_item_id: string;
+          result: ItemResult;
+          normalized_score: number | null;
+          evidence: string | null;
+          reasoning: string | null;
+          label: string;
+          section: string | null;
+          severity: string | null;
+          weight: string;
+        }>(
+          `SELECT jis.id, jis.scorecard_item_id, jis.result, jis.normalized_score, jis.evidence, jis.reasoning,
+                  si.label, si.section, si.severity, si.weight::text AS weight
              FROM journey_item_scores jis
              JOIN scorecard_items si ON si.id = jis.scorecard_item_id
             WHERE jis.journey_id = $1 AND jis.source_call_id = $2
             ORDER BY si.sort_order ASC`,
           [call.journey_id, call.id]
         );
-        journey = { ...j, this_call_items: thisCallItems };
+        // The severity the sale was actually judged by — see journeys.ts's sale
+        // detail endpoint (deriveSeverity) for why the raw column isn't enough
+        // on its own.
+        const thisCallItems = itemRows.map(({ weight, severity, ...row }) => ({
+          ...row,
+          severity: deriveSeverity(Number(weight), severity),
+        }));
+
+        // Whose sale this is, resolved the same way the sale detail endpoint
+        // resolves it: the linked customer's name.
+        const customer = await queryOne<{ name: string | null }>(
+          'SELECT name FROM customers WHERE id = $1',
+          [j.customer_id]
+        );
+
+        // Every call in the sale, in the order the sale page numbers them
+        // ("Call 1", "Call 2", ...) — only calls with a transcript are
+        // numbered, matching score-journey.ts's withTranscript filter, so this
+        // call's "Call N of M" and its siblings' numbers agree with the sale.
+        const journeyCalls = await query<{
+          id: string;
+          duration_seconds: number | null;
+          has_transcript: boolean;
+        }>(
+          `SELECT c2.id, c2.duration_seconds,
+                  (COALESCE(c2.transcript_text, '') <> '') AS has_transcript
+             FROM journey_calls jc2
+             JOIN calls c2 ON c2.id = jc2.call_id
+            WHERE jc2.journey_id = $1
+            ORDER BY COALESCE(c2.call_date::timestamptz, c2.created_at) ASC`,
+          [call.journey_id]
+        );
+        const itemCountRows = await query<{ source_call_id: string; item_count: string }>(
+          `SELECT source_call_id, COUNT(*)::text AS item_count
+             FROM journey_item_scores
+            WHERE journey_id = $1 AND source_call_id IS NOT NULL
+            GROUP BY source_call_id`,
+          [call.journey_id]
+        );
+        const itemCountByCall = new Map(
+          itemCountRows.map((r) => [r.source_call_id, parseInt(r.item_count, 10)])
+        );
+
+        let callTotal = 0;
+        const callNumberById = new Map<string, number>();
+        for (const jc of journeyCalls) {
+          if (jc.has_transcript) callNumberById.set(jc.id, ++callTotal);
+        }
+        const siblings: CallJourneySibling[] = journeyCalls
+          .filter((jc) => jc.id !== call.id)
+          .map((jc) => ({
+            id: jc.id,
+            call_number: callNumberById.get(jc.id) ?? null,
+            has_transcript: jc.has_transcript,
+            duration_seconds: jc.duration_seconds,
+            item_count: itemCountByCall.get(jc.id) ?? 0,
+          }));
+
+        journey = {
+          id: j.id,
+          status: j.status,
+          branch: j.branch,
+          overall_score: j.overall_score === null ? null : Number(j.overall_score),
+          pass: j.pass,
+          this_call_items: thisCallItems,
+          client_name: customer?.name ?? null,
+          call_number: callNumberById.get(call.id) ?? null,
+          call_total: callTotal,
+          siblings,
+          feedback_status: j.feedback_status,
+          feedback_sent_at: j.feedback_sent_at,
+          feedback_confirmed_at: j.feedback_confirmed_at,
+        };
       }
     }
 
@@ -349,6 +471,93 @@ callRouter.get('/:id', async (req, res, next) => {
     const access = await resolveTranscriptAccess(req.user!.organizationId, req.user!.role);
 
     res.json({ ...withheldTranscript(call as Record<string, unknown>, access), journey });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Where every checkpoint's evidence quote sits in this call, and the time of
+// each transcript line — the call detail page's "listen from here" and
+// running clock, computed against services/evidence-locator.ts.
+//
+// Deliberately carries no transcript text of any kind, only positions and
+// times, which is why it doesn't need transcript-access.ts's redaction gate
+// (see GET /:id above): a user whose transcript is restricted can still be
+// told when a quote was said and be sent to that point in the recording
+// without ever being shown the words themselves.
+callRouter.get('/:id/positions', async (req, res, next) => {
+  try {
+    let sql =
+      'SELECT id, transcript_text, transcript_raw FROM calls WHERE id = $1 AND organization_id = $2';
+    const params: unknown[] = [req.params.id, req.user!.organizationId];
+
+    if (req.user!.role === 'adviser') {
+      params.push(req.user!.userId);
+      sql += ` AND agent_id = $${params.length}`;
+    }
+
+    const call = await queryOne<{
+      id: string;
+      transcript_text: string | null;
+      transcript_raw: unknown;
+    }>(sql, params);
+    if (!call) throw new AppError(404, 'Call not found');
+
+    if (!call.transcript_text) {
+      const empty: CallPositionsResponse = { lines: [], items: [] };
+      res.json(empty);
+      return;
+    }
+
+    // Parsed once and reused for every checkpoint below (~40 per call) rather
+    // than re-parsing the transcript per item.
+    const blocks = parseTranscriptBlocks(call.transcript_text);
+    const utterances = extractUtterances(call.transcript_raw);
+
+    const times = blockStartTimesAgainst(blocks, utterances);
+    const lines = blocks.map((block, i) => ({ index: block.index, start_seconds: times[i] }));
+
+    // A journey call's checkpoints (source_call_id points straight at this
+    // call, no journey join needed — it can only name a call already scoped
+    // to this org by the WHERE above) plus, if this call was ever scored on
+    // its own, its own most recent scoring run's checkpoints.
+    const journeyItems = await query<{ id: string; evidence: string | null }>(
+      `SELECT id, evidence FROM journey_item_scores
+        WHERE source_call_id = $1 AND evidence IS NOT NULL AND evidence <> ''`,
+      [call.id]
+    );
+
+    const latestCallScore = await queryOne<{ id: string }>(
+      `SELECT id FROM call_scores WHERE call_id = $1 ORDER BY created_at DESC LIMIT 1`,
+      [call.id]
+    );
+    const callItems = latestCallScore
+      ? await query<{ id: string; evidence: string | null }>(
+          `SELECT id, evidence FROM call_item_scores
+            WHERE call_score_id = $1 AND evidence IS NOT NULL AND evidence <> ''`,
+          [latestCallScore.id]
+        )
+      : [];
+
+    const items: CallItemPosition[] = [
+      ...journeyItems.map((row) => ({ ...row, kind: 'journey' as const })),
+      ...callItems.map((row) => ({ ...row, kind: 'call' as const })),
+    ].map(({ id, evidence, kind }) => {
+      const located = locateEvidenceAgainst({ quote: evidence, blocks, utterances });
+      const lineIndex = located.matched
+        ? (located.excerpt.find((l) => l.is_match)?.index ?? null)
+        : null;
+      return {
+        item_score_id: id,
+        kind,
+        matched: located.matched,
+        line_index: lineIndex,
+        timestamp_seconds: located.matched ? located.timestamp_seconds : null,
+      };
+    });
+
+    const response: CallPositionsResponse = { lines, items };
+    res.json(response);
   } catch (err) {
     next(err);
   }
@@ -480,15 +689,28 @@ callRouter.get('/:id/scores', async (req, res, next) => {
 
     const result = await Promise.all(
       scores.map(async (score) => {
-        const itemScores = await query<CallItemScore>(
-          `SELECT cis.*, si.label, si.description as item_description, si.score_type
+        const itemScores = await query<
+          CallItemScore & { section: string | null; severity: BreachSeverity | null; weight: string }
+        >(
+          `SELECT cis.*, si.label, si.description as item_description, si.score_type,
+                  si.section, si.severity, si.weight::text AS weight
            FROM call_item_scores cis
            JOIN scorecard_items si ON si.id = cis.scorecard_item_id
            WHERE cis.call_score_id = $1
            ORDER BY si.sort_order`,
           [score.id]
         );
-        return { ...score, item_scores: itemScores };
+        return {
+          ...score,
+          // Same rule as the sale's checkpoints (routes/journeys.ts): a
+          // scorecard item need not carry an explicit severity, and scoring
+          // falls back to its weight, so the page must not be shown a null
+          // where the scorer would have read "high".
+          item_scores: itemScores.map(({ weight, severity, ...item }) => ({
+            ...item,
+            severity: deriveSeverity(Number(weight), severity),
+          })),
+        };
       })
     );
 
