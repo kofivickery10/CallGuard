@@ -40,7 +40,11 @@ export function AudioPlayer({
   const [ready, setReady] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [position, setPosition] = useState(startAt ?? 0);
-  const [duration, setDuration] = useState(knownDuration ?? 0);
+  // calls.duration_seconds is NUMERIC, which pg returns as a string ("2303.68")
+  // whatever the type says. Left as a string it passes `duration > 0` but
+  // formatClock rejects it, so a 38-minute call read "0:00 / 0:00".
+  const known = Number(knownDuration);
+  const [duration, setDuration] = useState(Number.isFinite(known) && known > 0 ? known : 0);
 
   // The cue point can arrive after the player has rendered (the caller is still
   // resolving where the quote sits), so follow it until the audio is loaded —
