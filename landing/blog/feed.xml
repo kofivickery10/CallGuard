@@ -7,7 +7,43 @@
   <description>Briefings on call compliance for FCA-regulated protection and mortgage advice firms.</description>
   <language>en-GB</language>
   <copyright>© 2026 CallGuard AI Ltd</copyright>
-  <lastBuildDate>Tue, 15 Sep 2026 09:30:00 +0100</lastBuildDate>
+  <lastBuildDate>Thu, 17 Sep 2026 09:00:00 +0100</lastBuildDate>
+  <item>
+    <title>Demands and needs as a scored criterion: ICOBS 5.2 on a protection call</title>
+    <link>https://callguardai.co.uk/blog/icobs-5-2-demands-and-needs-scored-criterion</link>
+    <guid isPermaLink="true">https://callguardai.co.uk/blog/icobs-5-2-demands-and-needs-scored-criterion</guid>
+    <pubDate>Thu, 17 Sep 2026 09:00:00 +0100</pubDate>
+    <category>Regulation</category>
+    <dc:creator>Charlotte Court</dc:creator>
+    <description>Demands and needs under ICOBS 5.2 applies whether or not advice is given; suitability under ICOBS 5.3 only where it is. Both written as criteria a protection call can pass or fail, labelled rule, guidance or firm standard, with replacement business as the worked example.</description>
+  </item>
+  <item>
+    <title>Non-disclosure starts on the call: checking what the customer said against the application</title>
+    <link>https://callguardai.co.uk/blog/non-disclosure-starts-on-the-call</link>
+    <guid isPermaLink="true">https://callguardai.co.uk/blog/non-disclosure-starts-on-the-call</guid>
+    <pubDate>Thu, 17 Sep 2026 09:00:00 +0100</pubDate>
+    <category>Regulation</category>
+    <dc:creator>Charlotte Court</dc:creator>
+    <description>Under CIDRA 2012 the duty not to misrepresent is the customer's, owed to the insurer. But the question the adviser actually asked is on the recording. Set beside the application, it shows whether the answer reached the form intact, and a recording of the sale call is evidence the Financial Ombudsman Service names.</description>
+  </item>
+  <item>
+    <title>Vulnerable customer call monitoring: what FG21/1 actually expects</title>
+    <link>https://callguardai.co.uk/blog/vulnerable-customer-call-monitoring</link>
+    <guid isPermaLink="true">https://callguardai.co.uk/blog/vulnerable-customer-call-monitoring</guid>
+    <pubDate>Thu, 27 Aug 2026 09:00:00 +0100</pubDate>
+    <category>Regulation</category>
+    <dc:creator>Charlotte Court</dc:creator>
+    <description>FG21/1 is guidance, not a rulebook, which makes it harder to evidence rather than easier. The FCA's 2025 review named the hard case precisely: vulnerability that is detectable but never disclosed. That happens out loud, on the call.</description>
+  </item>
+  <item>
+    <title>PECR and TPS in 2026: practical compliance for outbound teams</title>
+    <link>https://callguardai.co.uk/blog/pecr-tps-2026-outbound-compliance</link>
+    <guid isPermaLink="true">https://callguardai.co.uk/blog/pecr-tps-2026-outbound-compliance</guid>
+    <pubDate>Tue, 05 May 2026 10:00:00 +0100</pubDate>
+    <category>Regulation</category>
+    <dc:creator>Charlotte Court</dc:creator>
+    <description>Regulation 21 is not a consent rule. What it actually prohibits on a live marketing call, what regulation 24 requires the agent to say, and which of the rules on that call are not PECR at all.</description>
+  </item>
   <item>
     <title>AI vs human call scoring: when each makes sense</title>
     <link>https://callguardai.co.uk/blog/ai-vs-human-call-scoring</link>
@@ -16,6 +52,15 @@
     <category>How the scoring works</category>
     <dc:creator>Kofi Vickery</dc:creator>
     <description>An honest comparison from someone selling AI scoring tooling. What AI is genuinely better at, what humans still beat AI on, and the right division of labour for production QA teams.</description>
+  </item>
+  <item>
+    <title>FCA Consumer Duty: 7 things to evidence, and where each one lives</title>
+    <link>https://callguardai.co.uk/blog/fca-consumer-duty-call-recordings</link>
+    <guid isPermaLink="true">https://callguardai.co.uk/blog/fca-consumer-duty-call-recordings</guid>
+    <pubDate>Tue, 05 May 2026 09:00:00 +0100</pubDate>
+    <category>Regulation</category>
+    <dc:creator>Charlotte Court</dc:creator>
+    <description>Only PRIN 2A.5 and 2A.6 are visible in a conversation. Five things the recording has to evidence, two the file and the product governance record carry, and why a 5% sample cannot show either.</description>
   </item>
   <item>
     <title>How to score 100% of contact centre calls without hiring more QA staff</title>

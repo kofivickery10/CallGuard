@@ -6,11 +6,10 @@ description: "The CIDRA duty is the customer's, but the question asked on the ca
 ogDescription: "The CIDRA duty is the customer's. The question the adviser asked is on the recording, and gaps show when it is set beside the application."
 cardTag: "Regulation · Disclosure"
 cardSummary: "Under CIDRA 2012 the duty not to misrepresent is the customer's, owed to the insurer. But the question the adviser actually asked is on the recording. Set beside the application, it shows whether the answer reached the form intact, and a recording of the sale call is evidence the Financial Ombudsman Service names."
-date: "2026-09-16"
+date: "2026-09-17"
 section: "Regulation"
 topic: "regulation"
 author: "charlotte"
-draft: true
 ctaSubject: "CallGuard%20AI%20demo%20request"
 useCaseLink: "/use-cases/financial-services"
 related:
