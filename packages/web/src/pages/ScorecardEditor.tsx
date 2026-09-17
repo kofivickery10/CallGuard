@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
+import { useDialog } from '../components/DialogProvider';
 import type { Scorecard, ScoreType, ScorecardItemType, BranchConfig, AppliesWhen, Product, ConsumerDutyOutcome } from '@callguard/shared';
 
 const VALID_SCORE_TYPES: ScoreType[] = ['binary', 'scale_1_5', 'scale_1_10'];
@@ -19,6 +20,12 @@ const CONSUMER_DUTY_OUTCOME_LABELS: Record<ConsumerDutyOutcome, string> = {
   consumer_understanding: 'Consumer understanding',
   consumer_support: 'Consumer support',
 };
+
+// The exact column list `parseCSV` understands — surfaced both in the "no
+// criteria found" error and as help text next to Import CSV, so a file can be
+// built correctly without failing once first.
+const CSV_COLUMNS =
+  'label, description, score_type, weight, severity, section, item_type, branch, expectation, ai_check, remediation_guidance, consent_gate, consumer_duty_outcome, vulnerability_related';
 
 function parseCSV(text: string): ItemForm[] {
   // Strip BOM and carriage returns
@@ -163,7 +170,7 @@ function parseFreeform(lines: string[]): ItemForm[] {
     }
   }
 
-  if (items.length === 0) throw new Error('Could not find any criteria in this file. Use a CSV with columns: label, description, score_type, weight, severity, section, item_type, branch, expectation, ai_check, remediation_guidance, consent_gate, consumer_duty_outcome, vulnerability_related');
+  if (items.length === 0) throw new Error(`Could not find any criteria in this file. Use a CSV with columns: ${CSV_COLUMNS}`);
   return items;
 }
 
@@ -233,6 +240,23 @@ function emptyItem(sortOrder: number): ItemForm {
   };
 }
 
+interface FormSnapshot {
+  name: string;
+  description: string;
+  scoringMode: 'per_call' | 'journey';
+  branchList: string;
+  branchKeywords: Record<string, string>;
+  items: ItemForm[];
+}
+
+// A stable fingerprint of everything Save actually submits, used to tell
+// whether the form has unsaved changes (Cancel, the back link, tab close) —
+// deliberately just the fields that reach the API, not view-only state like
+// the criteria search/filter.
+function snapshotForm(form: FormSnapshot): string {
+  return JSON.stringify(form);
+}
+
 function branchToString(appliesWhen: AppliesWhen | null | undefined): string {
   if (!appliesWhen?.branch) return '';
   return Array.isArray(appliesWhen.branch) ? appliesWhen.branch.join(', ') : appliesWhen.branch;
@@ -244,10 +268,26 @@ function stringToAppliesWhen(branch: string): AppliesWhen | null {
   return { branch: parts.length === 1 ? parts[0]! : parts };
 }
 
-const inputClass = 'w-full border border-border rounded-btn px-3 py-2 text-table-cell text-text-primary placeholder:text-text-muted focus:outline-none focus:border-primary transition-colors';
+const inputClass = 'w-full border border-border rounded-btn px-3 py-2 text-table-cell text-text-primary placeholder:text-text-muted focus:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 transition-colors';
 const selectClass = 'border border-border rounded-btn px-3 py-1.5 text-table-cell text-text-primary focus:outline-none focus:border-primary transition-colors';
 const labelClass = 'block text-xs text-text-muted mb-1';
 const filterSelectClass = 'border border-border rounded-btn px-3 py-2 text-table-cell text-text-primary bg-card focus:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 transition-colors';
+
+// A single shimmering placeholder line, in the same house style as the
+// Calls/Customers list skeletons — used here while an existing scorecard's
+// items are still loading, so the form never paints with the wrong data.
+function ShimmerLine({ width }: { width: string }) {
+  return (
+    <div
+      className="h-4 rounded bg-[length:800px_100%] animate-skeleton-shimmer"
+      style={{
+        backgroundImage:
+          'linear-gradient(90deg, rgb(var(--cg-border-light)) 0%, rgb(var(--cg-border)) 50%, rgb(var(--cg-border-light)) 100%)',
+        width,
+      }}
+    />
+  );
+}
 
 // Compact count tile for the criteria summary strip. `tone='fail'` tints the
 // number (e.g. a non-zero critical count) — the label always carries the
@@ -265,6 +305,7 @@ export function ScorecardEditor() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { confirm } = useDialog();
   const isNew = !id;
 
   const [name, setName] = useState('');
@@ -276,7 +317,16 @@ export function ScorecardEditor() {
   const [items, setItems] = useState<ItemForm[]>([emptyItem(0)]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const errorRef = useRef<HTMLDivElement>(null);
   const csvInputRef = useRef<HTMLInputElement>(null);
+
+  // What Save would submit if nothing changes further — compared against the
+  // live form to decide whether Cancel/the back link/tab-close need to warn.
+  // Starts as the blank-new-scorecard shape; reset to the real thing once an
+  // existing scorecard's fetch resolves (see the hydration effect below).
+  const [baseline, setBaseline] = useState(() =>
+    snapshotForm({ name: '', description: '', scoringMode: 'journey', branchList: '', branchKeywords: {}, items: [emptyItem(0)] })
+  );
 
   // View-only filters over the criteria list — they never reorder or mutate
   // `items`, so saving (which reindexes sort_order from the full array) is
@@ -301,9 +351,22 @@ export function ScorecardEditor() {
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       try {
         const parsed = parseCSV(event.target?.result as string);
+
+        // A CSV import replaces the whole criteria list — on a scorecard that
+        // already has real criteria (not just the default blank one), that's
+        // destructive enough to confirm, naming what's actually at stake.
+        const hasRealCriteria = items.some((item) => item.label.trim());
+        if (hasRealCriteria) {
+          const ok = await confirm(
+            `Replace all ${items.length} criteria with the ${parsed.length} in this file? The weights, severities, rubrics and remediation guidance on the current criteria will be lost. This can't be undone.`,
+            { danger: true, confirmLabel: 'Replace' }
+          );
+          if (!ok) return;
+        }
+
         setItems(parsed);
         // Branch names found in the CSV seed the branch list so applies_when
         // saves without the user retyping them.
@@ -334,7 +397,11 @@ export function ScorecardEditor() {
   // who don't use product-aware scoring.
   const activeProducts = (productsData?.data ?? []).filter((p) => p.is_active);
 
-  const { data: existing } = useQuery({
+  const {
+    data: existing,
+    isLoading: existingLoading,
+    isError: existingError,
+  } = useQuery({
     queryKey: ['scorecard', id],
     queryFn: () =>
       api.get<Scorecard & { items: (Partial<ItemForm> & { applies_when?: AppliesWhen | null; applies_to_products?: string[] | null })[] }>(`/scorecards/${id}`),
@@ -343,39 +410,86 @@ export function ScorecardEditor() {
 
   useEffect(() => {
     if (existing) {
-      setName(existing.name);
-      setDescription(existing.description || '');
-      setScoringMode(existing.scoring_mode || 'journey');
+      const nextDescription = existing.description || '';
+      const nextScoringMode = existing.scoring_mode || 'journey';
+      let nextBranchList = '';
+      let nextBranchKeywords: Record<string, string> = {};
       if (existing.branch_config?.branches?.length) {
-        setBranchList(existing.branch_config.branches.join(', '));
-        const kw: Record<string, string> = {};
+        nextBranchList = existing.branch_config.branches.join(', ');
         for (const [branch, words] of Object.entries(existing.branch_config.keywords || {})) {
-          kw[branch] = words.join(', ');
+          nextBranchKeywords[branch] = words.join(', ');
         }
-        setBranchKeywords(kw);
+      }
+      const nextItems: ItemForm[] =
+        existing.items && existing.items.length > 0
+          ? existing.items.map((item, i) => ({
+              ...emptyItem(i),
+              ...item,
+              description: item.description || '',
+              severity: (item.severity as ItemForm['severity']) || '',
+              section: item.section || '',
+              item_type: item.item_type || 'ai',
+              branch: branchToString(item.applies_when),
+              expectation: item.expectation || '',
+              ai_check: item.ai_check || '',
+              remediation_guidance: item.remediation_guidance || '',
+              consent_gate: !!item.consent_gate,
+              applies_to_products: item.applies_to_products ?? [],
+              consumer_duty_outcome: (item.consumer_duty_outcome as ItemForm['consumer_duty_outcome']) || '',
+              vulnerability_related: !!item.vulnerability_related,
+            }))
+          : [emptyItem(0)];
+
+      setName(existing.name);
+      setDescription(nextDescription);
+      setScoringMode(nextScoringMode);
+      if (existing.branch_config?.branches?.length) {
+        setBranchList(nextBranchList);
+        setBranchKeywords(nextBranchKeywords);
       }
       if (existing.items && existing.items.length > 0) {
-        setItems(
-          existing.items.map((item, i) => ({
-            ...emptyItem(i),
-            ...item,
-            description: item.description || '',
-            severity: (item.severity as ItemForm['severity']) || '',
-            section: item.section || '',
-            item_type: item.item_type || 'ai',
-            branch: branchToString(item.applies_when),
-            expectation: item.expectation || '',
-            ai_check: item.ai_check || '',
-            remediation_guidance: item.remediation_guidance || '',
-            consent_gate: !!item.consent_gate,
-            applies_to_products: item.applies_to_products ?? [],
-            consumer_duty_outcome: (item.consumer_duty_outcome as ItemForm['consumer_duty_outcome']) || '',
-            vulnerability_related: !!item.vulnerability_related,
-          }))
-        );
+        setItems(nextItems);
       }
+
+      // Match the baseline to what was just loaded (not what Save would
+      // submit) so opening a scorecard and leaving it untouched never prompts
+      // to discard.
+      setBaseline(
+        snapshotForm({
+          name: existing.name,
+          description: nextDescription,
+          scoringMode: nextScoringMode,
+          branchList: nextBranchList,
+          branchKeywords: nextBranchKeywords,
+          items: nextItems,
+        })
+      );
     }
   }, [existing]);
+
+  // True once the live form diverges from what was loaded/last saved.
+  const isDirty = snapshotForm({ name, description, scoringMode, branchList, branchKeywords, items }) !== baseline;
+
+  // Warn on an actual browser tab close/refresh, not just an in-app nav —
+  // those are handled by confirmDiscard below.
+  useEffect(() => {
+    if (!isDirty) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [isDirty]);
+
+  // A failed save/validation is otherwise invisible — the banner renders at
+  // the top of a long form, far above the Save button that was just clicked.
+  useEffect(() => {
+    if (error) {
+      errorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      errorRef.current?.focus();
+    }
+  }, [error]);
 
   const addItem = () => {
     // Clear filters so the new (empty) criterion is always visible.
@@ -386,6 +500,31 @@ export function ScorecardEditor() {
   const removeItem = (index: number) => {
     if (items.length <= 1) return;
     setItems(items.filter((_, i) => i !== index));
+  };
+
+  const handleRemoveItem = async (index: number) => {
+    if (items.length <= 1) return;
+    const label = items[index]?.label.trim() || `Criterion ${index + 1}`;
+    const ok = await confirm(
+      `Remove "${label}"? It stays on the sales already scored against it, and stops being checked on future calls.`,
+      { danger: true, confirmLabel: 'Remove' }
+    );
+    if (ok) removeItem(index);
+  };
+
+  // Shared by the back link and Cancel — only prompts when there's actually
+  // something to lose.
+  const confirmDiscard = () => confirm('Discard your changes?', { danger: true, confirmLabel: 'Discard' });
+
+  const handleBackClick = async (e: React.MouseEvent) => {
+    if (!isDirty) return;
+    e.preventDefault();
+    if (await confirmDiscard()) navigate('/scorecards');
+  };
+
+  const handleCancel = async () => {
+    if (isDirty && !(await confirmDiscard())) return;
+    navigate('/scorecards');
   };
 
   const updateItem = (
@@ -450,6 +589,16 @@ export function ScorecardEditor() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+
+    // Belt and braces: the loading gate below already keeps this form from
+    // rendering (and Save from being reachable) until an existing
+    // scorecard's fetch resolves. Refusing here too means a race can never
+    // PUT a payload built from the still-default single blank item — which
+    // would archive every real criterion and bump the version.
+    if (id && !existing) {
+      setError("This scorecard hasn't finished loading yet — wait for it to load, then try again.");
+      return;
+    }
 
     if (branches.length === 1) {
       setError('Branching needs at least 2 branch names (or leave the field empty for a single-path scorecard)');
@@ -555,14 +704,62 @@ export function ScorecardEditor() {
   // fall back to the full list so stale filter state can never strand items.
   const shown = showTools ? visible : items.map((item, index) => ({ item, index }));
 
+  const backLink = (
+    <Link
+      to="/scorecards"
+      onClick={handleBackClick}
+      className="text-table-cell text-text-muted hover:text-text-primary mb-5 inline-block transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
+    >
+      &larr; Back to Scorecards
+    </Link>
+  );
+
+  // An existing scorecard's items haven't arrived yet — never paint the form
+  // (and never let Save be reachable) while `items` is still just the default
+  // single blank criterion, or a click here would PUT that as the whole
+  // scorecard and archive every real one.
+  if (!isNew && existingLoading) {
+    return (
+      <div className="max-w-3xl" aria-busy="true">
+        {backLink}
+        <div className="mb-7 space-y-2">
+          <ShimmerLine width="200px" />
+          <ShimmerLine width="340px" />
+        </div>
+        <div className="bg-card border border-border rounded-card p-5 space-y-4 mb-5">
+          <ShimmerLine width="100%" />
+          <ShimmerLine width="100%" />
+          <ShimmerLine width="50%" />
+        </div>
+        <div className="space-y-2.5">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={`skeleton-${i}`} className="bg-card border border-border rounded-card p-5 space-y-3">
+              <ShimmerLine width="70%" />
+              <ShimmerLine width="40%" />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // A genuine load failure (network error, deleted scorecard) — distinct from
+  // an existing scorecard that simply has no items yet, which still renders
+  // the normal (empty) form below.
+  if (!isNew && existingError) {
+    return (
+      <div className="max-w-3xl">
+        {backLink}
+        <div role="alert" className="bg-fail-bg text-fail px-4 py-3 rounded-btn text-table-cell">
+          Could not load this scorecard — try refreshing, or it may no longer exist.
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-3xl">
-      <button
-        onClick={() => navigate('/scorecards')}
-        className="text-table-cell text-text-muted hover:text-text-primary mb-5 inline-block transition-colors"
-      >
-        &larr; Back to Scorecards
-      </button>
+      {backLink}
 
       <div className="mb-7">
         <h2 className="text-page-title text-text-primary">
@@ -574,7 +771,7 @@ export function ScorecardEditor() {
       </div>
 
       {error && (
-        <div className="bg-fail-bg text-fail px-4 py-3 rounded-btn mb-5 text-table-cell">
+        <div ref={errorRef} tabIndex={-1} role="alert" className="bg-fail-bg text-fail px-4 py-3 rounded-btn mb-5 text-table-cell">
           {error}
         </div>
       )}
@@ -642,6 +839,7 @@ export function ScorecardEditor() {
               </button>
             </div>
           </div>
+          <p className="text-xs text-text-muted -mt-2 mb-4">CSV columns: {CSV_COLUMNS}</p>
 
           {showTools && (
             <>
@@ -891,7 +1089,7 @@ export function ScorecardEditor() {
                       </p>
                     )}
                   </div>
-                  <button type="button" onClick={() => removeItem(index)} aria-label={`Remove criterion ${index + 1}`} className="text-text-muted hover:text-fail transition-colors mt-1 p-1 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:opacity-40" disabled={items.length <= 1}>
+                  <button type="button" onClick={() => handleRemoveItem(index)} aria-label={`Remove criterion ${index + 1}`} className="text-text-muted hover:text-fail transition-colors mt-1 p-1 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:opacity-40" disabled={items.length <= 1}>
                     <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="1.8"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
                   </button>
                 </div>
@@ -905,7 +1103,7 @@ export function ScorecardEditor() {
           <button type="submit" disabled={saving} className="bg-primary-ink text-on-solid px-[18px] py-[9px] rounded-btn font-semibold text-table-cell hover:bg-primary-ink-hover disabled:opacity-50 transition-colors">
             {saving ? 'Saving...' : isNew ? 'Create Scorecard' : 'Save Changes'}
           </button>
-          <button type="button" onClick={() => navigate('/scorecards')} className="px-[18px] py-[9px] rounded-btn text-text-cell font-semibold border border-border hover:bg-sidebar-hover text-table-cell transition-colors">
+          <button type="button" onClick={handleCancel} className="px-[18px] py-[9px] rounded-btn text-text-cell font-semibold border border-border hover:bg-sidebar-hover text-table-cell transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40">
             Cancel
           </button>
         </div>
