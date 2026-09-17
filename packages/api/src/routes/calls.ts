@@ -148,8 +148,10 @@ callRouter.post('/upload', upload.single('audio'), async (req, res, next) => {
 
     // Manually flags this call as having resulted in a sale — for
     // 'sales_only' tenants, transcribe.ts assembles + scores a journey for
-    // this customer once transcription completes, the same way the Zoho
-    // sale-trigger webhook would (see services/journey.ts).
+    // this customer once transcription completes, the same way a CRM sale
+    // webhook would (see services/journey.ts). Honoured for whoever uploads,
+    // not only admins: at a sales_only firm it is one of the three ways a sale
+    // arrives, and the Upload page offers it to every uploading role.
     const saleFlagged = req.body.mark_as_sale === 'true';
 
     const rows = await query<Call>(
