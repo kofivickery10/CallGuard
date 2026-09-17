@@ -24,11 +24,14 @@ import path from 'path';
 import bcrypt from 'bcryptjs';
 import { randomBytes } from 'crypto';
 import { pool, query, queryOne, withTransaction } from '../db/client.js';
+import { checkFetchRecordingsOnSaleBody, checkScoringScopeChoice } from '../services/tenant-settings.js';
 
 interface OnboardConfig {
   org: { name: string; plan?: string; industry?: string | null };
   admin: { name: string; email: string };
   scoring?: {
+    // Required (see validateOnboardConfig): "sales_only" scores sales,
+    // "everything" (or "over_threshold") scores calls. No default.
     scoring_scope?: string;
     min_scoreable_seconds?: number;
     min_scoreable_words?: number;
@@ -155,6 +158,23 @@ export function branchToAppliesWhen(branch: string): string | null {
   return JSON.stringify({ branch: parts.length === 1 ? parts[0] : parts });
 }
 
+/**
+ * What is wrong with an onboarding config before anything is read or written,
+ * or null when it can proceed. scoring.scoring_scope is required: how a firm
+ * is scored is chosen at setup, never left to a default (owner decision, 17 Sep
+ * 2026). This holds for a re-run against an existing org too, so a config file
+ * can never be the thing that leaves a firm's scoring unstated.
+ */
+export function validateOnboardConfig(cfg: Pick<OnboardConfig, 'scoring'>): string | null {
+  const scopeError = checkScoringScopeChoice(cfg.scoring?.scoring_scope);
+  if (scopeError) return `scoring.scoring_scope is missing or invalid. ${scopeError}`;
+  if (cfg.scoring?.fetch_recordings_on_sale !== undefined) {
+    const fetchError = checkFetchRecordingsOnSaleBody(cfg.scoring);
+    if (fetchError) return `scoring.${fetchError}`;
+  }
+  return null;
+}
+
 function log(dry: boolean, msg: string) {
   console.log(`${dry ? '[dry-run] ' : ''}${msg}`);
 }
@@ -173,13 +193,9 @@ async function main() {
 
   // Checked up front, dry run included, so a bad config fails before anything
   // is written rather than on the organizations CHECK half-way through.
-  if (
-    cfg.scoring?.fetch_recordings_on_sale === true &&
-    cfg.scoring.scoring_scope !== undefined &&
-    cfg.scoring.scoring_scope !== 'sales_only'
-  ) {
-    throw new Error('scoring.fetch_recordings_on_sale can only be true when scoring.scoring_scope is "sales_only"');
-  }
+  const configError = validateOnboardConfig(cfg);
+  if (configError) throw new Error(configError);
+  const scoringScope = cfg.scoring!.scoring_scope!;
 
   console.log(`\n=== Onboarding tenant: ${cfg.org.name} ${dry ? '(DRY RUN — no writes)' : ''} ===\n`);
 
@@ -188,11 +204,14 @@ async function main() {
   if (org) {
     log(dry, `Org "${cfg.org.name}" already exists (${org.id}) — reusing.`);
   } else if (dry) {
-    log(dry, `Would create org "${cfg.org.name}" (plan=${cfg.org.plan || 'core'}).`);
+    log(dry, `Would create org "${cfg.org.name}" (plan=${cfg.org.plan || 'core'}, scoring_scope=${scoringScope}).`);
   } else {
+    // The scope is written in the INSERT itself, so the org never exists at
+    // the column default ('sales_only', migration 038) even for a moment. The
+    // default stays only because no creation path relies on it any more.
     org = await queryOne<{ id: string }>(
-      'INSERT INTO organizations (name, plan) VALUES ($1, $2) RETURNING id',
-      [cfg.org.name, cfg.org.plan || 'core']
+      'INSERT INTO organizations (name, plan, scoring_scope, fetch_recordings_on_sale) VALUES ($1, $2, $3, $4) RETURNING id',
+      [cfg.org.name, cfg.org.plan || 'core', scoringScope, cfg.scoring?.fetch_recordings_on_sale === true]
     );
     console.log(`Created org ${org!.id}.`);
   }

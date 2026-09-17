@@ -214,8 +214,13 @@ async function main() {
   }
 
   // 1. Create org (Pro plan so demo shows all features)
+  // The demo firm scores calls: every uploaded demo call is scored on its own,
+  // with no sale needed. Set explicitly — how a firm is scored is chosen at
+  // creation, never left to the column default ('sales_only', migration 038,
+  // kept only because no creation path relies on it). Production Brookfield is
+  // being switched to 'everything' to match.
   const org = await queryOne<{ id: string }>(
-    `INSERT INTO organizations (name, plan) VALUES ($1, 'enterprise') RETURNING id`,
+    `INSERT INTO organizations (name, plan, scoring_scope) VALUES ($1, 'enterprise', 'everything') RETURNING id`,
     [DEMO_ORG]
   );
   const orgId = org!.id;

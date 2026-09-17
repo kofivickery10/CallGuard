@@ -26,6 +26,7 @@ import {
   resolveFetchRecordingsOnSale,
   isFetchRecordingsOnSaleScopeViolation,
   FETCH_RECORDINGS_ON_SALE_SCOPE_MESSAGE,
+  checkScoringScopeChoice,
 } from '../services/tenant-settings.js';
 import { getSaleArrival, saleArrivalResponse } from '../services/sale-arrival.js';
 import { LONDON, inWindow, resolveWindow, windowParams } from '../services/report-window.js';
@@ -98,13 +99,16 @@ superadminRouter.get('/tenants', async (_req, res, next) => {
 
 superadminRouter.post('/tenants', async (req, res, next) => {
   try {
-    const { org_name, admin_name, admin_email, plan, subscription_notes } = req.body as {
-      org_name?: string;
-      admin_name?: string;
-      admin_email?: string;
-      plan?: string;
-      subscription_notes?: string;
-    };
+    const { org_name, admin_name, admin_email, plan, subscription_notes, scoring_scope, fetch_recordings_on_sale } =
+      req.body as {
+        org_name?: string;
+        admin_name?: string;
+        admin_email?: string;
+        plan?: string;
+        subscription_notes?: string;
+        scoring_scope?: string;
+        fetch_recordings_on_sale?: boolean;
+      };
 
     if (!org_name || !admin_name || !admin_email) {
       throw new AppError(400, 'org_name, admin_name and admin_email are required');
@@ -115,6 +119,16 @@ superadminRouter.post('/tenants', async (req, res, next) => {
     if (plan && !PLANS.includes(plan as any)) {
       throw new AppError(400, `Invalid plan. Must be one of: ${PLANS.join(', ')}`);
     }
+    // How the firm is scored is chosen here, at setup, never left to the
+    // column default (owner decision, 17 Sep 2026): a firm created at a scope
+    // nobody picked either scores nothing until a sale arrives or scores calls
+    // it never meant to pay for. Checked before any DB read.
+    const scopeError = checkScoringScopeChoice(scoring_scope);
+    if (scopeError) throw new AppError(400, scopeError);
+    // Downloading only on a sale is offered only with sales_only; the column's
+    // CHECK (migration 119) holds the same rule.
+    const fetchError = checkFetchRecordingsOnSaleBody({ scoring_scope, fetch_recordings_on_sale });
+    if (fetchError) throw new AppError(400, fetchError);
 
     const existing = await queryOne('SELECT id FROM users WHERE email = $1', [admin_email]);
     if (existing) throw new AppError(409, 'Email already registered');
@@ -129,10 +143,13 @@ superadminRouter.post('/tenants', async (req, res, next) => {
     // failure on the user insert (e.g. a duplicate-email race past the
     // pre-check above) leaves an orphan organisation with no admin.
     const { orgId, userId } = await withTransaction(async (tx) => {
+      // scoring_scope is always written explicitly. The column keeps its
+      // 'sales_only' default (migration 038) only because changing a default
+      // that no creation path relies on buys nothing.
       const orgRows = await tx.query<{ id: string }>(
-        `INSERT INTO organizations (name, plan, subscription_notes)
-         VALUES ($1, $2, $3) RETURNING id`,
-        [org_name, plan || 'core', subscription_notes || null]
+        `INSERT INTO organizations (name, plan, subscription_notes, scoring_scope, fetch_recordings_on_sale)
+         VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+        [org_name, plan || 'core', subscription_notes || null, scoring_scope, fetch_recordings_on_sale === true]
       );
       const newOrgId = orgRows[0]!.id;
 
@@ -151,7 +168,9 @@ superadminRouter.post('/tenants', async (req, res, next) => {
       actionType: 'tenant.create',
       entityType: 'organization',
       entityId: orgId,
-      summary: `Created tenant "${org_name}" (${plan || 'core'}) with admin ${admin_email}`,
+      summary:
+        `Created tenant "${org_name}" (${plan || 'core'}, scoring_scope=${scoring_scope}` +
+        `${fetch_recordings_on_sale === true ? ', recordings fetched on sale' : ''}) with admin ${admin_email}`,
       req,
     });
 

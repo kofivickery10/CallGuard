@@ -223,14 +223,16 @@ async function runIngest(): Promise<void> {
   }
 
   console.log('\nCreating throwaway org...');
+  // scoring_scope in the INSERT itself, so the org never sits at the column
+  // default: how a firm is scored is chosen at creation (see
+  // SCORING_SCOPE_CHOICE_MESSAGE in services/tenant-settings.ts).
   const org = await queryOne<{ id: string }>(
-    `INSERT INTO organizations (name, plan) VALUES ($1, 'core') RETURNING id`,
+    `INSERT INTO organizations (name, plan, scoring_scope) VALUES ($1, 'core', 'everything') RETURNING id`,
     [orgName]
   );
   const orgId = org!.id;
   await query(
     `UPDATE organizations SET
-       scoring_scope = 'everything',
        retention_days = $2,
        industry = COALESCE($3, industry),
        updated_at = now()

@@ -190,6 +190,28 @@ export function sanitiseJourneyWindowDays(days: number | null | undefined): numb
   return Math.min(Math.floor(n), MAX_JOURNEY_WINDOW_DAYS);
 }
 
+export const SCORING_SCOPES: readonly ScoringScope[] = ['sales_only', 'over_threshold', 'everything'];
+
+/**
+ * Said whenever a firm is created without a valid scoring_scope. The owner's
+ * rule (17 Sep 2026): how a firm is scored is chosen when it is set up, never
+ * left to a default. organizations.scoring_scope still has a column default
+ * ('sales_only', migration 038) — changing it would buy nothing once every
+ * creation path sets the scope explicitly, which is what this enforces.
+ */
+export const SCORING_SCOPE_CHOICE_MESSAGE =
+  'Choose how this firm is scored; there is no default. scoring_scope "sales_only" scores sales: ' +
+  "a customer's calls are held, unscored, until a sale arrives (from the CRM, \"Score sale\" or the " +
+  'upload sale flag) and are then scored together. "everything" scores calls: every call is scored ' +
+  'on its own as it arrives ("over_threshold" is the same, but skips calls under the length threshold).';
+
+/** null when `value` is a valid scoring_scope, otherwise the message to show. */
+export function checkScoringScopeChoice(value: unknown): string | null {
+  return typeof value === 'string' && (SCORING_SCOPES as readonly string[]).includes(value)
+    ? null
+    : SCORING_SCOPE_CHOICE_MESSAGE;
+}
+
 export const FETCH_RECORDINGS_ON_SALE_SCOPE_MESSAGE =
   'fetch_recordings_on_sale can only be on when scoring_scope is sales_only';
 
