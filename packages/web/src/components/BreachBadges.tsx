@@ -26,10 +26,24 @@ const statusClass: Record<BreachStatus, string> = {
 // breach-pulse the brand reserves for a live critical breach.
 // `count` turns the pill into a tally ("2 critical") for places that summarise
 // several breaches at once, such as a customer's open findings.
-export function SeverityBadge({ severity, count }: { severity: BreachSeverity; count?: number }) {
+// `quiet` drops the pulse. The pulse means "a live critical breach", and the
+// review queue's critical rows are not breaches — they are checkpoints nobody
+// has ruled on yet, which may well turn out to be passes. It was also 42
+// simultaneously pulsing pills on one screen, which is noise rather than
+// emphasis.
+export function SeverityBadge({
+  severity,
+  count,
+  quiet,
+}: {
+  severity: BreachSeverity;
+  count?: number;
+  quiet?: boolean;
+}) {
+  const tone = quiet && severity === 'critical' ? 'bg-fail-bg text-fail' : severityClass[severity];
   return (
     <span
-      className={`inline-block whitespace-nowrap px-2.5 py-[3px] rounded-full text-badge font-semibold ${severityClass[severity]}`}
+      className={`inline-block whitespace-nowrap px-2.5 py-[3px] rounded-full text-badge font-semibold ${tone}`}
     >
       {count === undefined
         ? BREACH_SEVERITY_LABELS[severity]

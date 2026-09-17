@@ -547,3 +547,62 @@ export interface FeedbackStatusSummary {
   // overstate this one. Null when nothing is outstanding.
   oldest_remediation_days: number | null;
 }
+
+// ── The review queue ─────────────────────────────────────────────────────────
+
+/** Severities the review queue can be narrowed to (a checkpoint may carry none). */
+export const REVIEW_SEVERITIES = ['critical', 'high', 'medium', 'low'] as const;
+export type ReviewSeverity = (typeof REVIEW_SEVERITIES)[number];
+
+/** Oldest-first is the default: the whole point of the queue is the backlog. */
+export const REVIEW_QUEUE_SORTS = ['oldest', 'newest'] as const;
+export type ReviewQueueSort = (typeof REVIEW_QUEUE_SORTS)[number];
+
+/**
+ * What the firm owes on this screen, counted across the WHOLE queue rather than
+ * under whatever the reader has filtered to — the same choice the sales list's
+ * Outstanding strip makes, and for the same reason: a figure that disappears on
+ * the click that filtered to it cannot be a figure anyone plans around.
+ *
+ * These are holes in published percentages, not a tidy-up list: a checkpoint
+ * awaiting a ruling is excluded from its parent's score denominator, so a sale
+ * can read 100% with critical checkpoints still sitting here.
+ */
+export interface ReviewQueueSummary {
+  /** Checkpoints awaiting a human ruling. */
+  checkpoints: number;
+  /** Sales (or calls) they sit on. */
+  sales: number;
+  /** Whole days the oldest has waited; null when the queue is empty. */
+  oldest_days: number | null;
+  /** How many of each severity, with `unrated` for a checkpoint carrying none. */
+  by_severity: Record<ReviewSeverity | 'unrated', number>;
+  /** The sale holding the most, so the strip can link straight to it. */
+  largest: {
+    kind: 'call' | 'journey';
+    parent_id: string;
+    /** The customer, or the source call when nobody has a name for them. */
+    name: string | null;
+    count: number;
+  } | null;
+}
+
+export interface ReviewQueueResponse {
+  /**
+   * The page's checkpoints, ordered by their sale's oldest wait and then by
+   * their own age. A page holds whole sales — never half a sale's checkpoints,
+   * which is the one split that would make the grouping a lie.
+   */
+  data: ManualReviewItem[];
+  /** Checkpoints matching the filters (not the page). */
+  total: number;
+  /** Sales matching the filters. */
+  total_sales: number;
+  page: number;
+  /** Sales per page — the page unit is the sale, not the checkpoint. */
+  limit: number;
+  /** Across the whole queue, ignoring the filters. */
+  summary: ReviewQueueSummary;
+  /** Advisers with anything in the queue, for the filter. */
+  advisers: string[];
+}
