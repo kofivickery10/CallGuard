@@ -1,11 +1,18 @@
 import { Router } from 'express';
-import { authenticate, requireOrgView, requireAdmin } from '../middleware/auth.js';
+import { authenticate, requireOrgView, requireAdmin, requireActioner } from '../middleware/auth.js';
 import { query, queryOne, withTransaction } from '../db/client.js';
 import { AppError } from '../middleware/errors.js';
 import { normalizePhone } from '../services/ingestion.js';
 import { recordAuditEvent } from '../services/audit.js';
+import { getScoringSettings, scoresCallsIndividually } from '../services/tenant-settings.js';
 import { hasFeature, effectivePlan } from '@callguard/shared';
-import type { Plan } from '@callguard/shared';
+import type {
+  Plan,
+  CustomerCompliance,
+  CustomerProfileResponse,
+  CustomerRecord,
+  CustomerScoringMode,
+} from '@callguard/shared';
 
 export const customersRouter = Router();
 
@@ -131,29 +138,99 @@ customersRouter.get('/', async (req, res, next) => {
 
 // ── Customer profile ──────────────────────────────────────────────────────────
 
+interface ComplianceRow {
+  scored_sales: number;
+  scored_calls: number;
+  open_critical: number;
+  open_high: number;
+  open_medium: number;
+  open_low: number;
+  closed_critical: number;
+  closed_high: number;
+  closed_medium: number;
+  closed_low: number;
+  resolved: number;
+  noted: number;
+}
+
+/**
+ * Where one customer stands: how much about them has been scored, and their
+ * breaches split into open and closed by severity. The page turns this into one
+ * of three honest states (summariseCustomerCompliance in @callguard/shared) —
+ * it used to read "Clean" for every customer with no breaches, which on a firm
+ * where nine customers in ten have never had a sale scored was a claim about
+ * people nobody had assessed.
+ *
+ * "Open" is any status but resolved or noted, the definition routes/breaches.ts
+ * already uses. Per-call and sale breaches both count: exactly one of call_id
+ * and journey_id is set on a breach.
+ */
+export async function loadCustomerCompliance(
+  organizationId: string,
+  customerId: string
+): Promise<CustomerCompliance> {
+  const row = await queryOne<ComplianceRow>(
+    `SELECT
+       (SELECT COUNT(*) FROM journeys sj
+         WHERE sj.customer_id = $1 AND sj.organization_id = $2 AND sj.status = 'scored')::int AS scored_sales,
+       (SELECT COUNT(*) FROM calls sc
+         WHERE sc.customer_id = $1 AND sc.organization_id = $2
+           AND EXISTS (SELECT 1 FROM call_scores cs WHERE cs.call_id = sc.id))::int AS scored_calls,
+       COUNT(b.id) FILTER (WHERE b.status NOT IN ('resolved', 'noted') AND b.severity = 'critical')::int AS open_critical,
+       COUNT(b.id) FILTER (WHERE b.status NOT IN ('resolved', 'noted') AND b.severity = 'high')::int AS open_high,
+       COUNT(b.id) FILTER (WHERE b.status NOT IN ('resolved', 'noted') AND b.severity = 'medium')::int AS open_medium,
+       COUNT(b.id) FILTER (WHERE b.status NOT IN ('resolved', 'noted') AND b.severity = 'low')::int AS open_low,
+       COUNT(b.id) FILTER (WHERE b.status IN ('resolved', 'noted') AND b.severity = 'critical')::int AS closed_critical,
+       COUNT(b.id) FILTER (WHERE b.status IN ('resolved', 'noted') AND b.severity = 'high')::int AS closed_high,
+       COUNT(b.id) FILTER (WHERE b.status IN ('resolved', 'noted') AND b.severity = 'medium')::int AS closed_medium,
+       COUNT(b.id) FILTER (WHERE b.status IN ('resolved', 'noted') AND b.severity = 'low')::int AS closed_low,
+       COUNT(b.id) FILTER (WHERE b.status = 'resolved')::int AS resolved,
+       COUNT(b.id) FILTER (WHERE b.status = 'noted')::int AS noted
+     FROM breaches b
+     LEFT JOIN calls c ON c.id = b.call_id
+     LEFT JOIN journeys j ON j.id = b.journey_id
+     WHERE b.organization_id = $2
+       AND (c.customer_id = $1 OR j.customer_id = $1)`,
+    [customerId, organizationId]
+  );
+  const n = (v: unknown) => Number(v ?? 0) || 0;
+  return {
+    scored_sales: n(row?.scored_sales),
+    scored_calls: n(row?.scored_calls),
+    open: {
+      critical: n(row?.open_critical),
+      high: n(row?.open_high),
+      medium: n(row?.open_medium),
+      low: n(row?.open_low),
+    },
+    closed: {
+      critical: n(row?.closed_critical),
+      high: n(row?.closed_high),
+      medium: n(row?.closed_medium),
+      low: n(row?.closed_low),
+    },
+    resolved: n(row?.resolved),
+    noted: n(row?.noted),
+  };
+}
+
 customersRouter.get('/:id', async (req, res, next) => {
   try {
     const orgId  = req.user!.organizationId;
     const role   = req.user!.role;
     const userId = req.user!.userId;
+    const isAdviser = role === 'adviser';
 
-    const customer = await queryOne<{
-      id: string;
-      phone_normalized: string;
-      name: string | null;
-      external_crm_id: string | null;
-      first_seen_at: string;
-      last_seen_at: string;
-      call_count: number;
-      avg_score: string | null;
-    }>(
+    const customer = await queryOne<CustomerRecord>(
       // Live call_count + journey outcomes (see the list query above for why
       // the denormalised call_count/avg_score columns are unreliable under the
-      // capture/journey model).
-      `SELECT c.id, c.organization_id, c.phone_normalized, c.name, c.external_crm_id,
+      // capture/journey model). An adviser's call count is their own calls
+      // with this customer ($3), not everyone's.
+      `SELECT c.id, c.phone_normalized, c.name, c.external_crm_id,
               c.first_seen_at, c.last_seen_at,
               (SELECT COUNT(*) FROM calls ca
-                WHERE ca.customer_id = c.id AND ca.status <> 'failed')::int AS call_count,
+                WHERE ca.customer_id = c.id AND ca.status <> 'failed'
+                  AND ($3::uuid IS NULL OR ca.agent_id = $3::uuid))::int AS call_count,
               (SELECT COUNT(*) FROM journeys j
                 WHERE j.customer_id = c.id AND j.status = 'scored')::int AS journey_count,
               lj.overall_score AS last_journey_score,
@@ -166,13 +243,13 @@ customersRouter.get('/:id', async (req, res, next) => {
             ORDER BY scored_at DESC LIMIT 1
          ) lj ON true
         WHERE c.id = $1 AND c.organization_id = $2`,
-      [req.params.id, orgId]
+      [req.params.id, orgId, isAdviser ? userId : null]
     );
 
     if (!customer) throw new AppError(404, 'Customer not found');
 
     // Advisers are restricted to customers from their own calls.
-    if (role === 'adviser') {
+    if (isAdviser) {
       const linked = await queryOne<{ id: string }>(
         `SELECT id FROM calls
          WHERE customer_id = $1 AND organization_id = $2 AND agent_id = $3 LIMIT 1`,
@@ -181,39 +258,30 @@ customersRouter.get('/:id', async (req, res, next) => {
       if (!linked) throw new AppError(403, 'Access denied');
     }
 
-    // Compliance snapshot: this customer's breaches by severity + how many are
-    // still open (not resolved), across both per-call and sale (journey)
-    // breaches. Powers the profile's compliance summary.
-    const breaches = await queryOne<{
-      total: string; open: string;
-      critical: string; high: string; medium: string; low: string;
-    }>(
-      `SELECT
-         COUNT(*)::text AS total,
-         COUNT(*) FILTER (WHERE b.status <> 'resolved')::text AS open,
-         COUNT(*) FILTER (WHERE b.severity = 'critical')::text AS critical,
-         COUNT(*) FILTER (WHERE b.severity = 'high')::text AS high,
-         COUNT(*) FILTER (WHERE b.severity = 'medium')::text AS medium,
-         COUNT(*) FILTER (WHERE b.severity = 'low')::text AS low
-       FROM breaches b
-       LEFT JOIN calls c ON c.id = b.call_id
-       LEFT JOIN journeys j ON j.id = b.journey_id
-       WHERE b.organization_id = $2
-         AND (c.customer_id = $1 OR j.customer_id = $1)`,
-      [customer.id, orgId]
-    );
+    const settings = await getScoringSettings(orgId);
+    const mode: CustomerScoringMode = scoresCallsIndividually(settings) ? 'calls' : 'sales';
 
-    res.json({
-      customer,
-      breaches: {
-        total: Number(breaches?.total ?? 0),
-        open: Number(breaches?.open ?? 0),
-        critical: Number(breaches?.critical ?? 0),
-        high: Number(breaches?.high ?? 0),
-        medium: Number(breaches?.medium ?? 0),
-        low: Number(breaches?.low ?? 0),
-      },
-    });
+    // An adviser gets no findings and no sale result. Both describe the firm's
+    // assessment of this customer across every adviser's calls — a sale is
+    // credited to whoever closed it, and its breaches with it — and an adviser
+    // is scoped to their own calls everywhere else (the sales list and the sale
+    // page are closed to them). Withheld from the payload, not just hidden on
+    // the page.
+    const response: CustomerProfileResponse = isAdviser
+      ? {
+          customer: {
+            ...customer,
+            journey_count: null,
+            last_journey_score: null,
+            last_journey_pass: null,
+            last_journey_at: null,
+          },
+          mode,
+          compliance: null,
+        }
+      : { customer, mode, compliance: await loadCustomerCompliance(orgId, customer.id) };
+
+    res.json(response);
   } catch (err) {
     next(err);
   }
@@ -270,26 +338,79 @@ customersRouter.get('/:id/journey', requireOrgView, async (req, res, next) => {
 });
 
 // ── Update customer (name / CRM id) ──────────────────────────────────────────
+//
+// Admin and supervisor only. It was open to viewers, a read-only role, and it
+// left no record: a customer's CRM id goes out with every score (the
+// call.scored and journey.scored webhooks), so an unrecorded edit could change
+// where a result is filed with nobody able to say who did it.
 
-customersRouter.put('/:id', requireOrgView, async (req, res, next) => {
+customersRouter.put('/:id', requireActioner, async (req, res, next) => {
   try {
     const orgId = req.user!.organizationId;
     const { name, external_crm_id } = req.body as { name?: string; external_crm_id?: string };
 
-    const rows = await query<{ id: string; name: string | null; external_crm_id: string | null }>(
+    const rows = await query<{
+      id: string;
+      name: string | null;
+      external_crm_id: string | null;
+      before_name: string | null;
+      before_external_crm_id: string | null;
+    }>(
       // Distinguish "field not sent" (undefined → keep current) from an
       // explicit empty string (→ clear to NULL). Without this a wrongly
       // backfilled name could never be removed from the UI.
-      `UPDATE customers
-       SET name            = CASE WHEN $3::boolean THEN NULLIF($4, '') ELSE name END,
-           external_crm_id = CASE WHEN $5::boolean THEN NULLIF($6, '') ELSE external_crm_id END
-       WHERE id = $1 AND organization_id = $2
-       RETURNING id, name, external_crm_id`,
+      //
+      // `prev` is the row as this statement found it (locked), so the audit
+      // record's "before" is the value this update replaced rather than a
+      // separate read another request could have changed in between.
+      `WITH prev AS (
+         SELECT id, name, external_crm_id FROM customers
+          WHERE id = $1 AND organization_id = $2
+          FOR UPDATE
+       )
+       UPDATE customers c
+          SET name            = CASE WHEN $3::boolean THEN NULLIF($4, '') ELSE c.name END,
+              external_crm_id = CASE WHEN $5::boolean THEN NULLIF($6, '') ELSE c.external_crm_id END
+         FROM prev
+        WHERE c.id = prev.id
+       RETURNING c.id, c.name, c.external_crm_id,
+                 prev.name AS before_name, prev.external_crm_id AS before_external_crm_id`,
       [req.params.id, orgId, name !== undefined, name ?? '', external_crm_id !== undefined, external_crm_id ?? '']
     );
 
-    if (!rows.length) throw new AppError(404, 'Customer not found');
-    res.json(rows[0]);
+    const row = rows[0];
+    if (!row) throw new AppError(404, 'Customer not found');
+
+    const nameChanged = row.name !== row.before_name;
+    const crmChanged = row.external_crm_id !== row.before_external_crm_id;
+    if (nameChanged || crmChanged) {
+      const changes: Record<string, unknown> = {};
+      if (crmChanged) {
+        changes.external_crm_id = { before: row.before_external_crm_id, after: row.external_crm_id };
+      }
+      if (nameChanged) {
+        // Whether there was a name before and after, not the names themselves.
+        // audit_log is append-only and outlives an erasure request, and a
+        // person's name left in it is exactly the personal data
+        // scripts/delete-customer-data.ts exists to remove — the reason that
+        // script records ids only.
+        changes.name = { before_present: row.before_name !== null, after_present: row.name !== null };
+      }
+      void recordAuditEvent({
+        organizationId: orgId,
+        userId: req.user!.userId,
+        actionType: 'customer.update',
+        entityType: 'customer',
+        entityId: row.id,
+        summary: `Edited a customer's ${[crmChanged ? 'CRM ID' : null, nameChanged ? 'name' : null]
+          .filter(Boolean)
+          .join(' and ')}`,
+        metadata: { changes },
+        req,
+      });
+    }
+
+    res.json({ id: row.id, name: row.name, external_crm_id: row.external_crm_id });
   } catch (err) {
     next(err);
   }
