@@ -3,7 +3,7 @@ import { authenticate, requireOrgView, requireActioner } from '../middleware/aut
 import { query, queryOne, withTransaction } from '../db/client.js';
 import { AppError } from '../middleware/errors.js';
 import { recordAuditEvent } from '../services/audit.js';
-import { getScoringSettings } from '../services/tenant-settings.js';
+import { getScoringSettings, orgHasFeature } from '../services/tenant-settings.js';
 import { pushCallScoreUpdate, pushJourneyScoreUpdate } from '../services/score-writeback.js';
 import { evaluateAlertsForResolvedItem } from '../services/alert-evaluator.js';
 import { locateEvidence } from '../services/evidence-locator.js';
@@ -19,6 +19,14 @@ reviewRouter.use(authenticate);
 reviewRouter.get('/', requireOrgView, async (req, res, next) => {
   try {
     const orgId = req.user!.organizationId;
+
+    // score_only gates the VALUE, not just its display (services/
+    // tenant-settings.ts), exactly as the sale and call lists do: the AI's
+    // provisional verdict must not ship in the payload to a tenant that is
+    // never shown one. normalized_score is that verdict — the evidence panel
+    // renders it as "AI suggests: Pass/Fail" — so it is nulled here rather
+    // than hidden in the client.
+    const scoreOnly = await orgHasFeature(orgId, 'score_only');
 
     const callItems = await query<ManualReviewItem>(
       `SELECT 'call' AS kind, cis.id AS item_score_id, cis.scorecard_item_id,
@@ -84,9 +92,9 @@ reviewRouter.get('/', requireOrgView, async (req, res, next) => {
       [orgId]
     );
 
-    const items = [...callItems, ...journeyItems].sort(
-      (a, b) => new Date(b.detected_at).getTime() - new Date(a.detected_at).getTime()
-    );
+    const items = [...callItems, ...journeyItems]
+      .sort((a, b) => new Date(b.detected_at).getTime() - new Date(a.detected_at).getTime())
+      .map((item) => (scoreOnly ? { ...item, normalized_score: null } : item));
     res.json({ data: items });
   } catch (err) {
     next(err);
@@ -301,10 +309,25 @@ async function resolveCallItem(
   const severity = deriveSeverity(Number(row.weight), row.severity);
 
   await withTransaction(async (tx) => {
-    await tx.query(
-      "UPDATE call_item_scores SET result = $2, score = $3, normalized_score = $4 WHERE id = $1",
+    // Serialise reviewers working the same call. The recompute below reads
+    // every sibling checkpoint, so two people ruling on different checkpoints of
+    // one call would each compute from a snapshot taken before the other
+    // committed, and the second write would store a score that ignores the
+    // first ruling. Locking the parent first makes them queue instead.
+    await tx.query('SELECT id FROM call_scores WHERE id = $1 FOR UPDATE', [row.call_score_id]);
+
+    // The check above ran outside this transaction, so another reviewer may
+    // have ruled on this very checkpoint since. Claim it rather than
+    // overwriting them: a lost race here replaces a human verdict silently,
+    // and on the fail path the loser's DELETE of the breach row can land after
+    // the winner's INSERT, leaving a confirmed failure off the register.
+    const claimed = await tx.query<{ id: string }>(
+      "UPDATE call_item_scores SET result = $2, score = $3, normalized_score = $4 WHERE id = $1 AND result = 'manual_review' RETURNING id",
       [itemScoreId, result, rawScore, normalized]
     );
+    if (claimed.length === 0) {
+      throw new AppError(409, 'Another reviewer has already ruled on this checkpoint.');
+    }
 
     const items = await tx.query<{ normalized_score: string; weight: string; severity: string | null }>(
       `SELECT cis.normalized_score::text, si.weight::text, si.severity
@@ -393,10 +416,25 @@ async function resolveJourneyItem(
   const severity = deriveSeverity(Number(row.weight), row.severity);
 
   await withTransaction(async (tx) => {
-    await tx.query(
-      "UPDATE journey_item_scores SET result = $2, score = $3, normalized_score = $4 WHERE id = $1",
+    // Serialise reviewers working the same sale. The recompute below reads
+    // every sibling checkpoint, so two people ruling on different checkpoints of
+    // one sale would each compute from a snapshot taken before the other
+    // committed, and the second write would store a score that ignores the
+    // first ruling. Locking the parent first makes them queue instead.
+    await tx.query('SELECT id FROM journeys WHERE id = $1 FOR UPDATE', [row.journey_id]);
+
+    // The check above ran outside this transaction, so another reviewer may
+    // have ruled on this very checkpoint since. Claim it rather than
+    // overwriting them: a lost race here replaces a human verdict silently,
+    // and on the fail path the loser's DELETE of the breach row can land after
+    // the winner's INSERT, leaving a confirmed failure off the register.
+    const claimed = await tx.query<{ id: string }>(
+      "UPDATE journey_item_scores SET result = $2, score = $3, normalized_score = $4 WHERE id = $1 AND result = 'manual_review' RETURNING id",
       [itemScoreId, result, rawScore, normalized]
     );
+    if (claimed.length === 0) {
+      throw new AppError(409, 'Another reviewer has already ruled on this checkpoint.');
+    }
 
     // Record the reviewer's verdict as calibration, so confirming a manual-
     // review checkpoint teaches the AI for that criterion (the sales_only path

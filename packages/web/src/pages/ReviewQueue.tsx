@@ -38,7 +38,12 @@ export function ReviewQueue() {
       api.get<{ data: QueueItem[] }>('/breaches/review-queue?limit=50'),
   });
 
-  const { data: manualData } = useQuery({
+  const {
+    data: manualData,
+    isLoading: manualLoading,
+    isError: manualError,
+    refetch: refetchManual,
+  } = useQuery({
     queryKey: ['review-items'],
     queryFn: () => api.get<{ data: ManualReviewItem[] }>('/review-items'),
   });
@@ -56,8 +61,14 @@ export function ReviewQueue() {
       queryClient.invalidateQueries({ queryKey: ['review-items'] });
       queryClient.invalidateQueries({ queryKey: ['breaches'] });
       queryClient.invalidateQueries({ queryKey: ['breach-summary'] });
+      // A fail ruling writes a breach, which belongs in the register below.
+      queryClient.invalidateQueries({ queryKey: ['review-queue'] });
     } catch (err) {
       await notify('Failed to resolve: ' + (err instanceof Error ? err.message : 'unknown error'));
+      // Whatever went wrong, this row may no longer be this reviewer's to rule
+      // on — another reviewer ruling first is the expected failure here. Refetch
+      // so a checkpoint someone else has settled leaves the queue.
+      queryClient.invalidateQueries({ queryKey: ['review-items'] });
     } finally {
       setResolvingKey(null);
     }
@@ -70,6 +81,12 @@ export function ReviewQueue() {
       queryClient.invalidateQueries({ queryKey: ['review-queue'] });
       queryClient.invalidateQueries({ queryKey: ['breaches'] });
       queryClient.invalidateQueries({ queryKey: ['breach-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['review-items'] });
+    } catch (err) {
+      // Was silently swallowed: the button re-enabled, the badge did not move,
+      // and the reviewer was told nothing — so a refused or failed status change
+      // looked exactly like one that worked.
+      await notify('Failed to update: ' + (err instanceof Error ? err.message : 'unknown error'));
     } finally {
       setBusyId(null);
     }
@@ -89,14 +106,52 @@ export function ReviewQueue() {
       {/* Manual-review checkpoints: manual items + consent gates that couldn't
           be auto-scored. These sit outside the breach workflow until a human
           marks them, and are excluded from the score meanwhile. */}
-      {manualItems.length > 0 && (
-        <div className="bg-card border border-border rounded-card overflow-hidden mb-6">
+      {/* Rendered whatever the state. Gating this on `manualItems.length > 0`
+          meant a failed request drew the same picture as a cleared queue — a
+          page headed "Review Queue" with no queue on it — so an outage read as
+          "nothing to review" while unadjudicated checkpoints sat in the
+          database. */}
+      <div className="bg-card border border-border rounded-card overflow-hidden mb-6">
           <div className="px-5 py-4 border-b border-border flex items-center justify-between">
             <div>
-              <h3 className="text-section-title text-text-primary">Awaiting human review ({manualItems.length})</h3>
+              <h3 className="text-section-title text-text-primary">
+                Awaiting human review{manualError || manualLoading ? '' : ` (${manualItems.length})`}
+              </h3>
               <p className="text-xs text-text-muted mt-0.5">Manual checkpoints and consent gates that need a reviewer to mark pass or fail.</p>
             </div>
           </div>
+          {manualError ? (
+            <div className="px-5 py-5" role="alert">
+              <p className="bg-fail-bg text-fail px-3 py-2 rounded-btn text-table-cell">
+                Couldn't load the checkpoints awaiting review — this is not the same as there being none.{' '}
+                <button
+                  type="button"
+                  onClick={() => refetchManual()}
+                  className="font-semibold underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
+                >
+                  Try again
+                </button>
+              </p>
+            </div>
+          ) : manualLoading ? (
+            <div className="px-5 py-5 space-y-3" aria-busy="true">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="h-4 rounded bg-[length:800px_100%] animate-skeleton-shimmer"
+                  style={{
+                    backgroundImage:
+                      'linear-gradient(90deg, rgb(var(--cg-border-light)) 0%, rgb(var(--cg-border)) 50%, rgb(var(--cg-border-light)) 100%)',
+                    width: i === 0 ? '70%' : '45%',
+                  }}
+                />
+              ))}
+            </div>
+          ) : manualItems.length === 0 ? (
+            <p className="px-5 py-8 text-center text-table-cell text-text-muted">
+              Nothing awaiting human review. Every checkpoint on every scored sale has a verdict.
+            </p>
+          ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[640px]">
               <thead>
@@ -211,8 +266,8 @@ export function ReviewQueue() {
               </tbody>
             </table>
           </div>
+          )}
         </div>
-      )}
 
       <div className="bg-card border border-border rounded-card overflow-x-auto">
         <table className="w-full min-w-[720px]">
