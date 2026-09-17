@@ -9,11 +9,22 @@ import { ORG_WIDE_ROLES, REMEDIATION_OUTCOMES, REMEDIATION_NOTE_MAX } from '@cal
 import type { RemediationOutcome } from '@callguard/shared';
 
 // ============================================================
-// Feeding a reviewed sale back to the adviser, and recording that they saw it.
+// Feeding a reviewed sale, or a call scored on its own, back to the adviser,
+// and recording that they saw it.
 //
-// One feedback per sale, covering every breach that stood at the moment it was
-// sent. The adviser confirms with a single click on a tokenised link, which is
-// the only channel that reaches an adviser with no login (061).
+// One feedback per subject, covering every breach that stood at the moment it
+// was sent. The subject is a sale, or — where the firm's scoring setting is not
+// sales_only (scoresCallsIndividually) — a call (migration 118). A call that
+// belongs to a sale is never a subject of its own: the sale's feedback already covers it, and
+// feeding it back twice would give one conversation two acknowledgement states.
+// The file and table keep their journey_ names; call_feedback was already taken
+// by 008 for something else.
+//
+// The adviser confirms with a single click on a tokenised link, which is the
+// only channel that reaches an adviser with no login (061). That half — token,
+// confirmation, outcomes — never looks at the subject at all. Only the review
+// half branches on it: who gets it by default, which findings stand, and what
+// the email names.
 //
 // Deliberately separate from breaches.confirmed_by/confirmed_at (078), which
 // means something else entirely: that a HUMAN REVIEWER ruled the breach genuine.
@@ -23,6 +34,27 @@ import type { RemediationOutcome } from '@callguard/shared';
 
 /** How long an adviser has to click. Long enough for leave, short enough to expire. */
 const TOKEN_TTL_DAYS = 30;
+
+/** What a round of feedback is about. */
+export interface FeedbackSubject {
+  kind: 'journey' | 'call';
+  id: string;
+}
+
+/**
+ * The journey_feedback column that names this subject.
+ *
+ * A fixed mapping to two literals rather than anything built from input, so the
+ * only strings that can ever be interpolated into SQL from here are these.
+ */
+function subjectColumn(subject: FeedbackSubject): 'journey_id' | 'call_id' {
+  return subject.kind === 'call' ? 'call_id' : 'journey_id';
+}
+
+/** The word a supervisor or adviser reads for this subject. */
+export function subjectNoun(kind: FeedbackSubject['kind']): 'sale' | 'call' {
+  return kind === 'call' ? 'call' : 'sale';
+}
 
 export function hashFeedbackToken(raw: string): string {
   return crypto.createHash('sha256').update(raw).digest('hex');
@@ -37,33 +69,48 @@ export interface AdviserTarget {
 }
 
 /**
- * Who gets fed back for this sale.
+ * Who gets fed back for this subject, by default.
  *
- * The sale's closing adviser: the earliest call flagged wrap_up, else the latest
- * call in the set. That is not a new rule — it is how journeys are already
- * attributed for adviser scores, journey-level breaches and the Zoho write-back
- * (see JOURNEY_AGENT_JOIN in routes/breaches.ts). A sale touched by three people
- * has one accountable adviser, and it needs to be the same one everywhere.
+ * For a sale, its closing adviser: the earliest call flagged wrap_up, else the
+ * latest call in the set. That is not a new rule — it is how journeys are
+ * already attributed for adviser scores, journey-level breaches and the Zoho
+ * write-back (see JOURNEY_AGENT_JOIN in routes/breaches.ts). A sale touched by
+ * three people has one accountable adviser, and it needs to be the same one
+ * everywhere.
+ *
+ * For a call, the adviser on the call. There is one call and so no tie to break,
+ * and inventing a rule for one would be how the call page and the feedback came
+ * to name different people.
  */
-export async function resolveAdviser(journeyId: string): Promise<AdviserTarget> {
-  const row = await queryOne<{
+export async function resolveAdviser(subject: FeedbackSubject): Promise<AdviserTarget> {
+  type Row = {
     agent_id: string | null;
     agent_name: string | null;
     user_email: string | null;
     user_name: string | null;
-  }>(
-    `SELECT c.agent_id, c.agent_name, u.email AS user_email, u.name AS user_name
-       FROM journey_calls jc
-       JOIN calls c ON c.id = jc.call_id
-       LEFT JOIN users u ON u.id = c.agent_id
-      WHERE jc.journey_id = $1
-      ORDER BY (jc.role = 'wrap_up') DESC,
-               CASE WHEN jc.role = 'wrap_up'
-                    THEN COALESCE(c.call_date, c.created_at) END ASC,
-               COALESCE(c.call_date, c.created_at) DESC
-      LIMIT 1`,
-    [journeyId]
-  );
+  };
+  const row =
+    subject.kind === 'call'
+      ? await queryOne<Row>(
+          `SELECT c.agent_id, c.agent_name, u.email AS user_email, u.name AS user_name
+             FROM calls c
+             LEFT JOIN users u ON u.id = c.agent_id
+            WHERE c.id = $1`,
+          [subject.id]
+        )
+      : await queryOne<Row>(
+          `SELECT c.agent_id, c.agent_name, u.email AS user_email, u.name AS user_name
+             FROM journey_calls jc
+             JOIN calls c ON c.id = jc.call_id
+             LEFT JOIN users u ON u.id = c.agent_id
+            WHERE jc.journey_id = $1
+            ORDER BY (jc.role = 'wrap_up') DESC,
+                     CASE WHEN jc.role = 'wrap_up'
+                          THEN COALESCE(c.call_date, c.created_at) END ASC,
+                     COALESCE(c.call_date, c.created_at) DESC
+            LIMIT 1`,
+          [subject.id]
+        );
 
   if (!row || (!row.agent_id && !row.agent_name)) {
     return { userId: null, name: 'Unknown adviser', email: null, problem: 'no_adviser' };
@@ -80,7 +127,7 @@ export async function resolveAdviser(journeyId: string): Promise<AdviserTarget> 
 }
 
 /**
- * SQL: did this feedback round reach the adviser the sale is credited to now?
+ * SQL: did this feedback round reach the adviser the sale (or call) is credited to now?
  *
  * The credited adviser is resolveAdviser's, read live: the wrap-up call's adviser
  * (services/wrap-up.ts decides which call that is). A round counts when
@@ -102,13 +149,19 @@ export async function resolveAdviser(journeyId: string): Promise<AdviserTarget> 
  * @param f alias of the journey_feedback row in the enclosing query.
  */
 export function feedbackReachedCloserSql(f: string): string {
+  // A call round is judged against the call's own adviser — the only adviser a
+  // single call has, and the one resolveAdviser defaults to. The same subquery
+  // serves both: for a sale it picks the wrap-up from the sale's calls; for a
+  // call (journey_id NULL, so the join matches nothing) it is the call itself.
   return `(${f}.recipient_source = 'manual' OR EXISTS (
           SELECT 1 FROM (
             SELECT rc_c.agent_id, COALESCE(rc_u.name, rc_c.agent_name) AS name
-              FROM journey_calls rc_jc
-              JOIN calls rc_c ON rc_c.id = rc_jc.call_id
+              FROM calls rc_c
+              LEFT JOIN journey_calls rc_jc
+                     ON rc_jc.call_id = rc_c.id AND rc_jc.journey_id = ${f}.journey_id
               LEFT JOIN users rc_u ON rc_u.id = rc_c.agent_id
-             WHERE rc_jc.journey_id = ${f}.journey_id
+             WHERE (${f}.journey_id IS NOT NULL AND rc_jc.journey_id IS NOT NULL)
+                OR (${f}.journey_id IS NULL AND rc_c.id = ${f}.call_id)
              ORDER BY (rc_jc.role = 'wrap_up') DESC,
                       CASE WHEN rc_jc.role = 'wrap_up'
                            THEN COALESCE(rc_c.call_date, rc_c.created_at) END ASC,
@@ -221,55 +274,80 @@ export interface FeedbackBreach {
 }
 
 /**
- * The breaches that would be fed back for this sale.
+ * The breaches that would be fed back for this subject.
  *
  * Excludes 'resolved' and 'noted': a breach a supervisor has already dismissed
  * is not something to tell the adviser off about. Everything else stands,
  * including ones already marked coached, because this is the record that the
  * conversation happened rather than a queue to work through.
+ *
+ * The two kinds differ only in where the breach hangs and where its reason
+ * lives (042 put journey breaches on journey_item_scores and left call breaches
+ * on call_item_scores). The exclusions and the order are one rule, written once.
  */
 export async function breachesForFeedback(
   organizationId: string,
-  journeyId: string
+  subject: FeedbackSubject
 ): Promise<FeedbackBreach[]> {
+  const source =
+    subject.kind === 'call'
+      ? `-- LEFT: one missing reason must not drop the whole finding.
+       LEFT JOIN call_item_scores src ON src.id = b.call_item_score_id
+      WHERE b.organization_id = $1
+        AND b.call_id = $2`
+      : `-- LEFT: a breach raised against a per-call score has no journey item
+       -- score, and one missing reason must not drop the whole finding.
+       LEFT JOIN journey_item_scores src ON src.id = b.journey_item_score_id
+      WHERE b.organization_id = $1
+        AND b.journey_id = $2`;
   return query<FeedbackBreach>(
     `SELECT b.id AS breach_id, b.scorecard_item_id, si.label AS item_label,
-            b.severity, b.status, jis.reasoning, si.remediation_guidance
+            b.severity, b.status, src.reasoning, si.remediation_guidance
        FROM breaches b
        JOIN scorecard_items si ON si.id = b.scorecard_item_id
-       -- LEFT: a breach raised against a per-call score has no journey item
-       -- score, and one missing reason must not drop the whole finding.
-       LEFT JOIN journey_item_scores jis ON jis.id = b.journey_item_score_id
-      WHERE b.organization_id = $1
-        AND b.journey_id = $2
+       ${source}
         AND b.status NOT IN ('resolved', 'noted')
       ORDER BY CASE b.severity
                  WHEN 'critical' THEN 0 WHEN 'high' THEN 1
                  WHEN 'medium' THEN 2 ELSE 3 END,
                si.label`,
-    [organizationId, journeyId]
+    [organizationId, subject.id]
   );
 }
 
 /**
- * Checkpoints on this sale still waiting for a human ruling.
+ * Checkpoints on this subject still waiting for a human ruling.
  *
  * Reported to the supervisor, never used to block: they may have good reason to
  * feed back now. But telling an adviser about a breach that is overturned an
  * hour later costs more trust than it saves time, so the gap is made visible.
+ *
+ * For a call, counted the way the review queue counts it (routes/review.ts), so
+ * the number here is the number of items a reviewer will find waiting.
  */
-export async function openReviewCount(journeyId: string): Promise<number> {
-  const row = await queryOne<{ n: string }>(
-    `SELECT count(*) AS n FROM journey_item_scores
-      WHERE journey_id = $1 AND result = 'manual_review'`,
-    [journeyId]
-  );
+export async function openReviewCount(subject: FeedbackSubject): Promise<number> {
+  const row =
+    subject.kind === 'call'
+      ? await queryOne<{ n: string }>(
+          `SELECT count(*) AS n
+             FROM call_item_scores cis
+             JOIN call_scores cs ON cs.id = cis.call_score_id
+            WHERE cs.call_id = $1 AND cis.result = 'manual_review'`,
+          [subject.id]
+        )
+      : await queryOne<{ n: string }>(
+          `SELECT count(*) AS n FROM journey_item_scores
+            WHERE journey_id = $1 AND result = 'manual_review'`,
+          [subject.id]
+        );
   return Number(row?.n ?? 0);
 }
 
 export interface FeedbackRow {
   id: string;
-  journey_id: string;
+  /** Exactly one of these two is set (migration 118). */
+  journey_id: string | null;
+  call_id: string | null;
   adviser_user_id: string | null;
   adviser_name: string;
   adviser_email: string;
@@ -286,26 +364,113 @@ export interface FeedbackRow {
 
 export async function latestFeedback(
   organizationId: string,
-  journeyId: string
+  subject: FeedbackSubject
 ): Promise<FeedbackRow | null> {
   return queryOne<FeedbackRow>(
-    `SELECT id, journey_id, adviser_user_id, adviser_name, adviser_email,
+    `SELECT id, journey_id, call_id, adviser_user_id, adviser_name, adviser_email,
             sent_by, sent_at, message, confirmed_at, token_expires_at,
             recipient_source, suggested_adviser_user_id,
             ${feedbackReachedCloserSql('f')} AS reached_adviser
        FROM journey_feedback f
-      WHERE organization_id = $1 AND journey_id = $2
+      WHERE organization_id = $1 AND ${subjectColumn(subject)} = $2
       ORDER BY sent_at DESC LIMIT 1`,
-    [organizationId, journeyId]
+    [organizationId, subject.id]
   );
 }
+
+export interface SubjectSummary {
+  /** Who the conversation was with, as the email names them. Null where unknown. */
+  clientName: string | null;
+  /** Null where there is no score to state — never 0. */
+  score: number | null;
+  pass: boolean | null;
+}
+
+/**
+ * The client, score and verdict the email states for this subject.
+ *
+ * One reader for both the supervisor's panel and the send, so the name the
+ * supervisor is shown before they click is the name that leaves the platform.
+ *
+ * SALE: customers.name is the fallback because journeys.client_name is null on
+ * every sale pushed before the CRM backfill. score-journey and score-writeback
+ * both already resolve the name this way; a third reader with its own rule is
+ * how a sale ends up named in the CRM and unnamed in the email.
+ *
+ * CALL: the linked customer's name, or null. Never the phone number, though a
+ * call often has no named customer: a sale email only ever names a client, and
+ * a customer's number is contact data that has no business leaving the platform
+ * in an email beside compliance findings — the same reason the name is kept out
+ * of the subject line. An unnamed call is identified as a reviewed call with its
+ * score. The score is the call's most recent, chosen the way the calls list
+ * chooses it.
+ */
+export async function subjectSummary(
+  organizationId: string,
+  subject: FeedbackSubject
+): Promise<SubjectSummary> {
+  let clientName: string | null;
+  let rawScore: string | null | undefined;
+  let pass: boolean | null | undefined;
+
+  if (subject.kind === 'call') {
+    const call = await queryOne<{
+      customer_name: string | null;
+      overall_score: string | null;
+      pass: boolean | null;
+    }>(
+      `SELECT cust.name AS customer_name, cs.overall_score, cs.pass
+         FROM calls c
+         LEFT JOIN customers cust ON cust.id = c.customer_id
+         LEFT JOIN LATERAL (
+           SELECT overall_score, pass FROM call_scores
+            WHERE call_id = c.id
+            ORDER BY scored_at DESC NULLS LAST
+            LIMIT 1
+         ) cs ON TRUE
+        WHERE c.id = $1 AND c.organization_id = $2`,
+      [subject.id, organizationId]
+    );
+    clientName = call?.customer_name?.trim() || null;
+    rawScore = call?.overall_score;
+    pass = call?.pass;
+  } else {
+    const sale = await queryOne<{
+      client_name: string | null;
+      customer_name: string | null;
+      overall_score: string | null;
+      pass: boolean | null;
+    }>(
+      `SELECT j.client_name, j.overall_score, j.pass, cust.name AS customer_name
+         FROM journeys j
+         LEFT JOIN customers cust ON cust.id = j.customer_id
+        WHERE j.id = $1 AND j.organization_id = $2`,
+      [subject.id, organizationId]
+    );
+    // Trimmed: a whitespace-only CRM field is truthy enough to suppress the
+    // "Reviewed sale" fallback while rendering as an empty name.
+    clientName = sale?.client_name?.trim() || sale?.customer_name?.trim() || null;
+    rawScore = sale?.overall_score;
+    pass = sale?.pass;
+  }
+
+  return {
+    clientName,
+    // NUMERIC(5,2) arrives from pg as a string. Coerced once, here, so the
+    // template's NaN guard is checking the type it believes it is checking.
+    score: rawScore == null ? null : Number(rawScore),
+    pass: pass ?? null,
+  };
+}
+
 
 /**
  * Where the recipient came from. Widened, not replaced, if a CRM owner lands.
  *
  * 'default_closing_adviser' is what every default send records since migration
  * 117: resolveAdviser picks the wrap-up call's adviser, and the wrap-up is no
- * longer simply the last call. 'default_last_caller' remains only on rows sent
+ * longer simply the last call. A call round's default is the call's own adviser,
+ * who closed that call, so it records the same value. 'default_last_caller' remains only on rows sent
  * before that, where it is what they were.
  */
 export type RecipientSource = 'default_closing_adviser' | 'default_last_caller' | 'manual';
@@ -315,7 +480,7 @@ export interface SendResult {
   itemCount: number;
   adviser: AdviserTarget;
   recipientSource: RecipientSource;
-  /** Who resolveAdviser would have picked — null when the sale is unattributed. */
+  /** Who resolveAdviser would have picked — null when the subject is unattributed. */
   suggestedAdviserUserId: string | null;
   /** Their name, for the audit line. Null when there was no attributed adviser. */
   suggestedAdviserName: string | null;
@@ -379,10 +544,12 @@ export function buildFeedbackSend(input: {
   // Can this recipient actually READ the withheld detail in CallGuard?
   //
   // Only consulted when reasoning is withheld, and then it decides which true
-  // sentence the email carries. It is not "can they sign in": reasoning lives
-  // only behind requireOrgView, so an adviser-role user can hold a working
-  // password and still see nothing. Advisers commonly have no login at all
-  // (061), and Trust Point's have none.
+  // sentence the email carries. It is not "can they sign in": it is whether a
+  // surface they may open carries every withheld reason. An adviser-role user
+  // can hold a working password and still not reach them — on a sale always,
+  // and on a call anyone but their own (see sendFeedback, where this is
+  // decided). Advisers commonly have no login at all (061), and Trust Point's
+  // have none.
   //
   // The tokenised confirm link is not the answer either, though the reason
   // narrowed with CG-25. That page now DOES name the findings and carry the
@@ -488,22 +655,28 @@ export function buildFeedbackSend(input: {
  * The snapshot is the point. A record saying only "this sale was fed back" is
  * misleading the moment the sale is re-scored and its breach set changes — it
  * would imply the adviser was told about findings that did not exist when the
- * email went out. See migrations 087 and 110.
+ * email went out. See migrations 087 and 110. A call is re-scored the same way,
+ * so the same holds for it.
+ *
+ * Whether this subject MAY be fed back — a call inside a sale may not, and a
+ * call may not where the firm's scoring setting is sales_only — is the route's decision,
+ * made before this is called. This function sends what it is given.
  */
 export async function sendFeedback(input: {
   organizationId: string;
-  journeyId: string;
+  subject: FeedbackSubject;
   sentBy: string;
   message: string | null;
-  /** A recipient the supervisor picked. Omitted means take the sale's own adviser. */
+  /** A recipient the supervisor picked. Omitted means take the subject's own adviser. */
   adviserUserId?: string | null;
 }): Promise<SendResult> {
-  const { organizationId, journeyId, sentBy, message, adviserUserId } = input;
+  const { organizationId, subject, sentBy, message, adviserUserId } = input;
+  const noun = subjectNoun(subject.kind);
 
   // Resolved on every send, chosen recipient or not: it is what
   // suggested_adviser_user_id records, and an override is only evidence of
   // anything if what was overridden is stored beside it.
-  const suggested = await resolveAdviser(journeyId);
+  const suggested = await resolveAdviser(subject);
   const adviser = adviserUserId
     ? await resolveChosenRecipient(organizationId, adviserUserId)
     : suggested;
@@ -523,7 +696,7 @@ export async function sendFeedback(input: {
   if (!adviser.email) {
     throw new Error(
       adviser.problem === 'no_adviser'
-        ? 'This sale has no adviser attributed to it. Choose who to send the feedback to.'
+        ? `This ${noun} has no adviser attributed to it. Choose who to send the feedback to.`
         : `${adviser.name} has no email address on their account, so the feedback cannot be delivered. Add one in Settings → Team first, or choose someone else.`
     );
   }
@@ -540,7 +713,7 @@ export async function sendFeedback(input: {
     );
   }
 
-  const breaches = await breachesForFeedback(organizationId, journeyId);
+  const breaches = await breachesForFeedback(organizationId, subject);
 
   // EVERY read the email needs happens HERE, before the transaction, and never
   // after it. A read that fails after the commit leaves journey_feedback and a
@@ -548,31 +721,7 @@ export async function sendFeedback(input: {
   // about findings nobody sent — the exact state the two guards above exist to
   // prevent. Keeping these reads out of the transaction (which must stay short)
   // never required running them after it.
-  //
-  // customers.name is the fallback because journeys.client_name is null on every
-  // sale pushed before the CRM backfill. score-journey and score-writeback both
-  // already resolve the name this way; a third reader with its own rule is how a
-  // sale ends up named in the CRM and unnamed in the email.
-  const sale = await queryOne<{
-    client_name: string | null;
-    customer_name: string | null;
-    overall_score: string | null;
-    pass: boolean | null;
-  }>(
-    `SELECT j.client_name, j.overall_score, j.pass, cust.name AS customer_name
-       FROM journeys j
-       LEFT JOIN customers cust ON cust.id = j.customer_id
-      WHERE j.id = $1 AND j.organization_id = $2`,
-    [journeyId, organizationId]
-  );
-
-  // Trimmed: a whitespace-only CRM field is truthy enough to suppress the
-  // "Reviewed sale" fallback while rendering as an empty name.
-  const clientName = sale?.client_name?.trim() || sale?.customer_name?.trim() || null;
-
-  // NUMERIC(5,2) arrives from pg as a string. Coerced once, here, so the
-  // template's NaN guard is checking the type it believes it is checking.
-  const score = sale?.overall_score == null ? null : Number(sale.overall_score);
+  const { clientName, score, pass } = await subjectSummary(organizationId, subject);
 
   const [keepsHealthUnredacted, scoreOnly] = await Promise.all([
     organisationKeepsHealthUnredacted(organizationId),
@@ -585,41 +734,67 @@ export async function sendFeedback(input: {
   // They must be able to sign in. An email address is not a login: a row can
   // carry one and still have no password set, or have had login revoked (061).
   //
-  // And they must hold a role that can see reasoning at all. Every surface
-  // carrying it — GET /journeys/:id, the claims-defence pack, the whole
-  // breaches router — sits behind requireOrgView, and ORG_WIDE_ROLES is
-  // ['admin', 'supervisor', 'viewer']. `adviser` is excluded, and calls.ts, the
-  // one adviser-scoped surface, selects reasoning nowhere. So an adviser-role
-  // recipient with a working password can sign in and still find nothing:
-  // testing the login alone would send them to an app that shows them the
-  // detail does not exist for them, which is the same broken promise in a
-  // different place.
+  // And they must be able to reach EVERY reason the email withheld, on a surface
+  // their role is allowed to open. That differs by subject, because the
+  // adviser-scoped surfaces in routes/calls.ts do carry reasoning:
+  //
+  //  * ORG_WIDE_ROLES (admin, supervisor, viewer) can read it on either subject:
+  //    GET /journeys/:id, the breaches router and GET /calls/:id/scores.
+  //
+  //  * An adviser-role user, on a CALL they took: GET /calls/:id/scores is
+  //    scoped to calls.agent_id and returns call_item_scores.* — reasoning
+  //    included, with no transcript-access gate. Every finding on this round is
+  //    a breach on that call, so every withheld reason is there for them. Only
+  //    their own call, though: sent a call someone else took, they get a 404.
+  //
+  //  * An adviser-role user, on a SALE: GET /calls/:id shows the reasoning only
+  //    for checkpoints whose evidence came from a call they took. A sale's
+  //    findings usually span calls, so "sign in to read it" would be true of
+  //    some reasons and not others — which is not a sentence the email can say.
+  //    They get the supervisor pointer, which is true of all of them.
   const recipientCanSeeDetail = adviser.userId
     ? !!(await queryOne<{ id: string }>(
-        `SELECT id FROM users
-          WHERE id = $1 AND organization_id = $2
-            AND login_disabled = false AND password_hash IS NOT NULL
-            AND role = ANY($3::text[])`,
-        [adviser.userId, organizationId, ORG_WIDE_ROLES]
+        subject.kind === 'call'
+          ? `SELECT u.id FROM users u
+              WHERE u.id = $1 AND u.organization_id = $2
+                AND u.login_disabled = false AND u.password_hash IS NOT NULL
+                AND (u.role = ANY($3::text[])
+                     OR (u.role = 'adviser'
+                         AND EXISTS (SELECT 1 FROM calls c
+                                      WHERE c.id = $4 AND c.organization_id = $2
+                                        AND c.agent_id = u.id)))`
+          : `SELECT id FROM users
+              WHERE id = $1 AND organization_id = $2
+                AND login_disabled = false AND password_hash IS NOT NULL
+                AND role = ANY($3::text[])`,
+        subject.kind === 'call'
+          ? [adviser.userId, organizationId, ORG_WIDE_ROLES, subject.id]
+          : [adviser.userId, organizationId, ORG_WIDE_ROLES]
       ))
     : false;
 
   const raw = crypto.randomBytes(32).toString('base64url');
   const expiresAt = new Date(Date.now() + TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000);
 
-  const { payload, snapshot } = buildFeedbackSend({
+  const built = buildFeedbackSend({
     adviserEmail: adviser.email,
     adviserName: adviser.name,
     confirmUrl: `${config.appUrl}/feedback/${raw}`,
     message,
     clientName,
     score,
-    pass: sale?.pass ?? null,
+    pass,
     breaches,
     includeReasoning: !keepsHealthUnredacted,
     includeVerdict: !scoreOnly,
     recipientCanSeeDetail,
   });
+  const { snapshot } = built;
+  // The kind is stamped on here rather than passed through buildFeedbackSend,
+  // which decides what may leave the platform and has no business knowing what
+  // the email calls it. The subject line differs by kind and is otherwise
+  // constant (see renderFeedbackEmail), so this carries no client detail.
+  const payload: FeedbackEmailJob = { ...built.payload, subjectKind: subject.kind };
 
   // The delete-and-replace and every insert it depends on run as one
   // transaction: if the INSERT (or a breach_events insert) fails partway
@@ -627,18 +802,25 @@ export async function sendFeedback(input: {
   // than deleted with nothing to replace it.
   const feedbackId = await withTransaction(async (tx) => {
     // A previous unconfirmed feedback is superseded rather than blocking: the
-    // partial unique index allows one open per sale, and re-sending is a normal
-    // thing to do when the first was never acknowledged. Scoped by organisation
-    // like every other write here — journey_id alone is not tenant-safe.
+    // partial unique indexes allow one open per sale and one open per call
+    // (087, 118), and re-sending is a normal thing to do when the first was
+    // never acknowledged. Scoped by organisation like every other write here —
+    // the subject id alone is not tenant-safe.
+    //
+    // Keyed on the subject's own column. A NULL never equals anything, so a
+    // sale-keyed DELETE could not reach a call row even by accident — but it
+    // would also leave the call's old link live beside the new one, and the
+    // INSERT below would then trip idx_journey_feedback_open_call.
+    const column = subjectColumn(subject);
     await tx.query(
       `DELETE FROM journey_feedback
-        WHERE journey_id = $1 AND organization_id = $2 AND confirmed_at IS NULL`,
-      [journeyId, organizationId]
+        WHERE ${column} = $1 AND organization_id = $2 AND confirmed_at IS NULL`,
+      [subject.id, organizationId]
     );
 
     const feedback = await tx.queryOne<{ id: string }>(
       `INSERT INTO journey_feedback
-        (organization_id, journey_id, adviser_user_id, adviser_name, adviser_email,
+        (organization_id, ${column}, adviser_user_id, adviser_name, adviser_email,
          sent_by, message, token_hash, token_expires_at,
           recipient_source, suggested_adviser_user_id,
           client_name, score, pass, reasoning_withheld)
@@ -646,7 +828,7 @@ export async function sendFeedback(input: {
        RETURNING id`,
       [
        organizationId,
-       journeyId,
+       subject.id,
         adviser.userId,
         adviser.name,
         adviser.email,
@@ -710,7 +892,7 @@ export async function sendFeedback(input: {
     recipientSource,
     suggestedAdviserUserId: suggested.userId,
     // Gated on the id, not the name: resolveAdviser returns the placeholder
-    // 'Unknown adviser' for an unattributed sale, and naming that in an audit
+    // 'Unknown adviser' for an unattributed subject, and naming that in an audit
     // line would read as a real person who was passed over.
     suggestedAdviserName: suggested.userId ? suggested.name : null,
   };
@@ -760,6 +942,12 @@ export interface LookupResult {
   /** Whether outcomes can be written yet. False before acknowledgement — see
    *  `recordRemediationOutcome` for why that ordering is load-bearing. */
   canRecordOutcome?: boolean;
+  /** Whether this was feedback on a sale or on a call, so the page can use the
+   *  right word. Names the KIND only — never which sale or call, which the
+   *  page must not learn. Absent on a dead link, like everything else here.
+   *  snake_case because the route returns this object as its response body,
+   *  and this is the name that response has always been specified with. */
+  subject_kind?: FeedbackSubject['kind'];
 }
 
 /**
@@ -827,8 +1015,9 @@ export async function lookupFeedback(rawToken: string): Promise<LookupResult> {
     confirmed_at: string | null;
     token_expires_at: string;
     reasoning_withheld: boolean;
+    call_id: string | null;
   }>(
-    `SELECT id, adviser_name, confirmed_at, token_expires_at, reasoning_withheld
+    `SELECT id, adviser_name, confirmed_at, token_expires_at, reasoning_withheld, call_id
        FROM journey_feedback WHERE token_hash = $1`,
     [hashFeedbackToken(rawToken)]
   );
@@ -861,6 +1050,9 @@ export async function lookupFeedback(rawToken: string): Promise<LookupResult> {
     items,
     reasoningWithheld: row.reasoning_withheld,
     canRecordOutcome: !!row.confirmed_at && !expired,
+    // Read off which column is set, not selected as an id: the id itself never
+    // leaves this function.
+    subject_kind: row.call_id ? 'call' : 'journey',
   };
 }
 
@@ -913,14 +1105,13 @@ export async function recordRemediationOutcome(
   const row = await queryOne<{
     id: string;
     organization_id: string;
-    journey_id: string;
     adviser_name: string;
     adviser_user_id: string | null;
     confirmed_at: string | null;
     token_expires_at: string;
     reasoning_withheld: boolean;
   }>(
-    `SELECT id, organization_id, journey_id, adviser_name, adviser_user_id,
+    `SELECT id, organization_id, adviser_name, adviser_user_id,
             confirmed_at, token_expires_at, reasoning_withheld
        FROM journey_feedback WHERE token_hash = $1`,
     [hashFeedbackToken(rawToken)]
@@ -980,33 +1171,41 @@ export async function recordRemediationOutcome(
 }
 
 /**
- * The context an audit line needs about an outcome, read back by the route.
+ * The context an audit line needs about a confirmation or an outcome, read back
+ * by the route.
  *
- * Separate from the write so that `recordRemediationOutcome` returns only what
- * the adviser's page is allowed to see: the sale id and the organisation are
- * needed to file the audit event and must not travel to an unauthenticated
+ * Separate from the writes so that `confirmFeedback` and
+ * `recordRemediationOutcome` return only what the adviser's page is allowed to
+ * see: the subject and the organisation are needed to file the audit event
+ * against the right sale or call, and must not travel to an unauthenticated
  * client.
  */
 export async function feedbackAuditContext(rawToken: string): Promise<{
   organizationId: string;
-  journeyId: string;
+  subject: FeedbackSubject;
   adviserName: string;
   adviserUserId: string | null;
 } | null> {
   const row = await queryOne<{
     organization_id: string;
-    journey_id: string;
+    journey_id: string | null;
+    call_id: string | null;
     adviser_name: string;
     adviser_user_id: string | null;
   }>(
-    `SELECT organization_id, journey_id, adviser_name, adviser_user_id
+    `SELECT organization_id, journey_id, call_id, adviser_name, adviser_user_id
        FROM journey_feedback WHERE token_hash = $1`,
     [hashFeedbackToken(rawToken)]
   );
   if (!row) return null;
+  // Exactly one is set (118's CHECK). A row with neither cannot exist, so there
+  // is no third branch to invent a subject for.
+  const subject: FeedbackSubject = row.call_id
+    ? { kind: 'call', id: row.call_id }
+    : { kind: 'journey', id: row.journey_id! };
   return {
     organizationId: row.organization_id,
-    journeyId: row.journey_id,
+    subject,
     adviserName: row.adviser_name,
     adviserUserId: row.adviser_user_id,
   };
@@ -1024,13 +1223,12 @@ export async function confirmFeedback(
   const row = await queryOne<{
     id: string;
     organization_id: string;
-    journey_id: string;
     adviser_name: string;
     adviser_user_id: string | null;
     confirmed_at: string | null;
     token_expires_at: string;
   }>(
-    `SELECT id, organization_id, journey_id, adviser_name, adviser_user_id,
+    `SELECT id, organization_id, adviser_name, adviser_user_id,
             confirmed_at, token_expires_at
        FROM journey_feedback WHERE token_hash = $1`,
     [hashFeedbackToken(rawToken)]

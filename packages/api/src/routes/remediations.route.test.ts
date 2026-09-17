@@ -74,6 +74,7 @@ function row(over: Partial<Record<string, unknown>> = {}) {
     adviser_user_id: null,
     feedback_item_id: '11111111-1111-1111-1111-111111111111',
     journey_id: '22222222-2222-2222-2222-222222222222',
+    call_id: null,
     customer_name: 'A. Customer',
     item_label: 'Told the customer how documents would be sent',
     severity: 'high',
@@ -124,9 +125,9 @@ describe('GET /api/remediations — what counts as open', () => {
     // Acknowledged only: an unacknowledged round is the feedback backlog (CG-11),
     // and an outcome cannot be written before acknowledgement anyway (116).
     expect(sql).toContain('f.confirmed_at IS NOT NULL');
-    // One ask per checkpoint per sale, most recent first — the same rule the
-    // board pack's open figure uses.
-    expect(sql).toContain('DISTINCT ON (f.journey_id, fi.scorecard_item_id)');
+    // One ask per checkpoint per subject (a sale, or a call scored on its own),
+    // most recent first — the same rule the board pack's open figure uses.
+    expect(sql).toContain('DISTINCT ON (COALESCE(f.journey_id, f.call_id), fi.scorecard_item_id)');
     expect(sql).toContain('f.sent_at DESC');
   });
 
@@ -210,5 +211,70 @@ describe('GET /api/remediations — grouping', () => {
     // The definition travels with the response even when it is empty, so a
     // figure lifted into a board paper carries what it counts.
     expect(body.note).toContain('acknowledged');
+  });
+});
+
+// ============================================================
+// Migration 118 — rounds fed back on a call scored on its own.
+//
+// A call round has journey_id NULL. Keyed on journey_id, DISTINCT ON treats
+// every NULL as one value, so every call round in a firm would collapse into a
+// single group per checkpoint and all but one ask would vanish — silently, from
+// a list whose whole job is to not lose things. And an inner join on journeys
+// would drop the rest.
+// ============================================================
+
+describe('GET /api/remediations — call rounds', () => {
+  const CALL_A = '44444444-4444-4444-4444-444444444444';
+  const CALL_B = '55555555-5555-5555-5555-555555555555';
+
+  it('groups per call rather than collapsing every call round into one', async () => {
+    await get();
+    const sql = backlogSql();
+
+    // The subject is the key, in both the DISTINCT ON and the ORDER BY it must
+    // lead with.
+    expect(sql).not.toContain('DISTINCT ON (f.journey_id,');
+    expect(sql).toContain('DISTINCT ON (COALESCE(f.journey_id, f.call_id), fi.scorecard_item_id)');
+    expect(sql).toContain('ORDER BY COALESCE(f.journey_id, f.call_id), fi.scorecard_item_id, f.sent_at DESC');
+  });
+
+  it('keeps call rounds in the result, naming the customer through the call', async () => {
+    await get();
+    const sql = backlogSql();
+
+    expect(sql).not.toMatch(/\n\s*JOIN journeys j ON j\.id = latest_ask\.journey_id/);
+    expect(sql).toContain('LEFT JOIN journeys j ON j.id = latest_ask.journey_id');
+    expect(sql).toContain('LEFT JOIN calls c ON c.id = latest_ask.call_id');
+    expect(sql).toContain('COALESCE(j.customer_id, c.customer_id)');
+    expect(sql).toContain('latest_ask.call_id::text AS call_id');
+  });
+
+  it('returns a call round with its call, so the page can link to it', async () => {
+    vi.mocked(query).mockResolvedValue([
+      row({ feedback_item_id: 'sale-item' }),
+      // The same checkpoint, outstanding on two different calls. Two asks.
+      row({ feedback_item_id: 'call-a-item', journey_id: null, call_id: CALL_A, customer_name: null }),
+      row({ feedback_item_id: 'call-b-item', journey_id: null, call_id: CALL_B }),
+    ] as never);
+
+    const body = await (await get()).json();
+
+    expect(body.total_open).toBe(3);
+    const items = body.advisers[0].items as Array<Record<string, unknown>>;
+    expect(items.map((i) => i.feedback_item_id)).toEqual(['sale-item', 'call-a-item', 'call-b-item']);
+
+    expect(items[0]).toMatchObject({
+      subject_kind: 'journey',
+      journey_id: '22222222-2222-2222-2222-222222222222',
+      call_id: null,
+    });
+    expect(items[1]).toMatchObject({
+      subject_kind: 'call',
+      journey_id: null,
+      call_id: CALL_A,
+      customer_name: null,
+    });
+    expect(items[2]).toMatchObject({ subject_kind: 'call', call_id: CALL_B });
   });
 });

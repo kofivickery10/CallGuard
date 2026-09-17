@@ -76,13 +76,12 @@ describe('renderFeedbackEmail', () => {
   });
 
   // The case that made this a branch, and it is wider than "no login".
-  // Advisers commonly have none at all (061) and Trust Point's have none. But
-  // an adviser-role user WITH a working password sees no reasoning either:
-  // every surface serving it sits behind requireOrgView, and ORG_WIDE_ROLES
-  // excludes advisers, while calls.ts — the one adviser-scoped surface —
-  // selects reasoning nowhere. The confirm link is no answer either: that page
-  // shows a name and a button, never the findings. So the email must not send
-  // any of them to the platform.
+  // Advisers commonly have none at all (061) and Trust Point's have none. And
+  // an adviser-role user WITH a working password cannot always reach the
+  // reasons: on a sale they see only those from calls they took, so the email
+  // cannot promise all of them (sendFeedback decides; on a call they took, they
+  // can). The confirm link is no answer either: its page never carries the
+  // reasons. So the email must not send these readers to the platform.
   it('points a recipient who cannot see the detail at their supervisor', () => {
     const { html, text } = renderFeedbackEmail({
       ...base,
@@ -297,5 +296,83 @@ describe('renderFeedbackEmail', () => {
     const { html, text } = renderFeedbackEmail({ ...base, items: [] });
     expect(html).toContain('Nothing was flagged against you');
     expect(text).toContain('Nothing was flagged against you');
+  });
+
+  // ── A call scored on its own (migration 118) ──────────────────────────────
+
+  describe('on a call', () => {
+    const call = { ...base, subjectKind: 'call' as const, clientName: 'Ann Lee', pass: false };
+
+    it('says it is a call, in the subject, the heading and the first line', () => {
+      const { subject, html, text } = renderFeedbackEmail(call);
+      expect(subject).toBe('[CallGuard] Feedback on a reviewed call');
+      expect(html).toContain('Feedback on a reviewed call');
+      for (const part of [html, text]) {
+        expect(part).toContain('Your supervisor has reviewed a call');
+        expect(part).not.toMatch(/\bsale\b/i);
+      }
+      expect(html).toContain('Call with <strong>Ann Lee</strong>');
+      expect(text).toContain('Call with Ann Lee - scored 77.8% - Fail');
+    });
+
+    it('never names the client in the subject, and keeps one subject per kind', () => {
+      const named = renderFeedbackEmail(call);
+      expect(named.subject).not.toContain('Ann Lee');
+      expect(renderFeedbackEmail({ ...call, clientName: null }).subject).toBe(named.subject);
+      // And the two kinds do not share a subject: the adviser can tell a call
+      // from a sale before opening it without learning anything about either.
+      expect(named.subject).not.toBe(renderFeedbackEmail(base).subject);
+    });
+
+    it('identifies an unnamed call as a reviewed call, naming nobody', () => {
+      // subjectSummary never falls back to the phone number, so an unnamed call
+      // arrives here with clientName null and is described, not identified.
+      const { html, text } = renderFeedbackEmail({ ...call, clientName: null });
+      expect(html).toContain('Reviewed call');
+      expect(html).not.toContain('Call with');
+      expect(text).toContain('Reviewed call - scored 77.8%');
+      expect(text).not.toContain('Call with');
+    });
+
+    it('states no verdict under score_only, and no score where there is none', () => {
+      const { pass: _omitted, ...scoreOnly } = call;
+      const { html, text } = renderFeedbackEmail({ ...scoreOnly, score: null });
+      expect(html).not.toContain('>Fail<');
+      expect(html).not.toContain('scored');
+      expect(text).not.toContain('scored');
+      // Still identified by who it was with.
+      expect(html).toContain('Ann Lee');
+    });
+
+    it('tells an adviser with nothing outstanding that nothing was flagged on the call', () => {
+      const { html, text } = renderFeedbackEmail({ ...call, items: [] });
+      for (const part of [html, text]) {
+        expect(part).toContain('Your supervisor has reviewed a call. Nothing was flagged against you on it.');
+      }
+    });
+
+    it('keeps both withheld-detail sentences, unchanged', () => {
+      const item = [{ label: 'A checkpoint', severity: 'high' }];
+      const canSee = renderFeedbackEmail({ ...call, items: item, reasoningWithheld: true, recipientCanSeeDetail: true });
+      const cannot = renderFeedbackEmail({ ...call, items: item, reasoningWithheld: true, recipientCanSeeDetail: false });
+      expect(canSee.text).toContain("The AI's reason for each point is in CallGuard rather than this email");
+      expect(cannot.text).toContain("The AI's reason for each point is not in this email");
+      expect(cannot.text).toContain('supervisor');
+    });
+
+    it('escapes the client name and carries no transcript quote', () => {
+      const { html, text } = renderFeedbackEmail({ ...call, clientName: '<b>x</b>' });
+      expect(html).not.toContain('<b>x</b>');
+      expect(html).toContain('&lt;b&gt;x&lt;/b&gt;');
+      expect(html).not.toMatch(/evidence/i);
+      expect(text).not.toMatch(/evidence/i);
+    });
+  });
+
+  it('reads a payload with no subjectKind as a sale, as every job queued before calls could be fed back was', () => {
+    const { subject, html } = renderFeedbackEmail(base);
+    expect(subject).toBe('[CallGuard] Feedback on a reviewed sale');
+    expect(html).toContain('Sale for <strong>James Whitfield</strong>');
+    expect(html).toContain('Your supervisor has reviewed a sale');
   });
 });

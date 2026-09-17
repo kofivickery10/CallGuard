@@ -21,12 +21,25 @@ remediationsRouter.use(authenticate);
 // and management information a firm can show drove a decision.
 
 /**
+ * The subject a feedback round is about, as one value: its sale, or its call.
+ * Exactly one of the two columns is set (migration 118). See the note on
+ * `latestConfirmedAskSql` for why grouping on journey_id alone is wrong.
+ *
+ * @param alias the journey_feedback alias in the caller's query. A fixed
+ *   identifier from code, never input.
+ */
+export function feedbackSubjectKeySql(alias = 'f'): string {
+  return `COALESCE(${alias}.journey_id, ${alias}.call_id)`;
+}
+
+/**
  * The one rule for "the ask that is currently outstanding on a checkpoint",
  * shared by every place that counts one.
  *
- * ONE ASK PER CHECKPOINT PER SALE, read off the most recent round the adviser
- * acknowledged. Counting rows instead is wrong in both directions on a sale that
- * was fed back, re-scored and fed back again: the same unanswered ask sent twice
+ * ONE ASK PER CHECKPOINT PER SUBJECT — per sale, or per call scored on its own
+ * (migration 118) — read off the most recent round the adviser acknowledged.
+ * Counting rows instead is wrong in both directions on a subject that was fed
+ * back, re-scored and fed back again: the same unanswered ask sent twice
  * is one thing outstanding, not two, and a checkpoint answered in July and asked
  * about again in August is outstanding again rather than closed by the older
  * answer. This is the rule CG-26's board pack figure uses, and it is factored
@@ -37,6 +50,14 @@ remediationsRouter.use(authenticate);
  * different problem, with a different owner, already reported by CG-11 — and an
  * outcome cannot be written before acknowledgement anyway (migration 116).
  *
+ * KEYED ON THE SUBJECT, NOT ON journey_id. A call round has journey_id NULL, and
+ * DISTINCT ON treats every NULL as the same value — so keyed on journey_id, every
+ * call round in the organisation would collapse into ONE group per checkpoint,
+ * and all but the newest ask on that checkpoint, across every call and every
+ * adviser, would silently vanish from the backlog. Exactly one of journey_id and
+ * call_id is set (118's CHECK), and uuids from two different tables cannot
+ * collide in practice, so COALESCE is one key that names the subject either way.
+ *
  * @param where scoping predicate over `f` (the feedback) — one sale, or one org.
  * @param columns what the caller needs off the winning row.
  */
@@ -44,7 +65,7 @@ export function latestConfirmedAskSql(
   where: string,
   columns = 'fi.remediation_outcome, fi.remediation_guidance'
 ): string {
-  return `SELECT DISTINCT ON (f.journey_id, fi.scorecard_item_id) ${columns}
+  return `SELECT DISTINCT ON (${feedbackSubjectKeySql()}, fi.scorecard_item_id) ${columns}
             FROM journey_feedback_items fi
             JOIN journey_feedback f ON f.id = fi.feedback_id
            WHERE ${where}
@@ -52,7 +73,7 @@ export function latestConfirmedAskSql(
            -- id as a final tiebreak so two rounds sent in the same instant
            -- resolve to the same winner on every read rather than to whichever
            -- the planner happened to reach first.
-           ORDER BY f.journey_id, fi.scorecard_item_id, f.sent_at DESC, f.id DESC`;
+           ORDER BY ${feedbackSubjectKeySql()}, fi.scorecard_item_id, f.sent_at DESC, f.id DESC`;
 }
 
 /**
@@ -69,6 +90,9 @@ export const OPEN_ASK_PREDICATE = `latest_ask.remediation_outcome IS NULL
 
 /**
  * "Does this sale have an outstanding ask?", for a query with a journey in scope.
+ *
+ * Sale-only by its predicate: `f.journey_id = j.id` can never match a call
+ * round, whose journey_id is NULL.
  *
  * @param feedbackFilter extra predicate over `f`. The sales list passes one so
  *   its state counts only rounds that reached the sale's credited adviser; the
@@ -95,7 +119,8 @@ const MAX_ROWS = 500;
 const NOTE =
   'An open remediation is a finding where the firm set a step for the checkpoint ' +
   'and the adviser, having acknowledged the feedback, has not yet said what they ' +
-  'did about it. Counted once per checkpoint per sale, from the most recent round ' +
+  'did about it. Counted once per checkpoint per sale (or per call, where the firm ' +
+  'feeds back on calls scored on their own), from the most recent round ' +
   'the adviser acknowledged. Checkpoints the firm has written no guidance for have ' +
   'no remediation step and are not counted here. Ages run from acknowledgement, ' +
   'not from when the feedback was sent — the wait before acknowledgement is the ' +
@@ -136,7 +161,8 @@ remediationsRouter.get('/', requireOrgView, async (req, res, next) => {
       adviser_email: string;
       adviser_user_id: string | null;
       feedback_item_id: string;
-      journey_id: string;
+      journey_id: string | null;
+      call_id: string | null;
       customer_name: string | null;
       item_label: string;
       severity: BreachSeverity;
@@ -152,6 +178,7 @@ remediationsRouter.get('/', requireOrgView, async (req, res, next) => {
               latest_ask.adviser_user_id::text AS adviser_user_id,
               latest_ask.feedback_item_id,
               latest_ask.journey_id::text AS journey_id,
+              latest_ask.call_id::text AS call_id,
               cust.name AS customer_name,
               latest_ask.item_label,
               latest_ask.severity,
@@ -164,11 +191,15 @@ remediationsRouter.get('/', requireOrgView, async (req, res, next) => {
            'f.organization_id = $1',
            `fi.id::text AS feedback_item_id, fi.item_label, fi.severity,
                   fi.remediation_guidance, fi.remediation_outcome,
-                  f.journey_id, f.adviser_user_id, f.adviser_name, f.adviser_email,
+                  f.journey_id, f.call_id, f.adviser_user_id, f.adviser_name, f.adviser_email,
                   f.sent_at, f.confirmed_at, f.token_expires_at`
          )}) latest_ask
-         JOIN journeys j ON j.id = latest_ask.journey_id
-         LEFT JOIN customers cust ON cust.id = j.customer_id
+         -- Both LEFT, and that is load-bearing: this was an inner join on
+         -- journeys, which would drop every call round (journey_id NULL) from the
+         -- backlog without a trace. Exactly one of the two matches per row.
+         LEFT JOIN journeys j ON j.id = latest_ask.journey_id
+         LEFT JOIN calls c ON c.id = latest_ask.call_id
+         LEFT JOIN customers cust ON cust.id = COALESCE(j.customer_id, c.customer_id)
         WHERE ${OPEN_ASK_PREDICATE}
         -- Oldest first, and that ordering is the point of the screen: the ask
         -- nobody has closed for six weeks is the one a principal will be asked
@@ -189,7 +220,9 @@ remediationsRouter.get('/', requireOrgView, async (req, res, next) => {
     for (const r of kept) {
       const item: RemediationBacklogItem = {
         feedback_item_id: r.feedback_item_id,
+        subject_kind: r.call_id ? 'call' : 'journey',
         journey_id: r.journey_id,
+        call_id: r.call_id,
         customer_name: r.customer_name,
         item_label: r.item_label,
         severity: r.severity,

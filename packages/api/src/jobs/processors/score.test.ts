@@ -6,6 +6,7 @@ import { getLearningContext } from '../../services/learning-context.js';
 import { evaluateAlertsForCall } from '../../services/alert-evaluator.js';
 import { deliverCallScored } from '../../services/webhook-delivery.js';
 import { pushCallScored } from '../../services/zoho.js';
+import { getScoringSettings } from '../../services/tenant-settings.js';
 import { processScoring } from './score.js';
 
 // Per-call scoring, through the processor with the database and integrations
@@ -30,7 +31,11 @@ vi.mock('../../services/usage.js', () => ({ recordUsage: vi.fn(async () => {}) }
 vi.mock('../../services/webhook-delivery.js', () => ({ deliverCallScored: vi.fn(async () => {}) }));
 vi.mock('../../services/zoho.js', () => ({ pushCallScored: vi.fn(async () => {}) }));
 vi.mock('../../services/capture-runs.js', () => ({ maybeStartCallCapture: vi.fn(async () => {}) }));
-vi.mock('../../services/tenant-settings.js', () => ({
+vi.mock('../../services/tenant-settings.js', async (importOriginal) => ({
+  // The real rule for who holds a call's write-back, so these tests exercise it
+  // rather than a stand-in.
+  scoresCallsIndividually: (await importOriginal<typeof import('../../services/tenant-settings.js')>())
+    .scoresCallsIndividually,
   getScoringSettings: vi.fn(async () => ({
     minScoreableWords: 0,
     minScoreableSeconds: 0,
@@ -289,5 +294,54 @@ describe('processScoring — attributable calls route as before', () => {
     expect(callItemRow('consent')!.sql).toContain("'manual_review'");
     expect(callScoreInsert().params[8]).toBe(100);
     expect(deliverCallScored).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('processScoring — a tenant that pushes to Zoho on feedback (CG-4, migration 118)', () => {
+  it('holds the Zoho write-back until a supervisor feeds the call back, but still fires the webhook', async () => {
+    vi.mocked(getScoringSettings).mockResolvedValueOnce({
+      minScoreableWords: 0,
+      minScoreableSeconds: 0,
+      passThreshold: 70,
+      scoringSamples: 1,
+      reviewConfidenceFloor: 0,
+      zohoWritebackTrigger: 'on_feedback',
+    } as Awaited<ReturnType<typeof getScoringSettings>>);
+    setupCall({
+      transcript: ATTRIBUTABLE_CALL,
+      speakerConfidence: 0.8,
+      items: [item('disclosure'), item('consent', { consent_gate: true })],
+      aiScores: { disclosure: 0, consent: 1 },
+    });
+
+    await runCall();
+
+    // Scored exactly as before: the setting gates the CRM push, not scoring.
+    expect(callScoreInsert().params[8]).toBe(50);
+    expect(deliverCallScored).toHaveBeenCalledTimes(1);
+    // Released by pushCallFeedbackRelease when feedback is sent.
+    expect(pushCallScored).not.toHaveBeenCalled();
+  });
+
+  it('pushes on scoring where the setting is sales_only, which cannot send a call round', async () => {
+    vi.mocked(getScoringSettings).mockResolvedValueOnce({
+      minScoreableWords: 0,
+      minScoreableSeconds: 0,
+      passThreshold: 70,
+      scoringSamples: 1,
+      reviewConfidenceFloor: 0,
+      zohoWritebackTrigger: 'on_feedback',
+      scoringScope: 'sales_only',
+    } as Awaited<ReturnType<typeof getScoringSettings>>);
+    setupCall({
+      transcript: ATTRIBUTABLE_CALL,
+      speakerConfidence: 0.8,
+      items: [item('disclosure'), item('consent', { consent_gate: true })],
+      aiScores: { disclosure: 0, consent: 1 },
+    });
+
+    await runCall();
+
+    expect(pushCallScored).toHaveBeenCalledTimes(1);
   });
 });

@@ -1,7 +1,8 @@
 import { Job } from 'bullmq';
 import { sendEmail } from '../../services/email.js';
 
-// Feedback to an adviser on a reviewed sale, with the one-click confirmation.
+// Feedback to an adviser on a reviewed sale, or on a call scored on its own
+// (migration 118), with the one-click confirmation.
 //
 // A separate template from notify-email deliberately. That one is built for
 // supervisors: it prefixes the app URL, and its button says "Open CallGuard",
@@ -13,7 +14,15 @@ export interface FeedbackEmailJob {
   adviserName: string;
   confirmUrl: string;
   message: string | null;
-  // Which sale this is about. Without it an adviser with several sales in a day
+  // Whether this is about a sale or about a single call. Changes the WORDS only
+  // — every rule below (what is withheld, what is escaped, what never travels)
+  // is the same for both, because the channel and the reader are the same.
+  //
+  // Optional, and absent reads as 'journey': a job can sit in Redis across the
+  // deploy that introduces this field, and every job written before it was
+  // about a sale.
+  subjectKind?: 'journey' | 'call';
+  // Which sale (or call) this is about. Without it an adviser with several sales in a day
   // cannot tell which call the findings belong to, and the acknowledgement is
   // evidence of nothing in particular. It goes in the BODY and never the
   // subject: a subject line is the one part of an email that renders on a lock
@@ -51,11 +60,13 @@ export interface FeedbackEmailJob {
   // Only consulted when `reasoningWithheld` is set, where it decides which true
   // sentence the email carries.
   //
-  // Not merely "can they sign in". Reasoning is served only behind
-  // requireOrgView, so an adviser-role user with a working password sees none of
-  // it, and the tokenised confirm page never shows the findings either. Absent
-  // is treated as false — the cautious reading, since it points at a person
-  // rather than at a page the reader may not be able to use.
+  // Not merely "can they sign in": whether a surface their role may open carries
+  // every reason this email withheld. Org-wide roles can; an adviser-role user
+  // can on a call they took (GET /calls/:id/scores) and not on a sale, whose
+  // reasons span calls — decided in sendFeedback. The tokenised confirm page
+  // never shows the reasons either. Absent is treated as false — the cautious
+  // reading, since it points at a person rather than at a page the reader may
+  // not be able to use.
   recipientCanSeeDetail?: boolean;
 }
 
@@ -89,6 +100,30 @@ function formatScore(score: number | null | undefined): string | null {
   return `${Math.round(n * 10) / 10}%`;
 }
 
+/**
+ * The wording that differs between a sale and a call. Everything else in the
+ * email is one template.
+ *
+ * `subject` is a constant PER KIND and takes no argument, so there is nothing a
+ * client name could be interpolated into — see clientName on FeedbackEmailJob.
+ */
+const WORDING = {
+  journey: {
+    subject: '[CallGuard] Feedback on a reviewed sale',
+    heading: 'Feedback on a reviewed sale',
+    namedLine: 'Sale for',
+    unnamedLine: 'Reviewed sale',
+    reviewed: 'Your supervisor has reviewed a sale',
+  },
+  call: {
+    subject: '[CallGuard] Feedback on a reviewed call',
+    heading: 'Feedback on a reviewed call',
+    namedLine: 'Call with',
+    unnamedLine: 'Reviewed call',
+    reviewed: 'Your supervisor has reviewed a call',
+  },
+} as const;
+
 /** Brand pass/fail (BRAND_GUIDELINES.md). Absent verdict renders nothing. */
 const VERDICT = {
   pass: { label: 'Pass', color: '#2D6E4A' },
@@ -118,23 +153,27 @@ export function renderFeedbackEmail(data: Omit<FeedbackEmailJob, 'to'>): {
     pass,
     reasoningWithheld,
     recipientCanSeeDetail,
+    subjectKind,
   } =
     data;
+
+  const words = WORDING[subjectKind === 'call' ? 'call' : 'journey'];
 
   const scoreText = formatScore(score);
   // Absent under score_only (the key is not in the payload) and null on a sale
   // that has no verdict. Both mean "state nothing" rather than "state Fail".
   const verdict = pass === true ? VERDICT.pass : pass === false ? VERDICT.fail : null;
 
-  // CONSTANT. The client is named in the body, never here — see clientName on
-  // FeedbackEmailJob. The adviser still tells two sales apart on the first line
-  // of the message, which is where saleLine puts the name.
-  const subject = '[CallGuard] Feedback on a reviewed sale';
+  // CONSTANT per kind. The client is named in the body, never here — see
+  // clientName on FeedbackEmailJob. The adviser still tells two sales (or two
+  // calls) apart on the first line of the message, which is where saleLine puts
+  // the name.
+  const subject = words.subject;
 
   const saleLine =
     clientName || scoreText || verdict
       ? `<p style="color: #1A2E1A; font-size: 14px; margin: 0 0 4px;">
-           ${clientName ? `Sale for <strong>${escapeHtml(clientName)}</strong>` : 'Reviewed sale'}${
+           ${clientName ? `${words.namedLine} <strong>${escapeHtml(clientName)}</strong>` : words.unnamedLine}${
              scoreText
                ? ` &middot; scored <strong>${escapeHtml(scoreText)}</strong>`
                : ''
@@ -150,13 +189,14 @@ export function renderFeedbackEmail(data: Omit<FeedbackEmailJob, 'to'>): {
   // no reasons should be told the reasons exist and where they are, otherwise a
   // deliberately reduced email is indistinguishable from a complete one.
   //
-  // Where they are depends on whether this adviser has a login. Most do not
-  // (061), and on the tenants this note fires for — the ones keeping health
-  // unredacted — none of Trust Point's do. Sending them to CallGuard would point
-  // them at a sign-in page they cannot get past, and the confirm link below is
-  // not the answer either: it opens a page that shows their name and a button,
-  // never the findings. For them the supervisor is the honest pointer, and a
-  // true one, because the supervisor has just been through it with them.
+  // Where they are depends on whether this adviser can sign in AND reach the
+  // reasons (recipientCanSeeDetail). Most advisers have no login (061), and on
+  // the tenants this note fires for — the ones keeping health unredacted — none
+  // of Trust Point's do. Sending them to CallGuard would point them at a sign-in
+  // page they cannot get past, and the confirm link below is not the answer
+  // either: its page names the findings but deliberately never carries the
+  // reasons. For them the supervisor is the honest pointer, and a true one,
+  // because the supervisor has just been through it with them.
   const withheldNote =
     reasoningWithheld && items.length
       ? recipientCanSeeDetail
@@ -221,11 +261,11 @@ export function renderFeedbackEmail(data: Omit<FeedbackEmailJob, 'to'>): {
   // should not have to work out whether silence means "clean" or "list missing".
   const body = items.length
     ? `<p style="color: #3a4e3a; font-size: 14px; line-height: 1.6;">
-         Your supervisor has reviewed a sale and gone through the points below with you.
+         ${words.reviewed} and gone through the points below with you.
        </p>
        <table style="width: 100%; border-collapse: collapse; margin: 16px 0;">${itemRows}</table>`
     : `<p style="color: #3a4e3a; font-size: 14px; line-height: 1.6;">
-         Your supervisor has reviewed a sale. Nothing was flagged against you on it.
+         ${words.reviewed}. Nothing was flagged against you on it.
        </p>`;
 
   const note = message
@@ -237,7 +277,7 @@ export function renderFeedbackEmail(data: Omit<FeedbackEmailJob, 'to'>): {
   const html = `
     <div style="font-family: -apple-system, sans-serif; max-width: 600px; margin: 0 auto;">
       <div style="background: #4a9e6e; color: white; padding: 20px; border-radius: 8px 8px 0 0;">
-        <h2 style="margin: 0; font-size: 18px;">Feedback on a reviewed sale</h2>
+        <h2 style="margin: 0; font-size: 18px;">${words.heading}</h2>
       </div>
       <div style="background: #ffffff; border: 1px solid #e2e8e2; border-top: none; padding: 20px; border-radius: 0 0 8px 8px;">
         <p style="color: #3a4e3a; font-size: 14px;">Hi ${escapeHtml(adviserName)},</p>
@@ -265,13 +305,13 @@ export function renderFeedbackEmail(data: Omit<FeedbackEmailJob, 'to'>): {
     '',
     ...(clientName || scoreText || verdict
       ? [
-          `${clientName ? `Sale for ${clientName}` : 'Reviewed sale'}${scoreText ? ` - scored ${scoreText}` : ''}${verdict ? ` - ${verdict.label}` : ''}`,
+          `${clientName ? `${words.namedLine} ${clientName}` : words.unnamedLine}${scoreText ? ` - scored ${scoreText}` : ''}${verdict ? ` - ${verdict.label}` : ''}`,
           '',
         ]
       : []),
     items.length
-      ? 'Your supervisor has reviewed a sale and gone through the points below with you.'
-      : 'Your supervisor has reviewed a sale. Nothing was flagged against you on it.',
+      ? `${words.reviewed} and gone through the points below with you.`
+      : `${words.reviewed}. Nothing was flagged against you on it.`,
     ...items.flatMap((i) => [
       `  - ${i.label} (${i.severity})`,
       ...(i.reasoning ? [`      ${i.reasoning}`] : []),

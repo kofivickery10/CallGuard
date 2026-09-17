@@ -4,6 +4,7 @@ import { query, queryOne } from '../db/client.js';
 import { AppError } from '../middleware/errors.js';
 import { CALL_IS_SCORED, classifyRisk, recommendAction } from './dashboard.js';
 import { SALE_DATE_SQL } from './journeys.js';
+import { feedbackSubjectKeySql } from './remediations.js';
 import type {
   AdviserRisk,
   BoardPackResponse,
@@ -450,9 +451,18 @@ boardPackRouter.get('/', requireOrgView, async (req, res, next) => {
     // information and cannot show it changed anything; this section is the part
     // of the pack that can.
     //
-    // Product scoping goes through journey_feedback.journey_id, which is NOT
-    // NULL — feedback is per sale, so unlike the findings queries above there is
-    // no call-level population to exclude when a product filter is on.
+    // BOTH SUBJECTS. Since migration 118 journey_feedback also holds rounds fed
+    // back on a call scored on its own (journey_id NULL). They are counted here
+    // alongside sale rounds: a firm whose scoring setting is not sales_only feeds
+    // back almost entirely on calls, and a pack reporting "0 findings fed back"
+    // beside a non-empty adviser backlog would be saying something false. The
+    // stock figure below is grouped on the subject for the same reason the
+    // backlog is (see latestConfirmedAskSql in routes/remediations.ts).
+    //
+    // Product scoping goes through journey_feedback.journey_id. Calls carry no
+    // product in CallGuard, so under a product filter call rounds drop out of all
+    // three figures — unlike the call-level figures elsewhere in the pack, which
+    // stay org-wide. The remediation note and product_scope_note both say so.
     const feedbackProductClause = (paramIdx: number) =>
       productId
         ? ` AND EXISTS (SELECT 1 FROM journey_products jp WHERE jp.journey_id = jf.journey_id AND jp.product_id = $${paramIdx})`
@@ -493,8 +503,8 @@ boardPackRouter.get('/', requireOrgView, async (req, res, next) => {
     // backlog, which is a different problem with a different owner, and an
     // outcome cannot be recorded before acknowledgement anyway (116).
     //
-    // Counted once per checkpoint per sale, not once per row, and read off the
-    // most recent time that checkpoint was fed back. Rows would be wrong in both
+    // Counted once per checkpoint per subject (sale or call), not once per row,
+    // and read off the most recent time that checkpoint was fed back. Rows would be wrong in both
     // directions on a sale that was re-scored and fed back again: the same
     // unanswered ask sent twice is one thing outstanding, not two, and a
     // checkpoint answered in July and asked about again in August is
@@ -502,13 +512,13 @@ boardPackRouter.get('/', requireOrgView, async (req, res, next) => {
     const awaitingRow = await queryOne<{ n: string }>(
       `SELECT COUNT(*)::text AS n
          FROM (
-           SELECT DISTINCT ON (jf.journey_id, fi.scorecard_item_id) fi.remediation_outcome
+           SELECT DISTINCT ON (${feedbackSubjectKeySql('jf')}, fi.scorecard_item_id) fi.remediation_outcome
              FROM journey_feedback_items fi
              JOIN journey_feedback jf ON jf.id = fi.feedback_id
             WHERE jf.organization_id = $1
               AND jf.confirmed_at IS NOT NULL
               ${feedbackProductClause(2)}
-            ORDER BY jf.journey_id, fi.scorecard_item_id, jf.sent_at DESC
+            ORDER BY ${feedbackSubjectKeySql('jf')}, fi.scorecard_item_id, jf.sent_at DESC, jf.id DESC
          ) latest_ask
         WHERE latest_ask.remediation_outcome IS NULL`,
       [orgId, ...journeyProductParams]
@@ -536,7 +546,7 @@ boardPackRouter.get('/', requireOrgView, async (req, res, next) => {
       period: { from, to },
       product,
       product_scope_note: product
-        ? `Filtered to ${product.name}. Sale-level figures (sales scored, outcomes, findings, sale-side human oversight, action taken) are narrowed to sales that included this product. Calls carry no product attribution in CallGuard, so call-level figures — monitoring coverage's call counts and the calls side of human oversight — cover the whole organisation for the period rather than this product alone.`
+        ? `Filtered to ${product.name}. Sale-level figures (sales scored, outcomes, findings, sale-side human oversight, action taken) are narrowed to sales that included this product. Calls carry no product attribution in CallGuard, so call-level figures — monitoring coverage's call counts and the calls side of human oversight — cover the whole organisation for the period rather than this product alone. Remediation is the exception: feedback given on calls scored on their own has no product either, so under this filter it is left out of the remediation figures rather than counted for the whole organisation.`
         : null,
       generated_at: new Date().toISOString(),
 
@@ -614,7 +624,10 @@ boardPackRouter.get('/', requireOrgView, async (req, res, next) => {
         outcomes_recorded: outcomeRows.map((r) => ({ outcome: r.outcome, count: parseInt(r.count, 10) })),
         awaiting_outcome: parseInt(awaitingRow?.n || '0', 10),
         note:
-          "An outcome is the adviser's own account of what they did, recorded by them and not verified by CallGuard or signed off by anyone at the firm. The three figures are three different populations and must not be divided into one another: findings fed back and outcomes recorded are both counted within this period, and most answers recorded in a period belong to findings fed back in an earlier one. Awaiting an outcome is where the firm stands today, not a figure for this period.",
+          "An outcome is the adviser's own account of what they did, recorded by them and not verified by CallGuard or signed off by anyone at the firm. The three figures are three different populations and must not be divided into one another: findings fed back and outcomes recorded are both counted within this period, and most answers recorded in a period belong to findings fed back in an earlier one. Awaiting an outcome is where the firm stands today, not a figure for this period. All three cover feedback on sales and feedback on calls scored on their own, counted once per checkpoint per sale or call." +
+          (product
+            ? ' Filtered to a product: calls carry no product, so feedback given on calls is left out of all three figures here.'
+            : ''),
       },
 
       action_taken: {

@@ -5,6 +5,13 @@
 // routes/calls.ts (a call's summary of the sale it belongs to) — living here
 // rather than in journeys.ts means calls.ts does not have to import a route
 // module to get at it.
+//
+// SALE ROUNDS ONLY, by construction. journey_feedback also holds rounds fed back
+// on a call scored on its own (migration 118), with journey_id NULL. Every
+// statement here is correlated on `f.journey_id = j.id`, which a NULL can never
+// satisfy, so a call round cannot leak into a sale's status. The shared
+// latestConfirmedAskSql is keyed on the subject rather than on journey_id for
+// the backlog's sake; under this predicate that key is always the journey.
 import { latestConfirmedAskSql, openRemediationExistsSql, OPEN_ASK_PREDICATE } from '../routes/remediations.js';
 import { feedbackReachedCloserSql } from '../services/journey-feedback.js';
 

@@ -11,11 +11,14 @@ import type { BreachSeverity } from './breaches.js';
 //
 // WHAT COUNTS AS OPEN, and why it is narrower than it first looks
 //
-// One outstanding ask per checkpoint per sale, read off the most recent
-// ACKNOWLEDGED round — the same rule the board pack's open figure uses (CG-26),
-// because two numbers describing the same backlog must not disagree. On top of
-// that rule this list requires the checkpoint to have carried the firm's own
-// guidance when it was sent.
+// One outstanding ask per checkpoint per subject (a sale, or a call scored on
+// its own — migration 118), read off the most recent ACKNOWLEDGED round — the
+// same rule, over the same two subjects, as the board pack's awaiting-outcome
+// figure (CG-26), because two numbers describing the same backlog must not
+// disagree. (Under a product filter the pack leaves call rounds out, since calls
+// carry no product; this list has no product filter.) On top of that rule this
+// list requires the checkpoint to have carried the firm's own guidance when it
+// was sent.
 //
 // That last condition is the difference between a queue and a graveyard.
 // Migration 115 is explicit that a checkpoint with no guidance has no
@@ -28,15 +31,24 @@ import type { BreachSeverity } from './breaches.js';
 // different measure for a different reader and is left as it is; this is the
 // list somebody has to work through.
 
-/** One outstanding ask: a finding, on a sale, that a named adviser was told to
- *  do something about and has not answered. */
+/** One outstanding ask: a finding, on a sale or on a call scored on its own,
+ *  that a named adviser was told to do something about and has not answered. */
 export interface RemediationBacklogItem {
   /** The journey_feedback_items row. The durable per-finding identity (087),
    *  not a breach id — breaches are destroyed and recreated by a re-score. */
   feedback_item_id: string;
-  journey_id: string;
+  /** What the feedback was about. A firm whose scoring setting is not
+   *  sales_only can feed back per call (migration 118), so the subject is either a sale or a call —
+   *  never both, never neither. Carried as an explicit kind rather than left
+   *  for the reader to infer from which id is null, so a link is built off one
+   *  field that says what it is. */
+  subject_kind: 'journey' | 'call';
+  /** Set when `subject_kind` is 'journey', null otherwise. */
+  journey_id: string | null;
+  /** Set when `subject_kind` is 'call', null otherwise. */
+  call_id: string | null;
   /** Named so the supervisor knows which conversation this was, exactly as the
-   *  sales list names it. Null where the sale has no linked customer. */
+   *  sales list names it. Null where the sale or call has no linked customer. */
   customer_name: string | null;
   /** The checkpoint's wording as it was sent, not as the scorecard reads today. */
   item_label: string;
