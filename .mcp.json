@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "callguard-ops": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["tools/ops-mcp/src/index.js"]
+    }
+  }
+}
