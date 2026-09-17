@@ -309,7 +309,7 @@ export default function Dashboard() {
                   </>
                 ) : (
                   <p className="text-table-cell text-text-secondary">
-                    No stuck work. Calls resting for a sale trigger are not counted.
+                    No stuck work. Calls waiting for a sale are not counted.
                   </p>
                 )}
               </div>

@@ -1128,8 +1128,9 @@ function ZohoConnectModal({ initial, onClose }: { initial: ZohoConnection | null
             />
             <label htmlFor="sale-trigger-enabled" className="text-table-cell text-text-secondary">
               <span className="font-semibold text-text-primary">Sale trigger configured</span> — tick once the
-              Zoho workflow webhook is set up. Activates sales-only scoring: calls are captured as metadata and
-              transcribed/scored only when a sale fires. Leave off and every call is scored as it arrives.
+              Zoho workflow webhook is set up. This records that the trigger is in place; it does not change how
+              calls are scored. Whether your firm scores sales or individual calls is set by CallGuard for your
+              account.
             </label>
           </div>
 
