@@ -5,36 +5,12 @@ import { api } from '../api/client';
 import { useAuth, useScoreOnly } from '../context/AuthContext';
 import { useDialog } from '../components/DialogProvider';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
-import { PASS_THRESHOLD } from '@callguard/shared';
-import type { JourneyListItem, CallStatus } from '@callguard/shared';
+import { PASS_THRESHOLD, summariseCustomerCompliance } from '@callguard/shared';
+import type { JourneyListItem, CallStatus, CustomerProfileResponse } from '@callguard/shared';
 import { useTheme } from '../lib/theme';
 import { formatPhone, formatDuration } from '../lib/format';
 import { JourneyStatusBadge } from '../components/JourneyStatusBadge';
 import { CallStatusBadge } from '../components/CallStatusBadge';
-
-interface Customer {
-  id: string;
-  phone_normalized: string;
-  name: string | null;
-  external_crm_id: string | null;
-  first_seen_at: string;
-  last_seen_at: string;
-  call_count: number;
-  journey_count: number;
-  last_journey_score: string | null;
-  last_journey_pass: boolean | null;
-  last_journey_at: string | null;
-}
-
-// Compliance snapshot for this customer, aggregated across their calls + sales.
-interface CustomerBreaches {
-  total: number;
-  open: number;
-  critical: number;
-  high: number;
-  medium: number;
-  low: number;
-}
 
 interface JourneyCall {
   id: string;
@@ -89,7 +65,7 @@ export default function CustomerProfile() {
 
   const { data: customerData, isLoading, isError } = useQuery({
     queryKey: ['customer', id],
-    queryFn: () => api.get<{ customer: Customer; breaches: CustomerBreaches }>(`/customers/${id}`),
+    queryFn: () => api.get<CustomerProfileResponse>(`/customers/${id}`),
     enabled: !!id,
   });
 
@@ -100,11 +76,14 @@ export default function CustomerProfile() {
   });
 
   const canAction = user?.role === 'admin' || user?.role === 'supervisor';
+  // Viewers read sales everywhere else (GET /journeys is requireOrgView), so
+  // they read them here too. Only acting on them is admin/supervisor.
+  const canViewSales = canAction || user?.role === 'viewer';
 
   const { data: journeysData } = useQuery({
     queryKey: ['customer-journeys', id],
     queryFn: () => api.get<{ data: JourneyListItem[] }>(`/journeys?customer_id=${id}&limit=50`),
-    enabled: !!id && canAction,
+    enabled: !!id && canViewSales,
     refetchInterval: (query) => {
       const rows = query.state.data?.data ?? [];
       return rows.some((j) => j.status === 'pending' || j.status === 'scoring') ? 4000 : false;
@@ -133,7 +112,9 @@ export default function CustomerProfile() {
   });
 
   const customer = customerData?.customer;
-  const breaches = customerData?.breaches;
+  // Null for an adviser: the API withholds the firm's findings from them.
+  const compliance = customerData?.compliance ?? null;
+  const mode = customerData?.mode ?? 'sales';
   const calls = journeyData?.calls ?? [];
   const { theme } = useTheme();
   // Resolve chart colours from the CSS tokens at render time so Recharts (which
@@ -179,25 +160,20 @@ export default function CustomerProfile() {
 
   const lastJourneyScore = customer.last_journey_score != null ? Math.round(parseFloat(customer.last_journey_score)) : null;
 
-  // Compliance snapshot derivations (§7 — status carried by text + colour).
-  const cb = breaches ?? { total: 0, open: 0, critical: 0, high: 0, medium: 0, low: 0 };
-  const severe = cb.critical > 0 || cb.high > 0;
-  const clean = cb.total === 0;
-  const severityBreakdown = [
-    cb.critical ? `${cb.critical} critical` : null,
-    cb.high ? `${cb.high} high` : null,
-    cb.medium ? `${cb.medium} medium` : null,
-    cb.low ? `${cb.low} low` : null,
-  ]
-    .filter(Boolean)
-    .join(' · ');
-  const complianceValueClass = clean
-    ? 'text-pass'
-    : severe
-      ? 'text-fail'
-      : cb.open > 0
-        ? 'text-review'
-        : 'text-pass';
+  // Where the customer stands (§7 — the words carry the state; colour only
+  // adds to them). Three states, never "Clean" for someone nobody assessed.
+  const complianceSummary = compliance ? summariseCustomerCompliance(compliance, mode) : null;
+  const complianceValueClass = complianceSummary
+    ? {
+        neutral: 'text-text-secondary',
+        pass: 'text-pass',
+        review: 'text-review',
+        fail: 'text-fail',
+      }[complianceSummary.tone]
+    : '';
+  // A firm that scores sales records its breaches against the sale, so a
+  // per-call breach count reads 0 on every call beside a sale with findings.
+  const showCallBreaches = mode === 'calls';
 
   // Chart: prefer the journey-level score trend when this customer has scored
   // journeys; otherwise fall back to per-call scores.
@@ -253,7 +229,7 @@ export default function CustomerProfile() {
 
         {/* Header actions */}
         <div className="flex items-center gap-2">
-          {user?.role !== 'adviser' && !editMode && (
+          {canAction && !editMode && (
             <button
               onClick={startEdit}
               className="px-[18px] py-[9px] rounded-btn border border-border text-text-cell font-semibold text-table-cell hover:bg-sidebar-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
@@ -329,7 +305,8 @@ export default function CustomerProfile() {
           <p className="text-card-value text-text-primary mt-2.5 tabular-nums">{customer.call_count}</p>
         </div>
 
-        {/* Sales scored */}
+        {/* Sales scored — withheld from advisers by the API */}
+        {customer.journey_count !== null && (
         <div className="bg-card border border-border rounded-card p-5">
           <div className="flex justify-between items-center">
             <p className="text-card-label uppercase text-text-muted">Sales scored</p>
@@ -337,8 +314,10 @@ export default function CustomerProfile() {
           </div>
           <p className="text-card-value text-text-primary mt-2.5 tabular-nums">{customer.journey_count}</p>
         </div>
+        )}
 
-        {/* Last sale */}
+        {/* Last sale — withheld from advisers by the API */}
+        {customer.journey_count !== null && (
         <div className="bg-card border border-border rounded-card p-5">
           <div className="flex justify-between items-center">
             <p className="text-card-label uppercase text-text-muted">Last sale</p>
@@ -373,29 +352,25 @@ export default function CustomerProfile() {
             </>
           )}
         </div>
+        )}
 
-        {/* Compliance snapshot */}
+        {/* Compliance snapshot — withheld from advisers by the API */}
+        {complianceSummary && (
         <div className="bg-card border border-border rounded-card p-5">
           <div className="flex justify-between items-center">
             <p className="text-card-label uppercase text-text-muted">Compliance</p>
             <CardIcon paths={['M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z']} />
           </div>
-          {clean ? (
-            <>
-              <p className="text-card-value text-pass mt-2.5">Clean</p>
-              <p className="text-[12px] text-text-muted mt-1">No breaches recorded</p>
-            </>
+          {complianceSummary.state === 'open' ? (
+            <p className={`text-card-value mt-2.5 tabular-nums ${complianceValueClass}`}>
+              {complianceSummary.open_total} <span className="text-sm font-medium">open</span>
+            </p>
           ) : (
-            <>
-              <p className={`text-card-value mt-2.5 tabular-nums ${complianceValueClass}`}>
-                {cb.open} <span className="text-sm font-medium">open</span>
-              </p>
-              <p className={`text-[12px] mt-1 ${severe ? 'text-fail' : 'text-text-muted'}`}>
-                {severityBreakdown || `${cb.total} total`}
-              </p>
-            </>
+            <p className={`text-lg font-semibold mt-2.5 ${complianceValueClass}`}>{complianceSummary.headline}</p>
           )}
+          <p className="text-xs text-text-muted mt-1">{complianceSummary.detail}</p>
         </div>
+        )}
 
         {/* First seen */}
         <div className="bg-card border border-border rounded-card p-5">
@@ -439,8 +414,8 @@ export default function CustomerProfile() {
         </div>
       )}
 
-      {/* Scored sales for this customer (supervisors/admins only) */}
-      {canAction && (
+      {/* Scored sales for this customer (admins, supervisors and viewers) */}
+      {canViewSales && (
         <div className="bg-card border border-border rounded-card overflow-hidden">
           <div className="px-5 py-4 border-b border-border">
             <h3 className="text-section-title text-text-primary">Sales ({journeys.length})</h3>
@@ -448,10 +423,14 @@ export default function CustomerProfile() {
           </div>
           {journeys.length === 0 ? (
             <p className="px-5 py-12 text-center text-text-muted text-table-cell">
-              No scored sales yet — a sale is scored when it completes in your CRM, or use Score sale above.
+              No scored sales yet — a sale is scored when it completes in your CRM{canAction ? ', or use Score sale above' : ''}.
             </p>
           ) : (
-            <div className="overflow-x-auto">
+            // relative: the sr-only "Actions" header is absolutely positioned,
+            // and without a positioned ancestor inside this scroller it lays
+            // out against <main> instead — escaping the scroll and widening
+            // the whole page on a phone.
+            <div className="relative overflow-x-auto">
               <table className="w-full min-w-[720px]">
                 <thead>
                   <tr>
@@ -526,11 +505,12 @@ export default function CustomerProfile() {
           {calls.length === 0 ? (
             <p className="px-5 py-12 text-center text-text-muted text-table-cell">No calls yet</p>
           ) : (
-            <div className="overflow-x-auto">
+            // relative: see the sales table above.
+            <div className="relative overflow-x-auto">
               <table className="w-full min-w-[820px]">
                 <thead>
                   <tr>
-                    {['Date', 'Adviser', 'Duration', 'Status', 'Score', ...(scoreOnly ? [] : ['Result']), 'Breaches', 'Coaching snippet', ''].map((h, i) => (
+                    {['Date', 'Adviser', 'Duration', 'Status', 'Score', ...(scoreOnly ? [] : ['Result']), ...(showCallBreaches ? ['Breaches'] : []), 'Coaching snippet', ''].map((h, i) => (
                       <th key={`${h}-${i}`} className="text-left px-5 py-2.5 text-table-header uppercase text-text-muted bg-table-header border-b border-border">
                         {h || <span className="sr-only">Actions</span>}
                       </th>
@@ -574,9 +554,11 @@ export default function CustomerProfile() {
                             )}
                           </td>
                         )}
-                        <td className={`px-5 py-3.5 text-table-cell tabular-nums ${breachN > 0 ? 'text-fail font-semibold' : 'text-text-muted'}`}>
-                          {breachN}
-                        </td>
+                        {showCallBreaches && (
+                          <td className={`px-5 py-3.5 text-table-cell tabular-nums ${breachN > 0 ? 'text-fail font-semibold' : 'text-text-muted'}`}>
+                            {breachN}
+                          </td>
+                        )}
                         <td className="px-5 py-3.5 text-table-cell text-text-muted max-w-xs truncate">
                           {c.coaching_summary ? `"${c.coaching_summary}"` : '—'}
                         </td>
