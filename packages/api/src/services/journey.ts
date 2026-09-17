@@ -1,4 +1,5 @@
 import { query, queryOne, withTransaction } from '../db/client.js';
+import { chooseWrapUpCall, setWrapUpRole } from './wrap-up.js';
 import { getDialerConnection, getJourneyWindowDays } from './tenant-settings.js';
 import { scoringQueue, ingestionQueue } from '../jobs/queue.js';
 import type { ResolvedProduct } from './product-resolution.js';
@@ -271,20 +272,7 @@ export async function assembleJourney(params: AssembleJourneyParams): Promise<st
         // Recompute wrap-up across the whole set: a recovered call can be newer
         // than the previous closing call, and the wrap-up drives both the QA
         // write-back's agent and the "who closed this sale" attribution.
-        await tx.query(
-          `UPDATE journey_calls SET role = 'context' WHERE journey_id = $1`,
-          [target.id]
-        );
-        await tx.query(
-          `UPDATE journey_calls SET role = 'wrap_up'
-             WHERE journey_id = $1
-               AND call_id = (
-                 SELECT c.id FROM journey_calls jc JOIN calls c ON c.id = jc.call_id
-                  WHERE jc.journey_id = $1
-                  ORDER BY COALESCE(c.call_date::timestamptz, c.created_at) DESC
-                  LIMIT 1)`,
-          [target.id]
-        );
+        await setWrapUpRole(tx, target.id);
         // Widen the window to cover a recovered call older than the original
         // assembly, so the stored window still describes what was scored. The
         // previous score is deliberately left in place: it stays visible while
@@ -372,13 +360,14 @@ export async function assembleJourney(params: AssembleJourneyParams): Promise<st
         );
       }
 
-      // The most recent call in the window is the wrap-up/close (spec §9's
-      // interim fallback) — everything earlier is context.
-      for (let i = 0; i < calls.length; i++) {
-        const role = i === calls.length - 1 ? 'wrap_up' : 'context';
+      // The wrap-up/close is the latest call long enough to have been one
+      // (chooseWrapUpCall) — everything else is context. Provisional while
+      // durations are unknown: score-journey re-derives it before scoring.
+      const wrapUpId = chooseWrapUpCall(calls)?.id;
+      for (const call of calls) {
         await tx.query(
           'INSERT INTO journey_calls (journey_id, call_id, role) VALUES ($1, $2, $3)',
-          [id, calls[i]!.id, role]
+          [id, call.id, call.id === wrapUpId ? 'wrap_up' : 'context']
         );
       }
       await tx.query('UPDATE calls SET journey_id = $1 WHERE id = ANY($2::uuid[])', [

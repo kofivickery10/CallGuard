@@ -607,14 +607,14 @@ describe('sendFeedback — what gets recorded about the recipient', () => {
       message: null,
     });
 
-    expect(result.recipientSource).toBe('default_last_caller');
+    expect(result.recipientSource).toBe('default_closing_adviser');
     expect(result.suggestedAdviserUserId).toBe('u-1');
 
     const params = await capturedInsert();
     // adviser_user_id ($3) and suggested_adviser_user_id ($11) agree: nobody
     // overrode anything.
     expect(params[2]).toBe('u-1');
-    expect(params[9]).toBe('default_last_caller');
+    expect(params[9]).toBe('default_closing_adviser');
     expect(params[10]).toBe('u-1');
   });
 
@@ -644,8 +644,8 @@ describe('sendFeedback — what gets recorded about the recipient', () => {
       adviserUserId: 'u-1', // exactly what the panel sends when nothing is changed
     });
 
-    expect(result.recipientSource).toBe('default_last_caller');
-    expect((await capturedInsert())[9]).toBe('default_last_caller');
+    expect(result.recipientSource).toBe('default_closing_adviser');
+    expect((await capturedInsert())[9]).toBe('default_closing_adviser');
   });
 
   it('names who was displaced, so "chosen" is a claim an auditor can check', async () => {

@@ -311,8 +311,12 @@ export interface JourneyNote {
 // have several confirmed ones from earlier rounds — which is why an open row
 // wins over any history. A sale fed back, acknowledged, re-scored and fed back
 // again is awaiting confirmation, not acknowledged.
+//
+// Only rounds that reached the adviser the sale is credited to count (or whose
+// recipient a supervisor chose). A round sent to someone the sale no longer
+// credits stays on the record but does not move the sale out of 'not_fed_back'.
 export type FeedbackStatus =
-  // No feedback has ever been sent for this sale.
+  // Nothing has been sent to the adviser this sale is credited to.
   | 'not_fed_back'
   // Sent, and the adviser has not yet confirmed. This is the backlog.
   | 'awaiting'

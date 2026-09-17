@@ -3,6 +3,7 @@ import type { Server } from 'http';
 import jwt from 'jsonwebtoken';
 import { config } from '../config.js';
 import { query, queryOne } from '../db/client.js';
+import { feedbackReachedCloserSql } from '../services/journey-feedback.js';
 
 // The fourth state on the sales list (CG-27): a sale the adviser acknowledged
 // that still owes the firm an answer.
@@ -130,5 +131,44 @@ describe('GET /api/journeys — the awaiting-outcome state', () => {
     const body = await (await list()).json();
     expect(body.feedback_counts.awaiting_remediation).toBe(0);
     expect(body.feedback_counts.oldest_remediation_days).toBeNull();
+  });
+});
+
+// A sale's feedback state has to describe the adviser the sale is credited to.
+// The wrap-up can move after feedback is sent, and a round acknowledged by
+// whoever it went to must not keep the sale out of "Not fed back" while the
+// adviser now credited was never told (Trust Point 69f0b38a: fed back to the
+// 1-minute caller, sold by the 61-minute one).
+describe('GET /api/journeys — feedback counts only once it reached the credited adviser', () => {
+  const occurrences = (haystack: string, needle: string) => haystack.split(needle).length - 1;
+
+  it('rests every branch of the status on a round that reached the credited adviser', async () => {
+    await list();
+    const { sql } = callMatching('oldest_awaiting_days');
+    const status = sql.slice(0, sql.indexOf('AS feedback_status'));
+    // awaiting, awaiting_remediation, acknowledged. A round that reached nobody
+    // the sale credits satisfies none of them, so the sale reads not_fed_back.
+    expect(occurrences(status, feedbackReachedCloserSql('f'))).toBe(3);
+  });
+
+  it('measures the confirmation backlog age off the same rounds', async () => {
+    await list();
+    const { sql } = callMatching('oldest_awaiting_days');
+    expect(sql).toContain(feedbackReachedCloserSql('f2'));
+  });
+
+  it("reads the list's dates and outstanding count off the same rounds as its status", async () => {
+    await list();
+    const { sql } = callMatching('AS feedback_sent_at');
+    const columns = sql.slice(sql.indexOf('AS feedback_status'), sql.indexOf('AS oldest_remediation_days'));
+    // feedback_sent_at, feedback_confirmed_at, open_remediations, oldest_remediation_days
+    expect(occurrences(columns, feedbackReachedCloserSql('f'))).toBe(4);
+  });
+
+  it("counts a supervisor's chosen recipient, and matches on name only where a user id is missing", () => {
+    const sql = feedbackReachedCloserSql('f');
+    expect(sql).toContain("f.recipient_source = 'manual' OR");
+    expect(sql).toContain('THEN f.adviser_user_id = closer.agent_id');
+    expect(sql).toContain('ELSE lower(btrim(f.adviser_name)) = lower(btrim(closer.name))');
   });
 });

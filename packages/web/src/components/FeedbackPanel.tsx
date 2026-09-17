@@ -41,6 +41,8 @@ interface FeedbackState {
     sent_at: string;
     message: string | null;
     confirmed_at: string | null;
+    /** False when it went to someone the sale is no longer credited to. Absent on an older API. */
+    reached_adviser?: boolean;
   } | null;
 }
 
@@ -108,7 +110,9 @@ export function FeedbackHeaderAction({
   const { data } = useFeedbackState(journeyId, canAction);
   if (!canAction || !data) return null;
 
-  const fb = data.feedback;
+  // Feedback to someone the sale is no longer credited to does not settle it
+  // (see FeedbackPanel), so the action offers to feed back again.
+  const fb = data.feedback?.reached_adviser === false ? null : data.feedback;
   const base =
     'inline-flex items-center gap-1.5 px-[18px] py-[9px] rounded-btn text-table-cell font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40';
 
@@ -208,7 +212,8 @@ export function FeedbackPanel({
   // afterwards the header just scrolls here to show the state. An unattributed
   // sale no longer blocks this: choosing a recipient is how it gets sent.
   useEffect(() => {
-    if (composeSignal > 0 && !data?.feedback) setComposing(true);
+    const settled = !!data?.feedback && data.feedback.reached_adviser !== false;
+    if (composeSignal > 0 && !settled) setComposing(true);
   }, [composeSignal, data?.feedback]);
 
   const send = useMutation({
@@ -269,7 +274,13 @@ export function FeedbackPanel({
     );
   }
 
-  const fb = data.feedback;
+  // Feedback that went to somebody the sale is no longer credited to — sent by
+  // default before the sale's wrap-up call moved. It stays on the record and is
+  // named here, but it does not settle this sale: the panel reads as not fed
+  // back and offers to feed back to the adviser credited now. A recipient a
+  // supervisor chose always counts (decided server-side).
+  const earlier = data.feedback?.reached_adviser === false ? data.feedback : null;
+  const fb = earlier ? null : data.feedback;
 
   // Already acknowledged — the terminal, good state.
   if (fb?.confirmed_at) {
@@ -335,6 +346,18 @@ export function FeedbackPanel({
 
   return shell(
     <div className="px-5 py-5">
+      {earlier && (
+        <div className="mb-4 border-l-2 border-review pl-2.5">
+          <p className="text-table-cell text-text-primary">
+            Fed back to {earlier.adviser_name} on {formatDate(earlier.sent_at)}
+            {earlier.confirmed_at ? ', who confirmed it' : ', not yet confirmed'}
+          </p>
+          <p className="text-xs text-text-muted mt-1 leading-relaxed">
+            This sale is now credited to {data.adviser.name}, who has not been fed back. The earlier
+            feedback stays on the record, but it does not count as this sale being fed back.
+          </p>
+        </div>
+      )}
       {blocked ? (
         <div>
           <div className="bg-fail-bg text-fail px-3 py-2 rounded-btn text-table-cell inline-block">

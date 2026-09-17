@@ -50,6 +50,7 @@
 //   tsx src/scripts/rescore-tenant-journeys.ts "Trust Point" --out-of-scope
 //   tsx src/scripts/rescore-tenant-journeys.ts "Trust Point" --out-of-scope --commit
 import { pool, query, queryOne } from '../db/client.js';
+import { chooseWrapUpCall } from '../services/wrap-up.js';
 import {
   transcriptSupportsAttribution,
   type SpeakerIntegrityFlag,
@@ -146,33 +147,37 @@ async function main() {
     [org.id, statuses]
   );
 
-  // The wrap-up each sale is judged from, resolved the same way score-journey
-  // resolves it: the call marked 'wrap_up', falling back to the most recent.
-  // Only loaded when the filter is in play — it is a transcript per sale.
+  // The wrap-up each sale will be judged from, chosen the way score-journey
+  // chooses it before scoring (chooseWrapUpCall) — not the stored role, which
+  // that re-score may move. Only loaded when the filter is in play — it is a
+  // transcript per call.
   const reasons = new Map<string, string>();
   let journeys = matched;
   if (unattributable) {
-    const wrapUps = await query<{
+    const calls = await query<{
       jid: string;
+      id: string;
+      duration_seconds: string | null;
+      call_date: string | null;
+      created_at: string;
       transcript_text: string | null;
       flag: string | null;
     }>(
-      `SELECT jid, transcript_text, flag FROM (
-         SELECT j.id AS jid, c.transcript_text, c.speaker_integrity_flag AS flag,
-                ROW_NUMBER() OVER (
-                  PARTITION BY j.id
-                  ORDER BY (jc.role = 'wrap_up') DESC,
-                           COALESCE(c.call_date::timestamptz, c.created_at) DESC
-                ) AS rn
-           FROM journeys j
-           JOIN journey_calls jc ON jc.journey_id = j.id
-           JOIN calls c ON c.id = jc.call_id
-          WHERE j.organization_id = $1 AND j.id = ANY($2::uuid[])
-            AND c.transcript_text IS NOT NULL
-       ) ranked WHERE rn = 1`,
+      `SELECT j.id AS jid, c.id, c.duration_seconds, c.call_date, c.created_at,
+              c.transcript_text, c.speaker_integrity_flag AS flag
+         FROM journeys j
+         JOIN journey_calls jc ON jc.journey_id = j.id
+         JOIN calls c ON c.id = jc.call_id
+        WHERE j.organization_id = $1 AND j.id = ANY($2::uuid[])`,
       [org.id, matched.map((j) => j.id)]
     );
-    const byId = new Map(wrapUps.map((w) => [w.jid, w]));
+    const callsByJourney = new Map<string, typeof calls>();
+    for (const c of calls) callsByJourney.set(c.jid, [...(callsByJourney.get(c.jid) ?? []), c]);
+    const byId = new Map<string, (typeof calls)[number]>();
+    for (const [jid, set] of callsByJourney) {
+      const wrapUp = chooseWrapUpCall(set);
+      if (wrapUp?.transcript_text) byId.set(jid, wrapUp);
+    }
     journeys = matched.filter((j) => {
       const w = byId.get(j.id);
       // No transcribed wrap-up at all: not this script's problem — such a sale

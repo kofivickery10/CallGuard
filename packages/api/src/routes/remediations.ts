@@ -67,10 +67,17 @@ export function latestConfirmedAskSql(
 export const OPEN_ASK_PREDICATE = `latest_ask.remediation_outcome IS NULL
                                      AND latest_ask.remediation_guidance IS NOT NULL`;
 
-/** "Does this sale have an outstanding ask?", for a query with a journey in scope. */
-export function openRemediationExistsSql(journeyAlias = 'j'): string {
+/**
+ * "Does this sale have an outstanding ask?", for a query with a journey in scope.
+ *
+ * @param feedbackFilter extra predicate over `f`. The sales list passes one so
+ *   its state counts only rounds that reached the sale's credited adviser; the
+ *   backlog here never filters, because an ask is owed by whoever was asked.
+ */
+export function openRemediationExistsSql(journeyAlias = 'j', feedbackFilter?: string): string {
+  const where = `f.journey_id = ${journeyAlias}.id${feedbackFilter ? ` AND ${feedbackFilter}` : ''}`;
   return `EXISTS (
-        SELECT 1 FROM (${latestConfirmedAskSql(`f.journey_id = ${journeyAlias}.id`)}) latest_ask
+        SELECT 1 FROM (${latestConfirmedAskSql(where)}) latest_ask
          WHERE ${OPEN_ASK_PREDICATE})`;
 }
 

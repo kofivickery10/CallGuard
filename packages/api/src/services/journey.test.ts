@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { query, queryOne, withTransaction } from '../db/client.js';
 import { scoringQueue, ingestionQueue } from '../jobs/queue.js';
+import { chooseWrapUpCall, MIN_WRAP_UP_SECONDS } from './wrap-up.js';
 import {
   assembleJourney,
   assessJourneyCoverage,
@@ -205,6 +206,102 @@ describe('assembleJourney — sale scoping', () => {
 // rides the main scoring pass's submit_scores response (services/scoring.ts),
 // so assessJourneyCoverage is a pure function over the raw object that call
 // already returned — no network mock needed here any more.
+describe('chooseWrapUpCall', () => {
+  // A call leg as the dialler webhook stores it: no call_date, timed by arrival.
+  function leg(id: string, minutes: number | null, at: string) {
+    return {
+      id,
+      duration_seconds: minutes === null ? null : Math.round(minutes * 60),
+      call_date: null,
+      created_at: at,
+    };
+  }
+
+  it('skips a sub-minute call made straight after the sales call', () => {
+    // Trust Point b4f8336d: a 26.7-minute sale, then a 0.7-minute leg 84s later.
+    const sale = leg('sale', 26.7, '2026-08-29T11:42:02Z');
+    const trailing = leg('trailing', 0.7, '2026-08-29T11:43:26Z');
+    expect(chooseWrapUpCall([sale, trailing])?.id).toBe('sale');
+  });
+
+  it('keeps the latest substantial call, not the longest, so a later close beats an earlier advice call', () => {
+    const advice = leg('advice', 64.5, '2026-08-12T10:37:18Z');
+    const close = leg('close', 7.6, '2026-08-18T08:57:43Z');
+    const voicemail = leg('voicemail', 0.8, '2026-08-19T15:21:57Z');
+    expect(chooseWrapUpCall([advice, close, voicemail])?.id).toBe('close');
+  });
+
+  it('counts a call of exactly the minimum as substantial', () => {
+    const earlier = leg('earlier', 30, '2026-08-01T10:00:00Z');
+    const boundary = { ...leg('boundary', null, '2026-08-01T11:00:00Z'), duration_seconds: MIN_WRAP_UP_SECONDS };
+    expect(chooseWrapUpCall([earlier, boundary])?.id).toBe('boundary');
+  });
+
+  it('falls back to the longest call when none is long enough', () => {
+    const longer = leg('longer', 1.5, '2026-08-21T10:08:00Z');
+    const later = leg('later', 0.4, '2026-08-24T15:08:14Z');
+    expect(chooseWrapUpCall([longer, later])?.id).toBe('longer');
+  });
+
+  it('does not pass over a later call whose length is not known yet', () => {
+    // An SFTP close still transcribing when scoring runs: holding the sale on it
+    // beats scoring the sale from Monday's advice call alone.
+    const advice = leg('advice', 30, '2026-08-03T10:00:00Z');
+    const untranscribedClose = leg('close', null, '2026-08-06T15:00:00Z');
+    expect(chooseWrapUpCall([advice, untranscribedClose])?.id).toBe('close');
+  });
+
+  it('falls back to the latest call when no duration is known yet', () => {
+    const first = leg('first', null, '2026-08-01T10:00:00Z');
+    const last = leg('last', null, '2026-08-02T10:00:00Z');
+    expect(chooseWrapUpCall([last, first])?.id).toBe('last');
+  });
+
+  it('prefers call_date over created_at, and reads pg numeric durations', () => {
+    const backfilled = { id: 'backfilled', duration_seconds: '900.5', call_date: '2026-08-05T09:00:00Z', created_at: '2026-08-20T09:00:00Z' };
+    const newer = { id: 'newer', duration_seconds: '600', call_date: '2026-08-10T09:00:00Z', created_at: '2026-08-10T09:00:00Z' };
+    expect(chooseWrapUpCall([backfilled, newer])?.id).toBe('newer');
+  });
+
+  it('returns null for no calls', () => {
+    expect(chooseWrapUpCall([])).toBeNull();
+  });
+});
+
+describe('assembleJourney — wrap-up choice', () => {
+  beforeEach(() => {
+    vi.mocked(query).mockReset();
+    vi.mocked(queryOne).mockReset();
+    vi.mocked(withTransaction).mockReset();
+    vi.mocked(scoringQueue.add).mockReset().mockResolvedValue(undefined as never);
+    vi.mocked(ingestionQueue.add).mockReset().mockResolvedValue(undefined as never);
+  });
+
+  it('marks the sales call as the wrap-up, not the short call logged after it', async () => {
+    setupDb({
+      calls: [
+        makeCall('call-sale', { call_date: null, created_at: '2026-08-29T11:42:02Z', duration_seconds: 1602 }),
+        makeCall('call-trailing', { call_date: null, created_at: '2026-08-29T11:43:26Z', duration_seconds: 42 }),
+      ],
+    });
+    const roles = new Map<string, string>();
+    vi.mocked(withTransaction).mockImplementation(async (fn) =>
+      fn({
+        query: vi.fn(async (sql: string, params?: unknown[]) => {
+          if (sql.startsWith('INSERT INTO journey_calls')) roles.set(params![1] as string, params![2] as string);
+          return [];
+        }),
+        queryOne: vi.fn(async (sql: string) => (sql.startsWith('INSERT INTO journeys') ? { id: 'new-journey-id' } : null)),
+      } as never)
+    );
+
+    await assembleJourney({ organizationId: ORG, customerId: CUSTOMER, triggerSource: 'zoho_sale', zohoRecordId: 'sale-1' });
+
+    expect(roles.get('call-sale')).toBe('wrap_up');
+    expect(roles.get('call-trailing')).toBe('context');
+  });
+});
+
 describe('assessJourneyCoverage', () => {
   it('parses a well-formed submit_scores coverage object', () => {
     const raw: RawCoverageSignal = {
