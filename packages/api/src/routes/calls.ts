@@ -43,6 +43,18 @@ import { deriveSeverity, isItemPass, callPasses } from '@callguard/shared';
 export const callRouter = Router();
 callRouter.use(authenticate);
 
+// The calls list's columns. Deliberately excludes transcript_text,
+// transcript_raw and the storage pointers (file_key, recording_pointer): see the
+// list route below.
+const CALL_LIST_COLUMNS = [
+  'id', 'organization_id', 'file_name', 'duration_seconds', 'status', 'error_message',
+  'agent_id', 'agent_name', 'customer_id', 'customer_phone', 'call_date', 'tags',
+  'external_id', 'ingestion_source', 'scorecard_id', 'journey_id', 'is_exemplar',
+  'reviewed_at', 'created_at', 'updated_at',
+]
+  .map((column) => `c.${column}`)
+  .join(', ');
+
 // List calls (paginated, role-scoped)
 callRouter.get('/', async (req, res, next) => {
   try {
@@ -84,8 +96,15 @@ callRouter.get('/', async (req, res, next) => {
     // desyncs `total` from the returned row count, and would double-count it
     // in any aggregate built on top of this query. The LATERAL join picks
     // only the most recent score per call.
+    // Only the columns a list row needs. This used to be `c.*`, which put every
+    // call's transcript_text and the raw transcription payload (transcript_raw,
+    // every word with its timings) into each page — measured on a live tenant at
+    // 27.6 MB for one page of 20 transcribed calls. A list has no business
+    // carrying a transcript, and a column added to calls later must not start
+    // travelling with it by default. The full record is GET /:id, behind the
+    // transcript-access gate.
     const calls = await query(
-      `SELECT c.*, cs.overall_score, cs.pass, u.name as resolved_agent_name
+      `SELECT ${CALL_LIST_COLUMNS}, cs.overall_score, cs.pass, u.name as resolved_agent_name
        FROM calls c
        LEFT JOIN LATERAL (
          SELECT overall_score, pass FROM call_scores
@@ -100,12 +119,8 @@ callRouter.get('/', async (req, res, next) => {
       [...params, limit, offset]
     );
 
-    // Same gate as the detail route. The list selects c.*, so without this every
-    // page of the calls list would hand out twenty full transcripts.
-    const access = await resolveTranscriptAccess(req.user!.organizationId, req.user!.role);
-
     res.json({
-      data: calls.map((c) => withheldTranscript(c as Record<string, unknown>, access)),
+      data: calls,
       total: parseInt(countResult?.count || '0'),
       page,
       limit,
