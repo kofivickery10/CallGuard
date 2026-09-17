@@ -2,6 +2,7 @@ import type { ItemResult, BranchSource } from './scorecard.js';
 import type { CallStatus } from './call.js';
 import type { CallCoaching } from './coaching.js';
 import type { ProductSource, JourneyProduct } from './product.js';
+import type { BreachSeverity } from './breaches.js';
 
 // 'skipped' — the CRM stage marks this as a sale that did not complete (an NTU
 // state), so it is deliberately not scored. Distinct from 'failed', which means
@@ -211,6 +212,130 @@ export interface JourneyListItem extends Journey {
   // about in July and dropped from August's re-scored round is still open from
   // July, while the row's own confirmed_at says August.
   oldest_remediation_days: number | null;
+  // What the sale's own checkpoints say, counted LIVE off journey_item_scores
+  // rather than read from the latest journey_score_runs row.
+  //
+  // The run's items_failed / items_manual_review are a frozen record of what
+  // that run produced; resolving a held checkpoint rewrites the item score and
+  // recomputes the sale, and leaves the run untouched. Reading the run would
+  // therefore keep offering checkpoints that have already been reviewed, and
+  // (on an older sale re-scored since) miss ones that have not.
+  //
+  // Retired checkpoints (scorecard_items.archived_at) are excluded, so this
+  // agrees with the review queue about what is actually reviewable.
+  items_failed: number;
+  items_to_review: number;
+  // The worst severity among the sale's FAILED checkpoints, through
+  // deriveSeverity — a scorecard need not set one per checkpoint, and the pass
+  // gate and breach register both fall back to the item's weight. Null when
+  // nothing failed.
+  worst_failed_severity: BreachSeverity | null;
+  // Whole days the sale's next step has been waiting: since the feedback was
+  // sent while it is awaiting confirmation, since the acknowledgement while an
+  // outcome is owed, and since the sale was scored while it is waiting on a
+  // reviewer or on feedback being sent. Null where nothing is waiting.
+  //
+  // Computed server-side because the list sorts on it, and the number a row
+  // shows must be the number it was ordered by.
+  waiting_days: number | null;
+}
+
+// ── The sales list's work-state axis ─────────────────────────────────────────
+
+// What a sale is waiting for, phrased as the person who has to act. Replaced
+// the job-status tabs (pending/scoring/scored/failed/skipped), which described
+// the pipeline rather than the work and could not say whether a row needed
+// attention: a sale can read 100% and still hold four checkpoints nobody has
+// reviewed.
+//
+// Deliberately NOT mutually exclusive. 'needs_me' and 'awaiting_adviser' can
+// both hold the same sale (a held checkpoint on a sale already fed back), which
+// is why each tab carries its own count instead of a share of one total — a
+// count has to say what clicking it returns.
+export type JourneyWorkState =
+  // Scored, and the next move is the compliance manager's: a checkpoint is
+  // still held for a person to decide, or there are findings nobody has fed
+  // back to the adviser.
+  | 'needs_me'
+  // Fed back, and the adviser has not confirmed.
+  | 'awaiting_adviser'
+  // Acknowledged, and the firm is still owed the work behind a finding.
+  | 'awaiting_outcome'
+  // Scored, acknowledged, nothing held for review and nothing owed.
+  | 'done'
+  // The CRM stage marks the sale as not taken up, so it is deliberately not
+  // scored (migration 071) — j.status = 'skipped'.
+  | 'not_taken_up'
+  // Still in the pipeline, or its scoring broke: pending, scoring and failed
+  // together. Not a compliance outcome, which is why they share one tab.
+  | 'processing';
+
+export type JourneyWorkTab = JourneyWorkState | 'all';
+
+export const JOURNEY_WORK_TABS: JourneyWorkTab[] = [
+  'needs_me',
+  'awaiting_adviser',
+  'awaiting_outcome',
+  'done',
+  'not_taken_up',
+  'processing',
+  'all',
+];
+
+export const JOURNEY_WORK_TAB_LABELS: Record<JourneyWorkTab, string> = {
+  needs_me: 'Needs me',
+  awaiting_adviser: 'Awaiting adviser',
+  awaiting_outcome: 'Awaiting outcome',
+  done: 'Done',
+  not_taken_up: 'Not taken up',
+  processing: 'Processing',
+  all: 'All',
+};
+
+// How the sales list is ordered. 'waiting' is JourneyListItem.waiting_days —
+// how long the next step has been outstanding.
+export type JourneyListSort = 'sale_date' | 'score' | 'waiting';
+export const JOURNEY_LIST_SORTS: JourneyListSort[] = ['sale_date', 'score', 'waiting'];
+
+// What is outstanding ACROSS THE FIRM, not under the list's current filters.
+// The strip above the list is a standing figure a principal asks for ("how many
+// advisers still haven't confirmed?"), so it must not change when a tab is
+// clicked — the two banners it replaced disappeared on the very click that
+// filtered to them.
+export interface JourneyOutstanding {
+  awaiting_confirmation: number;
+  // Whole days since the oldest unconfirmed round was sent. Null with none.
+  oldest_awaiting_days: number | null;
+  awaiting_outcome: number;
+  // Whole days since the oldest outstanding ask was acknowledged.
+  oldest_outcome_days: number | null;
+  // Checkpoints on SALES still held for a person, and how many sales they sit
+  // across. The review queue also holds per-call checkpoints, so its own total
+  // can be larger than this one.
+  review_checkpoints: number;
+  review_sales: number;
+}
+
+export interface JourneyListResponse {
+  data: JourneyListItem[];
+  total: number;
+  page: number;
+  limit: number;
+  // The three figures below are the SALES REGISTER's summary, and they are
+  // omitted from a request scoped to one customer (?customer_id=) — the
+  // customer profile asks this endpoint for one person's sales, and neither
+  // "how many sales in the firm need me" nor a firm-wide backlog is an answer
+  // to that question. They are org-wide scans, so charging that page for them
+  // would be paying for an answer it does not show.
+
+  // One count per work-state tab, under every OTHER active filter, so each tab
+  // says how many sales clicking it would return.
+  tab_counts?: Record<JourneyWorkTab, number>;
+  // Where the firm stands, across every sale (see JourneyOutstanding).
+  outstanding?: JourneyOutstanding;
+  // The same acknowledgement figures, org-wide, in the shape the feedback loop
+  // has used since CG-11.
+  feedback_counts?: FeedbackStatusSummary;
 }
 
 // A checkpoint awaiting human review (item_type='manual' or a consent gate

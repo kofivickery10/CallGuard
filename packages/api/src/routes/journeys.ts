@@ -5,7 +5,7 @@ import { AppError } from '../middleware/errors.js';
 import { assembleJourney } from '../services/journey.js';
 import { recordAuditEvent } from '../services/audit.js';
 import { feedbackReachedCloserSql } from '../services/journey-feedback.js';
-import { getScoringSettings } from '../services/tenant-settings.js';
+import { getScoringSettings, orgHasFeature } from '../services/tenant-settings.js';
 import {
   FEEDBACK_STATUS_SQL,
   FEEDBACK_SENT_AT_SQL,
@@ -15,13 +15,24 @@ import {
 } from '../db/feedback-status.js';
 import { pushJourneyScoreUpdate } from '../services/score-writeback.js';
 import { evaluateAlertsForResolvedItem } from '../services/alert-evaluator.js';
-import { deriveSeverity, isItemPass, callPasses } from '@callguard/shared';
+import { normalizePhone } from '../services/ingestion.js';
+import {
+  deriveSeverity,
+  isItemPass,
+  callPasses,
+  JOURNEY_WORK_TABS,
+  JOURNEY_LIST_SORTS,
+} from '@callguard/shared';
 import type {
   Journey,
   JourneyItemScore,
   JourneyWithDetail,
   JourneyListItem,
+  JourneyListResponse,
+  JourneyListSort,
+  JourneyOutstanding,
   JourneyStatus,
+  JourneyWorkTab,
   JourneyProduct,
   JourneyScoreRun,
   JourneyNote,
@@ -107,26 +118,190 @@ export function buildWhere(
   return { sql, params };
 }
 
-// GET /api/journeys — paginated list of journeys for the org, newest first,
-// optionally filtered by status or customer. This is the primary discovery
-// surface for journey-mode tenants (the default scoring_mode).
+// ── The work-state axis on the sales list ────────────────────────────────────
+//
+// What a sale is WAITING FOR, phrased as the person who has to act. It replaced
+// the job-status tabs (pending / scoring / scored / failed / skipped), which
+// described the pipeline rather than the work: under them a row could not say
+// whether it needed attention, and a sale reading 100% could hold four
+// checkpoints nobody had ruled on — 130 such checkpoints at the main client,
+// invisible on this screen, because a held checkpoint is left out of the score
+// entirely.
+
+// A sale still holding a checkpoint for a person to decide. Retired checkpoints
+// are excluded exactly as the review queue excludes them (routes/review.ts):
+// a strip offering "130 checkpoints to review" must not send a reviewer to a
+// queue holding 128.
+const UNREVIEWED_CHECKPOINT_SQL = `EXISTS (
+        SELECT 1 FROM journey_item_scores ris
+          JOIN scorecard_items rsi ON rsi.id = ris.scorecard_item_id
+         WHERE ris.journey_id = j.id AND ris.result = 'manual_review'
+           AND rsi.archived_at IS NULL)`;
+
+// A sale with something the AI marked as failed. "Findings" rather than
+// breaches: the breaches table is written per scoring run and cleared on a
+// re-score, while this is the sale's own current checkpoint set — what the row
+// shows, and what an adviser would be fed back.
+const FAILED_CHECKPOINT_SQL = `EXISTS (
+        SELECT 1 FROM journey_item_scores fis
+          JOIN scorecard_items fsi ON fsi.id = fis.scorecard_item_id
+         WHERE fis.journey_id = j.id AND fis.result = 'fail'
+           AND fsi.archived_at IS NULL)`;
+
+// The four facts a work state is read off.
+//
+// Named rather than inlined because the same definition has to be evaluated in
+// two different contexts: per row in the list's WHERE (where they are
+// correlated subqueries on `j`) and once per row in the grouped count (where
+// they arrive as columns of a subselect). One definition, two renderings — the
+// same reason buildWhere renumbers instead of pre-numbering, and the reason a
+// tab and its own count can never come to mean different things.
+export interface WorkStateFacts {
+  status: string;
+  feedbackStatus: string;
+  unreviewed: string;
+  findings: string;
+}
+
+// Rendered against the journeys table itself.
+export const WORK_STATE_ON_JOURNEY: WorkStateFacts = {
+  status: 'j.status',
+  feedbackStatus: FEEDBACK_STATUS_SQL,
+  unreviewed: UNREVIEWED_CHECKPOINT_SQL,
+  findings: FAILED_CHECKPOINT_SQL,
+};
+
+// Rendered against the count query's subselect, which computes each fact once
+// per row instead of once per predicate.
+const WORK_STATE_ON_FACTS: WorkStateFacts = {
+  status: 'j.status',
+  feedbackStatus: 'j.feedback_status',
+  unreviewed: 'j.has_unreviewed',
+  findings: 'j.has_findings',
+};
+
+// The predicate behind one tab. Overlapping by design: a held checkpoint on a
+// sale already fed back is both 'needs_me' and 'awaiting_adviser', so the tabs
+// carry a count each rather than shares of one total — and "Show the 6" in the
+// strip above lands on a tab showing exactly those 6.
+export function workStateSql(tab: JourneyWorkTab, f: WorkStateFacts): string {
+  switch (tab) {
+    // Scored, and the next move is the compliance manager's.
+    case 'needs_me':
+      return `(${f.status} = 'scored' AND (${f.unreviewed}
+                OR (${f.findings} AND ${f.feedbackStatus} = 'not_fed_back')))`;
+    case 'awaiting_adviser':
+      return `${f.feedbackStatus} = 'awaiting'`;
+    case 'awaiting_outcome':
+      return `${f.feedbackStatus} = 'awaiting_remediation'`;
+    // 'acknowledged' already means nothing is owed (CG-27 split that out), so
+    // the only thing left to exclude is a checkpoint still held for a person.
+    case 'done':
+      return `(${f.status} = 'scored' AND ${f.feedbackStatus} = 'acknowledged'
+                AND NOT ${f.unreviewed})`;
+    // NTU: the CRM stage marks the sale as not taken up, so it is deliberately
+    // never scored (migration 071) — the same meaning the old "Not taken up"
+    // tab carried.
+    case 'not_taken_up':
+      return `${f.status} = 'skipped'`;
+    // Not a compliance outcome, which is why the three share one tab. 'failed'
+    // belongs here rather than in a red tab of its own: scoring broke, the sale
+    // did not fail compliance.
+    case 'processing':
+      return `${f.status} IN ('pending', 'scoring', 'failed')`;
+    case 'all':
+      return 'TRUE';
+  }
+}
+
+// How long the sale's next step has been waiting, in whole days.
+//
+// Computed server-side because the list sorts on it: the number a row shows has
+// to be the number it was ordered by. Which clock it is depends on the step —
+// waiting to be acknowledged runs from the send, waiting for the work runs from
+// the acknowledgement (CG-27), and waiting on the firm itself (a held
+// checkpoint, or findings nobody has sent) runs from when the sale was scored.
+// Null where nothing is waiting, so those rows sort last either way.
+const WAITING_DAYS_SQL = `CASE
+        WHEN ${FEEDBACK_STATUS_SQL} = 'awaiting'
+          THEN FLOOR(EXTRACT(EPOCH FROM (now() - (${FEEDBACK_SENT_AT_SQL}))) / 86400)::int
+        WHEN ${FEEDBACK_STATUS_SQL} = 'awaiting_remediation'
+          THEN ${OLDEST_REMEDIATION_DAYS_SQL}
+        WHEN ${workStateSql('needs_me', WORK_STATE_ON_JOURNEY)}
+          THEN FLOOR(EXTRACT(EPOCH FROM (now() - COALESCE(j.scored_at, ${SALE_DATE_SQL}))) / 86400)::int
+        ELSE NULL
+      END`;
+
+// What each sort orders by, as OUTPUT COLUMNS of the list query rather than
+// repeated expressions — waiting_days alone is several correlated subqueries,
+// and sorting on a second copy of it could order the list by something other
+// than the number on screen.
+const SORT_COLUMNS: Record<JourneyListSort, string> = {
+  sale_date: 'sale_date',
+  score: 'overall_score',
+  waiting: 'waiting_days',
+};
+
+// Worst-first, for picking the severity a row leads with.
+const SEVERITY_ORDER: BreachSeverity[] = ['critical', 'high', 'medium', 'low'];
+
+// GET /api/journeys — the sales register: one page of sales for the org, the
+// count behind every work-state tab, and what is outstanding across the firm.
+// This is the primary discovery surface for journey-mode tenants (the default
+// scoring_mode).
 journeysRouter.get('/', requireOrgView, async (req, res, next) => {
   try {
+    const orgId = req.user!.organizationId;
     const page = Math.max(1, parseInt(req.query.page as string) || 1);
     const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
     const offset = (page - 1) * limit;
 
+    // score_only gates the VALUE, not just its display (services/
+    // tenant-settings.ts): the verdict must not ship in the payload to a tenant
+    // that is never shown one, and a filter on the verdict must not let them
+    // infer it either.
+    const scoreOnly = await orgHasFeature(orgId, 'score_only');
+
     const filters: JourneyFilter[] = [
-      { key: 'org', sql: 'j.organization_id = ?', params: [req.user!.organizationId] },
+      { key: 'org', sql: 'j.organization_id = ?', params: [orgId] },
     ];
+
+    // The work-state tab (see workStateSql). Keyed, so the per-tab counts below
+    // can rebuild the same WHERE without it — each tab should say how many
+    // sales you would get by clicking it, which means every OTHER filter
+    // applies but the tab itself does not.
+    const tabParam = typeof req.query.tab === 'string' && req.query.tab ? req.query.tab : 'all';
+    if (!(JOURNEY_WORK_TABS as string[]).includes(tabParam)) {
+      throw new AppError(
+        400,
+        `Unknown tab "${tabParam}" — expected one of ${JOURNEY_WORK_TABS.join(', ')}`
+      );
+    }
+    const tab = tabParam as JourneyWorkTab;
+    if (tab !== 'all') {
+      filters.push({ key: 'tab', sql: workStateSql(tab, WORK_STATE_ON_JOURNEY), params: [] });
+    }
+
+    // Customer name or phone. Phone-ish input is normalised to the stored
+    // E.164 form first, exactly as the customer search does (routes/
+    // customers.ts) — a raw match on "07700" would never find "+447700…".
+    const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+    if (q) {
+      const digits = q.replace(/[\s()-]/g, '');
+      const phone = /^\+?\d[\d\s()-]*$/.test(q) ? (normalizePhone(digits) ?? digits) : q;
+      filters.push({
+        key: 'q',
+        sql: `EXISTS (SELECT 1 FROM customers qc
+                       WHERE qc.id = j.customer_id
+                         AND (qc.name ILIKE ? OR qc.phone_normalized ILIKE ?))`,
+        params: [`%${q}%`, `%${phone}%`],
+      });
+    }
+
+    // The job status. No longer a tab (see the work states above), kept as a
+    // filter for anything already linking here by it — including
+    // ?status=skipped, which returned everything for as long as it was omitted.
     const status = req.query.status as string | undefined;
-    // 'skipped' included: NTU sales are a real, filterable state (migration
-    // 071). Omitting it here made ?status=skipped silently return everything,
-    // which reads as a broken filter rather than an unsupported one.
-    // Keyed rather than baked in, so the per-status counts below can rebuild
-    // the same WHERE without it — each tab should show how many sales you would
-    // get by clicking it, which means every OTHER filter applies but the status
-    // itself does not.
     if (status && ['pending', 'scoring', 'scored', 'failed', 'skipped'].includes(status)) {
       filters.push({ key: 'status', sql: 'j.status = ?', params: [status as JourneyStatus] });
     }
@@ -135,14 +310,17 @@ journeysRouter.get('/', requireOrgView, async (req, res, next) => {
     }
     // Branch, so a compliance manager can look at (say) every referred sale.
     // Validated against what is actually in use rather than a fixed list —
-    // branches are per-tenant scorecard configuration, not a system enum.
+    // branches are per-tenant scorecard configuration, not a system enum. The
+    // stored value is what the filter sends; rendering "on_risk" as "On risk"
+    // is the UI's business.
     if (typeof req.query.branch === 'string' && req.query.branch.trim()) {
       filters.push({ key: 'branch', sql: 'j.branch = ?', params: [req.query.branch.trim()] });
     }
     // Pass/fail. Only meaningful on a scored sale — pass is NULL until then, so
-    // this implicitly narrows to scored without needing both filters set.
+    // this implicitly narrows to scored without needing both filters set. Not
+    // honoured at all under score_only, where the verdict is withheld.
     const result = typeof req.query.result === 'string' ? req.query.result : '';
-    if (result === 'pass' || result === 'fail') {
+    if (!scoreOnly && (result === 'pass' || result === 'fail')) {
       filters.push({
         key: 'result',
         sql: `j.pass IS ${result === 'pass' ? 'TRUE' : 'FALSE'}`,
@@ -188,85 +366,70 @@ journeysRouter.get('/', requireOrgView, async (req, res, next) => {
         params: [agent],
       });
     }
-    // Where the sale sits in the acknowledgement loop (CG-11). Keyed for the
-    // same reason the status filter is: the per-state counts below apply every
-    // OTHER filter but not this one, so each tab shows how many sales clicking
-    // it would return.
+    // Where the sale sits in the acknowledgement loop (CG-11). Superseded on
+    // screen by the work-state tabs, kept so existing links keep working.
     const feedback = typeof req.query.feedback === 'string' ? req.query.feedback : '';
     if (['not_fed_back', 'awaiting', 'awaiting_remediation', 'acknowledged'].includes(feedback)) {
       filters.push({ key: 'feedback', sql: `${FEEDBACK_STATUS_SQL} = ?`, params: [feedback] });
     }
 
+    // Sorting. Rejected rather than quietly ignored: a list ordered by
+    // something other than what its URL asks for is a list you cannot trust or
+    // send to anybody. (The legacy status/feedback params above stay lenient,
+    // so nothing already linking here breaks.)
+    const sortParam =
+      typeof req.query.sort === 'string' && req.query.sort ? req.query.sort : 'sale_date';
+    if (!(JOURNEY_LIST_SORTS as string[]).includes(sortParam)) {
+      throw new AppError(
+        400,
+        `Unknown sort "${sortParam}" — expected one of ${JOURNEY_LIST_SORTS.join(', ')}`
+      );
+    }
+    const sort = sortParam as JourneyListSort;
+    const dirParam = typeof req.query.dir === 'string' && req.query.dir ? req.query.dir : 'desc';
+    if (dirParam !== 'asc' && dirParam !== 'desc') {
+      throw new AppError(400, `Unknown sort direction "${dirParam}" — expected asc or desc`);
+    }
+    const direction = dirParam === 'asc' ? 'ASC' : 'DESC';
+
     const all = buildWhere(filters);
-    const withoutStatus = buildWhere(filters, 'status');
-    const withoutFeedback = buildWhere(filters, 'feedback');
+    const withoutTab = buildWhere(filters, 'tab');
 
     const countRow = await queryOne<{ count: string }>(
       `SELECT COUNT(*)::text AS count FROM journeys j WHERE ${all.sql}`,
       all.params
     );
 
-    // One grouped scan rather than a query per tab.
-    const statusRows = await query<{ status: JourneyStatus; count: string }>(
-      `SELECT j.status, COUNT(*)::text AS count FROM journeys j
-        WHERE ${withoutStatus.sql} GROUP BY j.status`,
-      withoutStatus.params
-    );
-    const counts = statusRows.reduce<Record<string, number>>(
-      (acc, r) => ({ ...acc, [r.status]: parseInt(r.count, 10) }),
-      {}
-    );
-    counts.all = Object.values(counts).reduce((a, b) => a + b, 0);
+    // The tab counts and the outstanding figures are the REGISTER's summary,
+    // and a request for one customer's sales is not the register: the customer
+    // profile reads this endpoint for one person, and both figures are org-wide
+    // scans it would pay for and never show.
+    const summarise = !req.query.customer_id;
 
-    // The acknowledgement backlog (CG-11): how many sales sit in each state,
-    // and how long the oldest outstanding one has been waiting.
-    //
-    // One scan, grouped, rather than three counts and a fourth query for the
-    // age. max(now() - sent_at) is taken over the OPEN rows only — a confirmed
-    // round is not waiting for anything, and including it would report a
-    // backlog age for a tenant with nothing outstanding.
-    const feedbackRows = await query<{
-      feedback_status: FeedbackStatus;
-      count: string;
-      oldest_awaiting_days: string | null;
-      oldest_remediation_days: string | null;
-    }>(
-      `SELECT ${FEEDBACK_STATUS_SQL} AS feedback_status,
-              COUNT(*)::text AS count,
-              MAX(CASE WHEN NOT EXISTS (
-                    SELECT 1 FROM journey_feedback f2
-                     WHERE f2.journey_id = j.id AND f2.confirmed_at IS NULL
-                       AND ${feedbackReachedCloserSql('f2')})
-                  THEN NULL
-                  ELSE FLOOR(EXTRACT(EPOCH FROM (now() - (${FEEDBACK_SENT_AT_SQL}))) / 86400)
-              END)::text AS oldest_awaiting_days,
-              -- The same figure for the other backlog (CG-27). Taken over every
-              -- row in the group rather than only the 'awaiting_remediation'
-              -- ones for the same reason as above: NULL everywhere else, so the
-              -- max is the group's answer where the group has one.
-              MAX(${OLDEST_REMEDIATION_DAYS_SQL})::text AS oldest_remediation_days
-         FROM journeys j
-        WHERE ${withoutFeedback.sql}
-        GROUP BY 1`,
-      withoutFeedback.params
-    );
-    const feedbackCounts: FeedbackStatusSummary = {
-      not_fed_back: 0,
-      awaiting: 0,
-      awaiting_remediation: 0,
-      acknowledged: 0,
-      oldest_awaiting_days: null,
-      oldest_remediation_days: null,
-    };
-    for (const row of feedbackRows) {
-      feedbackCounts[row.feedback_status] = parseInt(row.count, 10);
-      if (row.feedback_status === 'awaiting' && row.oldest_awaiting_days != null) {
-        feedbackCounts.oldest_awaiting_days = parseInt(row.oldest_awaiting_days, 10);
-      }
-      if (row.feedback_status === 'awaiting_remediation' && row.oldest_remediation_days != null) {
-        feedbackCounts.oldest_remediation_days = parseInt(row.oldest_remediation_days, 10);
-      }
-    }
+    // One count per tab, in one pass. The facts each predicate is written over
+    // are computed once per row in the subselect and filtered over, rather than
+    // re-evaluated per tab: FEEDBACK_STATUS_SQL alone is three correlated
+    // EXISTS, and four tabs asking it separately would be four times the work
+    // for the same answer.
+    const tabCountRow = summarise
+      ? await queryOne<Record<string, string | null>>(
+          `SELECT ${JOURNEY_WORK_TABS.map(
+            (t) => `COUNT(*) FILTER (WHERE ${workStateSql(t, WORK_STATE_ON_FACTS)})::text AS tab_${t}`
+          ).join(',\n              ')}
+         FROM (SELECT j.status,
+                      ${FEEDBACK_STATUS_SQL} AS feedback_status,
+                      ${UNREVIEWED_CHECKPOINT_SQL} AS has_unreviewed,
+                      ${FAILED_CHECKPOINT_SQL} AS has_findings
+                 FROM journeys j
+                WHERE ${withoutTab.sql}) j`,
+          withoutTab.params
+        )
+      : null;
+    const tabCounts = summarise
+      ? (Object.fromEntries(
+          JOURNEY_WORK_TABS.map((t) => [t, parseInt(tabCountRow?.[`tab_${t}`] ?? '0', 10) || 0])
+        ) as Record<JourneyWorkTab, number>)
+      : undefined;
 
     const rows = await query<JourneyListItem>(
       `SELECT j.*,
@@ -283,6 +446,9 @@ journeysRouter.get('/', requireOrgView, async (req, res, next) => {
               -- What is still owed on this sale, and since when (CG-27).
               ${OPEN_REMEDIATIONS_SQL} AS open_remediations,
               ${OLDEST_REMEDIATION_DAYS_SQL} AS oldest_remediation_days,
+              -- How long the next step has been waiting, and what the list can
+              -- be ordered by (see WAITING_DAYS_SQL).
+              ${WAITING_DAYS_SQL} AS waiting_days,
               cust.name AS customer_name,
               cust.phone_normalized AS customer_phone,
               sc.name AS scorecard_name,
@@ -320,28 +486,176 @@ journeysRouter.get('/', requireOrgView, async (req, res, next) => {
             LIMIT 1
          ) ja ON TRUE
         WHERE ${all.sql}
-        -- By when the sale happened, so a re-score never moves a row and a
-        -- backfill lands in its own history rather than on top of today's.
-        -- created_at breaks the tie for two sales closed on the same call.
-        ORDER BY ${SALE_DATE_SQL} DESC, j.created_at DESC
+        -- The chosen sort, then by when the sale happened, so a re-score never
+        -- moves a row and a backfill lands in its own history rather than on
+        -- top of today's. created_at breaks the tie for two sales closed on the
+        -- same call. NULLS LAST on the sort key: a sale with no score, or with
+        -- nothing waiting, has no place at the top of either ordering.
+        ORDER BY ${SORT_COLUMNS[sort]} ${direction} NULLS LAST,
+                 sale_date DESC, j.created_at DESC
         LIMIT $${all.params.length + 1} OFFSET $${all.params.length + 2}`,
       [...all.params, limit, offset]
     );
 
+    // What this page's sales actually found, read LIVE off their checkpoints.
+    //
+    // Not from journey_score_runs.items_failed / items_manual_review: those are
+    // a frozen record of one run, and resolving a held checkpoint rewrites the
+    // item score and the sale's total while leaving the run untouched. Reading
+    // the run would keep offering checkpoints that had already been reviewed —
+    // and "4 to review" that is really 0 teaches a reviewer to ignore the
+    // column, which is how 130 real ones went unnoticed in the first place.
+    //
+    // Keyed on this page's ids rather than joined into the query above, so it
+    // touches 50 sales' worth of checkpoints and not the whole firm's.
+    const ids = rows.map((r) => r.id);
+    const checkpointRows = ids.length
+      ? await query<{ journey_id: string; result: string; severity: string | null; weight: string }>(
+          `SELECT jis.journey_id, jis.result, si.severity, si.weight::text AS weight
+             FROM journey_item_scores jis
+             JOIN scorecard_items si ON si.id = jis.scorecard_item_id
+            WHERE jis.journey_id = ANY($1::uuid[])
+              AND jis.result IN ('fail', 'manual_review')
+              -- Retired checkpoints drop out, as they do in the review queue.
+              AND si.archived_at IS NULL`,
+          [ids]
+        )
+      : [];
+    const findings = new Map<
+      string,
+      { items_failed: number; items_to_review: number; worst_failed_severity: BreachSeverity | null }
+    >();
+    for (const row of checkpointRows) {
+      const f = findings.get(row.journey_id) ?? {
+        items_failed: 0,
+        items_to_review: 0,
+        worst_failed_severity: null as BreachSeverity | null,
+      };
+      if (row.result === 'manual_review') {
+        f.items_to_review++;
+      } else {
+        f.items_failed++;
+        // The severity the sale was actually judged by: a scorecard need not
+        // set one per checkpoint, and scoring, the pass gate and the breach
+        // register all fall back to the item's weight (deriveSeverity), exactly
+        // as the sale page does.
+        const severity = deriveSeverity(Number(row.weight), row.severity);
+        if (
+          f.worst_failed_severity == null ||
+          SEVERITY_ORDER.indexOf(severity) < SEVERITY_ORDER.indexOf(f.worst_failed_severity)
+        ) {
+          f.worst_failed_severity = severity;
+        }
+      }
+      findings.set(row.journey_id, f);
+    }
+
     // SELECT j.* pulls the server-only trigger_context (raw Zoho payload, can
     // carry PII) — strip it from every row before responding.
     const data = (rows as Array<JourneyListItem & { trigger_context?: unknown }>).map(
-      ({ trigger_context: _t, ...r }) => r as JourneyListItem
+      ({ trigger_context: _t, ...r }) => ({
+        ...(r as JourneyListItem),
+        // Withheld under score_only, not merely hidden by the client.
+        pass: scoreOnly ? null : r.pass,
+        items_failed: findings.get(r.id)?.items_failed ?? 0,
+        items_to_review: findings.get(r.id)?.items_to_review ?? 0,
+        worst_failed_severity: findings.get(r.id)?.worst_failed_severity ?? null,
+      })
     );
 
-    res.json({
+    // The acknowledgement backlog (CG-11) and the remediation backlog behind it
+    // (CG-27), ACROSS THE FIRM — deliberately not under the list's filters.
+    // This is the standing figure a principal asks for, and the two banners it
+    // replaced vanished on the very click that filtered to them.
+    //
+    // One scan, grouped, rather than three counts and a fourth query for the
+    // age. max(now() - sent_at) is taken over the OPEN rows only — a confirmed
+    // round is not waiting for anything, and including it would report a
+    // backlog age for a tenant with nothing outstanding.
+    const feedbackRows = !summarise
+      ? []
+      : await query<{
+      feedback_status: FeedbackStatus;
+      count: string;
+      oldest_awaiting_days: string | null;
+      oldest_remediation_days: string | null;
+    }>(
+      `SELECT ${FEEDBACK_STATUS_SQL} AS feedback_status,
+              COUNT(*)::text AS count,
+              MAX(CASE WHEN NOT EXISTS (
+                    SELECT 1 FROM journey_feedback f2
+                     WHERE f2.journey_id = j.id AND f2.confirmed_at IS NULL
+                       AND ${feedbackReachedCloserSql('f2')})
+                  THEN NULL
+                  ELSE FLOOR(EXTRACT(EPOCH FROM (now() - (${FEEDBACK_SENT_AT_SQL}))) / 86400)
+              END)::text AS oldest_awaiting_days,
+              -- The same figure for the other backlog (CG-27). Taken over every
+              -- row in the group rather than only the 'awaiting_remediation'
+              -- ones for the same reason as above: NULL everywhere else, so the
+              -- max is the group's answer where the group has one.
+              MAX(${OLDEST_REMEDIATION_DAYS_SQL})::text AS oldest_remediation_days
+         FROM journeys j
+        WHERE j.organization_id = $1
+        GROUP BY 1`,
+      [orgId]
+    );
+    const feedbackCounts: FeedbackStatusSummary = {
+      not_fed_back: 0,
+      awaiting: 0,
+      awaiting_remediation: 0,
+      acknowledged: 0,
+      oldest_awaiting_days: null,
+      oldest_remediation_days: null,
+    };
+    for (const row of feedbackRows) {
+      feedbackCounts[row.feedback_status] = parseInt(row.count, 10);
+      if (row.feedback_status === 'awaiting' && row.oldest_awaiting_days != null) {
+        feedbackCounts.oldest_awaiting_days = parseInt(row.oldest_awaiting_days, 10);
+      }
+      if (row.feedback_status === 'awaiting_remediation' && row.oldest_remediation_days != null) {
+        feedbackCounts.oldest_remediation_days = parseInt(row.oldest_remediation_days, 10);
+      }
+    }
+
+    // The review backlog, across the firm: the figure this screen never showed.
+    // Sale checkpoints only — the review queue also holds per-call ones, so its
+    // own total can be larger, which is why the strip links to it rather than
+    // claiming to be it.
+    const reviewRow = !summarise
+      ? null
+      : await queryOne<{ checkpoints: string | null; sales: string | null }>(
+      `SELECT COUNT(*)::text AS checkpoints,
+              COUNT(DISTINCT jis.journey_id)::text AS sales
+         FROM journey_item_scores jis
+         JOIN journeys j ON j.id = jis.journey_id
+         JOIN scorecard_items si ON si.id = jis.scorecard_item_id
+        WHERE j.organization_id = $1
+          AND jis.result = 'manual_review'
+          AND si.archived_at IS NULL`,
+      [orgId]
+    );
+
+    const outstanding: JourneyOutstanding | undefined = summarise
+      ? {
+          awaiting_confirmation: feedbackCounts.awaiting,
+          oldest_awaiting_days: feedbackCounts.oldest_awaiting_days,
+          awaiting_outcome: feedbackCounts.awaiting_remediation,
+          oldest_outcome_days: feedbackCounts.oldest_remediation_days,
+          review_checkpoints: parseInt(reviewRow?.checkpoints ?? '0', 10) || 0,
+          review_sales: parseInt(reviewRow?.sales ?? '0', 10) || 0,
+        }
+      : undefined;
+
+    const body: JourneyListResponse = {
       data,
       total: parseInt(countRow?.count || '0'),
       page,
       limit,
-      counts,
-      feedback_counts: feedbackCounts,
-    });
+      tab_counts: tabCounts,
+      outstanding,
+      feedback_counts: summarise ? feedbackCounts : undefined,
+    };
+    res.json(body);
   } catch (err) {
     next(err);
   }
