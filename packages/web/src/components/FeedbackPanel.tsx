@@ -2,11 +2,29 @@ import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
 
-// Feeding a reviewed sale back to its adviser, and showing whether they have
+// Feeding a reviewed sale — or, for a firm that scores calls on their own, a
+// single call — back to its adviser, and showing whether they have
 // acknowledged it.
 //
-// Sits below the score on a sale, because it is the last step of the review: go
-// through the findings, overturn what is wrong, then tell the adviser what stands.
+// Sits below the score, because it is the last step of the review: go through
+// the findings, overturn what is wrong, then tell the adviser what stands.
+
+/** What the feedback is about, and the id that names it in the API path. */
+export interface FeedbackSubject {
+  kind: 'journey' | 'call';
+  id: string;
+}
+
+const subjectPath = (subject: FeedbackSubject) =>
+  subject.kind === 'journey' ? `/journeys/${subject.id}/feedback` : `/calls/${subject.id}/feedback`;
+
+// A sale and a call round never share a cache entry: sending feedback on one
+// must not be mistaken, by React Query, for the same request as the other.
+const subjectQueryKey = (subject: FeedbackSubject) =>
+  subject.kind === 'journey' ? ['journey-feedback', subject.id] : ['call-feedback', subject.id];
+
+/** "sale" or "call", for copy that has to name what this feedback is about. */
+const subjectNoun = (subject: FeedbackSubject) => (subject.kind === 'journey' ? 'sale' : 'call');
 
 interface FeedbackRecipient {
   id: string;
@@ -30,7 +48,7 @@ interface FeedbackState {
   reasoning_withheld?: boolean;
   guidance_included?: boolean;
   open_reviews: number;
-  /** The sale as it will be named in the email, or null where it has no name. */
+  /** The subject's client as it will be named in the email, or null where it has no name. */
   client_name: string | null;
   /** Whether the AI's reason travels with each finding, or stays behind the link. */
   reasoning_included: boolean;
@@ -44,6 +62,15 @@ interface FeedbackState {
     /** False when it went to someone the sale is no longer credited to. Absent on an older API. */
     reached_adviser?: boolean;
   } | null;
+  /**
+   * Whether a new round may be sent, and if not, the sentence saying why. A
+   * round already sent stays readable when sending no longer is — the firm
+   * changed its scoring setting, or the call has since joined a sale — so the
+   * history is shown and only the send is withheld. Optional: an API that has
+   * not restarted yet omits both, which means sending is allowed as before.
+   */
+  can_send?: boolean;
+  cannot_send_reason?: string | null;
 }
 
 const SEVERITY_CLASS: Record<string, string> = {
@@ -79,18 +106,19 @@ function formatDate(iso: string): string {
 
 /**
  * Shared by the panel and the header action, so the two never disagree about
- * what state the sale is in. React Query dedupes on the key — one request.
+ * what state the sale or call is in. React Query dedupes on the key — one
+ * request.
  */
-export function useFeedbackState(journeyId: string, enabled: boolean) {
+export function useFeedbackState(subject: FeedbackSubject, enabled: boolean) {
   return useQuery({
-    queryKey: ['journey-feedback', journeyId],
-    queryFn: () => api.get<FeedbackState>(`/journeys/${journeyId}/feedback`),
+    queryKey: subjectQueryKey(subject),
+    queryFn: () => api.get<FeedbackState>(subjectPath(subject)),
     enabled,
   });
 }
 
 /**
- * The compact control that sits with Re-score at the top of a sale.
+ * The compact control that sits at the top of a sale or a call.
  *
  * Deliberately not a second copy of the send form. The panel below owns that,
  * along with the findings list and the open-review warning — a supervisor should
@@ -99,20 +127,24 @@ export function useFeedbackState(journeyId: string, enabled: boolean) {
  * and takes you there.
  */
 export function FeedbackHeaderAction({
-  journeyId,
+  subject,
   canAction,
   onOpen,
 }: {
-  journeyId: string;
+  subject: FeedbackSubject;
   canAction: boolean;
   onOpen: () => void;
 }) {
-  const { data } = useFeedbackState(journeyId, canAction);
+  const { data } = useFeedbackState(subject, canAction);
   if (!canAction || !data) return null;
+  const noun = subjectNoun(subject);
 
   // Feedback to someone the sale is no longer credited to does not settle it
   // (see FeedbackPanel), so the action offers to feed back again.
   const fb = data.feedback?.reached_adviser === false ? null : data.feedback;
+  // Nothing settled and nothing that can be sent: no header control at all,
+  // rather than a button that opens onto a refusal.
+  if (!fb && data.can_send === false) return null;
   const base =
     'inline-flex items-center gap-1.5 px-[18px] py-[9px] rounded-btn text-table-cell font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40';
 
@@ -143,9 +175,9 @@ export function FeedbackHeaderAction({
     );
   }
 
-  // A sale whose adviser cannot be resolved is still sendable — the panel offers
-  // a recipient picker — so this must not read as "you cannot do this". It says
-  // what is missing and still takes you there.
+  // A sale or call whose adviser cannot be resolved is still sendable — the
+  // panel offers a recipient picker — so this must not read as "you cannot do
+  // this". It says what is missing and still takes you there.
   return (
     <button
       type="button"
@@ -153,10 +185,10 @@ export function FeedbackHeaderAction({
       className={`${base} bg-card border border-border text-text-primary hover:border-primary`}
       title={
         data.adviser.problem === 'no_adviser'
-          ? 'No adviser is attributed to this sale — choose who to feed it back to'
+          ? `No adviser is attributed to this ${noun} — choose who to feed it back to`
           : data.adviser.problem === 'no_email'
             ? `${data.adviser.name} has no email address — choose someone else to feed it back to`
-            : `Feed this sale back to ${data.adviser.name}`
+            : `Feed this ${noun} back to ${data.adviser.name}`
       }
     >
       Feed back
@@ -179,12 +211,12 @@ function TickIcon({ className }: { className?: string }) {
 }
 
 export function FeedbackPanel({
-  journeyId,
+  subject,
   canAction,
   composeSignal = 0,
   embedded = false,
 }: {
-  journeyId: string;
+  subject: FeedbackSubject;
   canAction: boolean;
   /** Increments when the header action is clicked; opens the compose box. */
   composeSignal?: number;
@@ -192,28 +224,30 @@ export function FeedbackPanel({
   embedded?: boolean;
 }) {
   const qc = useQueryClient();
+  const noun = subjectNoun(subject);
   const [message, setMessage] = useState('');
   const [composing, setComposing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Whatever the supervisor picked, tagged with the sale it was picked for.
+  // Whatever the supervisor picked, tagged with the subject it was picked for.
   // Selection is DERIVED from this rather than seeded into state by an effect:
-  // a stale pick surviving into a different sale is the silent wrong-recipient
-  // failure this whole feature exists to prevent, and deriving it makes that
-  // unrepresentable instead of merely unlikely.
-  const [picked, setPicked] = useState<{ forJourney: string; id: string | null } | null>(null);
+  // a stale pick surviving into a different sale or call is the silent
+  // wrong-recipient failure this whole feature exists to prevent, and deriving
+  // it makes that unrepresentable instead of merely unlikely.
+  const subjectKey = `${subject.kind}:${subject.id}`;
+  const [picked, setPicked] = useState<{ forSubject: string; id: string | null } | null>(null);
 
-  const { data, isLoading, isError } = useFeedbackState(journeyId, canAction);
+  const { data, isLoading, isError } = useFeedbackState(subject, canAction);
 
   // problem === null is exactly "resolved, and deliverable". An adviser with no
   // address is never pre-selected: it would leave the form looking ready to send
   // and failing on submit, which is the same wrong-looking-right the recipient
   // picker exists to remove.
   const suggestedId = data?.adviser.problem === null ? data.adviser.user_id : null;
-  const recipientId = picked?.forJourney === journeyId ? picked.id : suggestedId;
+  const recipientId = picked?.forSubject === subjectKey ? picked.id : suggestedId;
 
   // Opened from the header. Only meaningful before anything has been sent —
   // afterwards the header just scrolls here to show the state. An unattributed
-  // sale no longer blocks this: choosing a recipient is how it gets sent.
+  // sale or call no longer blocks this: choosing a recipient is how it gets sent.
   useEffect(() => {
     const settled = !!data?.feedback && data.feedback.reached_adviser !== false;
     if (composeSignal > 0 && !settled) setComposing(true);
@@ -221,7 +255,7 @@ export function FeedbackPanel({
 
   const send = useMutation({
     mutationFn: () =>
-      api.post<{ id: string; item_count: number }>(`/journeys/${journeyId}/feedback`, {
+      api.post<{ id: string; item_count: number }>(subjectPath(subject), {
         message: message.trim() || null,
         adviser_user_id: recipientId,
       }),
@@ -230,7 +264,7 @@ export function FeedbackPanel({
       setMessage('');
       setError(null);
       setPicked(null);
-      void qc.invalidateQueries({ queryKey: ['journey-feedback', journeyId] });
+      void qc.invalidateQueries({ queryKey: subjectQueryKey(subject) });
     },
     onError: (err: unknown) => {
       setError(err instanceof Error ? err.message : 'Could not send the feedback.');
@@ -253,7 +287,7 @@ export function FeedbackPanel({
       <div className="px-5 py-4 border-b border-border">
         <h3 className="text-section-title text-text-primary">Adviser feedback</h3>
         <p className="text-xs text-text-subtle mt-0.5">
-          The record that this sale was discussed with the adviser, and that they confirmed it.
+          The record that this {noun} was discussed with the adviser, and that they confirmed it.
         </p>
       </div>
       {children}
@@ -322,14 +356,49 @@ export function FeedbackPanel({
           Sent {formatDate(fb.sent_at)} to {fb.adviser_email}. They confirm with one click from the
           email — no sign-in needed.
         </p>
-        <button
-          onClick={() => send.mutate()}
-          disabled={send.isPending}
-          className="mt-3 text-xs text-primary-ink hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded disabled:opacity-50"
-        >
-          {send.isPending ? 'Sending…' : 'Send it again'}
-        </button>
+        {data.can_send === false ? (
+          data.cannot_send_reason && (
+            <p className="text-xs text-text-secondary mt-3 leading-relaxed">{data.cannot_send_reason}</p>
+          )
+        ) : (
+          <button
+            onClick={() => send.mutate()}
+            disabled={send.isPending}
+            className="mt-3 text-xs text-primary-ink hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded disabled:opacity-50"
+          >
+            {send.isPending ? 'Sending…' : 'Send it again'}
+          </button>
+        )}
         {error && <p className="text-xs text-fail mt-2">{error}</p>}
+      </div>
+    );
+  }
+
+  // A round that went to someone this subject is no longer credited to: kept on
+  // the record and shown, but not counted as fed back.
+  const earlierNote = earlier && (
+    <div className="mb-4 border-l-2 border-review pl-2.5">
+      <p className="text-table-cell text-text-primary">
+        Fed back to {earlier.adviser_name} on {formatDate(earlier.sent_at)}
+        {earlier.confirmed_at ? ', who confirmed it' : ', not yet confirmed'}
+      </p>
+      <p className="text-xs text-text-muted mt-1 leading-relaxed">
+        This {subjectNoun(subject)} is now credited to {data.adviser.name}, who has not been fed back.
+        The earlier feedback stays on the record, but it does not count as this{' '}
+        {subjectNoun(subject)} being fed back.
+      </p>
+    </div>
+  );
+
+  // Not yet fed back, and not allowed to be: say why instead of offering a
+  // compose box the API would refuse.
+  if (data.can_send === false) {
+    return shell(
+      <div className="px-5 py-5">
+        {earlierNote}
+        <p className="text-table-cell text-text-secondary leading-relaxed">
+          {data.cannot_send_reason ?? `Feedback can't be sent on this ${subjectNoun(subject)}.`}
+        </p>
       </div>
     );
   }
@@ -351,18 +420,7 @@ export function FeedbackPanel({
 
   return shell(
     <div className="px-5 py-5">
-      {earlier && (
-        <div className="mb-4 border-l-2 border-review pl-2.5">
-          <p className="text-table-cell text-text-primary">
-            Fed back to {earlier.adviser_name} on {formatDate(earlier.sent_at)}
-            {earlier.confirmed_at ? ', who confirmed it' : ', not yet confirmed'}
-          </p>
-          <p className="text-xs text-text-muted mt-1 leading-relaxed">
-            This sale is now credited to {data.adviser.name}, who has not been fed back. The earlier
-            feedback stays on the record, but it does not count as this sale being fed back.
-          </p>
-        </div>
-      )}
+      {earlierNote}
       {blocked ? (
         <div>
           <div className="bg-fail-bg text-fail px-3 py-2 rounded-btn text-table-cell inline-block">
@@ -377,7 +435,7 @@ export function FeedbackPanel({
         <>
           <p className="text-table-cell text-text-secondary">
             {data.breach_count === 0 ? (
-              <>Nothing was flagged on this sale. Feeding back still records that you reviewed it
+              <>Nothing was flagged on this {noun}. Feeding back still records that you reviewed it
                 {recipientName ? (
                   <> with <span className="text-text-primary font-medium">{recipientName}</span>.</>
                 ) : (
@@ -399,14 +457,17 @@ export function FeedbackPanel({
 
           {data.adviser.problem === 'no_adviser' && (
             <p className="text-xs text-text-muted mt-1.5 leading-relaxed">
-              Feedback normally goes to the adviser who closed the sale. None of these calls are
-              attributed to anyone, so choose who to send it to.
+              {subject.kind === 'journey'
+                ? "Feedback normally goes to the adviser who closed the sale. None of these calls are attributed to anyone, so choose who to send it to."
+                : "Feedback normally goes to the adviser on the call. This call isn't attributed to anyone, so choose who to send it to."}
             </p>
           )}
           {data.adviser.problem === 'no_email' && (
             <p className="text-xs text-text-muted mt-1.5 leading-relaxed">
-              {data.adviser.name} closed this sale but has no email address, so it cannot be
-              delivered or confirmed. Add one in Settings → Team, or choose someone else.
+              {data.adviser.name}{' '}
+              {subject.kind === 'journey' ? 'closed this sale' : 'is the adviser on this call'} but has
+              no email address, so it cannot be delivered or confirmed. Add one in Settings → Team, or
+              choose someone else.
             </p>
           )}
 
@@ -483,7 +544,7 @@ export function FeedbackPanel({
               costs more trust than it saves time. */}
           {data.open_reviews > 0 && (
             <div className="bg-review-bg text-review px-3 py-2 rounded-btn text-table-cell mt-3">
-              {data.open_reviews} checkpoint{data.open_reviews === 1 ? '' : 's'} on this sale
+              {data.open_reviews} checkpoint{data.open_reviews === 1 ? '' : 's'} on this {noun}
               {data.open_reviews === 1 ? ' is' : ' are'} still waiting for a human ruling. You can
               still send this, but anything overturned afterwards will already have been sent.
             </div>
@@ -498,7 +559,7 @@ export function FeedbackPanel({
                 id="feedback-recipient"
                 aria-label="Who to send this feedback to"
                 value={recipientId ?? ''}
-                onChange={(e) => setPicked({ forJourney: journeyId, id: e.target.value || null })}
+                onChange={(e) => setPicked({ forSubject: subjectKey, id: e.target.value || null })}
                 className="w-full bg-input border border-border rounded-btn px-3 py-2 text-table-cell text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/40"
               >
                 <option value="">Choose an adviser…</option>
@@ -513,7 +574,7 @@ export function FeedbackPanel({
               </select>
               {overridden && data.adviser.user_id !== null && (
                 <p className="text-xs text-text-muted mt-1">
-                  The adviser on this sale is {data.adviser.name}.
+                  The adviser on this {noun} is {data.adviser.name}.
                 </p>
               )}
 

@@ -9,6 +9,7 @@ import { AudioPlayer } from '../components/AudioPlayer';
 import { CallCheckpointRow, type CallCheckpointItem, type CheckpointPosition } from '../components/CallCheckpointRow';
 import { CallTranscript, type TranscriptMarker } from '../components/CallTranscript';
 import { CoachingPanel } from '../components/CoachingPanel';
+import { FeedbackPanel, FeedbackHeaderAction, useFeedbackState } from '../components/FeedbackPanel';
 import { FeedbackStatusBadge } from '../components/FeedbackStatusBadge';
 import { ReviewSection } from '../components/ReviewSection';
 import { ScoreCorrectionModal } from '../components/ScoreCorrectionModal';
@@ -46,6 +47,10 @@ const dayMonthYear = (iso: string) =>
   new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 const timeOfDay = (iso: string) =>
   new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+const dayMonth = (iso: string) =>
+  new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 /**
  * One call: the checkpoints decided on it, beside the transcript they were
@@ -86,7 +91,7 @@ export function CallDetail() {
   const [filter, setFilter] = useState<Filter>('attention');
   const [pane, setPane] = useState<Pane>('checkpoints');
   const [cue, setCue] = useState<{ seconds: number | null; note: string } | null>(null);
-  const [openSection, setOpenSection] = useState<'coaching' | 'share' | null>(null);
+  const [openSection, setOpenSection] = useState<'coaching' | 'share' | 'feedback' | null>(null);
   const [correctingItem, setCorrectingItem] = useState<{
     itemScoreId: string;
     label: string;
@@ -95,6 +100,9 @@ export function CallDetail() {
   } | null>(null);
   const [resolving, setResolving] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  // Bumped by the header action. The feedback panel opens its compose box on a
+  // change, so the findings are read before anything is sent.
+  const [composeSignal, setComposeSignal] = useState(0);
 
   const { data: call, isLoading: callLoading, isError: callError } = useQuery({
     queryKey: ['call', id],
@@ -142,6 +150,24 @@ export function CallDetail() {
   const journey = call?.journey ?? null;
   const scores = scoresData?.data ?? [];
   const primaryScore = scores[0];
+
+  // Feedback on a single call is for firms set to score calls. A firm set to
+  // score sales feeds back from the sale — shown in the strip above for a call
+  // that belongs to one — and the API refuses a call round for it with a 400.
+  // Undecided while the organisation record is still loading, rather than
+  // assumed allowed: a flash of the row appearing then disappearing is worse
+  // than a beat of delay before it appears at all.
+  const callFeedbackAllowed = org !== undefined && org.scoring_scope !== 'sales_only';
+  const feedbackSubject = { kind: 'call' as const, id: call?.id ?? '' };
+  const { data: feedbackState, isError: feedbackError } = useFeedbackState(
+    feedbackSubject,
+    // Fetched for any scored call, not only where a new round may be sent: a
+    // round sent before the firm changed its setting, or before the call
+    // joined a sale, must stay readable (the API returns it with can_send off).
+    canAction && call?.status === 'scored'
+  );
+  const hasCallRound = Boolean(feedbackState?.feedback);
+  const showCallFeedback = canAction && ((callFeedbackAllowed && !journey) || hasCallRound);
 
   const items: CallCheckpointItem[] = useMemo(() => {
     if (journey) {
@@ -272,6 +298,28 @@ export function CallDetail() {
     queryClient.invalidateQueries({ queryKey: ['call', call.id] });
   };
 
+  // Opened from the header. The feedback panel opens its compose box whenever
+  // it mounts with a signal above zero, so a stale signal would reopen a form
+  // someone just cancelled — cleared here whenever the section is closed.
+  const toggleFeedbackSection = () => {
+    const wasOpen = openSection === 'feedback';
+    if (wasOpen) setComposeSignal(0);
+    setOpenSection(wasOpen ? null : 'feedback');
+  };
+
+  const openFeedback = () => {
+    setOpenSection('feedback');
+    setComposeSignal((n) => n + 1);
+    // Deferred a frame: the panel mounts when its section opens, and scrolling
+    // to it before it has height lands short.
+    requestAnimationFrame(() => {
+      document.getElementById('call-section-feedback')?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      });
+    });
+  };
+
   const handleToggleExemplar = async () => {
     if (!call) return;
     await api.post(`/calls/${call.id}/exemplar`, {
@@ -282,12 +330,18 @@ export function CallDetail() {
   };
 
   const handleResolve = async (item: CallCheckpointItem, result: 'pass' | 'fail' | 'na') => {
-    if (!journey) return;
     setResolving(item.id);
     try {
-      await api.post('/review-items/resolve', { kind: 'journey', item_score_id: item.id, result });
+      // The review queue takes both kinds: a checkpoint on a sale, or one on a
+      // call scored on its own.
+      await api.post('/review-items/resolve', {
+        kind: journey ? 'journey' : 'call',
+        item_score_id: item.id,
+        result,
+      });
       queryClient.invalidateQueries({ queryKey: ['call', id] });
-      queryClient.invalidateQueries({ queryKey: ['journey', journey.id] });
+      queryClient.invalidateQueries({ queryKey: ['call-scores', id] });
+      if (journey) queryClient.invalidateQueries({ queryKey: ['journey', journey.id] });
     } catch (err) {
       await notify('Could not save that verdict: ' + (err instanceof Error ? err.message : 'unknown error'));
     } finally {
@@ -342,6 +396,34 @@ export function CallDetail() {
   const when = call.call_date ?? call.created_at;
   const highlightIndex =
     openItem != null ? (positionById.get(openItem)?.line_index ?? null) : null;
+
+  // One line saying where this call's own feedback round stands — same states
+  // and the same honest style as the sale page's row, since a call scored on
+  // its own goes through the same loop.
+  const feedbackFb = feedbackState?.feedback ?? null;
+  const anyFeedbackRecipient = (feedbackState?.recipients ?? []).some((r) => r.eligible);
+  const feedbackFindingsCount = feedbackState ? plural(feedbackState.breach_count, 'finding') : '';
+  const feedbackSummary = feedbackError
+    ? "Couldn't load the feedback status"
+    : !feedbackState
+      ? 'Loading…'
+      : // A round sent to someone this call is no longer credited to does not
+        // settle it (services/journey-feedback.ts feedbackReachedCloserSql), so
+        // the row must not read as fed back.
+        feedbackFb?.reached_adviser === false
+        ? `Not fed back to ${feedbackState.adviser.name} · an earlier round went to ${feedbackFb.adviser_name}`
+        : feedbackFb?.confirmed_at
+        ? `${feedbackFb.adviser_name} confirmed on ${dayMonth(feedbackFb.confirmed_at)}`
+        : feedbackFb
+          ? `Sent to ${feedbackFb.adviser_name} on ${dayMonth(feedbackFb.sent_at)} · awaiting their confirmation`
+          : !anyFeedbackRecipient
+            ? "Can't be sent: nobody on the team has an email address"
+            : feedbackState.adviser.problem === 'no_adviser'
+              ? `Not sent yet · ${feedbackFindingsCount} — choose who to send them to`
+              : feedbackState.adviser.problem === 'no_email'
+                ? `Not sent yet · ${feedbackState.adviser.name} has no email address — choose someone else`
+                : `Not sent yet · ${feedbackFindingsCount} ready for ${feedbackState.adviser.name}`;
+  const feedbackAction = feedbackFb || !anyFeedbackRecipient || feedbackError ? 'Show' : 'Review and send';
 
   const menuItems = [
     ...(canAction && call.status === 'scored'
@@ -427,6 +509,9 @@ export function CallDetail() {
             >
               Open the sale
             </Link>
+          )}
+          {call.status === 'scored' && showCallFeedback && (
+            <FeedbackHeaderAction subject={feedbackSubject} canAction={canAction} onOpen={openFeedback} />
           )}
           {menuItems.length > 0 && <ActionMenu items={menuItems} />}
         </div>
@@ -643,7 +728,7 @@ export function CallDetail() {
                     onToggle={() => toggleItem(item)}
                     onShowInTranscript={() => setPane('transcript')}
                     transcriptShown={transcriptShown}
-                    canAction={canAction && Boolean(journey)}
+                    canAction={canAction}
                     canCorrect={canAction && canLearn}
                     onCorrect={() =>
                       setCorrectingItem({
@@ -656,6 +741,7 @@ export function CallDetail() {
                     onResolve={(result) => handleResolve(item, result)}
                     resolving={resolving === item.id}
                     passThreshold={passMark}
+                    scoredOn={journey ? 'sale' : 'call'}
                   />
                 ))
               )}
@@ -732,12 +818,15 @@ export function CallDetail() {
         </div>
       </div>
 
-      {/* After the review: only for a call scored on its own. For a call in a
-          sale, coaching and feedback belong to the sale and live on its page. */}
-      {!journey && call.status === 'scored' && user && (
+      {/* After the review, for a call scored on its own. For a call in a sale,
+          coaching and feedback belong to the sale and live on its page — the
+          one exception is a call fed back on its own before it joined a sale,
+          whose round is still shown below. */}
+      {call.status === 'scored' && user && (!journey || hasCallRound) && (
         <section aria-label="After the review" className="mt-6">
           <h3 className="text-section-title text-text-primary mb-2">After the review</h3>
           <div className="bg-card border border-border rounded-card overflow-hidden">
+            {!journey && (
             <ReviewSection
               id="call-section-coaching"
               title="Coaching"
@@ -759,7 +848,8 @@ export function CallDetail() {
                 embedded
               />
             </ReviewSection>
-            {isAdmin && (
+            )}
+            {isAdmin && !journey && (
               <ReviewSection
                 id="call-section-share"
                 title="Share with client"
@@ -769,6 +859,28 @@ export function CallDetail() {
                 onToggle={() => setOpenSection(openSection === 'share' ? null : 'share')}
               >
                 <ShareLinksPanel callId={call.id} />
+              </ReviewSection>
+            )}
+            {/* Sendable for a call scored on its own at a firm set to score
+                calls. Also shown, read-only, wherever a round already exists —
+                the firm has since switched to scoring sales, or the call has
+                since joined a sale — so what the adviser was told is never
+                hidden. The panel says why a new round can't be sent. */}
+            {showCallFeedback && (
+              <ReviewSection
+                id="call-section-feedback"
+                title="Adviser feedback"
+                summary={feedbackSummary}
+                actionLabel={feedbackAction}
+                open={openSection === 'feedback'}
+                onToggle={toggleFeedbackSection}
+              >
+                <FeedbackPanel
+                  subject={feedbackSubject}
+                  canAction={canAction}
+                  composeSignal={composeSignal}
+                  embedded
+                />
               </ReviewSection>
             )}
           </div>

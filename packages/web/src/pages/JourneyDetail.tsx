@@ -194,7 +194,8 @@ export function JourneyDetail() {
   // after the fact — so the action is not offered. The API refuses it too
   // (POST /journeys/:id/rescore); this only stops it being presented as an
   // option, since a disabled button nobody can explain invites a support ticket.
-  const { data: feedbackState, isError: feedbackError } = useFeedbackState(id ?? '', canAction && !!id);
+  const feedbackSubject = { kind: 'journey' as const, id: id ?? '' };
+  const { data: feedbackState, isError: feedbackError } = useFeedbackState(feedbackSubject, canAction && !!id);
   const fedBack = feedbackState?.feedback != null;
 
   // Bumped by the header action. The feedback panel opens its compose box on a
@@ -572,7 +573,12 @@ export function JourneyDetail() {
     ? "Couldn't load the feedback status"
     : !feedbackState
       ? 'Loading…'
-      : fb?.confirmed_at
+      : // A round sent to someone this sale is no longer credited to does not
+        // settle it (services/journey-feedback.ts feedbackReachedCloserSql), so
+        // the row must not read as fed back.
+        fb?.reached_adviser === false
+        ? `Not fed back to ${feedbackState.adviser.name} · an earlier round went to ${fb.adviser_name}`
+        : fb?.confirmed_at
         ? `${fb.adviser_name} confirmed on ${dayMonth(fb.confirmed_at)}`
         : fb
           ? `Sent to ${fb.adviser_name} on ${dayMonth(fb.sent_at)} · awaiting their confirmation`
@@ -699,7 +705,7 @@ export function JourneyDetail() {
             </Link>
           )}
           {scored && (
-            <FeedbackHeaderAction journeyId={journey.id} canAction={canAction} onOpen={openFeedback} />
+            <FeedbackHeaderAction subject={feedbackSubject} canAction={canAction} onOpen={openFeedback} />
           )}
           <ActionMenu items={menuItems} label="More actions for this sale" />
         </div>
@@ -1077,7 +1083,7 @@ export function JourneyDetail() {
               open={openSections.has('feedback')}
               onToggle={() => toggleSection('feedback')}
             >
-              <FeedbackPanel journeyId={journey.id} canAction={canAction} composeSignal={composeSignal} embedded />
+              <FeedbackPanel subject={feedbackSubject} canAction={canAction} composeSignal={composeSignal} embedded />
             </ReviewSection>
           )}
         </section>
