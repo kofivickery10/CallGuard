@@ -17,6 +17,20 @@ export function formatPhone(raw: string | null | undefined): string {
 }
 
 /**
+ * A stored key as a person reads it: "on_risk" → "On risk".
+ *
+ * Branches and other per-tenant keys are configured as identifiers and stored
+ * verbatim, so the raw value is what every filter and report has to send — but
+ * nobody outside the database calls a sale "on_risk". Display only: never feed
+ * the result back to the API.
+ */
+export function humanLabel(raw: string | null | undefined): string {
+  if (!raw) return '';
+  const spaced = raw.replace(/[_-]+/g, ' ').trim();
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
+/**
  * mm:ss for a playback position, where 0 is a real value ("0:00") rather than
  * the absent duration formatDuration renders as "--".
  */

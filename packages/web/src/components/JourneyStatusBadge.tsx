@@ -38,3 +38,26 @@ export function JourneyStatusBadge({ status }: { status: JourneyStatus }) {
     </span>
   );
 }
+
+// The same three in-pipeline states as they read on the sales list, where the
+// column they sit in is where a score would otherwise be.
+//
+// 'failed' is deliberately NOT the red "Failed" above. On a register of
+// compliance results, a red Failed against a sale reads as "this sale failed" —
+// it means scoring broke, which is the firm's problem to retry and says nothing
+// at all about the adviser. All three therefore carry processing tones, and the
+// wording says what happened: nothing was scored.
+const processingConfig: Record<'pending' | 'scoring' | 'failed', { label: string; className: string }> = {
+  pending: { label: 'Waiting to score', className: 'bg-processing-bg text-processing' },
+  scoring: { label: 'Scoring', className: 'bg-processing-bg text-processing animate-pulse' },
+  failed: { label: 'Not scored', className: 'bg-processing-bg text-processing' },
+};
+
+export function ProcessingStateBadge({ status }: { status: 'pending' | 'scoring' | 'failed' }) {
+  const config = processingConfig[status] ?? processingConfig.pending;
+  return (
+    <span className={`inline-block px-2.5 py-[3px] rounded-full text-badge font-semibold ${config.className}`}>
+      {config.label}
+    </span>
+  );
+}
