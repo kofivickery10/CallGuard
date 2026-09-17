@@ -657,7 +657,7 @@ export function ScorecardEditor() {
     <Link
       to="/scorecards"
       onClick={handleBackClick}
-      className="text-table-cell text-text-muted hover:text-text-primary inline-block transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
+      className="text-table-cell text-text-muted hover:text-text-primary inline-flex items-center min-h-[32px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
     >
       &larr; Back to Scorecards
     </Link>
@@ -896,7 +896,7 @@ export function ScorecardEditor() {
                   <button
                     type="button"
                     onClick={addItem}
-                    className="text-primary-ink font-semibold text-table-cell hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
+                    className="inline-flex items-center min-h-[32px] text-primary-ink font-semibold text-table-cell hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
                   >
                     + Add checkpoint
                   </button>
@@ -1055,7 +1055,7 @@ export function ScorecardEditor() {
                     <button
                       type="button"
                       onClick={() => mergeSection(pair.from, pair.to)}
-                      className="mt-1.5 text-table-cell text-primary-ink font-semibold hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
+                      className="mt-1.5 inline-flex items-center min-h-[32px] text-table-cell text-primary-ink font-semibold hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
                     >
                       Merge into &ldquo;{pair.to}&rdquo;
                     </button>
@@ -1432,7 +1432,7 @@ function CheckpointEditorRow({
                   onClick={onToggleProductScope}
                   aria-expanded={productScopeOpen}
                   aria-controls={productScopeId}
-                  className="flex items-center gap-2 text-table-cell font-semibold text-text-secondary hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
+                  className="flex items-center gap-2 min-h-[32px] text-table-cell font-semibold text-text-secondary hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
                 >
                   <svg viewBox="0 0 24 24" className={`w-4 h-4 transition-transform ${productScopeOpen ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                     <polyline points="9 18 15 12 9 6" />
