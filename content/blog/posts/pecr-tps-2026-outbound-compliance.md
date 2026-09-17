@@ -8,12 +8,11 @@ cardTag: "Compliance · Outbound"
 cardSummary: "Regulation 21 is not a consent rule. What it actually prohibits on a live marketing call, what regulation 24 requires the agent to say, and which of the rules on that call are not PECR at all."
 order: 1
 date: "2026-05-05"
-updated: "2026-09-15"
+updated: "2026-09-17"
 time: "10:00"
 section: "Compliance"
 topic: "regulation"
 author: "charlotte"
-draft: true
 ctaSubject: "CallGuard%20AI%20%E2%80%94%20PECR%20demo"
 useCaseLink: "/use-cases/outbound-sales"
 related:

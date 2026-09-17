@@ -9,14 +9,14 @@ cardTag: "Compliance · Financial services"
 cardSummary: "Only PRIN 2A.5 and 2A.6 are visible in a conversation. Five things the recording has to evidence, two the file and the product governance record carry, and why a 5% sample cannot show either."
 order: 3
 date: "2026-05-05"
-updated: "2026-09-15"
+updated: "2026-09-17"
 section: "Compliance"
 topic: "regulation"
 author: "charlotte"
-draft: true
 ctaSubject: "CallGuard%20AI%20%E2%80%94%20FCA%20demo"
 useCaseLink: "/use-cases/collections"
 related:
+  - icobs-5-2-demands-and-needs-scored-criterion
   - vulnerable-customer-call-monitoring
   - what-is-ai-call-qa
   - pecr-tps-2026-outbound-compliance

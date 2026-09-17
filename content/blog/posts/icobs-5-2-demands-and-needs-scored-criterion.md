@@ -7,12 +7,11 @@ ogDescription: "ICOBS 5.2 and 5.3 written as criteria a protection call can pass
 schemaDescription: "ICOBS 5.2 and 5.3 written as criteria a protection call can pass or fail, with replacement business as the worked example."
 cardTag: "Regulation · Scorecard anatomy"
 cardSummary: "Demands and needs under ICOBS 5.2 applies whether or not advice is given; suitability under ICOBS 5.3 only where it is. Both written as criteria a protection call can pass or fail, labelled rule, guidance or firm standard, with replacement business as the worked example."
-date: "2026-09-16"
+date: "2026-09-17"
 time: "09:00"
 section: "Regulation"
 topic: "regulation"
 author: "charlotte"
-draft: true
 ctaSubject: "CallGuard%20AI%20demo%20request"
 useCaseLink: "/use-cases/financial-services"
 related:
