@@ -1118,12 +1118,14 @@ function SaleArrivalFigures({ arrival }: { arrival: SaleArrivalStatus }) {
       </div>
       <dl className="grid grid-cols-3 gap-3 text-sm">
         <div>
-          <dt className="text-xs text-text-muted">Calls waiting for a sale</dt>
+          <dt className="text-xs text-text-muted">
+            Calls in the last {arrival.attention_after_days} days not in a sale
+          </dt>
           <dd className="text-text-primary font-semibold">{arrival.waiting_calls}</dd>
         </div>
         <div>
-          <dt className="text-xs text-text-muted">Oldest waiting since</dt>
-          <dd className="text-text-primary">{fmt(arrival.oldest_waiting_at, 'None waiting')}</dd>
+          <dt className="text-xs text-text-muted">First of those received</dt>
+          <dd className="text-text-primary">{fmt(arrival.oldest_waiting_at, 'None')}</dd>
         </div>
         <div>
           <dt className="text-xs text-text-muted">Last sale</dt>
@@ -1131,8 +1133,9 @@ function SaleArrivalFigures({ arrival }: { arrival: SaleArrivalStatus }) {
         </div>
       </dl>
       <p className="text-xs text-text-muted">
-        Flagged when the firm scores sales, calls have waited more than {arrival.attention_after_days} days,
-        and no sale has arrived in that time either.
+        Flagged when the firm scores sales, calls (captured or transcribed) have come in over the last{' '}
+        {arrival.attention_after_days} days that are not part of a sale, and no sale was created in those
+        days. Older unsold calls are not counted: most calls never become sales.
       </p>
     </div>
   );

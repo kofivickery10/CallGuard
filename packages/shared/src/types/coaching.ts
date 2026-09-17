@@ -168,17 +168,17 @@ export interface OrganizationInfo {
 }
 
 // Whether sales are reaching a firm that scores sales (services/sale-arrival.ts).
-// A sales_only firm scores nothing until a sale arrives, so calls left waiting
-// with no sale coming in are reported rather than left silent.
+// A sales_only firm scores nothing until a sale arrives, so calls coming in with
+// no sale coming in are reported rather than left silent.
 export interface SaleArrivalStatus {
   scoring_scope: ScoringScope;
-  // Transcribed calls not yet part of any sale, and when the oldest arrived.
+  // Calls received in the last attention_after_days days that are not part of
+  // any sale (captured or transcribed), and when the earliest of them arrived.
   waiting_calls: number;
   oldest_waiting_at: string | null;
   // When the firm's most recent sale was created, or null if it has none.
   last_sale_at: string | null;
-  // sales_only, calls waiting longer than attention_after_days, and no sale in
-  // that time either.
+  // sales_only, such calls exist, and no sale was created in that window.
   needs_attention: boolean;
   attention_after_days: number;
 }

@@ -6,10 +6,12 @@ import type { SaleArrivalStatus } from '@callguard/shared';
 // Tells a firm that scores sales when sales have stopped reaching CallGuard.
 //
 // A sales_only firm scores nothing until a sale arrives. If its CRM webhook
-// breaks, or nobody presses "Score sale", calls simply pile up unscored, and
+// breaks, or nobody presses "Score sale", calls keep coming in unscored, and
 // there used to be nothing on screen to say so. The API decides when that
-// needs saying (services/sale-arrival.ts: calls waiting over a week with no
-// sale in that week either); this only words it.
+// needs saying (services/sale-arrival.ts: calls came in over the last week, and
+// no sale did); this only words it. Every sentence has to stay true under that
+// rule: it speaks about calls received in the window, never about how long
+// older unsold calls have waited, because most calls never become sales.
 //
 // Admins and supervisors only, matching the endpoint: they can act on it.
 //
@@ -27,15 +29,19 @@ export function SaleArrivalBanner({ enabled }: { enabled: boolean }) {
 
   if (!enabled || !data?.needs_attention || !data.oldest_waiting_at) return null;
 
+  const formatDate = (iso: string) =>
+    new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+
   const count = data.waiting_calls;
-  const since = new Date(data.oldest_waiting_at).toLocaleDateString('en-GB', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  });
-  const noSale = data.last_sale_at
-    ? `no sale has arrived in the last ${data.attention_after_days} days`
-    : 'no sale has arrived yet';
+  const days = data.attention_after_days;
+  const first = formatDate(data.oldest_waiting_at);
+  const received =
+    count === 1
+      ? `1 call has come in over the last ${days} days, on ${first}, and it is not part of a sale yet.`
+      : `${count} calls have come in over the last ${days} days, the first on ${first}, and none of them is part of a sale yet.`;
+  const lastSale = data.last_sale_at
+    ? `The last sale arrived on ${formatDate(data.last_sale_at)}.`
+    : 'No sale has arrived yet.';
 
   return (
     <section
@@ -58,12 +64,11 @@ export function SaleArrivalBanner({ enabled }: { enabled: boolean }) {
         </svg>
         <div className="min-w-0">
           <h3 id="sale-arrival-title" className="text-table-cell font-semibold text-text-primary mb-1">
-            {count === 1 ? '1 call is waiting for a sale' : `${count} calls are waiting for a sale`}
+            No sales have arrived in the last {days} days
           </h3>
           <p className="text-table-cell text-text-secondary">
             Your firm is set to score sales, so a call is only scored once a sale for that customer
-            reaches CallGuard. {count === 1 ? 'This call has' : 'These calls have'} been waiting since{' '}
-            {since}, and {noSale}.
+            reaches CallGuard. {received} {lastSale}
           </p>
           <p className="text-table-cell text-text-secondary mt-1">
             To score {count === 1 ? 'it' : 'them'}, send the sale from your CRM, or open the customer

@@ -41,8 +41,8 @@ organizationRouter.get('/', async (req, res, next) => {
 // self-upgrade for free.
 
 // Whether sales are reaching a firm that scores sales. A sales_only firm scores
-// nothing until a sale arrives, so when calls have waited a week with no sale
-// coming in either, the Calls page says so (services/sale-arrival.ts). Admins
+// nothing until a sale arrives, so when calls have come in over the last week
+// and no sale has, the Calls page says so (services/sale-arrival.ts). Admins
 // and supervisors: they are the people who can act on it, by sending sales from
 // the CRM or pressing "Score sale". Advisers see only their own calls, so an
 // org-wide count is not theirs to read.
