@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  blockStartTimes,
   candidateFragments,
   extractUtterances,
   locateEvidence,
@@ -247,5 +248,60 @@ describe('locateEvidence', () => {
       matched: false,
       excerpt: [],
     });
+  });
+});
+
+describe('blockStartTimes', () => {
+  it('places each block at an increasing second of audio down the call', () => {
+    const times = blockStartTimes(TRANSCRIPT, RAW);
+    expect(times).toEqual([0.5, null, 7.4, 13.8, 16.2, 23.1]);
+    const placed = times.filter((t): t is number => t !== null);
+    for (let i = 1; i < placed.length; i++) expect(placed[i]).toBeGreaterThan(placed[i - 1]);
+  });
+
+  it('anchors a block the cleanup pass reworded, on its unchanged opening words', () => {
+    // Block 4 ("Lovely. So the premium comes to twenty four pounds a month...")
+    // has its number reworded from Deepgram's "24" — the anchor holds because
+    // the opening four words are untouched.
+    const times = blockStartTimes(TRANSCRIPT, RAW);
+    expect(times[4]).toBe(16.2);
+  });
+
+  it('returns a null per block when the call has no timestamped utterances', () => {
+    expect(blockStartTimes(TRANSCRIPT, null)).toEqual([null, null, null, null, null, null]);
+  });
+
+  it('has nothing to place for an absent transcript', () => {
+    expect(blockStartTimes(null, RAW)).toEqual([]);
+  });
+
+  it('does not pull a later block back to an earlier repeat of its opening words', () => {
+    // "Is that alright..." opens both an early consent check and a later
+    // payment check. A block-by-block match with no memory of how far the call
+    // has already been walked would snap the second occurrence back to the
+    // first (earlier) one; walking forward keeps it at its own, later, point.
+    const transcript = [
+      'Agent: Is that alright if we go ahead with the application now?',
+      'Customer: Yes that\'s fine, let\'s do it.',
+      'Agent: Great, so moving on to the next section, are you still with me?',
+      'Customer: Yes, I am.',
+      'Agent: Is that alright if we take the payment today?',
+      'Customer: Yes, go ahead please.',
+    ].join('\n\n');
+    const raw = {
+      results: {
+        utterances: [
+          { start: 1.0, transcript: 'Is that alright if we go ahead with the application now?' },
+          { start: 5.0, transcript: "Yes that's fine let's do it" },
+          { start: 10.0, transcript: 'Great so moving on to the next section are you still with me' },
+          { start: 14.0, transcript: 'Yes I am' },
+          { start: 20.0, transcript: 'Is that alright if we take the payment today' },
+          { start: 24.0, transcript: 'Yes go ahead please' },
+        ],
+      },
+    };
+
+    const times = blockStartTimes(transcript, raw);
+    expect(times).toEqual([1.0, 5.0, 10.0, null, 20.0, 24.0]);
   });
 });

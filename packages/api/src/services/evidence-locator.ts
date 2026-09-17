@@ -202,22 +202,22 @@ export function extractUtterances(raw: unknown): RawUtterance[] {
 }
 
 /**
- * Locate an evidence quote in a call: the transcript excerpt around it and the
- * second of audio it starts at. A quote that can't be pinned returns
- * `matched: false` with an empty excerpt — the caller should send the reviewer
- * to the full transcript rather than to a guessed position.
+ * Locate an evidence quote against already-parsed blocks and utterances.
+ *
+ * Split out of `locateEvidence` so a caller scoring many checkpoints against
+ * one call (routes/calls.ts's positions endpoint, ~40 checkpoints per call)
+ * parses the transcript once and reuses it, rather than paying
+ * parseTranscriptBlocks/extractUtterances on every item.
  */
-export function locateEvidence(params: {
+export function locateEvidenceAgainst(params: {
   quote: string | null;
-  transcriptText: string | null;
-  transcriptRaw?: unknown;
+  blocks: TranscriptBlock[];
+  utterances: RawUtterance[];
 }): EvidenceLocationResult {
-  const { quote, transcriptText, transcriptRaw } = params;
-  if (!quote || !quote.trim() || !transcriptText) {
+  const { quote, blocks, utterances } = params;
+  if (!quote || !quote.trim()) {
     return { timestamp_seconds: null, matched: false, excerpt: [] };
   }
-
-  const blocks = parseTranscriptBlocks(transcriptText);
 
   // Best (fragment, block) pair across every candidate passage.
   let hit: { index: number; score: number; fragment: string } | null = null;
@@ -238,8 +238,8 @@ export function locateEvidence(params: {
   // opening-words anchor is tried FIRST — the best fuzzy match across utterances
   // can be a later part of the same passage (whichever survived the cleanup pass
   // most intact), which would drop the reviewer in mid-sentence.
-  const utterances = extractUtterances(transcriptRaw);
-  const anchor = firstUtteranceWithOpeningWords(utterances, hit.fragment);
+  const anchorIndex = firstUtteranceIndexWithOpeningWords(utterances, hit.fragment);
+  const anchor = anchorIndex === null ? null : utterances[anchorIndex].start;
   const uttHit =
     anchor === null && utterances.length > 0 ? locateQuote(utterances, hit.fragment) : null;
   const timestamp = anchor ?? (uttHit !== null ? utterances[uttHit.index].start : null);
@@ -252,18 +252,84 @@ export function locateEvidence(params: {
   return { timestamp_seconds: timestamp, matched: true, excerpt };
 }
 
+/**
+ * Locate an evidence quote in a call: the transcript excerpt around it and the
+ * second of audio it starts at. A quote that can't be pinned returns
+ * `matched: false` with an empty excerpt — the caller should send the reviewer
+ * to the full transcript rather than to a guessed position.
+ */
+export function locateEvidence(params: {
+  quote: string | null;
+  transcriptText: string | null;
+  transcriptRaw?: unknown;
+}): EvidenceLocationResult {
+  const { quote, transcriptText, transcriptRaw } = params;
+  if (!transcriptText) return { timestamp_seconds: null, matched: false, excerpt: [] };
+
+  const blocks = parseTranscriptBlocks(transcriptText);
+  const utterances = extractUtterances(transcriptRaw);
+  return locateEvidenceAgainst({ quote, blocks, utterances });
+}
+
 // The opening of a quote is the part least likely to have been trimmed by the
 // scorer, so a 4-word run from it is the most reliable anchor into the
-// untouched (timestamped) utterances.
-function firstUtteranceWithOpeningWords(
+// untouched (timestamped) utterances. Takes a start index so a caller walking
+// a transcript block-by-block (blockStartTimes below) can search only the
+// utterances not already claimed by an earlier block, rather than re-scanning
+// from the top and risking a match that precedes the one just returned.
+function firstUtteranceIndexWithOpeningWords(
   utterances: RawUtterance[],
-  quote: string
+  quote: string,
+  fromIndex = 0
 ): number | null {
   const tokens = tokenise(stripQuoteDecoration(quote));
   if (tokens.length < 4) return null;
   const opening = tokens.slice(0, 4).join(' ');
-  for (const u of utterances) {
-    if (normalise(u.text).includes(opening)) return u.start;
+  for (let i = fromIndex; i < utterances.length; i++) {
+    if (normalise(utterances[i].text).includes(opening)) return i;
   }
   return null;
+}
+
+/**
+ * The second of audio each transcript block starts at, in block order — for
+ * showing the reviewer a running clock down the transcript rather than only
+ * at a matched checkpoint's own line. Anchored the same way `locateEvidence`
+ * anchors a single quote (the block's own opening words in the untouched
+ * utterances), but walking forward through the utterances as it walks down
+ * the blocks: a block can never resolve to a point in the recording earlier
+ * than the block before it, because the transcript is itself chronological
+ * and letting a later block's fuzzy match snap backward (a stock phrase said
+ * twice, say) would make the clock run backwards. A block that can't be
+ * placed is null and leaves the pointer where it was, rather than stranding
+ * every block after it because the pointer jumped past their utterances too.
+ *
+ * Split into an "against already-parsed input" core and a parse-and-call
+ * convenience wrapper for the same reason locateEvidence is: a caller that
+ * also needs `locateEvidenceAgainst` for the same call's checkpoints (routes/
+ * calls.ts's positions endpoint) parses the transcript once and feeds both.
+ */
+export function blockStartTimesAgainst(
+  blocks: TranscriptBlock[],
+  utterances: RawUtterance[]
+): (number | null)[] {
+  if (utterances.length === 0) return blocks.map(() => null);
+
+  let pointer = 0;
+  return blocks.map((block) => {
+    const index = firstUtteranceIndexWithOpeningWords(utterances, block.text, pointer);
+    if (index === null) return null;
+    pointer = index;
+    return utterances[index].start;
+  });
+}
+
+export function blockStartTimes(
+  transcriptText: string | null,
+  transcriptRaw: unknown
+): (number | null)[] {
+  if (!transcriptText) return [];
+  const blocks = parseTranscriptBlocks(transcriptText);
+  const utterances = extractUtterances(transcriptRaw);
+  return blockStartTimesAgainst(blocks, utterances);
 }

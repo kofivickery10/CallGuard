@@ -36,7 +36,7 @@ const CALL_MARKER = /^\s*\[call\s+\d+\]\s*/i;
 // so a reader can see at a glance that personal data was taken out, and where.
 const REDACTION_TAG = /(\[[A-Z][A-Z_]*_\d+\])/g;
 
-function WithRedactions({ text }: { text: string }) {
+export function WithRedactions({ text }: { text: string }) {
   return (
     <>
       {text.split(REDACTION_TAG).map((part, i) =>
