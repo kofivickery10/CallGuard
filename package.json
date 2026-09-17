@@ -27,6 +27,8 @@
     "smoke:prod": "node scripts/prod-smoke.mjs",
     "blog:build": "node scripts/build-blog.mjs",
     "og:build": "node scripts/build-og.mjs",
+    "ops-mcp:install": "npm ci --prefix tools/ops-mcp",
+    "ops-mcp:test": "npm test --prefix tools/ops-mcp",
     "audit": "npm run audit:onpage; npm run audit:html; npm run audit:a11y; npm run audit:links",
     "audit:onpage": "node scripts/audit-onpage.mjs",
     "audit:a11y": "node scripts/audit-a11y.mjs",

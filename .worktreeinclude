@@ -17,3 +17,7 @@
 .claude/settings.local.json
 .claude/agents/*.md
 .claude/launch.json
+
+# the ops tools server keeps its own read-only credentials apart from the
+# app's (see tools/ops-mcp/README.md)
+tools/ops-mcp/.env

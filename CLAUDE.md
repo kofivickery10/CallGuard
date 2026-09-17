@@ -56,6 +56,8 @@ cd packages/api && npx vitest run -t "part of the test name"
 
 **One-off operational scripts** live in `packages/api/src/scripts/` and run via `tsx` (e.g. `npx tsx src/scripts/onboard-tenant.ts`, `seed-demo.ts`, `bulk-reprocess-tenant.ts`). They connect to whatever `DATABASE_URL` points at — usually production — so treat them as production tools.
 
+**Ops tools (MCP)** — `tools/ops-mcp/` is a local, read-only MCP server (`callguard-ops`, registered in `.mcp.json`) that gives Claude Code real business numbers: usage, cost, search, traffic, prospect checks. Install with `npm run ops-mcp:install`, test with `npm run ops-mcp:test`; it has its own gitignored `tools/ops-mcp/.env`, separate from the app's. Its tools must stay read-only and return totals only from customer data — see its README before adding one.
+
 ## Architecture
 
 ### Monorepo packages
