@@ -117,6 +117,14 @@ export function CallDetail() {
       // that's terminal here as well — otherwise it would poll forever.
       if (status === 'scored' || status === 'failed' || status === 'skipped') return false;
       if (status === 'transcribed' && data?.journey) return false;
+      // 'captured' (awaiting hydration) and a sales_only 'transcribed' call
+      // with no journey yet (held until a sale for the customer arrives — see
+      // deferToSale in jobs/processors/transcribe.ts) are both resting on an
+      // external event with no ETA. Nothing here will change until that
+      // arrives, so polling every 3s for as long as the page stays open just
+      // burns requests.
+      if (status === 'captured') return false;
+      if (status === 'transcribed' && !data?.journey && org?.scoring_scope === 'sales_only') return false;
       return 3000;
     },
   });
@@ -552,6 +560,15 @@ export function CallDetail() {
           <div className="text-xs text-text-secondary mt-1">
             Your firm scores sales rather than single calls. This call is kept and will be transcribed and
             scored when the sale it belongs to arrives from your CRM.
+          </div>
+        </div>
+      )}
+
+      {call.status === 'transcribed' && !journey && org?.scoring_scope === 'sales_only' && (
+        <div className="bg-table-header border border-border rounded-card p-4 mb-6">
+          <div className="text-table-cell font-semibold text-text-primary">Held until a sale arrives</div>
+          <div className="text-xs text-text-secondary mt-1">
+            Your firm scores sales, so this call is scored when a sale for the customer reaches CallGuard.
           </div>
         </div>
       )}
