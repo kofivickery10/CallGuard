@@ -69,6 +69,13 @@ export type AuditActionType =
   | 'scorecard.create'
   | 'scorecard.update'
   | 'scorecard.delete'
+  // A scorecard copied, with its checkpoints, into a new inactive one — where a
+  // firm's next version of its QA manual starts.
+  | 'scorecard.duplicate'
+  // Made the live scorecard. Paired with scorecard.deactivate below: between
+  // them they are the record of which standard a given call was scored against
+  // when the call named no scorecard itself.
+  | 'scorecard.activate'
   | 'kb.upload'
   | 'kb.delete'
   | 'api_key.create'

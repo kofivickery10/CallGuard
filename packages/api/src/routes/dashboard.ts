@@ -35,6 +35,37 @@ export function journeyWrapUpAgentClause(paramIdx: number): string {
 export const CALL_IS_SCORED = `(c.status = 'scored'
   OR EXISTS (SELECT 1 FROM journeys j2 WHERE j2.id = c.journey_id AND j2.status = 'scored'))`;
 
+/**
+ * Every scored unit of one organisation, with the scorecard it was scored
+ * against: the LATEST score per call (a rescore replaces its call's earlier
+ * score rather than adding a second unit) plus each scored journey.
+ *
+ * The body of a CTE — callers wrap it (`WITH units AS (...)`) and aggregate.
+ * Exported for the same reason as CALL_IS_SCORED: the Scorecards list counts
+ * the same units the dashboard does, and "scoring 107 sales" has to mean on one
+ * screen what it means on the other.
+ *
+ * `callFilter` / `journeyFilter` are extra predicates appended to each half
+ * (e.g. an agent filter); `c` is the call alias and `j` the journey alias.
+ */
+export function scoredUnitsByScorecard(
+  orgParamIdx: number,
+  opts: { callFilter?: string; journeyFilter?: string } = {}
+): string {
+  return `SELECT latest.scorecard_id, latest.overall_score AS score, latest.pass
+     FROM (
+       SELECT DISTINCT ON (cs.call_id) cs.scorecard_id, cs.overall_score, cs.pass
+       FROM call_scores cs
+       JOIN calls c ON c.id = cs.call_id
+       WHERE c.organization_id = $${orgParamIdx}${opts.callFilter ?? ''}
+       ORDER BY cs.call_id, cs.scored_at DESC
+     ) latest
+     UNION ALL
+     SELECT j.scorecard_id, j.overall_score, j.pass
+     FROM journeys j
+     WHERE j.organization_id = $${orgParamIdx} AND j.status = 'scored'${opts.journeyFilter ?? ''}`;
+}
+
 // Summary stats (role-scoped)
 dashboardRouter.get('/summary', async (req, res, next) => {
   try {
@@ -294,14 +325,7 @@ dashboardRouter.get('/trends/by-scorecard', requireOrgView, async (req, res, nex
       critical_count: string;
     }>(
       `WITH units AS (
-         SELECT cs.scorecard_id, cs.overall_score AS score
-         FROM call_scores cs
-         JOIN calls c ON c.id = cs.call_id
-         WHERE c.organization_id = $1${agentFilter}
-         UNION ALL
-         SELECT j.scorecard_id, j.overall_score
-         FROM journeys j
-         WHERE j.organization_id = $1 AND j.status = 'scored'${journeyAgent}
+         ${scoredUnitsByScorecard(1, { callFilter: agentFilter, journeyFilter: journeyAgent })}
        ),
        breach_counts AS (
          SELECT si.scorecard_id,
