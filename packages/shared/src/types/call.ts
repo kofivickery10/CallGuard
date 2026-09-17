@@ -226,6 +226,10 @@ export interface CallListRow {
   customer_id: string | null;
   customer_name: string | null;
   customer_phone: string | null;
+  // How the call got here. 'captured' means two different things by source: a
+  // dialler-captured call is resting until a sale, an imported or uploaded one
+  // is still having its recording fetched.
+  ingestion_source: Call['ingestion_source'];
   // Set (possibly to null) for a 'sales' mode org, and always null otherwise.
   sale: CallListSaleSummary | null;
   // Set (possibly to null) for a 'calls' mode org, and always null otherwise.

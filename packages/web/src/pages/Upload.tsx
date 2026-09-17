@@ -1,9 +1,13 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import { FileDropzone } from '../components/FileDropzone';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { FileDropzone, isVideoRecording, recordingProblem } from '../components/FileDropzone';
+import { BulkImportDrawer } from '../components/BulkImportDrawer';
+import { RecentUploadsRail } from '../components/RecentUploadsRail';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../api/client';
+import { formatFileSize } from '../lib/format';
+import { hasFeature, MAX_FILE_SIZE_BYTES } from '@callguard/shared';
 import type { Call, OrganizationInfo } from '@callguard/shared';
 
 // The sentence the API 400s with when a call is ticked "resulted in a sale"
@@ -18,27 +22,13 @@ function hasUsablePhone(value: string): boolean {
   return value.replace(/\D/g, '').length >= 7;
 }
 
+// Anything this long, or any meeting recording, takes minutes rather than
+// seconds to transcribe — so the page stops promising "under a minute".
+const LONG_RECORDING_BYTES = MAX_FILE_SIZE_BYTES / 4;
+
 interface AdviserOption {
   id: string;
   name: string;
-}
-
-interface BulkImportResult {
-  total: number;
-  queued: number;
-  duplicates: number;
-  errors: number;
-  error_rows: { row: number; audio_url: string; error: string }[];
-}
-
-interface BulkImportRow {
-  audio_url: string;
-  agent_name?: string;
-  customer_phone?: string;
-  call_date?: string;
-  external_id?: string;
-  tags?: string;
-  scorecard_id?: string;
 }
 
 interface ScorecardSummary {
@@ -48,34 +38,26 @@ interface ScorecardSummary {
   is_active: boolean;
 }
 
-function parseCSV(text: string): BulkImportRow[] {
-  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-  if (lines.length === 0) return [];
-  const firstLine = lines[0] ?? '';
-  const headerCells = firstLine.split(',').map((h) => h.trim().toLowerCase());
-  const rows: BulkImportRow[] = [];
-  for (let i = 1; i < lines.length; i++) {
-    const line = lines[i] ?? '';
-    const cells = line.split(',').map((c) => c.trim());
-    const row: Record<string, string> = {};
-    headerCells.forEach((h, j) => { row[h] = cells[j] || ''; });
-    const audioUrl = row.audio_url;
-    if (!audioUrl) continue;
-    rows.push({
-      audio_url: audioUrl,
-      agent_name: row.agent_name || undefined,
-      customer_phone: row.customer_phone || undefined,
-      call_date: row.call_date || undefined,
-      external_id: row.external_id || undefined,
-      tags: row.tags || undefined,
-      scorecard_id: row.scorecard_id || undefined,
-    });
-  }
-  return rows;
+interface CustomerMatch {
+  id: string;
+  name: string | null;
+  phone_normalized: string;
+  call_count: number;
 }
+
+/** 'other' reveals the free-text name box; '' means "not recorded". */
+const NOT_LISTED = 'other';
+
+const todayIso = () => new Date().toLocaleDateString('en-CA');
+
+const fieldCls =
+  'w-full px-3 py-2 rounded-btn border border-border bg-card text-table-cell text-text-primary placeholder:text-text-muted disabled:opacity-60 focus:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40';
+const labelCls = 'block text-xs font-medium text-text-muted mb-1';
+const helpCls = 'text-xs text-text-muted mt-1.5';
 
 export function Upload() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
   const isSupervisor = user?.role === 'supervisor';
@@ -84,351 +66,774 @@ export function Upload() {
   // can't reach this page at all (see canUpload below).
   const canPickAdviser = isAdmin || isSupervisor;
   const canUpload = isAdmin || isSupervisor || user?.role === 'adviser';
-  const [uploading, setUploading] = useState(false);
-  const [error, setError] = useState('');
+  // Whose plan/role lets them see a customer at all — the same gate the
+  // Customers page uses. Without it the phone lookup would 403 on every keypress.
+  const canSeeCustomers = hasFeature(
+    user?.organization_plan ?? null,
+    'customer_journey',
+    user?.feature_overrides
+  );
+
+  const [file, setFile] = useState<File | null>(null);
+  const [fileRefused, setFileRefused] = useState('');
   const [agentId, setAgentId] = useState('');
   const [agentName, setAgentName] = useState('');
-  const [scorecardId, setScorecardId] = useState('');
+  const [callDate, setCallDate] = useState(todayIso);
   const [customerPhone, setCustomerPhone] = useState('');
   const [phoneError, setPhoneError] = useState('');
-  const [markAsSale, setMarkAsSale] = useState(false);
+  const [isSale, setIsSale] = useState(false);
+  const [scorecardId, setScorecardId] = useState('');
+  const [pickingScorecard, setPickingScorecard] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
-  const [csvText, setCsvText] = useState('');
-  const [bulkBusy, setBulkBusy] = useState(false);
-  const [bulkResult, setBulkResult] = useState<BulkImportResult | null>(null);
-  const [bulkError, setBulkError] = useState('');
 
-  // Lean, name-only list a supervisor can also see — /agents carries full
-  // stats and is admin-only.
+  // Upload progress. 'sent' is "every byte has left the browser" — the server
+  // is storing it (and pulling the audio out of a video container) by then.
+  const [phase, setPhase] = useState<'idle' | 'uploading' | 'sent'>('idle');
+  const [sentBytes, setSentBytes] = useState(0);
+  const [totalBytes, setTotalBytes] = useState<number | null>(null);
+  const [error, setError] = useState('');
+  const abortRef = useRef<AbortController | null>(null);
+
+  const inFlight = phase !== 'idle';
+
   const { data: advisers } = useQuery({
     queryKey: ['upload-advisers'],
     queryFn: () => api.get<{ data: AdviserOption[] }>('/calls/advisers'),
     enabled: canPickAdviser,
   });
 
+  // Read by everyone who can upload, not just admins: the outcome panel names
+  // the scorecard the call will be judged against, which is not an admin-only
+  // fact about the firm.
   const { data: scorecards } = useQuery({
     queryKey: ['scorecards'],
     queryFn: () => api.get<{ data: ScorecardSummary[] }>('/scorecards'),
-    enabled: isAdmin,
+    enabled: !!user,
   });
 
-  // Only 'sales_only' tenants hold scoring until a sale arrives — the manual
-  // "this call is a sale" checkbox is only meaningful (and only shown) there.
-  // Loaded for every role that can reach this page, not just admins: at a
-  // sales_only firm this checkbox is one of the three ways a sale arrives (with
-  // a CRM webhook and "Score sale"), and a supervisor or adviser uploading the
-  // call is often the person who knows it sold. GET /organization only needs a
-  // signed-in user.
-  const { data: organization } = useQuery({
+  const {
+    data: organization,
+    isLoading: orgLoading,
+    isError: orgError,
+  } = useQuery({
     queryKey: ['organization'],
     queryFn: () => api.get<OrganizationInfo>('/organization'),
     enabled: !!user,
   });
-  const isSalesOnly = organization?.scoring_scope === 'sales_only';
 
-  const handleFileSelected = async (file: File) => {
+  // The firm's scoring mode decides almost everything this page says: a firm
+  // that scores sales holds a call until a sale arrives, a firm that scores
+  // calls scores this one on its own. null until it's known — nothing claims
+  // either behaviour before then.
+  const salesScoring: boolean | null = organization
+    ? organization.scoring_scope === 'sales_only'
+    : null;
+
+  const activeScorecard = scorecards?.data.find((s) => s.is_active) ?? null;
+  const chosenScorecard = scorecardId
+    ? (scorecards?.data.find((s) => s.id === scorecardId) ?? null)
+    : activeScorecard;
+  const scorecardChoices = scorecards?.data ?? [];
+
+  // Debounced customer lookup — never blocks the upload, and says nothing at
+  // all when it can't be trusted (no permission, or the request failed).
+  const [debouncedPhone, setDebouncedPhone] = useState('');
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedPhone(customerPhone.trim()), 300);
+    return () => window.clearTimeout(timer);
+  }, [customerPhone]);
+
+  const {
+    data: customerMatch,
+    isFetching: matchFetching,
+    isSuccess: matchLoaded,
+  } = useQuery({
+    queryKey: ['upload-customer-match', debouncedPhone],
+    enabled: canSeeCustomers && hasUsablePhone(debouncedPhone),
+    queryFn: async () => {
+      const res = await api.get<{ customers: CustomerMatch[] }>(
+        `/customers?search=${encodeURIComponent(debouncedPhone)}&limit=5`
+      );
+      // The search is a partial match, so only claim a customer when the
+      // stored number really ends with the digits that were typed.
+      const digits = debouncedPhone.replace(/\D/g, '');
+      const tail = digits.slice(-9);
+      return (
+        res.customers.find((c) => c.phone_normalized.replace(/\D/g, '').endsWith(tail)) ?? null
+      );
+    },
+    retry: false,
+  });
+
+  const saleNeedsPhone = isSale && !hasUsablePhone(customerPhone);
+  const whyDisabled = !file
+    ? 'Choose a recording first.'
+    : saleNeedsPhone
+      ? SALE_NEEDS_PHONE_MESSAGE
+      : '';
+
+  const isLongRecording = !!file && (isVideoRecording(file) || file.size > LONG_RECORDING_BYTES);
+
+  const chooseFile = (chosen: File) => {
+    setFileRefused('');
+    setError('');
+    setFile(chosen);
+  };
+
+  const removeFile = () => {
+    setFile(null);
+    setError('');
+    setFileRefused('');
+  };
+
+  // Warn before a reload or a closed tab throws away an upload mid-flight.
+  useEffect(() => {
+    if (!inFlight) return;
+    const warn = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [inFlight]);
+
+  const startUpload = async () => {
+    if (!file || inFlight) return;
     setError('');
     setPhoneError('');
 
-    // Flagging a sale without a phone that matches it to the customer's other
-    // calls would rest at "transcribed" forever — refuse before the upload
-    // starts rather than finding out from a failed request.
-    if (isSalesOnly && markAsSale && !hasUsablePhone(customerPhone)) {
+    // Re-check the file: it has been sitting in the form, and the reasons it
+    // could be refused are the same ones the dropzone checked.
+    const problem = recordingProblem(file);
+    if (problem) {
+      setFileRefused(problem);
+      return;
+    }
+    if (saleNeedsPhone) {
       setPhoneError(SALE_NEEDS_PHONE_MESSAGE);
       return;
     }
 
-    setUploading(true);
+    const form = new FormData();
+    form.append('audio', file);
+    if (canPickAdviser) {
+      if (agentId && agentId !== NOT_LISTED) {
+        form.append('agent_id', agentId);
+        const selected = advisers?.data.find((a) => a.id === agentId);
+        if (selected) form.append('agent_name', selected.name);
+      } else if (agentId === NOT_LISTED && agentName.trim()) {
+        form.append('agent_name', agentName.trim());
+      }
+    }
+    if (isAdmin && scorecardId) form.append('scorecard_id', scorecardId);
+    // call_date orders the calls inside a sale, and with them which one counts
+    // as the wrap-up, so it is only sent when it adds something: a date the
+    // operator actually changed. A date box carries no time of day, so sending
+    // "today" would replace the real upload time with midnight and leave
+    // several of today's uploads indistinguishable in that ordering.
+    if (callDate && callDate !== todayIso()) form.append('call_date', callDate);
+    if (customerPhone.trim()) form.append('customer_phone', customerPhone.trim());
+    if (salesScoring && isSale) form.append('mark_as_sale', 'true');
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setSentBytes(0);
+    setTotalBytes(file.size);
+    setPhase('uploading');
 
     try {
-      const formData = new FormData();
-      formData.append('audio', file);
-
-      if (canPickAdviser) {
-        if (agentId) {
-          formData.append('agent_id', agentId);
-          const selectedAdviser = advisers?.data.find((a) => a.id === agentId);
-          if (selectedAdviser) formData.append('agent_name', selectedAdviser.name);
-        } else if (agentName) {
-          formData.append('agent_name', agentName);
-        }
-      }
-      if (isAdmin && scorecardId) {
-        formData.append('scorecard_id', scorecardId);
-      }
-      // Any uploader: the customer's phone links the call to their other calls,
-      // and the sale flag scores that customer's sale once this is transcribed.
-      if (customerPhone) {
-        formData.append('customer_phone', customerPhone);
-      }
-      if (isSalesOnly && markAsSale) {
-        formData.append('mark_as_sale', 'true');
-      }
-
-      const call = await api.post<Call>('/calls/upload', formData);
+      const call = await api.upload<Call>('/calls/upload', form, {
+        signal: controller.signal,
+        onProgress: (loaded, total) => {
+          setSentBytes(loaded);
+          if (total != null) setTotalBytes(total);
+        },
+        onSent: () => setPhase('sent'),
+      });
+      queryClient.invalidateQueries({ queryKey: ['calls'] });
+      queryClient.invalidateQueries({ queryKey: ['my-uploads'] });
       navigate(`/calls/${call.id}`);
     } catch (err) {
+      setPhase('idle');
+      if ((err as Error).name === 'AbortError') return;
       const message = (err as Error).message;
-      if (message === SALE_NEEDS_PHONE_MESSAGE) {
-        setPhoneError(message);
-      } else {
-        setError(message);
-      }
+      if (message === SALE_NEEDS_PHONE_MESSAGE) setPhoneError(message);
+      setError(message);
     } finally {
-      setUploading(false);
+      abortRef.current = null;
     }
   };
 
+  const cancelUpload = () => abortRef.current?.abort();
+
+  const percent =
+    totalBytes && totalBytes > 0 ? Math.min(100, Math.round((sentBytes / totalBytes) * 100)) : 0;
+
+  const progressLine =
+    phase === 'sent'
+      ? file && isVideoRecording(file)
+        ? 'Extracting the audio…'
+        : 'Storing the recording…'
+      : `Uploading ${formatFileSize(sentBytes)} of ${formatFileSize(totalBytes ?? file?.size ?? 0)}`;
+
+  const outcome = useMemo(
+    () =>
+      outcomeSentence({
+        salesScoring,
+        isSale,
+        chosenScorecard,
+        customerMatch,
+        file,
+        isLongRecording,
+      }),
+    [salesScoring, isSale, chosenScorecard, customerMatch, file, isLongRecording]
+  );
+
   if (!canUpload) {
     return (
-      <div className="max-w-2xl">
+      <div className="max-w-[700px]">
         <div className="mb-7">
-          <h2 className="text-page-title text-text-primary">Upload</h2>
+          <h2 className="text-page-title text-text-primary">Upload a call</h2>
         </div>
         <div className="bg-card border border-border rounded-card p-10 text-center">
           <div className="text-base font-semibold text-text-primary">
             You don't have permission to upload calls
           </div>
+          <p className="text-table-cell text-text-secondary mt-1.5">
+            Ask an administrator at {user?.organization_name ?? 'your firm'} if you need to add a
+            recording.
+          </p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="max-w-2xl">
-      <div className="mb-7">
-        <h2 className="text-page-title text-text-primary">Upload</h2>
-        <p className="text-page-sub text-text-subtle mt-1">
-          Upload a call recording, or a Teams/Zoom appointment recording, to transcribe and analyse for compliance
-        </p>
-      </div>
-
-      {error && (
-        <div className="bg-fail-bg text-fail px-4 py-3 rounded-btn mb-5 text-table-cell">
-          {error}
-        </div>
-      )}
-
-      {canPickAdviser && (
-        <div className="bg-card border border-border rounded-card p-5 mb-5">
-          <label className="block text-table-cell font-medium text-text-secondary mb-1.5">
-            Assign to Agent <span className="text-text-muted font-normal">(optional)</span>
-          </label>
-          <select
-            value={agentId}
-            onChange={(e) => { setAgentId(e.target.value); if (e.target.value) setAgentName(''); }}
-            className="w-full border border-border rounded-btn px-3 py-2 text-table-cell text-text-primary focus:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 transition-colors bg-card mb-2.5"
+    <div className="flex flex-col lg:flex-row lg:items-start gap-6">
+      <div className="w-full max-w-[700px] min-w-0">
+        <Link
+          to="/calls"
+          className="inline-flex items-center gap-1.5 text-table-cell text-text-secondary hover:text-text-primary mb-4 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            className="w-4 h-4"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
           >
-            <option value="">Select an agent or type below</option>
-            {advisers?.data.map((adviser) => (
-              <option key={adviser.id} value={adviser.id}>{adviser.name}</option>
-            ))}
-          </select>
-          {!agentId && (
-            <input
-              type="text"
-              value={agentName}
-              onChange={(e) => setAgentName(e.target.value)}
-              placeholder="Or type agent name"
-              className="w-full border border-border rounded-btn px-3 py-2 text-table-cell text-text-primary placeholder:text-text-muted focus:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 transition-colors"
-            />
-          )}
+            <path d="M15 18l-6-6 6-6" />
+          </svg>
+          Calls
+        </Link>
 
-          {isAdmin && scorecards && scorecards.data.length > 0 && (
-            <>
-              <label className="block text-table-cell font-medium text-text-secondary mb-1.5 mt-4">
-                Score against scorecard <span className="text-text-muted font-normal">(optional)</span>
-              </label>
-              <select
-                value={scorecardId}
-                onChange={(e) => setScorecardId(e.target.value)}
-                className="w-full border border-border rounded-btn px-3 py-2 text-table-cell text-text-primary focus:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 transition-colors bg-card"
-              >
-                <option value="">Use the active scorecard</option>
-                {scorecards.data.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}{s.is_active ? ' (active)' : ''}
-                  </option>
-                ))}
-              </select>
-              <p className="text-xs text-text-muted mt-1.5">
-                Leave on "active" unless you are scoring against a specific campaign or client scorecard.
-              </p>
-            </>
+        <div className="flex flex-wrap items-start justify-between gap-3 mb-5">
+          <div>
+            <h2 className="text-page-title text-text-primary">Upload a call</h2>
+            <p className="text-page-sub text-text-subtle mt-1">
+              {salesScoring === null
+                ? "For recordings that don't come from your dialler."
+                : salesScoring
+                  ? "For recordings that don't come from your dialler — a Teams or Zoom meeting, or a one-off call."
+                  : "For recordings that don't come from your dialler. Each call is scored on its own."}
+            </p>
+          </div>
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={() => setBulkOpen(true)}
+              className="text-table-cell font-semibold text-primary-ink hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
+            >
+              Import many recordings
+            </button>
           )}
         </div>
-      )}
 
-      {!canPickAdviser && (
-        <div className="bg-primary-light border border-border rounded-btn px-4 py-3 mb-5 text-table-cell text-text-secondary">
-          This call will be assigned to you ({user?.name})
-        </div>
-      )}
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            void startUpload();
+          }}
+          className="bg-card border border-border rounded-card shadow-card"
+        >
+          {/* The recording comes first, before any details — and choosing one
+              starts nothing. */}
+          <section className="p-5 border-b border-border">
+            <h3 className="text-section-title text-text-primary mb-3">Recording</h3>
 
-      <div className="bg-card border border-border rounded-card p-5 mb-5">
-        <label htmlFor="upload-customer-phone" className="block text-table-cell font-medium text-text-secondary mb-1.5">
-          Customer phone <span className="text-text-muted font-normal">(optional)</span>
-        </label>
-        <input
-          id="upload-customer-phone"
-          type="text"
-          value={customerPhone}
-          onChange={(e) => { setCustomerPhone(e.target.value); if (phoneError) setPhoneError(''); }}
-          placeholder="e.g. 07473 123456"
-          aria-invalid={!!phoneError}
-          aria-describedby={phoneError ? 'upload-customer-phone-error' : undefined}
-          className="w-full border border-border rounded-btn px-3 py-2 text-table-cell text-text-primary placeholder:text-text-muted focus:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 transition-colors"
-        />
-        {phoneError && (
-          <p id="upload-customer-phone-error" className="text-xs text-fail mt-1.5">{phoneError}</p>
-        )}
-        <p className="text-xs text-text-muted mt-1.5">
-          {isSalesOnly
-            ? "Needed to match this call to the customer's other calls, and for the sale flag below."
-            : "Needed to match this call to the customer's other calls."}
-        </p>
-
-        {isSalesOnly && (
-          <label className="flex items-start gap-2 mt-4 text-table-cell text-text-secondary cursor-pointer">
-            <input
-              type="checkbox"
-              checked={markAsSale}
-              onChange={(e) => setMarkAsSale(e.target.checked)}
-              className="mt-0.5 accent-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
-            />
-            <span>
-              This call resulted in a sale
-              <span className="block text-xs text-text-muted font-normal">
-                Your firm scores sales, so calls are only scored once a sale arrives. Tick this to score this
-                customer's sale as soon as the call is transcribed, instead of waiting for the sale to come from
-                your CRM. Needs the customer phone above.
-              </span>
-            </span>
-          </label>
-        )}
-      </div>
-
-      <FileDropzone onFileSelected={handleFileSelected} disabled={uploading} />
-
-      {uploading && (
-        <div className="mt-6 bg-card border border-border rounded-card p-10 text-center">
-          <div className="w-10 h-10 border-[3px] border-border border-t-primary rounded-full animate-spin mx-auto mb-4" />
-          <div className="text-base font-semibold text-text-primary">Processing your call...</div>
-          <div className="text-table-cell text-text-muted mt-1">Uploading and preparing for analysis</div>
-        </div>
-      )}
-
-      {isAdmin && (
-        <div className="mt-8 bg-card border border-border rounded-card overflow-hidden">
-          <button
-            onClick={() => setBulkOpen((v) => !v)}
-            aria-expanded={bulkOpen}
-            aria-controls="bulk-import-panel"
-            className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-table-header transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
-          >
-            <div>
-              <div className="text-section-title text-text-primary">Bulk import from URLs</div>
-              <div className="text-table-cell text-text-muted mt-0.5">
-                Paste a CSV of recording URLs to ingest many historical calls at once. Up to 200 per batch.
-              </div>
-            </div>
-            <span className="text-text-muted">
-              <svg
-                className={`w-4 h-4 transition-transform ${bulkOpen ? 'rotate-180' : ''}`}
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-              >
-                <path d="M6 9l6 6 6-6" />
-              </svg>
-            </span>
-          </button>
-
-          {bulkOpen && (
-            <div id="bulk-import-panel" className="px-5 py-5 border-t border-border space-y-4">
-              <div>
-                <label className="block text-table-cell font-medium text-text-secondary mb-1.5">
-                  CSV (header row required)
-                </label>
-                <textarea
-                  value={csvText}
-                  onChange={(e) => setCsvText(e.target.value)}
-                  rows={8}
-                  spellCheck={false}
-                  placeholder={`audio_url,agent_name,customer_phone,call_date,external_id,tags,scorecard_id\nhttps://your-archive.example.com/call-001.mp3,Marcus Webb,+44 7468 432 368,2026-04-29,crm-12345,suitability,\nhttps://your-archive.example.com/call-002.mp3,Tina Lee,+44 7468 432 368,2026-04-30,crm-12346,vulnerability,`}
-                  className="w-full border border-border rounded-btn px-3 py-2 text-xs font-mono text-text-primary placeholder:text-text-muted focus:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 transition-colors bg-page"
-                />
-                <div className="text-[11px] text-text-muted mt-1.5">
-                  Required: <code>audio_url</code>. Optional: <code>agent_name</code>, <code>customer_phone</code>, <code>call_date</code> (ISO), <code>external_id</code> (your CRM id, used for deduplication), <code>tags</code> (comma-separated), <code>scorecard_id</code> (UUID of a scorecard from <a href="/scorecards" className="text-primary-ink hover:underline">Scorecards</a>; leave blank to use the active one).
-                </div>
-              </div>
-
-              {bulkError && (
-                <div className="bg-fail-bg text-fail px-4 py-3 rounded-btn text-table-cell">
-                  {bulkError}
-                </div>
-              )}
-
-              {bulkResult && (
-                <div className="bg-primary-light/40 border border-primary/30 rounded-btn px-4 py-3 text-table-cell text-text-primary">
-                  <div className="font-semibold mb-1">Import complete.</div>
-                  <div>
-                    <strong>{bulkResult.queued}</strong> queued for scoring,{' '}
-                    <strong>{bulkResult.duplicates}</strong> duplicates skipped,{' '}
-                    <strong>{bulkResult.errors}</strong> errors out of <strong>{bulkResult.total}</strong> rows.
+            {file ? (
+              <div className="border border-border rounded-card p-3 flex items-center gap-3">
+                <span className="w-10 h-10 shrink-0 rounded-btn bg-primary-light flex items-center justify-center">
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="w-5 h-5 stroke-primary"
+                    fill="none"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M9 18V5l12-2v13" />
+                    <circle cx="6" cy="18" r="3" />
+                    <circle cx="18" cy="16" r="3" />
+                  </svg>
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="text-table-cell font-semibold text-text-primary truncate" title={file.name}>
+                    {file.name}
                   </div>
-                  {bulkResult.error_rows.length > 0 && (
-                    <details className="mt-2">
-                      <summary className="cursor-pointer text-fail text-xs font-semibold">View errors</summary>
-                      <ul className="mt-2 text-xs text-text-secondary space-y-1">
-                        {bulkResult.error_rows.map((e) => (
-                          <li key={e.row} className="font-mono">
-                            row {e.row + 1}: {e.audio_url || '(missing url)'} - {e.error}
-                          </li>
-                        ))}
-                      </ul>
-                    </details>
+                  <div className="flex flex-wrap items-center gap-2 mt-1">
+                    <span className="text-xs text-text-muted">{formatFileSize(file.size)}</span>
+                    {isVideoRecording(file) && (
+                      <span className="text-badge font-semibold px-2.5 py-[3px] rounded-full bg-processing-bg text-processing">
+                        Video · only the audio is kept
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={removeFile}
+                  disabled={inFlight}
+                  className="shrink-0 min-h-[44px] sm:min-h-0 px-3 py-2 rounded-btn text-table-cell font-semibold text-text-secondary hover:bg-sidebar-hover disabled:opacity-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                  aria-label={`Remove ${file.name}`}
+                >
+                  Remove
+                </button>
+              </div>
+            ) : (
+              <FileDropzone
+                onFileChosen={chooseFile}
+                onFileRefused={setFileRefused}
+                disabled={inFlight}
+              />
+            )}
+
+            {fileRefused && (
+              <p role="alert" className="mt-3 bg-fail-bg text-fail px-3 py-2 rounded-btn text-table-cell">
+                {fileRefused}
+              </p>
+            )}
+          </section>
+
+          {/* About the call */}
+          <section className="p-5 border-b border-border">
+            <h3 className="text-section-title text-text-primary mb-4">About the call</h3>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                {canPickAdviser ? (
+                  <>
+                    <label htmlFor="upload-adviser" className={labelCls}>
+                      Adviser
+                    </label>
+                    <select
+                      id="upload-adviser"
+                      value={agentId}
+                      onChange={(e) => setAgentId(e.target.value)}
+                      disabled={inFlight}
+                      aria-describedby="upload-adviser-help"
+                      className={fieldCls}
+                    >
+                      <option value="">Not recorded</option>
+                      {advisers?.data.map((adviser) => (
+                        <option key={adviser.id} value={adviser.id}>
+                          {adviser.name}
+                        </option>
+                      ))}
+                      <option value={NOT_LISTED}>Someone not listed…</option>
+                    </select>
+                    {agentId === NOT_LISTED && (
+                      <input
+                        type="text"
+                        value={agentName}
+                        onChange={(e) => setAgentName(e.target.value)}
+                        disabled={inFlight}
+                        placeholder="Their name"
+                        aria-label="Name of the adviser on this call"
+                        className={`${fieldCls} mt-2`}
+                      />
+                    )}
+                    <p id="upload-adviser-help" className={helpCls}>
+                      Who the call is attributed to in reporting and coaching.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    {/* Not a control: an adviser's upload is always their own
+                        (routes/calls.ts forces it), so there is nothing to pick. */}
+                    <span className={labelCls}>Adviser</span>
+                    <p className="px-3 py-2 rounded-btn border border-border bg-page text-table-cell text-text-primary">
+                      You · {user?.name}
+                    </p>
+                    <p className={helpCls}>Your uploads are always attributed to you.</p>
+                  </>
+                )}
+              </div>
+
+              <div>
+                <label htmlFor="upload-call-date" className={labelCls}>
+                  Date of the call
+                </label>
+                <input
+                  id="upload-call-date"
+                  type="date"
+                  value={callDate}
+                  max={todayIso()}
+                  onChange={(e) => setCallDate(e.target.value)}
+                  disabled={inFlight}
+                  aria-describedby="upload-call-date-help"
+                  className={fieldCls}
+                />
+                <p id="upload-call-date-help" className={helpCls}>
+                  When the conversation happened, if that isn't today.
+                </p>
+              </div>
+
+              <div className="sm:col-span-2">
+                <label htmlFor="upload-customer-phone" className={labelCls}>
+                  Customer phone{' '}
+                  {isSale ? (
+                    <span className="text-fail font-semibold">(required for a sale)</span>
+                  ) : (
+                    <span className="font-normal">(optional)</span>
+                  )}
+                </label>
+                <input
+                  id="upload-customer-phone"
+                  type="tel"
+                  inputMode="tel"
+                  autoComplete="tel"
+                  value={customerPhone}
+                  onChange={(e) => {
+                    setCustomerPhone(e.target.value);
+                    if (phoneError) setPhoneError('');
+                  }}
+                  disabled={inFlight}
+                  placeholder="e.g. 07473 123456"
+                  aria-required={isSale}
+                  aria-invalid={!!phoneError}
+                  aria-describedby={`upload-customer-phone-help${phoneError ? ' upload-customer-phone-error' : ''}`}
+                  className={`${fieldCls} sm:max-w-[320px]`}
+                />
+                {phoneError && (
+                  <p id="upload-customer-phone-error" role="alert" className="text-xs text-fail mt-1.5">
+                    {phoneError}
+                  </p>
+                )}
+                <p id="upload-customer-phone-help" className={helpCls}>
+                  Matches the call to the customer's other calls.
+                </p>
+                {/* Only ever shown once the lookup has actually answered — a
+                    failed request must not read as "New customer". */}
+                {canSeeCustomers && hasUsablePhone(debouncedPhone) && matchLoaded && !matchFetching && (
+                  <p className="text-xs text-text-secondary mt-1" aria-live="polite">
+                    {customerMatch
+                      ? `Matches ${customerMatch.name ?? 'a customer already on file'} · ${
+                          customerMatch.call_count === 1
+                            ? '1 other call'
+                            : `${customerMatch.call_count} other calls`
+                        }`
+                      : 'New customer'}
+                  </p>
+                )}
+              </div>
+
+              {isAdmin && scorecardChoices.length > 1 && (
+                <div className="sm:col-span-2">
+                  {pickingScorecard ? (
+                    <>
+                      <label htmlFor="upload-scorecard" className={labelCls}>
+                        Scorecard
+                      </label>
+                      <select
+                        id="upload-scorecard"
+                        value={scorecardId}
+                        onChange={(e) => setScorecardId(e.target.value)}
+                        disabled={inFlight}
+                        aria-describedby="upload-scorecard-help"
+                        className={`${fieldCls} sm:max-w-[420px]`}
+                      >
+                        <option value="">
+                          {activeScorecard ? `${activeScorecard.name} (active)` : 'The active scorecard'}
+                        </option>
+                        {scorecardChoices
+                          .filter((s) => !s.is_active)
+                          .map((s) => (
+                            <option key={s.id} value={s.id}>
+                              {s.name}
+                            </option>
+                          ))}
+                      </select>
+                      <p id="upload-scorecard-help" className={helpCls}>
+                        Leave on the active scorecard unless this call belongs to a different
+                        campaign or client.
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <span className={labelCls}>Scorecard</span>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-table-cell text-text-primary">
+                          {chosenScorecard?.name ?? 'The active scorecard'}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setPickingScorecard(true)}
+                          aria-label="Change the scorecard this call is scored against"
+                          className="text-table-cell font-semibold text-primary-ink hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
+                        >
+                          Change
+                        </button>
+                      </div>
+                    </>
                   )}
                 </div>
               )}
-
-              <button
-                onClick={async () => {
-                  setBulkError('');
-                  setBulkResult(null);
-                  const rows = parseCSV(csvText);
-                  if (rows.length === 0) {
-                    setBulkError('No rows parsed. Paste a CSV with at least one audio_url row beneath the header.');
-                    return;
-                  }
-                  if (rows.length > 200) {
-                    setBulkError(`Too many rows (${rows.length}). Maximum 200 per batch.`);
-                    return;
-                  }
-                  setBulkBusy(true);
-                  try {
-                    const result = await api.post<BulkImportResult>('/calls/bulk-import', { rows });
-                    setBulkResult(result);
-                    setCsvText('');
-                  } catch (err) {
-                    setBulkError((err as Error).message);
-                  } finally {
-                    setBulkBusy(false);
-                  }
-                }}
-                disabled={bulkBusy || !csvText.trim()}
-                className="bg-primary-ink hover:bg-primary-ink-hover text-on-solid px-[18px] py-[9px] rounded-btn text-table-cell font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {bulkBusy ? 'Importing...' : 'Import CSV'}
-              </button>
             </div>
+          </section>
+
+          {/* The sale question, for firms that score sales */}
+          {salesScoring && (
+            <section className="p-5 border-b border-border">
+              <h3 id="upload-sale-question" className="text-section-title text-text-primary mb-1">
+                Did this call end in a sale?
+              </h3>
+              <p className="text-table-cell text-text-secondary mb-3">
+                Your firm scores sales, so this decides whether the call is scored now or kept
+                until a sale arrives.
+              </p>
+              <div
+                role="radiogroup"
+                aria-labelledby="upload-sale-question"
+                className="grid grid-cols-1 sm:grid-cols-2 gap-3"
+              >
+                {[
+                  {
+                    value: true,
+                    title: 'Yes — score the sale now',
+                    hint: "Scored together with the customer's other calls",
+                  },
+                  {
+                    value: false,
+                    title: 'No, or not yet',
+                    hint: 'Kept, and scored when the sale arrives from your CRM',
+                  },
+                ].map((option) => (
+                  <label
+                    key={String(option.value)}
+                    className={`flex items-start gap-2.5 p-3 rounded-card border cursor-pointer transition-colors focus-within:ring-2 focus-within:ring-primary/40 ${
+                      isSale === option.value
+                        ? 'border-primary bg-primary-light/50'
+                        : 'border-border hover:bg-sidebar-hover'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="upload-sale"
+                      checked={isSale === option.value}
+                      onChange={() => setIsSale(option.value)}
+                      disabled={inFlight}
+                      className="mt-0.5 accent-primary focus-visible:outline-none"
+                    />
+                    <span>
+                      <span className="block text-table-cell font-semibold text-text-primary">
+                        {option.title}
+                      </span>
+                      <span className="block text-xs text-text-muted mt-0.5">{option.hint}</span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </section>
           )}
-        </div>
-      )}
+
+          {/* What happens next — one sentence, built from the mode, the sale
+              answer and the scorecard. */}
+          <section className="p-5">
+            {orgError ? (
+              <p className="bg-review-bg text-review px-3 py-2 rounded-btn text-table-cell">
+                We couldn't check how your firm scores calls, so this page can't say what happens
+                after the upload. Reload the page to try again — uploading still works.
+              </p>
+            ) : orgLoading ? (
+              <div
+                className="h-10 rounded-card bg-[length:800px_100%] animate-skeleton-shimmer"
+                style={{
+                  backgroundImage:
+                    'linear-gradient(90deg, rgb(var(--cg-border-light)) 0%, rgb(var(--cg-border)) 50%, rgb(var(--cg-border-light)) 100%)',
+                }}
+                aria-busy="true"
+              />
+            ) : (
+              <div className="bg-primary-light border border-border rounded-card p-4">
+                <p className="text-table-cell text-text-secondary">
+                  {outcome.map((part, i) =>
+                    part.strong ? (
+                      <span key={i} className="font-semibold text-text-primary">
+                        {part.text}
+                      </span>
+                    ) : (
+                      <span key={i}>{part.text}</span>
+                    )
+                  )}
+                </p>
+              </div>
+            )}
+          </section>
+
+          {/* The action row, or the progress that replaces it in flight */}
+          <div className="px-5 py-4 sticky bottom-0 bg-card border-t border-border rounded-b-card sm:static">
+            {error && !inFlight && (
+              <p role="alert" className="bg-fail-bg text-fail px-3 py-2 rounded-btn text-table-cell mb-3">
+                {error}
+              </p>
+            )}
+
+            {inFlight ? (
+              <div>
+                <div className="flex items-center justify-between gap-3 mb-2">
+                  <p className="text-table-cell text-text-primary" aria-live="polite">
+                    {progressLine}
+                  </p>
+                  <span className="text-table-cell font-semibold text-text-primary tabular-nums">
+                    {phase === 'sent' ? '100%' : `${percent}%`}
+                  </span>
+                </div>
+                <div
+                  role="progressbar"
+                  aria-label="Upload progress"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={phase === 'sent' ? 100 : percent}
+                  className="h-2 rounded-full bg-border overflow-hidden"
+                >
+                  <div
+                    className="h-full bg-primary transition-[width]"
+                    style={{ width: `${phase === 'sent' ? 100 : percent}%` }}
+                  />
+                </div>
+                <div className="flex items-center justify-between gap-3 mt-3">
+                  <p className="text-xs text-text-muted">Leave this page open until it finishes.</p>
+                  <button
+                    type="button"
+                    onClick={cancelUpload}
+                    className="px-[18px] py-[9px] min-h-[44px] sm:min-h-0 rounded-btn border border-border text-text-cell font-semibold text-table-cell hover:bg-sidebar-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-xs text-text-muted flex-1 min-w-[180px]">{whyDisabled}</p>
+                <div className="flex items-center gap-2">
+                  <Link
+                    to="/calls"
+                    className="px-[18px] py-[9px] min-h-[44px] sm:min-h-0 inline-flex items-center rounded-btn border border-border text-text-cell font-semibold text-table-cell hover:bg-sidebar-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                  >
+                    Cancel
+                  </Link>
+                  <button
+                    type="submit"
+                    disabled={!file || saleNeedsPhone}
+                    className="px-[18px] py-[9px] min-h-[44px] sm:min-h-0 rounded-btn text-table-cell font-semibold bg-primary-ink text-on-solid hover:bg-primary-ink-hover disabled:opacity-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                  >
+                    {/* Only promises scoring where scoring really follows:
+                        a firm that scores calls, or a sale being scored now.
+                        While the firm's mode is unknown it promises nothing. */}
+                    {error
+                      ? 'Try again'
+                      : salesScoring === false || (salesScoring && isSale)
+                        ? 'Upload and score'
+                        : 'Upload'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </form>
+      </div>
+
+      <aside className="hidden lg:block w-full lg:w-[320px] lg:shrink-0">
+        <RecentUploadsRail salesScoring={salesScoring} />
+      </aside>
+
+      {bulkOpen && <BulkImportDrawer onClose={() => setBulkOpen(false)} />}
     </div>
   );
+}
+
+interface OutcomePart {
+  text: string;
+  /** The part of the sentence that says what happens, emphasised. */
+  strong?: boolean;
+}
+
+/**
+ * One sentence saying what will happen to this recording, built from the firm's
+ * scoring mode, the sale answer and the scorecard it will be judged against.
+ *
+ * It only claims a time it can stand behind: nothing about how long until a
+ * file has been chosen, and "a few minutes" for a meeting recording or a long
+ * one rather than "under a minute".
+ */
+function outcomeSentence({
+  salesScoring,
+  isSale,
+  chosenScorecard,
+  customerMatch,
+  file,
+  isLongRecording,
+}: {
+  salesScoring: boolean | null;
+  isSale: boolean;
+  chosenScorecard: { name: string } | null;
+  customerMatch: { name: string | null } | null | undefined;
+  file: File | null;
+  isLongRecording: boolean;
+}): OutcomePart[] {
+  const scorecard = chosenScorecard ? chosenScorecard.name : 'your active scorecard';
+
+  if (salesScoring && isSale) {
+    const customer = customerMatch?.name ? `${customerMatch.name}'s` : "this customer's";
+    return [
+      { text: "We'll transcribe it, then score it as a sale", strong: true },
+      {
+        text:
+          ` together with ${customer} other calls, against ${scorecard}.` +
+          (isLongRecording ? ' A long meeting takes a few minutes.' : '') +
+          " You'll go straight to the call.",
+      },
+    ];
+  }
+
+  if (salesScoring) {
+    return [
+      { text: "We'll transcribe it and keep it.", strong: true },
+      {
+        text:
+          " Your firm scores sales, so it's scored when a sale for this customer arrives from your CRM.",
+      },
+    ];
+  }
+
+  // Not known yet (the panel shows a skeleton instead, so this is belt and
+  // braces): say only what is true whichever way the firm is set up.
+  if (salesScoring === null) {
+    return [{ text: "We'll transcribe it and keep it.", strong: true }];
+  }
+
+  // A firm that scores every call on its own. The timing claim is only made
+  // once there is a file to make it about.
+  const timing = !file ? '' : isLongRecording ? ' — a few minutes for a long meeting — ' : ' — usually under a minute — ';
+  return [
+    { text: "We'll transcribe it", strong: true },
+    ...(timing ? [{ text: timing }] : [{ text: ', ' }]),
+    { text: `then score it against ${scorecard}.`, strong: true },
+    { text: " You'll go straight to the call." },
+  ];
 }

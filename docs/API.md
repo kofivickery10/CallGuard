@@ -273,7 +273,7 @@ If the call failed (corrupt audio, no scorecard configured, etc.), `status` will
 
 ## Bulk import (UI flow)
 
-For backfilling historical archives, the most efficient path is the **Bulk Import** feature on the **Upload** page in the dashboard. Paste a CSV with up to 200 rows; each row is downloaded, ingested, and scored.
+For backfilling historical archives, the most efficient path is the **Import many recordings** drawer on the **Upload** page in the dashboard. Choose or paste a CSV of up to 200 rows; every row is checked in the browser first (link, date, scorecard name, repeated ids), and pressing Import creates a call per row and queues the recording to be fetched in the background — the calls appear in Calls straight away and move into Processing as each recording lands.
 
 There is also an admin-only JWT endpoint (`POST /api/calls/bulk-import`) that the UI uses internally. If you want to drive bulk imports programmatically rather than through the UI, use multiple parallel `POST /api/ingestion/calls` requests with the API key auth instead. That path scales to millions of calls without a per-request row cap.
 

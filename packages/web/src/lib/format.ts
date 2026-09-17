@@ -29,6 +29,20 @@ export function formatClock(seconds: number | null | undefined): string {
   return `${h > 0 ? `${h}:` : ''}${mm}:${String(s).padStart(2, '0')}`;
 }
 
+/**
+ * File size in the units a person reads on their own disk: MB above a
+ * megabyte, KB below. Whole numbers over 100MB (a progress figure that
+ * shuffles decimal places is hard to read), one decimal below.
+ */
+export function formatFileSize(bytes: number | null | undefined): string {
+  if (bytes == null || !Number.isFinite(bytes) || bytes < 0) return '--';
+  if (bytes < 1024) return `${Math.round(bytes)} bytes`;
+  const kb = bytes / 1024;
+  if (kb < 1024) return `${Math.round(kb)} KB`;
+  const mb = kb / 1024;
+  return `${mb >= 100 ? Math.round(mb) : Math.round(mb * 10) / 10} MB`;
+}
+
 /** mm:ss (or h:mm:ss over an hour). Accepts null/0 → "--". */
 export function formatDuration(seconds: number | null | undefined): string {
   if (seconds == null || seconds <= 0) return '--';

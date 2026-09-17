@@ -123,7 +123,10 @@ export function CallDetail() {
       // external event with no ETA. Nothing here will change until that
       // arrives, so polling every 3s for as long as the page stays open just
       // burns requests.
-      if (status === 'captured') return false;
+      // An imported recording is the exception: it is 'captured' only until
+      // its own hydrate job downloads it, which is seconds away, so keep
+      // polling for that one.
+      if (status === 'captured' && data?.ingestion_source === 'dialer_webhook') return false;
       if (status === 'transcribed' && !data?.journey && org?.scoring_scope === 'sales_only') return false;
       return 3000;
     },
@@ -556,11 +559,25 @@ export function CallDetail() {
 
       {call.status === 'captured' && (
         <div className="bg-table-header border border-border rounded-card p-4 mb-6">
-          <div className="text-table-cell font-semibold text-text-primary">Waiting for a sale</div>
-          <div className="text-xs text-text-secondary mt-1">
-            Your firm scores sales rather than single calls. This call is kept and will be transcribed and
-            scored when the sale it belongs to arrives from your CRM.
-          </div>
+          {call.ingestion_source === 'dialer_webhook' ? (
+            <>
+              <div className="text-table-cell font-semibold text-text-primary">Waiting for a sale</div>
+              <div className="text-xs text-text-secondary mt-1">
+                Your firm scores sales rather than single calls. This call is kept and will be transcribed and
+                scored when the sale it belongs to arrives from your CRM.
+              </div>
+            </>
+          ) : (
+            <>
+              {/* An imported recording (Upload → Import many recordings): the
+                  audio is being fetched from the link that was supplied. */}
+              <div className="text-table-cell font-semibold text-text-primary">Fetching the recording</div>
+              <div className="text-xs text-text-secondary mt-1">
+                This call was imported. CallGuard is downloading the recording, then it's transcribed like
+                any other call.
+              </div>
+            </>
+          )}
         </div>
       )}
 
