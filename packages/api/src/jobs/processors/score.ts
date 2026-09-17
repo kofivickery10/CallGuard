@@ -8,6 +8,7 @@ import { getLearningContext } from '../../services/learning-context.js';
 import { recordUsage } from '../../services/usage.js';
 import { deliverCallScored } from '../../services/webhook-delivery.js';
 import { pushCallScored } from '../../services/zoho.js';
+import { holdsCallWritebackForFeedback } from '../../services/score-writeback.js';
 import { getScoringSettings } from '../../services/tenant-settings.js';
 import { maybeStartCallCapture } from '../../services/capture-runs.js';
 import {
@@ -577,9 +578,25 @@ export async function processScoring(job: Job<{ callId: string }>) {
 
       // Native Zoho CRM write-back (no-op unless the org has an active connection).
       // Best-effort and self-contained — never blocks or fails scoring.
-      pushCallScored(call.organization_id, scoredPayload).catch((err) => {
-        console.error(`[Scoring] Zoho write-back failed for ${callId}:`, (err as Error).message);
-      });
+      //
+      // Gated on the tenant's trigger setting (CG-4), as score-journey gates a
+      // sale's. Now that a call scored on its own can be fed back (migration
+      // 118), a tenant that pushes on feedback and whose scoring setting is not
+      // sales_only gets the same promise for calls: nothing reaches the CRM
+      // until a supervisor presses Feedback, which releases it
+      // (pushCallFeedbackRelease). A sales_only tenant cannot send a call round,
+      // so its calls are not held (holdsCallWritebackForFeedback). The webhook above is not held,
+      // for the reason score-journey gives — it is a machine feed of "this call
+      // was scored", which is true now.
+      if (holdsCallWritebackForFeedback(scoringSettings)) {
+        console.log(
+          `[Scoring] Holding Zoho write-back for ${callId} — tenant pushes on feedback, not on scoring`
+        );
+      } else {
+        pushCallScored(call.organization_id, scoredPayload).catch((err) => {
+          console.error(`[Scoring] Zoho write-back failed for ${callId}:`, (err as Error).message);
+        });
+      }
     }
 
     // Evaluate alert rules after scoring completes

@@ -39,6 +39,8 @@ interface CallCheckpointRowProps {
   resolving: boolean;
   /** The firm's pass mark, which decides a provisional verdict's pass or fail. */
   passThreshold: number;
+  /** What the checkpoint was scored as part of: the sale, or this call alone. */
+  scoredOn: 'sale' | 'call';
 }
 
 // The AI prefixes a sale's quote with the call it came from ("[Call 2] …"),
@@ -67,6 +69,7 @@ export function CallCheckpointRow({
   onResolve,
   resolving,
   passThreshold,
+  scoredOn,
 }: CallCheckpointRowProps) {
   const bodyId = `call-checkpoint-body-${item.id}`;
   const isScored = item.result === 'pass' || item.result === 'fail';
@@ -146,13 +149,13 @@ export function CallCheckpointRow({
           )}
 
           {item.result === 'na' && (
-            <p className="text-table-cell text-text-secondary">Not required for this sale.</p>
+            <p className="text-table-cell text-text-secondary">Not required for this {scoredOn}.</p>
           )}
 
           {!hasQuote && item.result !== 'na' && (
             <p className="text-table-cell text-text-secondary leading-relaxed">
               {aiAssessed
-                ? 'No relevant evidence was found on the calls for this checkpoint.'
+                ? `No relevant evidence was found ${scoredOn === 'sale' ? "on the sale's calls" : 'on this call'} for this checkpoint.`
                 : 'Not assessed by the AI — this checkpoint is decided by a reviewer.'}
             </p>
           )}
@@ -228,7 +231,7 @@ export function CallCheckpointRow({
                 type="button"
                 onClick={() => onResolve('na')}
                 disabled={resolving}
-                aria-label={`Mark "${item.label}" as not applicable to this sale`}
+                aria-label={`Mark "${item.label}" as not applicable to this ${scoredOn}`}
                 title="Excluded from the score rather than passed"
                 className="min-h-[32px] px-3 py-1.5 rounded-btn text-table-cell font-semibold text-text-secondary border border-border hover:bg-table-header hover:text-text-primary disabled:opacity-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
               >

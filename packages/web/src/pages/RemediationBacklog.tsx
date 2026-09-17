@@ -71,11 +71,17 @@ function ItemRow({ item }: { item: RemediationBacklogItem }) {
           {item.severity}
         </span>
         <span className="text-table-cell text-text-primary font-semibold">{item.item_label}</span>
+        {/* A finding fed back on a sale, or on a call a firm scores on its
+            own — linked to whichever it was, so the chase starts in the right
+            place. */}
         <Link
-          to={`/journeys/${item.journey_id}`}
+          to={item.subject_kind === 'call' ? `/calls/${item.call_id}` : `/journeys/${item.journey_id}`}
           className="text-table-cell text-primary-ink hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
         >
-          {item.customer_name || 'the sale'}
+          {item.customer_name || (item.subject_kind === 'call' ? 'the call' : 'the sale')}
+          {item.subject_kind === 'call' && item.customer_name && (
+            <span className="text-text-secondary"> (call)</span>
+          )}
         </Link>
         <span className="ml-auto text-table-cell text-text-secondary whitespace-nowrap">
           open {ageLabel(item.days_open)}

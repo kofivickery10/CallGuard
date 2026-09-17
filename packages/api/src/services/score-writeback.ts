@@ -1,8 +1,9 @@
 import { query, queryOne } from '../db/client.js';
 import { deliverCallScored } from './webhook-delivery.js';
 import { pushCallScored, pushJourneyScored } from './zoho.js';
-import { getScoringSettings } from './tenant-settings.js';
+import { getScoringSettings, scoresCallsIndividually } from './tenant-settings.js';
 import type { WebhookCallScoredPayload, WebhookJourneyScoredPayload } from '@callguard/shared';
+import type { ScoringSettings } from './tenant-settings.js';
 
 /**
  * Re-push an already-scored journey/call to downstream integrations after its
@@ -159,7 +160,16 @@ export async function pushJourneyScoreUpdate(organizationId: string, journeyId: 
   });
 }
 
-export async function pushCallScoreUpdate(organizationId: string, callId: string): Promise<void> {
+// Rebuild the call.scored payload from persisted state — the per-call twin of
+// buildJourneyPayload, shared by the score-correction path and the feedback
+// release for the same reason: one call must not be described two ways in the
+// CRM depending on which action pushed it.
+//
+// Null when there is nothing honest to push, exactly as for a sale.
+async function buildCallPayload(
+  organizationId: string,
+  callId: string
+): Promise<WebhookCallScoredPayload | null> {
   const row = await queryOne<{
     external_id: string | null;
     agent_name: string | null;
@@ -176,12 +186,12 @@ export async function pushCallScoreUpdate(organizationId: string, callId: string
       WHERE cs.call_id = $1 AND c.organization_id = $2`,
     [callId, organizationId]
   );
-  if (!row) return;
+  if (!row) return null;
   // No score yet — every checkpoint on the call is still with a reviewer. Same
   // reasoning as the journey path above: a null score would push as 0%/fail.
   if (row.overall_score === null) {
     console.log(`[ScoreWriteback] Holding call ${callId} — no score yet, all checkpoints await review`);
-    return;
+    return null;
   }
 
   const customerExternalCrmId = row.customer_id
@@ -226,10 +236,53 @@ export async function pushCallScoreUpdate(organizationId: string, callId: string
       evidence: b.evidence ?? '',
     })),
   };
+  return payload;
+}
+
+/**
+ * Whether a call scored on its own waits for feedback before reaching the CRM.
+ *
+ * Only on a tenant that pushes on feedback AND whose scoring setting is not
+ * sales_only (scoresCallsIndividually — the same predicate the feedback routes
+ * use to decide who may send a call round). A sales_only tenant cannot send a
+ * call round, so holding a call there would hold it for good; such calls keep
+ * going out on scoring, as they always have.
+ */
+export function holdsCallWritebackForFeedback(settings: {
+  zohoWritebackTrigger: string;
+  scoringScope: ScoringSettings['scoringScope'];
+}): boolean {
+  return settings.zohoWritebackTrigger === 'on_feedback' && scoresCallsIndividually(settings);
+}
+
+export async function pushCallScoreUpdate(organizationId: string, callId: string): Promise<void> {
+  const payload = await buildCallPayload(organizationId, callId);
+  if (!payload) return;
 
   deliverCallScored(organizationId, payload).catch((err) => {
     console.error(`[ScoreWriteback] call.scored webhook failed for ${callId}:`, (err as Error).message);
   });
+
+  // Held on a tenant that pushes on feedback until a round has been sent for
+  // this call — the same rule, for the same reason, as pushJourneyScoreUpdate
+  // above. A reviewer resolving a checkpoint is an internal step, and letting
+  // it put the call in the CRM would release a call nobody has fed back. The
+  // scoring job holds the first push on these tenants too (jobs/processors/
+  // score.ts), so until feedback there is nothing in Zoho for this to correct.
+  const settings = await getScoringSettings(organizationId);
+  if (holdsCallWritebackForFeedback(settings)) {
+    const sent = await queryOne<{ id: string }>(
+      'SELECT id FROM journey_feedback WHERE call_id = $1 LIMIT 1',
+      [callId]
+    );
+    if (!sent) {
+      console.log(
+        `[ScoreWriteback] Holding Zoho write-back for call ${callId} — tenant pushes on feedback and none has been sent`
+      );
+      return;
+    }
+  }
+
   pushCallScored(organizationId, payload).catch((err) => {
     console.error(`[ScoreWriteback] Zoho write-back failed for call ${callId}:`, (err as Error).message);
   });
@@ -277,6 +330,50 @@ export async function pushJourneyFeedbackRelease(
   } catch (err) {
     console.error(
       `[ScoreWriteback] Zoho feedback release failed for journey ${journeyId}:`,
+      (err as Error).message
+    );
+  }
+}
+
+/**
+ * Release a scored call to Zoho because a supervisor has just fed it back — the
+ * per-call twin of pushJourneyFeedbackRelease, for a tenant whose scoring
+ * setting is not sales_only (migration 118).
+ *
+ * The same contract in every respect: a no-op unless the call's push was held
+ * for feedback (holdsCallWritebackForFeedback), no webhook re-fire
+ * (`call.scored` was true when the call was scored and nothing about the score
+ * has changed), best-effort, never throws.
+ *
+ * What it releases is narrower than a sale's, and `feedbackId` is used only to
+ * name the round in the log. Zoho's QA-module record is written for sales alone
+ * — attemptQAWriteBack returns early on a call payload, because the QA record is
+ * keyed to the CRM sale record — so a call's write-back is the Lead/Contact
+ * push matched by phone: the score fields updated in place, plus a breach task
+ * where there are findings. That path has no per-round record to scope, so the
+ * round id is not passed down. A second round therefore restates the score and
+ * raises a fresh task, which is exactly what the Lead/Contact half of a sale's
+ * release already does on every round.
+ */
+export async function pushCallFeedbackRelease(
+  organizationId: string,
+  callId: string,
+  feedbackId: string
+): Promise<void> {
+  try {
+    // Released only where it was held. Anywhere else the call went out when it
+    // was scored, and pushing it again here would restate it and raise a
+    // duplicate breach task.
+    const settings = await getScoringSettings(organizationId);
+    if (!holdsCallWritebackForFeedback(settings)) return;
+
+    const payload = await buildCallPayload(organizationId, callId);
+    if (!payload) return;
+
+    await pushCallScored(organizationId, payload);
+  } catch (err) {
+    console.error(
+      `[ScoreWriteback] Zoho feedback release failed for call ${callId} (feedback ${feedbackId}):`,
       (err as Error).message
     );
   }

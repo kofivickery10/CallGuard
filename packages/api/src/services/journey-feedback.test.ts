@@ -1,15 +1,24 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest';
+import { readFileSync } from 'fs';
+import path from 'path';
 import {
   hashFeedbackToken,
   lookupFeedback,
+  resolveAdviser,
   resolveRecipients,
   resolveChosenRecipient,
+  breachesForFeedback,
+  openReviewCount,
+  latestFeedback,
+  subjectSummary,
   buildFeedbackSend,
   sendFeedback,
   recordRemediationOutcome,
+  feedbackAuditContext,
 } from './journey-feedback.js';
-import type { FeedbackBreach } from './journey-feedback.js';
+import type { FeedbackBreach, FeedbackSubject } from './journey-feedback.js';
 import { query, queryOne, withTransaction } from '../db/client.js';
+import { alertsQueue } from '../jobs/queue.js';
 import { REMEDIATION_NOTE_MAX } from '@callguard/shared';
 
 // The confirmation endpoint is unauthenticated by necessity — a no-login adviser
@@ -602,7 +611,7 @@ describe('sendFeedback — what gets recorded about the recipient', () => {
 
     const result = await sendFeedback({
       organizationId: 'org-1',
-      journeyId: 'j-1',
+      subject: { kind: 'journey', id: 'j-1' },
       sentBy: 'u-sup',
       message: null,
     });
@@ -638,7 +647,7 @@ describe('sendFeedback — what gets recorded about the recipient', () => {
 
     const result = await sendFeedback({
       organizationId: 'org-1',
-      journeyId: 'j-1',
+      subject: { kind: 'journey', id: 'j-1' },
       sentBy: 'u-sup',
       message: null,
       adviserUserId: 'u-1', // exactly what the panel sends when nothing is changed
@@ -662,7 +671,7 @@ describe('sendFeedback — what gets recorded about the recipient', () => {
 
     const result = await sendFeedback({
       organizationId: 'org-1',
-      journeyId: 'j-1',
+      subject: { kind: 'journey', id: 'j-1' },
       sentBy: 'u-sup',
       message: null,
       adviserUserId: 'u-2',
@@ -682,7 +691,7 @@ describe('sendFeedback — what gets recorded about the recipient', () => {
 
     const result = await sendFeedback({
       organizationId: 'org-1',
-      journeyId: 'j-1',
+      subject: { kind: 'journey', id: 'j-1' },
       sentBy: 'u-sup',
       message: null,
       adviserUserId: 'u-2',
@@ -708,7 +717,7 @@ describe('sendFeedback — what gets recorded about the recipient', () => {
 
     const result = await sendFeedback({
       organizationId: 'org-1',
-      journeyId: 'j-1',
+      subject: { kind: 'journey', id: 'j-1' },
       sentBy: 'u-sup',
       message: null,
       adviserUserId: 'u-2',
@@ -737,7 +746,7 @@ describe('sendFeedback — what gets recorded about the recipient', () => {
 
     const result = await sendFeedback({
       organizationId: 'org-1',
-      journeyId: 'j-1',
+      subject: { kind: 'journey', id: 'j-1' },
       sentBy: 'u-sup',
       message: null,
       adviserUserId: 'u-2',
@@ -761,7 +770,7 @@ describe('sendFeedback — what gets recorded about the recipient', () => {
     await expect(
       sendFeedback({
         organizationId: 'org-1',
-        journeyId: 'j-1',
+        subject: { kind: 'journey', id: 'j-1' },
         sentBy: 'u-sup',
         message: null,
         adviserUserId: 'u-3',
@@ -918,5 +927,634 @@ describe('buildFeedbackSend — remediation guidance (CG-24)', () => {
       breaches: [{ ...breach, remediation_guidance: '   \n ' }],
     });
     expect(payload.items[0]!.remediationGuidance).toBeUndefined();
+  });
+});
+
+// ============================================================
+// Migration 118 — feedback on a call scored on its own.
+//
+// The adviser's half (token, confirmation, outcomes) is subject-blind and is
+// covered above. These pin the half that branches on the subject: who a call is
+// fed back to, which findings stand, where the re-send and the insert are
+// keyed, and what the email is told it is about. The failure each guards
+// against is a call round that quietly behaves like a sale round — keyed on a
+// NULL journey_id, it would match nothing and supersede nothing.
+// ============================================================
+
+const CALL: FeedbackSubject = { kind: 'call', id: 'c-1' };
+const SALE: FeedbackSubject = { kind: 'journey', id: 'j-1' };
+
+type Tx = {
+  query: (sql: string, params?: unknown[]) => Promise<unknown[]>;
+  queryOne: (sql: string, params?: unknown[]) => Promise<unknown>;
+};
+
+/** Every statement the send's transaction issued, in order. */
+async function replaySendTransaction(): Promise<Array<{ sql: string; params: unknown[] }>> {
+  const fn = vi.mocked(withTransaction).mock.calls[0][0] as (tx: Tx) => Promise<string>;
+  const statements: Array<{ sql: string; params: unknown[] }> = [];
+  await fn({
+    query: async (sql, params) => {
+      statements.push({ sql, params: params ?? [] });
+      return [];
+    },
+    queryOne: async (sql, params) => {
+      statements.push({ sql, params: params ?? [] });
+      return { id: 'fb-new' };
+    },
+  });
+  return statements;
+}
+
+const callAdviserRow = {
+  agent_id: 'u-1',
+  agent_name: 'Jo (dialler)',
+  user_email: 'jo@example.com',
+  user_name: 'Jo Adviser',
+};
+
+const callSummaryRow = {
+  customer_name: 'Ann Lee',
+  overall_score: '64.50',
+  pass: false,
+};
+
+describe('resolveAdviser — a call', () => {
+  beforeEach(() => {
+    vi.mocked(queryOne).mockReset();
+  });
+
+  it("takes the call's own adviser, with no sale ordering to apply", async () => {
+    vi.mocked(queryOne).mockResolvedValueOnce(callAdviserRow);
+
+    const target = await resolveAdviser(CALL);
+
+    const [sql, params] = vi.mocked(queryOne).mock.calls[0];
+    expect(sql).toContain('FROM calls c');
+    expect(sql).toContain('WHERE c.id = $1');
+    // There is one call, so no wrap_up tie-break exists to be applied.
+    expect(sql).not.toContain('journey_calls');
+    expect(params).toEqual(['c-1']);
+    expect(target).toEqual({
+      userId: 'u-1',
+      name: 'Jo Adviser',
+      email: 'jo@example.com',
+      problem: null,
+    });
+  });
+
+  it('reports no_adviser for a call nobody is attributed to', async () => {
+    vi.mocked(queryOne).mockResolvedValueOnce({
+      agent_id: null,
+      agent_name: null,
+      user_email: null,
+      user_name: null,
+    });
+
+    expect((await resolveAdviser(CALL)).problem).toBe('no_adviser');
+  });
+
+  it('reports no_email for a dialler-named adviser with no account', async () => {
+    vi.mocked(queryOne).mockResolvedValueOnce({
+      agent_id: null,
+      agent_name: 'Dave (dialler)',
+      user_email: null,
+      user_name: null,
+    });
+
+    expect(await resolveAdviser(CALL)).toEqual({
+      userId: null,
+      name: 'Dave (dialler)',
+      email: null,
+      problem: 'no_email',
+    });
+  });
+
+  it("still resolves a sale by its closing call", async () => {
+    vi.mocked(queryOne).mockResolvedValueOnce(callAdviserRow);
+
+    await resolveAdviser(SALE);
+
+    const [sql, params] = vi.mocked(queryOne).mock.calls[0];
+    expect(sql).toContain('journey_calls');
+    expect(sql).toContain("jc.role = 'wrap_up'");
+    expect(params).toEqual(['j-1']);
+  });
+});
+
+describe('breachesForFeedback — a call', () => {
+  beforeEach(() => {
+    vi.mocked(query).mockReset().mockResolvedValue([]);
+  });
+
+  it("reads the call's own breaches, with their reasons from the call's item scores", async () => {
+    await breachesForFeedback('org-1', CALL);
+
+    const [sql, params] = vi.mocked(query).mock.calls[0];
+    expect(sql).toContain('b.call_id = $2');
+    expect(sql).toContain('LEFT JOIN call_item_scores');
+    expect(sql).toContain('b.call_item_score_id');
+    expect(sql).not.toContain('journey_item_scores');
+    expect(sql).not.toContain('b.journey_id');
+    expect(params).toEqual(['org-1', 'c-1']);
+  });
+
+  it('applies the same exclusions and the same order as a sale', async () => {
+    await breachesForFeedback('org-1', CALL);
+    await breachesForFeedback('org-1', SALE);
+
+    const [callSql] = vi.mocked(query).mock.calls[0];
+    const [saleSql] = vi.mocked(query).mock.calls[1];
+    for (const sql of [callSql, saleSql]) {
+      // A finding a supervisor already dismissed is not fed back, on either.
+      expect(sql).toContain("b.status NOT IN ('resolved', 'noted')");
+      expect(sql).toContain("WHEN 'critical' THEN 0 WHEN 'high' THEN 1");
+      expect(sql).toContain('b.organization_id = $1');
+    }
+    expect(saleSql).toContain('b.journey_id = $2');
+    expect(saleSql).toContain('journey_item_scores');
+    expect(saleSql).not.toContain('b.call_id');
+  });
+});
+
+describe('openReviewCount and latestFeedback — a call', () => {
+  beforeEach(() => {
+    vi.mocked(queryOne).mockReset();
+  });
+
+  it("counts the call's manual-review checkpoints the way the review queue does", async () => {
+    vi.mocked(queryOne).mockResolvedValueOnce({ n: '3' });
+
+    expect(await openReviewCount(CALL)).toBe(3);
+
+    const [sql, params] = vi.mocked(queryOne).mock.calls[0];
+    expect(sql).toContain('FROM call_item_scores cis');
+    expect(sql).toContain('JOIN call_scores cs ON cs.id = cis.call_score_id');
+    expect(sql).toContain("cis.result = 'manual_review'");
+    expect(params).toEqual(['c-1']);
+  });
+
+  it("reads the call's latest round off call_id, scoped to the organisation", async () => {
+    vi.mocked(queryOne).mockResolvedValueOnce(null);
+
+    await latestFeedback('org-1', CALL);
+
+    const [sql, params] = vi.mocked(queryOne).mock.calls[0];
+    expect(sql).toContain('organization_id = $1 AND call_id = $2');
+    expect(params).toEqual(['org-1', 'c-1']);
+  });
+});
+
+describe('subjectSummary — a call', () => {
+  beforeEach(() => {
+    vi.mocked(queryOne).mockReset();
+  });
+
+  it("names the call's customer and states its latest score", async () => {
+    vi.mocked(queryOne).mockResolvedValueOnce({ ...callSummaryRow, customer_name: '  Ann Lee ' });
+
+    expect(await subjectSummary('org-1', CALL)).toEqual({
+      clientName: 'Ann Lee',
+      // NUMERIC arrives as a string and is coerced once, here.
+      score: 64.5,
+      pass: false,
+    });
+
+    const [sql, params] = vi.mocked(queryOne).mock.calls[0];
+    expect(sql).toContain('FROM calls c');
+    expect(sql).toContain('call_scores');
+    expect(sql).toContain('ORDER BY scored_at DESC');
+    expect(sql).toContain('c.organization_id = $2');
+    expect(params).toEqual(['c-1', 'org-1']);
+  });
+
+  it('names nobody on a call with no named customer — never the phone number', async () => {
+    vi.mocked(queryOne).mockResolvedValueOnce({
+      customer_name: null,
+      overall_score: null,
+      pass: null,
+    });
+
+    expect(await subjectSummary('org-1', CALL)).toEqual({
+      clientName: null,
+      // No score is stated as no score, never as 0.
+      score: null,
+      pass: null,
+    });
+    // Not merely unused: the number is never read, so it cannot reach the
+    // email or the panel by any later change to how the row is used.
+    const [sql] = vi.mocked(queryOne).mock.calls[0];
+    expect(sql).not.toContain('customer_phone');
+  });
+
+  it('treats a whitespace-only name as no name', async () => {
+    vi.mocked(queryOne).mockResolvedValueOnce({
+      customer_name: '   ',
+      overall_score: '80',
+      pass: true,
+    });
+
+    expect((await subjectSummary('org-1', CALL)).clientName).toBeNull();
+  });
+});
+
+describe('sendFeedback — a call', () => {
+  beforeEach(() => {
+    vi.mocked(query).mockReset();
+    vi.mocked(queryOne).mockReset();
+    vi.mocked(withTransaction).mockReset();
+    vi.mocked(withTransaction).mockResolvedValue('fb-new');
+    vi.mocked(alertsQueue.add).mockClear();
+  });
+
+  it("defaults to the call's own adviser, and records that as the default", async () => {
+    vi.mocked(queryOne)
+      .mockResolvedValueOnce(callAdviserRow)
+      .mockResolvedValueOnce(callSummaryRow);
+    vi.mocked(query).mockResolvedValueOnce([]);
+
+    const result = await sendFeedback({
+      organizationId: 'org-1',
+      subject: CALL,
+      sentBy: 'u-sup',
+      message: null,
+    });
+
+    expect(result.recipientSource).toBe('default_closing_adviser');
+    expect(result.adviser.userId).toBe('u-1');
+    expect(result.suggestedAdviserUserId).toBe('u-1');
+  });
+
+  it("supersedes only this call's unconfirmed round, and writes the new one against the call", async () => {
+    vi.mocked(queryOne)
+      .mockResolvedValueOnce(callAdviserRow)
+      .mockResolvedValueOnce(callSummaryRow);
+    vi.mocked(query).mockResolvedValueOnce([]);
+
+    await sendFeedback({ organizationId: 'org-1', subject: CALL, sentBy: 'u-sup', message: null });
+    const statements = await replaySendTransaction();
+
+    // The re-send. Keyed on journey_id this would match nothing on a call —
+    // NULL equals nothing — and leave the old link live beside the new one.
+    const del = statements.find((st) => st.sql.includes('DELETE FROM journey_feedback'))!;
+    expect(del.sql).toContain('call_id = $1');
+    expect(del.sql).toContain('organization_id = $2');
+    expect(del.sql).toContain('confirmed_at IS NULL');
+    expect(del.sql).not.toContain('journey_id');
+    expect(del.params).toEqual(['c-1', 'org-1']);
+
+    const ins = statements.find((st) => /INSERT INTO journey_feedback\s*\(/.test(st.sql))!;
+    expect(ins.sql).toMatch(/\(organization_id, call_id, adviser_user_id/);
+    expect(ins.sql).not.toContain('journey_id');
+    expect(ins.params[0]).toBe('org-1');
+    expect(ins.params[1]).toBe('c-1');
+    expect(ins.params[2]).toBe('u-1');
+    expect(ins.params[9]).toBe('default_closing_adviser');
+    expect(ins.params[10]).toBe('u-1');
+    // The snapshot records what the email named.
+    expect(ins.params[11]).toBe('Ann Lee');
+    expect(ins.params[12]).toBe(64.5);
+  });
+
+  it('still supersedes a sale round by journey_id', async () => {
+    vi.mocked(queryOne)
+      .mockResolvedValueOnce(callAdviserRow)
+      .mockResolvedValueOnce({ client_name: 'James Whitfield', customer_name: null, overall_score: '70', pass: true });
+    vi.mocked(query).mockResolvedValueOnce([]);
+
+    await sendFeedback({ organizationId: 'org-1', subject: SALE, sentBy: 'u-sup', message: null });
+    const statements = await replaySendTransaction();
+
+    const del = statements.find((st) => st.sql.includes('DELETE FROM journey_feedback'))!;
+    expect(del.sql).toContain('journey_id = $1');
+    expect(del.sql).not.toContain('call_id');
+    expect(del.params).toEqual(['j-1', 'org-1']);
+  });
+
+  it('tells the email it is about a call, and names the call\'s customer in the body only', async () => {
+    vi.mocked(queryOne)
+      .mockResolvedValueOnce(callAdviserRow)
+      .mockResolvedValueOnce(callSummaryRow);
+    vi.mocked(query).mockResolvedValueOnce([]);
+
+    await sendFeedback({ organizationId: 'org-1', subject: CALL, sentBy: 'u-sup', message: null });
+
+    const [name, payload] = vi.mocked(alertsQueue.add).mock.calls[0];
+    expect(name).toBe('feedback-email');
+    expect(payload).toMatchObject({ subjectKind: 'call', clientName: 'Ann Lee', score: 64.5 });
+    // The subject's id is not something the email needs, and the payload sits
+    // in Redis until sent.
+    expect(JSON.stringify(payload)).not.toContain('c-1');
+  });
+
+  // The recipient matrix, on a call. Same rules as a sale: an override is a
+  // DIFFERENT person, and what was overridden is stored beside it.
+  it('records a different person chosen for a call as an override', async () => {
+    vi.mocked(queryOne)
+      .mockResolvedValueOnce(callAdviserRow)
+      .mockResolvedValueOnce({ id: 'u-2', name: 'Dana Seller', email: 'dana@example.com' })
+      .mockResolvedValueOnce(callSummaryRow);
+    vi.mocked(query).mockResolvedValueOnce([]);
+
+    const result = await sendFeedback({
+      organizationId: 'org-1',
+      subject: CALL,
+      sentBy: 'u-sup',
+      message: null,
+      adviserUserId: 'u-2',
+    });
+
+    expect(result.recipientSource).toBe('manual');
+    expect(result.adviser.userId).toBe('u-2');
+    expect(result.suggestedAdviserUserId).toBe('u-1');
+    expect(result.suggestedAdviserName).toBe('Jo Adviser');
+  });
+
+  it("keeps the default when the call's own adviser is the one chosen", async () => {
+    vi.mocked(queryOne)
+      .mockResolvedValueOnce(callAdviserRow)
+      .mockResolvedValueOnce({ id: 'u-1', name: 'Jo Adviser', email: 'jo@example.com' })
+      .mockResolvedValueOnce(callSummaryRow);
+    vi.mocked(query).mockResolvedValueOnce([]);
+
+    const result = await sendFeedback({
+      organizationId: 'org-1',
+      subject: CALL,
+      sentBy: 'u-sup',
+      message: null,
+      adviserUserId: 'u-1',
+    });
+
+    expect(result.recipientSource).toBe('default_closing_adviser');
+  });
+
+  it('lets an unattributed call go to a chosen recipient, with no suggestion recorded', async () => {
+    vi.mocked(queryOne)
+      .mockResolvedValueOnce({ agent_id: null, agent_name: null, user_email: null, user_name: null })
+      .mockResolvedValueOnce({ id: 'u-2', name: 'Dana Seller', email: 'dana@example.com' })
+      .mockResolvedValueOnce(callSummaryRow);
+    vi.mocked(query).mockResolvedValueOnce([]);
+
+    const result = await sendFeedback({
+      organizationId: 'org-1',
+      subject: CALL,
+      sentBy: 'u-sup',
+      message: null,
+      adviserUserId: 'u-2',
+    });
+
+    expect(result.recipientSource).toBe('manual');
+    expect(result.suggestedAdviserUserId).toBeNull();
+    expect(result.suggestedAdviserName).toBeNull();
+  });
+
+  it('refuses an unattributed call with nobody chosen, calling it a call, before writing anything', async () => {
+    vi.mocked(queryOne).mockResolvedValueOnce({
+      agent_id: null,
+      agent_name: null,
+      user_email: null,
+      user_name: null,
+    });
+
+    await expect(
+      sendFeedback({ organizationId: 'org-1', subject: CALL, sentBy: 'u-sup', message: null })
+    ).rejects.toThrow('This call has no adviser attributed to it. Choose who to send the feedback to.');
+    expect(withTransaction).not.toHaveBeenCalled();
+    expect(alertsQueue.add).not.toHaveBeenCalled();
+  });
+
+  it('refuses a chosen recipient with no address on a call, before writing anything', async () => {
+    vi.mocked(queryOne)
+      .mockResolvedValueOnce(callAdviserRow)
+      .mockResolvedValueOnce({ id: 'u-3', name: 'Sam No-Email', email: null });
+
+    await expect(
+      sendFeedback({
+        organizationId: 'org-1',
+        subject: CALL,
+        sentBy: 'u-sup',
+        message: null,
+        adviserUserId: 'u-3',
+      })
+    ).rejects.toThrow(/no email address/);
+    expect(withTransaction).not.toHaveBeenCalled();
+  });
+});
+
+describe('sendFeedback — can the recipient read the withheld reasons?', () => {
+  // Only matters where reasoning is withheld (the tenant keeps health
+  // unredacted), where it picks between "sign in to read it" and "ask your
+  // supervisor". The sentence must be TRUE for the reader it is sent to.
+  const withReason = [
+    {
+      breach_id: 'b-1',
+      scorecard_item_id: 'si-1',
+      item_label: 'Explained the exclusions',
+      severity: 'high',
+      status: 'open',
+      reasoning: 'The adviser skipped the exclusions.',
+      remediation_guidance: null,
+    },
+  ];
+
+  beforeEach(async () => {
+    vi.mocked(query).mockReset();
+    vi.mocked(queryOne).mockReset();
+    vi.mocked(withTransaction).mockReset();
+    vi.mocked(withTransaction).mockResolvedValue('fb-new');
+    vi.mocked(alertsQueue.add).mockClear();
+    const { organisationKeepsHealthUnredacted } = await import('./transcript-access.js');
+    vi.mocked(organisationKeepsHealthUnredacted).mockResolvedValue(true);
+  });
+
+  afterAll(async () => {
+    const { organisationKeepsHealthUnredacted } = await import('./transcript-access.js');
+    vi.mocked(organisationKeepsHealthUnredacted).mockResolvedValue(false);
+  });
+
+  function visibilityQuery(): [string, unknown[]] {
+    const hit = vi.mocked(queryOne).mock.calls.find(([sql]) => String(sql).includes('password_hash IS NOT NULL'))!;
+    return [String(hit[0]), hit[1] as unknown[]];
+  }
+
+  it("sends a call's own adviser, signed in, to CallGuard: GET /calls/:id/scores carries every reason", async () => {
+    vi.mocked(queryOne)
+      .mockResolvedValueOnce(callAdviserRow)
+      .mockResolvedValueOnce(callSummaryRow)
+      .mockResolvedValueOnce({ id: 'u-1' });
+    vi.mocked(query).mockResolvedValueOnce(withReason);
+
+    await sendFeedback({ organizationId: 'org-1', subject: CALL, sentBy: 'u-sup', message: null });
+
+    const [sql, params] = visibilityQuery();
+    // An adviser-role reader qualifies only on a call they took.
+    expect(sql).toContain("u.role = 'adviser'");
+    expect(sql).toContain('c.agent_id = u.id');
+    expect(sql).toContain('c.organization_id = $2');
+    expect(params).toEqual(['u-1', 'org-1', ['admin', 'supervisor', 'viewer'], 'c-1']);
+
+    const payload = vi.mocked(alertsQueue.add).mock.calls[0][1] as { reasoningWithheld?: boolean; recipientCanSeeDetail?: boolean };
+    expect(payload.reasoningWithheld).toBe(true);
+    expect(payload.recipientCanSeeDetail).toBe(true);
+  });
+
+  it('points them at their supervisor when the query finds they cannot (no login, or not their call)', async () => {
+    vi.mocked(queryOne)
+      .mockResolvedValueOnce(callAdviserRow)
+      .mockResolvedValueOnce(callSummaryRow)
+      .mockResolvedValueOnce(null);
+    vi.mocked(query).mockResolvedValueOnce(withReason);
+
+    await sendFeedback({ organizationId: 'org-1', subject: CALL, sentBy: 'u-sup', message: null });
+
+    const payload = vi.mocked(alertsQueue.add).mock.calls[0][1] as { recipientCanSeeDetail?: boolean };
+    expect(payload.recipientCanSeeDetail).toBe(false);
+  });
+
+  it('never lets an adviser-role reader qualify on a sale, whose reasons span calls', async () => {
+    vi.mocked(queryOne)
+      .mockResolvedValueOnce(callAdviserRow)
+      .mockResolvedValueOnce({ client_name: 'James Whitfield', customer_name: null, overall_score: '70', pass: true })
+      .mockResolvedValueOnce(null);
+    vi.mocked(query).mockResolvedValueOnce(withReason);
+
+    await sendFeedback({ organizationId: 'org-1', subject: SALE, sentBy: 'u-sup', message: null });
+
+    const [sql, params] = visibilityQuery();
+    expect(sql).toContain('role = ANY($3::text[])');
+    expect(sql).not.toContain("'adviser'");
+    expect(sql).not.toContain('agent_id');
+    expect(params).toEqual(['u-1', 'org-1', ['admin', 'supervisor', 'viewer']]);
+  });
+});
+
+describe('the open-round rule for calls (migration 118)', () => {
+  // Read from the migration itself: this is a property of the schema, and a
+  // unit test with no database can only hold it by holding the DDL.
+  const ddl = readFileSync(
+    path.resolve(__dirname, '../db/migrations/118_feedback_call_subject.sql'),
+    'utf8'
+  )
+    .replace(/--.*$/gm, '')
+    .replace(/\s+/g, ' ');
+
+  it('allows at most one outstanding round per call', () => {
+    // 087's open index is unique on journey_id, and every NULL is distinct, so
+    // on call rows it enforces nothing. This is the one that does.
+    expect(ddl).toContain(
+      'CREATE UNIQUE INDEX IF NOT EXISTS idx_journey_feedback_open_call ON journey_feedback (call_id) WHERE confirmed_at IS NULL AND call_id IS NOT NULL'
+    );
+  });
+
+  it('requires exactly one subject on every round', () => {
+    expect(ddl).toContain('ALTER COLUMN journey_id DROP NOT NULL');
+    expect(ddl).toContain('call_id UUID REFERENCES calls(id) ON DELETE CASCADE');
+    expect(ddl).toContain('CHECK (num_nonnulls(journey_id, call_id) = 1)');
+  });
+
+  it('gives up waiting for its lock on calls rather than queueing ingest behind it', () => {
+    // The foreign key blocks writes to calls while the file runs. Set before
+    // any statement that takes a lock, or it protects nothing.
+    const timeout = ddl.indexOf("SET LOCAL lock_timeout = '5s';");
+    expect(timeout).toBeGreaterThanOrEqual(0);
+    expect(timeout).toBeLessThan(ddl.indexOf('ALTER TABLE'));
+    // SET LOCAL only lasts for a transaction, which migrate.ts gives every file
+    // that does not opt out with the no-transaction marker.
+    const firstLine = readFileSync(
+      path.resolve(__dirname, '../db/migrations/118_feedback_call_subject.sql'),
+      'utf8'
+    ).split('\n', 1)[0];
+    expect(firstLine.trim()).not.toBe('-- callguard:no-transaction');
+  });
+
+  it("indexes a call's latest round", () => {
+    expect(ddl).toContain('ON journey_feedback (call_id, sent_at DESC)');
+  });
+});
+
+describe('lookupFeedback — which kind of subject', () => {
+  beforeEach(() => {
+    vi.mocked(query).mockReset();
+    vi.mocked(queryOne).mockReset();
+    vi.mocked(withTransaction).mockReset();
+  });
+
+  const liveRow = {
+    id: 'fb-9',
+    adviser_name: 'Jo Adviser',
+    confirmed_at: null,
+    token_expires_at: '2099-01-01T00:00:00.000Z',
+    reasoning_withheld: false,
+  };
+
+  it("says a call round is about a call, without saying which call", async () => {
+    vi.mocked(queryOne).mockResolvedValueOnce({ ...liveRow, call_id: 'c-1' });
+    vi.mocked(query).mockResolvedValueOnce([itemRow]);
+
+    const result = await lookupFeedback('some-token');
+
+    expect(result.subject_kind).toBe('call');
+    expect(JSON.stringify(result)).not.toContain('c-1');
+    expectReadOnly();
+  });
+
+  it('says a sale round is about a sale', async () => {
+    vi.mocked(queryOne).mockResolvedValueOnce({ ...liveRow, call_id: null });
+    vi.mocked(query).mockResolvedValueOnce([itemRow]);
+
+    expect((await lookupFeedback('some-token')).subject_kind).toBe('journey');
+  });
+
+  it('tells a dead link nothing about its subject', async () => {
+    vi.mocked(queryOne).mockResolvedValueOnce({
+      ...liveRow,
+      call_id: 'c-1',
+      token_expires_at: '2000-01-01T00:00:00.000Z',
+    });
+
+    expect(await lookupFeedback('some-token')).toEqual({
+      status: 'expired',
+      adviserName: 'Jo Adviser',
+    });
+  });
+});
+
+describe('feedbackAuditContext', () => {
+  beforeEach(() => {
+    vi.mocked(queryOne).mockReset();
+  });
+
+  it('returns the call a call round was about, so the audit line is filed against it', async () => {
+    vi.mocked(queryOne).mockResolvedValueOnce({
+      organization_id: 'org-1',
+      journey_id: null,
+      call_id: 'c-1',
+      adviser_name: 'Jo Adviser',
+      adviser_user_id: null,
+    });
+
+    expect(await feedbackAuditContext('some-token')).toEqual({
+      organizationId: 'org-1',
+      subject: { kind: 'call', id: 'c-1' },
+      adviserName: 'Jo Adviser',
+      adviserUserId: null,
+    });
+  });
+
+  it('returns the sale a sale round was about', async () => {
+    vi.mocked(queryOne).mockResolvedValueOnce({
+      organization_id: 'org-1',
+      journey_id: 'j-1',
+      call_id: null,
+      adviser_name: 'Jo Adviser',
+      adviser_user_id: 'u-1',
+    });
+
+    expect((await feedbackAuditContext('some-token'))?.subject).toEqual({ kind: 'journey', id: 'j-1' });
+  });
+
+  it('returns nothing for an unknown token', async () => {
+    vi.mocked(queryOne).mockResolvedValueOnce(null);
+    expect(await feedbackAuditContext('some-token')).toBeNull();
   });
 });

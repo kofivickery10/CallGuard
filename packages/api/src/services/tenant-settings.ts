@@ -198,6 +198,30 @@ export async function hasUsableSaleTrigger(organizationId: string): Promise<bool
   return !!row;
 }
 
+/**
+ * Whether this firm's scoring setting is one under which calls are scored on
+ * their own: any `scoring_scope` but 'sales_only'. Such a firm may feed back on
+ * calls (migration 118) and, when it pushes to Zoho on feedback, holds each
+ * call's write-back for that feedback.
+ *
+ * THE ONE PLACE THIS RULE LIVES. The supervisor's call feedback routes
+ * (routes/journey-feedback.ts) and the write-back hold (services/
+ * score-writeback.ts, holdsCallWritebackForFeedback) both ask this, so the
+ * firms that may send a call round and the firms whose calls wait for one can
+ * never disagree — a disagreement would hold a call's CRM push for a round
+ * nobody is allowed to send.
+ *
+ * It reads the tenant's setting and nothing else, deliberately. It is not a
+ * statement about which calls actually get scored individually: a sales_only
+ * firm can still have calls scored one at a time (see deferToSaleTrigger in
+ * jobs/processors/transcribe.ts, and an admin's re-score). Whether a CRM
+ * integration is connected plays no part in it — that is one tenant's
+ * integration, not the firm's choice of what it scores.
+ */
+export function scoresCallsIndividually(settings: Pick<ScoringSettings, 'scoringScope'>): boolean {
+  return settings.scoringScope !== 'sales_only';
+}
+
 // ============================================================
 // Per-tenant dialer connection (CloudTalk today). Decrypted secrets — for
 // internal service use only, never returned from a route directly.

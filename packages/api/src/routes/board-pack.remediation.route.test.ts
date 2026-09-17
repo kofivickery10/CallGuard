@@ -63,7 +63,7 @@ describe('GET /api/board-pack — remediation', () => {
       if (sql.includes('FROM journey_feedback_items fi') && sql.includes('with_guidance')) {
         return { total: '18', with_guidance: '11' } as never;
       }
-      if (sql.includes('DISTINCT ON (jf.journey_id, fi.scorecard_item_id)')) {
+      if (sql.includes('DISTINCT ON (COALESCE(jf.journey_id, jf.call_id), fi.scorecard_item_id)')) {
         return { n: '4' } as never;
       }
       return null;
@@ -108,7 +108,7 @@ describe('GET /api/board-pack — remediation', () => {
   it('counts only acknowledged findings as awaiting an answer — an unacknowledged one is a feedback backlog, and cannot be answered anyway', async () => {
     let awaitingSql = '';
     vi.mocked(queryOne).mockImplementation(async (sql: string) => {
-      if (sql.includes('DISTINCT ON (jf.journey_id, fi.scorecard_item_id)')) awaitingSql = sql;
+      if (sql.includes('DISTINCT ON (COALESCE(jf.journey_id, jf.call_id), fi.scorecard_item_id)')) awaitingSql = sql;
       return null;
     });
 
@@ -117,10 +117,13 @@ describe('GET /api/board-pack — remediation', () => {
     // A stock, not a flow: it must not be bounded to the reporting period, or
     // it would answer a different question from the one its label asks.
     expect(awaitingSql).not.toContain('::date');
-    // One outstanding ask per checkpoint per sale. A sale fed back twice with
-    // the same checkpoint unanswered both times is one thing outstanding, and
-    // the answer that counts is the one against the most recent ask.
-    expect(awaitingSql).toContain('ORDER BY jf.journey_id, fi.scorecard_item_id, jf.sent_at DESC');
+    // One outstanding ask per checkpoint per subject. A sale (or call) fed back
+    // twice with the same checkpoint unanswered both times is one thing
+    // outstanding, and the answer that counts is the one against the most
+    // recent ask.
+    expect(awaitingSql).toContain(
+      'ORDER BY COALESCE(jf.journey_id, jf.call_id), fi.scorecard_item_id, jf.sent_at DESC'
+    );
   });
 
   it('narrows every remediation figure to the product filter, through the sale the feedback belongs to', async () => {
@@ -141,5 +144,49 @@ describe('GET /api/board-pack — remediation', () => {
     for (const sql of seen) {
       expect(sql).toContain('jp.journey_id = jf.journey_id');
     }
+  });
+
+  it('counts call rounds as well as sale rounds across the organisation, grouped per call rather than into one', async () => {
+    // A firm whose setting is not sales_only feeds back almost entirely on
+    // calls. Filtering to sale rounds reported "0 findings fed back" beside a
+    // non-empty backlog; grouping on jf.journey_id folded every call round
+    // (journey_id NULL) into one group per checkpoint.
+    const seen: string[] = [];
+    vi.mocked(queryOne).mockImplementation(async (sql: string) => {
+      if (sql.includes('FROM journey_feedback_items fi')) seen.push(sql);
+      return null;
+    });
+    vi.mocked(query).mockImplementation(async (sql: string) => {
+      if (sql.includes('fi.remediation_outcome AS outcome')) seen.push(sql);
+      return [] as never;
+    });
+
+    const body = await (await get()).json();
+
+    expect(seen).toHaveLength(3);
+    for (const sql of seen) {
+      expect(sql).not.toContain('jf.journey_id IS NOT NULL');
+      expect(sql).not.toContain('DISTINCT ON (jf.journey_id');
+      // No product filter, so nothing narrows through the sale either.
+      expect(sql).not.toContain('journey_products');
+    }
+    expect(body.remediation.note).toMatch(/feedback on sales and feedback on calls/);
+    expect(body.remediation.note).not.toMatch(/Filtered to a product/);
+  });
+
+  it('says that call rounds drop out under a product filter, since calls carry no product', async () => {
+    const PRODUCT = '00000000-0000-0000-0000-0000000000ee';
+    vi.mocked(queryOne).mockImplementation(async (sql: string) =>
+      sql.includes('FROM products') ? ({ id: PRODUCT, name: 'Life cover' } as never) : null
+    );
+
+    const body = await (await get(`&product=${PRODUCT}`)).json();
+
+    expect(body.remediation.note).toMatch(
+      /Filtered to a product: calls carry no product, so feedback given on calls is left out of all three figures here\./
+    );
+    // And the pack-wide scope note does not claim call-level remediation is
+    // counted for the whole organisation, as it does for other call figures.
+    expect(body.product_scope_note).toMatch(/Remediation is the exception/);
   });
 });

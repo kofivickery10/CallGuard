@@ -605,6 +605,29 @@ callRouter.delete('/:id', requireAdmin, async (req, res, next) => {
     );
     if (!call) throw new AppError(404, 'Call not found');
 
+    // Refuse once the call has been fed back to its adviser (migration 118),
+    // for the reason the re-score below refuses — and more so. journey_feedback
+    // .call_id is ON DELETE CASCADE, so deleting the call would erase the record
+    // of what the adviser was told, their confirmation, and every outcome they
+    // recorded about a customer. That cascade exists for retention and
+    // data-subject erasure, which are deliberate policy; a delete button is not.
+    //
+    // Checked before the audio is removed, so a refused delete changes nothing.
+    const fedBack = await queryOne<{ adviser_name: string; confirmed_at: string | null }>(
+      `SELECT adviser_name, confirmed_at FROM journey_feedback
+        WHERE call_id = $1 ORDER BY sent_at DESC LIMIT 1`,
+      [call.id]
+    );
+    if (fedBack) {
+      throw new AppError(
+        409,
+        `This call has been fed back to ${fedBack.adviser_name}` +
+          (fedBack.confirmed_at ? ', and they confirmed receipt' : '') +
+          '. Deleting it would also delete the record of what they were told, and anything they recorded about what they did. ' +
+          'Ask CallGuard support if this call genuinely needs deleting.'
+      );
+    }
+
     if (call.file_key) {
       try {
         await deleteFile(call.file_key);
@@ -761,6 +784,33 @@ callRouter.post('/:id/rescore', requireAdmin, async (req, res, next) => {
     if (!call) throw new AppError(404, 'Call not found');
     if (!call.transcript_text) {
       throw new AppError(400, 'Call has not been transcribed yet');
+    }
+
+    // Refuse once the call has been fed back to its adviser (migration 118) —
+    // the per-call twin of the guard on POST /api/journeys/:id/rescore, and for
+    // the same reason. A re-score replaces the call's breaches; if the adviser
+    // has already been sent the findings, re-scoring rewrites what they were
+    // told about, after they were told. The feedback record keeps its own
+    // snapshot, but the register would hold a confirmed conversation about
+    // findings the call no longer has.
+    //
+    // Blocked from the moment it is SENT, not from confirmation, and not
+    // overridable by the tenant. Superadmins keep the override for support.
+    if (req.user!.role !== 'superadmin') {
+      const fedBack = await queryOne<{ adviser_name: string; confirmed_at: string | null }>(
+        `SELECT adviser_name, confirmed_at FROM journey_feedback
+          WHERE call_id = $1 ORDER BY sent_at DESC LIMIT 1`,
+        [call.id]
+      );
+      if (fedBack) {
+        throw new AppError(
+          409,
+          `This call has been fed back to ${fedBack.adviser_name}` +
+            (fedBack.confirmed_at ? ', and they confirmed receipt' : '') +
+            '. Re-scoring would change the findings they were told about, after they were told. ' +
+            'Ask CallGuard support if this call genuinely needs re-scoring.'
+        );
+      }
     }
 
     await query(

@@ -31,6 +31,13 @@ export type AuditActionType =
   // because it is written by a token holder who may hold no account, so the
   // register's user_id is frequently null here and the reader needs to know why.
   | 'journey.remediation_recorded'
+  // The same three events on a call scored on its own (migration 118), filed
+  // against the call so they sit with the rest of its history. Their own names
+  // rather than the journey ones with a different entity type, so a register
+  // filtered by action says what kind of subject it is looking at.
+  | 'call.feedback_sent'
+  | 'call.feedback_confirmed'
+  | 'call.remediation_recorded'
   // Case-level notes on a sale (CG-9). Notes cannot be deleted and every
   // superseded version is retained in journey_note_revisions, so these lines
   // record that the record was annotated or amended and by whom — the text

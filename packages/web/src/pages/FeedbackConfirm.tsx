@@ -53,6 +53,10 @@ interface LookupResponse {
   items?: Finding[];
   reasoningWithheld?: boolean;
   canRecordOutcome?: boolean;
+  /** What this feedback is about — a sale, or (for a firm that scores calls on
+   *  their own) a single call. Absent wherever the rest of the row is (an
+   *  expired or unknown token discloses nothing, this included). */
+  subject_kind?: 'journey' | 'call';
 }
 
 interface OutcomeResponse {
@@ -314,6 +318,10 @@ export function FeedbackConfirm() {
   const [status, setStatus] = useState<Status>('loading');
   const [name, setName] = useState<string | null>(null);
   const [itemCount, setItemCount] = useState<number | null>(null);
+  // Defaults to 'sale': every round before this one was a sale, and an
+  // expired or unknown token — which must disclose nothing — never sends this,
+  // so the copy has to fall back to something rather than show neither word.
+  const [subjectKind, setSubjectKind] = useState<'journey' | 'call'>('journey');
   const [items, setItems] = useState<Finding[]>([]);
   const [reasoningWithheld, setReasoningWithheld] = useState(false);
   const [canRecordOutcome, setCanRecordOutcome] = useState(false);
@@ -329,6 +337,7 @@ export function FeedbackConfirm() {
     setSaveState({});
     setName(data.adviserName ?? null);
     setItemCount(data.itemCount ?? null);
+    setSubjectKind(data.subject_kind ?? 'journey');
     setItems(data.items ?? []);
     setReasoningWithheld(!!data.reasoningWithheld);
     setCanRecordOutcome(!!data.canRecordOutcome);
@@ -465,14 +474,15 @@ export function FeedbackConfirm() {
             Checking this link…
           </div>
         );
-      case 'pending':
+      case 'pending': {
+        const noun = subjectKind === 'call' ? 'call' : 'sale';
         return (
           <div>
             <div className="text-center">
               <InfoIcon className="w-12 h-12 text-text-muted mx-auto" />
-              <h1 className="text-page-title text-text-primary mt-4">Feedback on a reviewed sale</h1>
+              <h1 className="text-page-title text-text-primary mt-4">Feedback on a reviewed {noun}</h1>
               <p className="text-table-cell text-text-secondary mt-2 leading-relaxed">
-                {name ? `${name}, your` : 'Your'} supervisor has reviewed a sale and would like you to
+                {name ? `${name}, your` : 'Your'} supervisor has reviewed a {noun} and would like you to
                 confirm you have seen the feedback
                 {typeof itemCount === 'number'
                   ? ` on ${itemCount} ${itemCount === 1 ? 'finding' : 'findings'}`
@@ -506,6 +516,7 @@ export function FeedbackConfirm() {
             </div>
           </div>
         );
+      }
       case 'confirmed':
       case 'already_confirmed': {
         const answered = items.filter((f) => !!f.outcome).length;
