@@ -40,6 +40,10 @@ export interface Call {
   transcript_restricted?: boolean;
   agent_id: string | null;
   agent_name: string | null;
+  // The customers row this call is matched to, by phone. customer_name is
+  // joined in by GET /api/calls/:id only.
+  customer_id: string | null;
+  customer_name?: string | null;
   customer_phone: string | null;
   call_date: string | null;
   tags: string[];

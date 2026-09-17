@@ -15,7 +15,7 @@ import { ReviewSection } from '../components/ReviewSection';
 import { ScoreCorrectionModal } from '../components/ScoreCorrectionModal';
 import { ShareLinksPanel } from '../components/ShareLinksPanel';
 import { useDialog } from '../components/DialogProvider';
-import { formatDuration } from '../lib/format';
+import { formatDuration, formatPhone } from '../lib/format';
 import { hasFeature, PASS_THRESHOLD } from '@callguard/shared';
 import type {
   Call,
@@ -86,6 +86,8 @@ export function CallDetail() {
   const isAdmin = user?.role === 'admin';
   const canAction = user?.role === 'admin' || user?.role === 'supervisor';
   const canLearn = user ? hasFeature(user.organization_plan, 'ai_learning') : false;
+  // Customer profiles are a plan feature; link to one only where it will open.
+  const canOpenCustomers = user ? hasFeature(user.organization_plan, 'customer_journey') : false;
 
   const [openItem, setOpenItem] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>('attention');
@@ -491,6 +493,17 @@ export function CallDetail() {
               </span>
             ) : (
               <span>Adviser {call.agent_name ?? 'not recorded'}</span>
+            )}
+            {call.customer_id && canOpenCustomers && (
+              <>
+                <span aria-hidden="true">·</span>
+                <Link
+                  to={`/customers/${call.customer_id}`}
+                  className="text-primary-ink hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
+                >
+                  {call.customer_name?.trim() || formatPhone(call.customer_phone) || 'Customer'}
+                </Link>
+              </>
             )}
             {call.reviewed_at && (
               <>
