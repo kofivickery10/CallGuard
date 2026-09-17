@@ -170,8 +170,107 @@ async function request<T>(
   return res.json();
 }
 
+export interface UploadOptions {
+  /** Bytes sent so far, as the browser reports them. */
+  onProgress?: (loaded: number, total: number | null) => void;
+  /** Every byte has left the browser; the server is now working on it. */
+  onSent?: () => void;
+  /** Abort the upload. Rejects with an AbortError. */
+  signal?: AbortSignal;
+}
+
+/**
+ * POST a FormData body with upload progress, and the ability to cancel it.
+ *
+ * This is an XMLHttpRequest rather than a fetch on purpose: fetch cannot report
+ * how much of a request body has been sent, and a 500MB Teams recording that
+ * shows nothing for four minutes is indistinguishable from a broken page. XHR
+ * is still the only cross-browser way to get `upload.onprogress`.
+ *
+ * On a 401 the access token is refreshed and the upload is sent again, once —
+ * the body only exists in this tab, so the alternative is losing it. Progress
+ * restarts from zero when that happens.
+ */
+function uploadWithProgress<T>(
+  path: string,
+  body: FormData,
+  options: UploadOptions = {},
+  isRetry = false
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    if (options.signal?.aborted) {
+      reject(new DOMException('Upload cancelled', 'AbortError'));
+      return;
+    }
+
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `${BASE_URL}${path}`);
+    const token = getToken();
+    if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+    // No Content-Type: the browser sets it, with the multipart boundary.
+
+    const onAbort = () => xhr.abort();
+    options.signal?.addEventListener('abort', onAbort);
+    const cleanup = () => options.signal?.removeEventListener('abort', onAbort);
+
+    if (options.onProgress) {
+      xhr.upload.onprogress = (e) =>
+        options.onProgress!(e.loaded, e.lengthComputable ? e.total : null);
+    }
+    if (options.onSent) xhr.upload.onload = () => options.onSent!();
+
+    xhr.onabort = () => {
+      cleanup();
+      reject(new DOMException('Upload cancelled', 'AbortError'));
+    };
+    xhr.onerror = () => {
+      cleanup();
+      reject(new Error('The upload could not reach CallGuard. Check your connection and try again.'));
+    };
+    xhr.ontimeout = () => {
+      cleanup();
+      reject(new Error('The upload timed out before it finished. Try again.'));
+    };
+
+    xhr.onload = () => {
+      cleanup();
+      const parsed = (() => {
+        try {
+          return JSON.parse(xhr.responseText) as unknown;
+        } catch {
+          return null;
+        }
+      })();
+
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(parsed as T);
+        return;
+      }
+
+      if (xhr.status === 401 && !isRetry) {
+        attemptTokenRefresh(token)
+          .then(() => uploadWithProgress<T>(path, body, options, true))
+          .then(resolve)
+          .catch(() => {
+            clearToken();
+            if (window.location.pathname !== '/login') window.location.assign('/login');
+            reject(new Error('Session expired. Please log in again.'));
+          });
+        return;
+      }
+
+      const message = (parsed as { message?: string } | null)?.message;
+      reject(new Error(message || `Upload failed: ${xhr.status}`));
+    };
+
+    xhr.send(body);
+  });
+}
+
 export const api = {
   get: <T>(path: string) => request<T>(path),
+  upload: <T>(path: string, body: FormData, options?: UploadOptions) =>
+    uploadWithProgress<T>(path, body, options),
   post: <T>(path: string, body?: unknown) =>
     request<T>(path, {
       method: 'POST',

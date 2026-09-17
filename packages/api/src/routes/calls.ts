@@ -10,7 +10,7 @@ import { uploadFile, deleteFile, readFile } from '../services/storage.js';
 import { transcriptionQueue } from '../jobs/queue.js';
 import { AppError } from '../middleware/errors.js';
 import { ALLOWED_MIME_TYPES, MAX_FILE_SIZE_BYTES } from '@callguard/shared';
-import { ingestCall, fetchRemoteAudio, upsertCustomer, normalizePhone } from '../services/ingestion.js';
+import { importRemoteCall, upsertCustomer, normalizePhone } from '../services/ingestion.js';
 import { prepareMediaForIngest } from '../services/media.js';
 import { recordAuditEvent } from '../services/audit.js';
 import { getScoringSettings, scoresCallsIndividually, orgHasFeature } from '../services/tenant-settings.js';
@@ -243,6 +243,7 @@ interface CallListQueryRow {
   customer_id: string | null;
   customer_name: string | null;
   resolved_customer_phone: string | null;
+  ingestion_source: CallListRow['ingestion_source'];
   sale_id: string | null;
   sale_status: JourneyStatus | null;
   sale_overall_score: string | null;
@@ -323,6 +324,14 @@ callRouter.get('/', async (req, res, next) => {
     }
 
     const filters: CallFilter[] = [{ key: 'org', sql: 'c.organization_id = ?', params: [orgId] }];
+
+    // `uploaded_by=me` narrows the list to the calls this user put here
+    // themselves — what the Upload page's "Your recent uploads" rail shows.
+    // Only 'me' is accepted: whose calls you may see is decided by role below,
+    // not by an id in the query string.
+    if (req.query.uploaded_by === 'me') {
+      filters.push({ key: 'uploaded_by', sql: 'c.uploaded_by = ?', params: [req.user!.userId] });
+    }
 
     // Advisers are scoped to their own calls whatever they pass — the query
     // param is for admin/supervisor/viewer, the roles GET /agents is also
@@ -451,6 +460,7 @@ callRouter.get('/', async (req, res, next) => {
       customer_id: r.customer_id,
       customer_name: r.customer_name,
       customer_phone: r.resolved_customer_phone,
+      ingestion_source: r.ingestion_source,
       sale:
         mode === 'sales' && r.sale_id
           ? {
@@ -633,14 +643,20 @@ callRouter.post(
 
 // Bulk historical recording import (admin only)
 //
-// Accepts JSON: { rows: [{ audio_url, agent_name?, customer_phone?,
-// call_date?, external_id?, tags? }] }
+// Accepts JSON: { rows: [{ row?, audio_url, agent_name?, customer_phone?,
+// call_date?, external_id?, tags?, scorecard_id? }] }
 //
-// Each row is downloaded, ingested via the unified ingestion service
-// (which handles dedupe by external_id, agent matching, and queue for
-// transcription). Capped at 200 rows per request so a typo cannot
-// timeout the worker. Returns a per-row outcome summary.
+// Each row is validated, its call row created, and the recording left to the
+// ingestion queue's 'hydrate-call' job to fetch (services/ingestion.ts
+// importRemoteCall). The request returns as soon as the rows are created:
+// it used to download up to 200 recordings inline — minutes of work on one
+// HTTP request, which the browser gave up on long before it finished, leaving
+// the operator with no idea which half had landed.
+//
+// `row` is the line number the client read the row from, echoed back on every
+// outcome so a problem points at the line in the operator's own file.
 interface BulkImportRow {
+  row?: number;
   audio_url: string;
   agent_name?: string | null;
   customer_phone?: string | null;
@@ -648,6 +664,21 @@ interface BulkImportRow {
   external_id?: string | null;
   tags?: string[] | string;
   scorecard_id?: string | null;
+}
+
+// Same shapes the drawer's own per-row check enforces before sending, so a
+// crafted request can't get past it — and the wording is what the operator
+// reads either way.
+function validateImportRow(r: BulkImportRow): string | null {
+  if (!r.audio_url || typeof r.audio_url !== 'string') return 'A recording link is required';
+  if (!/^https:\/\//i.test(r.audio_url.trim())) return 'Only https:// URLs are allowed';
+  if (r.call_date) {
+    const date = String(r.call_date).trim();
+    if (!/^\d{4}-\d{2}-\d{2}([T ]|$)/.test(date) || Number.isNaN(Date.parse(date))) {
+      return 'The date must be written as YYYY-MM-DD';
+    }
+  }
+  return null;
 }
 
 callRouter.post('/bulk-import', requireAdmin, async (req, res, next) => {
@@ -662,47 +693,55 @@ callRouter.post('/bulk-import', requireAdmin, async (req, res, next) => {
 
     const orgId = req.user!.organizationId;
     const userId = req.user!.userId;
-    const queued: { row: number; call_id: string; external_id: string | null }[] = [];
-    const duplicates: { row: number; call_id: string; external_id: string | null }[] = [];
+    const accepted: { row: number; call_id: string; external_id: string | null }[] = [];
+    const skipped: { row: number; call_id: string; external_id: string | null }[] = [];
     const errors: { row: number; audio_url: string; error: string }[] = [];
+    // External ids claimed earlier in this same request — the row that repeats
+    // one is a duplicate of a call we are about to create, which the
+    // (org, external_id) check in importRemoteCall can't see yet.
+    const seenExternalIds = new Set<string>();
 
     for (let i = 0; i < rows.length; i++) {
-      const r = rows[i];
+      const r = rows[i]!;
+      const rowNumber = typeof r.row === 'number' && Number.isFinite(r.row) ? r.row : i + 1;
+      const externalId = r.external_id?.trim() || null;
       try {
-        if (!r.audio_url || typeof r.audio_url !== 'string') {
-          throw new Error('audio_url missing or not a string');
+        const problem = validateImportRow(r);
+        if (problem) throw new Error(problem);
+
+        if (externalId && seenExternalIds.has(externalId)) {
+          skipped.push({ row: rowNumber, call_id: '', external_id: externalId });
+          continue;
         }
-        const { buffer, fileName, mimeType } = await fetchRemoteAudio(r.audio_url);
+
         const tags = Array.isArray(r.tags)
           ? r.tags
           : typeof r.tags === 'string' && r.tags
             ? r.tags.split(/\s*,\s*/).filter(Boolean)
             : [];
 
-        const { call, isDuplicate } = await ingestCall({
+        const { call, isDuplicate } = await importRemoteCall({
           organizationId: orgId,
           uploadedBy: userId,
-          fileName,
-          buffer,
-          mimeType,
-          ingestionSource: 'upload',
+          recordingUrl: r.audio_url.trim(),
           agentName: r.agent_name ?? null,
           customerPhone: r.customer_phone ?? null,
           callDate: r.call_date ?? null,
-          externalId: r.external_id ?? null,
+          externalId,
           tags,
           scorecardId: r.scorecard_id ?? null,
         });
 
-        (isDuplicate ? duplicates : queued).push({
-          row: i,
+        if (externalId) seenExternalIds.add(externalId);
+        (isDuplicate ? skipped : accepted).push({
+          row: rowNumber,
           call_id: call.id,
           external_id: call.external_id,
         });
       } catch (err) {
         errors.push({
-          row: i,
-          audio_url: r.audio_url || '',
+          row: rowNumber,
+          audio_url: typeof r.audio_url === 'string' ? r.audio_url : '',
           error: err instanceof Error ? err.message : 'unknown error',
         });
       }
@@ -713,11 +752,11 @@ callRouter.post('/bulk-import', requireAdmin, async (req, res, next) => {
       userId,
       actionType: 'call.bulk_import',
       entityType: 'call',
-      summary: `Bulk imported ${queued.length} new + ${duplicates.length} duplicate / ${errors.length} failed`,
+      summary: `Bulk import queued ${accepted.length} call(s), skipped ${skipped.length} already on file, ${errors.length} could not be read`,
       metadata: {
         total_rows: rows.length,
-        queued: queued.length,
-        duplicates: duplicates.length,
+        accepted: accepted.length,
+        skipped: skipped.length,
         errors: errors.length,
       },
       req,
@@ -725,12 +764,11 @@ callRouter.post('/bulk-import', requireAdmin, async (req, res, next) => {
 
     res.json({
       total: rows.length,
-      queued: queued.length,
-      duplicates: duplicates.length,
-      errors: errors.length,
-      queued_calls: queued,
-      duplicate_calls: duplicates,
-      error_rows: errors,
+      accepted: accepted.length,
+      skipped: skipped.length,
+      accepted_calls: accepted,
+      skipped_calls: skipped,
+      errors,
     });
   } catch (err) {
     next(err);

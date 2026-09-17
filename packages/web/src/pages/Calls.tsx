@@ -137,9 +137,14 @@ export function Calls() {
     queryKey: ['calls', request],
     queryFn: () => api.get<CallListResponse>(`/calls?${request}`),
     placeholderData: keepPreviousData,
-    // Follow calls that are still being processed, and stop once none are.
+    // Follow calls that are still being processed — including an imported one
+    // whose recording is still being fetched — and stop once none are.
     refetchInterval: (query) =>
-      query.state.data?.data.some((c) => PROCESSING.has(c.status)) ? 5000 : false,
+      query.state.data?.data.some(
+        (c) => PROCESSING.has(c.status) || (c.status === 'captured' && c.ingestion_source !== 'dialer_webhook')
+      )
+        ? 5000
+        : false,
   });
 
   const { data: advisers } = useQuery({
@@ -528,6 +533,12 @@ function Outcome({
   if (PROCESSING.has(row.status)) {
     const label = row.status === 'uploaded' ? 'Queued' : row.status === 'transcribing' ? 'Transcribing' : 'Scoring';
     return showHeadline ? <span className={`${PILL} bg-processing-bg text-processing`}>{label}</span> : null;
+  }
+  // 'captured' means two different things by where the call came from: a
+  // dialler-captured call is resting until a sale (which the tabs already say),
+  // an imported or uploaded one is still having its recording fetched.
+  if (row.status === 'captured' && row.ingestion_source !== 'dialer_webhook') {
+    return showHeadline ? <span className={`${PILL} bg-processing-bg text-processing`}>Fetching the recording</span> : null;
   }
   if (row.status === 'failed') return showHeadline ? <span className={`${PILL} bg-fail-bg text-fail`}>Couldn't process</span> : null;
   if (row.status === 'skipped') return showHeadline ? <span className={`${PILL} bg-table-header text-text-muted`}>Too short to score</span> : null;
