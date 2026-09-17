@@ -24,12 +24,16 @@ const statusClass: Record<BreachStatus, string> = {
 // On the canonical pill recipe (DESIGN_SYSTEM §4): rounded-full + text-badge,
 // replacing the squared, uppercase, bold variant this was. `critical` keeps the
 // breach-pulse the brand reserves for a live critical breach.
-export function SeverityBadge({ severity }: { severity: BreachSeverity }) {
+// `count` turns the pill into a tally ("2 critical") for places that summarise
+// several breaches at once, such as a customer's open findings.
+export function SeverityBadge({ severity, count }: { severity: BreachSeverity; count?: number }) {
   return (
     <span
-      className={`inline-block px-2.5 py-[3px] rounded-full text-badge font-semibold ${severityClass[severity]}`}
+      className={`inline-block whitespace-nowrap px-2.5 py-[3px] rounded-full text-badge font-semibold ${severityClass[severity]}`}
     >
-      {BREACH_SEVERITY_LABELS[severity]}
+      {count === undefined
+        ? BREACH_SEVERITY_LABELS[severity]
+        : `${count} ${BREACH_SEVERITY_LABELS[severity].toLowerCase()}`}
     </span>
   );
 }
