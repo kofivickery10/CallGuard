@@ -111,7 +111,7 @@ export function InviteAgentModal({ open, onClose }: InviteAgentModalProps) {
                 </p>
               </>
             )}
-            <button onClick={handleClose} className="mt-5 w-full bg-primary text-white py-[9px] rounded-btn font-semibold text-table-cell hover:bg-primary-hover transition-colors">
+            <button onClick={handleClose} className="mt-5 w-full bg-primary-ink text-on-solid py-[9px] rounded-btn font-semibold text-table-cell hover:bg-primary-ink-hover transition-colors">
               Done
             </button>
           </div>
@@ -173,7 +173,7 @@ export function InviteAgentModal({ open, onClose }: InviteAgentModalProps) {
             </div>
 
             <div className="flex gap-3 mt-5">
-              <button type="submit" disabled={saving} className="flex-1 bg-primary text-white py-[9px] rounded-btn font-semibold text-table-cell hover:bg-primary-hover disabled:opacity-50 transition-colors">
+              <button type="submit" disabled={saving} className="flex-1 bg-primary-ink text-on-solid py-[9px] rounded-btn font-semibold text-table-cell hover:bg-primary-ink-hover disabled:opacity-50 transition-colors">
                 {saving ? 'Adding…' : form.can_login ? 'Send invite' : 'Add adviser'}
               </button>
               <button type="button" onClick={handleClose} className="px-4 py-[9px] rounded-btn text-text-cell border border-border hover:bg-sidebar-hover text-table-cell font-semibold transition-colors">

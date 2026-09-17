@@ -46,7 +46,7 @@ export function ScorecardResultCard({
         <div className="flex-1 pr-4 min-w-0">
           <div className="text-text-secondary">{label}</div>
           {wasCorrected && (
-            <div className="text-[11px] text-primary font-semibold mt-0.5 uppercase tracking-wider">
+            <div className="text-[11px] text-primary-ink font-semibold mt-0.5 uppercase tracking-wider">
               Human-corrected
             </div>
           )}
@@ -64,7 +64,7 @@ export function ScorecardResultCard({
           {canCorrect && onCorrect && isScored && (
             <button
               onClick={onCorrect}
-              className="text-[11px] text-primary hover:text-primary-hover font-semibold"
+              className="text-[11px] text-primary-ink hover:text-primary-hover font-semibold"
             >
               Correct
             </button>

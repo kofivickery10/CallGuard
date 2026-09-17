@@ -434,7 +434,7 @@ export default function TenantDetail() {
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center gap-3">
-        <Link to="/tenants" className="text-sm text-primary hover:underline">← Tenants</Link>
+        <Link to="/tenants" className="text-sm text-primary-ink hover:underline">← Tenants</Link>
         <h2 className="text-page-title text-text-primary">{org.name}</h2>
       </div>
 
@@ -523,7 +523,7 @@ export default function TenantDetail() {
               className="w-full border border-border rounded-btn px-3 py-2 text-sm"
             />
           </div>
-          <button onClick={savePlan} disabled={saving} className="bg-primary text-white px-4 py-2 rounded-btn text-sm font-semibold hover:bg-primary-hover disabled:opacity-60">
+          <button onClick={savePlan} disabled={saving} className="bg-primary-ink text-on-solid px-4 py-2 rounded-btn text-sm font-semibold hover:bg-primary-ink-hover disabled:opacity-60">
             Save plan
           </button>
         </div>
@@ -540,7 +540,7 @@ export default function TenantDetail() {
               ))}
             </select>
           </div>
-          <button onClick={saveStatus} disabled={saving} className="bg-primary text-white px-4 py-2 rounded-btn text-sm font-semibold hover:bg-primary-hover disabled:opacity-60">
+          <button onClick={saveStatus} disabled={saving} className="bg-primary-ink text-on-solid px-4 py-2 rounded-btn text-sm font-semibold hover:bg-primary-ink-hover disabled:opacity-60">
             Save status
           </button>
           <button onClick={impersonate} className="border border-border text-text-secondary px-4 py-2 rounded-btn text-sm hover:bg-sidebar-hover">
@@ -567,7 +567,7 @@ export default function TenantDetail() {
               className="border border-border rounded-btn px-3 py-2 text-sm w-48"
             />
           </div>
-          <button onClick={saveSeatPrice} disabled={saving} className="bg-primary text-white px-4 py-2 rounded-btn text-sm font-semibold hover:bg-primary-hover disabled:opacity-60">
+          <button onClick={saveSeatPrice} disabled={saving} className="bg-primary-ink text-on-solid px-4 py-2 rounded-btn text-sm font-semibold hover:bg-primary-ink-hover disabled:opacity-60">
             Save price
           </button>
           <p className="text-xs text-text-muted pb-2">
@@ -814,7 +814,7 @@ export default function TenantDetail() {
             <button
               onClick={saveScoring}
               disabled={savingScoring}
-              className="bg-primary text-white px-4 py-2 rounded-btn text-sm font-semibold hover:bg-primary-hover disabled:opacity-60"
+              className="bg-primary-ink text-on-solid px-4 py-2 rounded-btn text-sm font-semibold hover:bg-primary-ink-hover disabled:opacity-60"
             >
               {savingScoring ? 'Saving…' : 'Save call & scoring settings'}
             </button>
@@ -913,7 +913,7 @@ export default function TenantDetail() {
                   <button
                     onClick={() => resetUserTwoFactor(u.id, u.name)}
                     disabled={resetting2fa === u.id}
-                    className="text-xs text-primary hover:underline disabled:opacity-60"
+                    className="text-xs text-primary-ink hover:underline disabled:opacity-60"
                     title="Reset 2FA — for a user locked out of their authenticator and backup codes"
                   >
                     {resetting2fa === u.id ? 'Resetting…' : 'Reset 2FA'}
@@ -960,7 +960,7 @@ export default function TenantDetail() {
                   <div><span className="text-text-muted">Temp password:</span> <span className="font-mono font-semibold">{seedResult.temp_password}</span></div>
                 </div>
                 <div className="flex justify-end pt-1">
-                  <button onClick={() => setSeedOpen(false)} className="bg-primary text-white px-4 py-2 rounded-btn text-sm font-semibold hover:bg-primary-hover">Done</button>
+                  <button onClick={() => setSeedOpen(false)} className="bg-primary-ink text-on-solid px-4 py-2 rounded-btn text-sm font-semibold hover:bg-primary-ink-hover">Done</button>
                 </div>
               </>
             ) : (
@@ -990,7 +990,7 @@ export default function TenantDetail() {
                   <button
                     onClick={seedAdmin}
                     disabled={seeding || !seedName.trim() || !seedEmail.trim()}
-                    className="bg-primary text-white px-4 py-2 rounded-btn text-sm font-semibold hover:bg-primary-hover disabled:opacity-40"
+                    className="bg-primary-ink text-on-solid px-4 py-2 rounded-btn text-sm font-semibold hover:bg-primary-ink-hover disabled:opacity-40"
                   >
                     {seeding ? 'Creating…' : 'Create admin'}
                   </button>
@@ -1029,7 +1029,7 @@ export default function TenantDetail() {
               <button
                 onClick={deleteTenant}
                 disabled={deleting || deleteConfirm !== org.name}
-                className="bg-fail text-white px-4 py-2 rounded-btn text-sm font-semibold hover:opacity-90 disabled:opacity-40"
+                className="bg-fail text-on-solid px-4 py-2 rounded-btn text-sm font-semibold hover:opacity-90 disabled:opacity-40"
               >
                 {deleting ? 'Deleting…' : 'Delete permanently'}
               </button>
@@ -1182,7 +1182,7 @@ function RedactionCategoriesCard({
             <button
               onClick={() => onSave(draft, justification)}
               disabled={saving || (draft.length > 0 && justification.trim() === '')}
-              className="px-[18px] py-[9px] rounded-btn text-sm font-semibold bg-primary text-white hover:bg-primary-hover disabled:opacity-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+              className="px-[18px] py-[9px] rounded-btn text-sm font-semibold bg-primary-ink text-on-solid hover:bg-primary-ink-hover disabled:opacity-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
             >
               {saving ? 'Saving…' : 'Save redaction settings'}
             </button>

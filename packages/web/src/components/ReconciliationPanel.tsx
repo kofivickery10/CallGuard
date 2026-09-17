@@ -92,7 +92,7 @@ function RecheckAction({ journeyId, detail }: { journeyId: string; detail: strin
         onClick={() => recheck.mutate()}
         disabled={recheck.isPending}
         aria-label="Check this sale against its application again"
-        className="px-3 py-1.5 rounded-btn text-badge font-semibold bg-primary text-white hover:bg-primary-hover disabled:opacity-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+        className="px-3 py-1.5 rounded-btn text-badge font-semibold bg-primary-ink text-on-solid hover:bg-primary-ink-hover disabled:opacity-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
       >
         {recheck.isPending ? 'Checking again…' : 'Check this sale again'}
       </button>
@@ -237,7 +237,25 @@ function DocumentAlertIcon({ className }: { className?: string }) {
   );
 }
 
-function PanelShell({ children, subtitle }: { children: React.ReactNode; subtitle: string }) {
+function PanelShell({
+  children,
+  subtitle,
+  embedded = false,
+}: {
+  children: React.ReactNode;
+  subtitle: string;
+  embedded?: boolean;
+}) {
+  // Embedded: the sale page's after-the-review row already carries the
+  // heading, so keep only the line that names the document being compared.
+  if (embedded) {
+    return (
+      <div>
+        <p className="px-5 pt-3 text-xs text-text-secondary">{subtitle}</p>
+        {children}
+      </div>
+    );
+  }
   return (
     <div className="bg-card border border-border rounded-card overflow-hidden mt-4">
       <div className="px-5 py-4 border-b border-border">
@@ -258,9 +276,12 @@ function PanelShell({ children, subtitle }: { children: React.ReactNode; subtitl
 export function ReconciliationPanel({
   journeyId,
   isAdmin,
+  embedded = false,
 }: {
   journeyId: string;
   isAdmin: boolean;
+  /** Rendered inside a section that already carries the heading. */
+  embedded?: boolean;
 }) {
   const { data, isLoading, isError } = useQuery({
     queryKey: ['reconciliation-journey', journeyId],
@@ -273,7 +294,7 @@ export function ReconciliationPanel({
 
   if (isError) {
     return (
-      <PanelShell subtitle="What the insurer received, against what the customer said.">
+      <PanelShell embedded={embedded} subtitle="What the insurer received, against what the customer said.">
         <div className="px-5 py-4">
           <div className="bg-fail-bg text-fail px-3 py-2 rounded-btn text-table-cell inline-block">
             Could not load the reconciliation record.
@@ -285,7 +306,7 @@ export function ReconciliationPanel({
 
   if (isLoading) {
     return (
-      <PanelShell subtitle="What the insurer received, against what the customer said.">
+      <PanelShell embedded={embedded} subtitle="What the insurer received, against what the customer said.">
         <div className="px-5 py-8 flex items-center justify-center text-text-muted text-table-cell">
           <div className="w-6 h-6 border-2 border-border border-t-primary rounded-full animate-spin mr-3" />
           Loading…
@@ -299,7 +320,7 @@ export function ReconciliationPanel({
 
   if (run.status === 'pending' || run.status === 'running') {
     return (
-      <PanelShell subtitle="What the insurer received, against what the customer said.">
+      <PanelShell embedded={embedded} subtitle="What the insurer received, against what the customer said.">
         <div className="px-5 py-6 flex items-center gap-3 text-text-muted text-table-cell">
           <div className="w-5 h-5 border-2 border-border border-t-primary rounded-full animate-spin" />
           Reading the application and comparing it with the call…
@@ -312,7 +333,7 @@ export function ReconciliationPanel({
   // so a promptly scored sale legitimately has nothing to reconcile against yet.
   if (run.status === 'needs_document') {
     return (
-      <PanelShell subtitle="What the insurer received, against what the customer said.">
+      <PanelShell embedded={embedded} subtitle="What the insurer received, against what the customer said.">
         <div className="px-5 py-6">
           <div className="flex items-start gap-3">
             <DocumentCheckIcon className="w-5 h-5 text-text-muted flex-shrink-0 mt-0.5" />
@@ -343,7 +364,7 @@ export function ReconciliationPanel({
   // reads as "checked, nothing found" — the opposite of what happened.
   if (run.status === 'abandoned') {
     return (
-      <PanelShell subtitle="What the insurer received, against what the customer said.">
+      <PanelShell embedded={embedded} subtitle="What the insurer received, against what the customer said.">
         <div className="px-5 py-6">
           <div className="flex items-start gap-3">
             <DocumentAlertIcon className="w-5 h-5 text-text-muted flex-shrink-0 mt-0.5" />
@@ -376,7 +397,7 @@ export function ReconciliationPanel({
   if (run.status === 'needs_profile') {
     const unrecognised = run.profile_id === null;
     return (
-      <PanelShell subtitle="What the insurer received, against what the customer said.">
+      <PanelShell embedded={embedded} subtitle="What the insurer received, against what the customer said.">
         <div className="px-5 py-6">
           <div className="bg-review-bg text-review px-3 py-2 rounded-btn text-table-cell">
             {run.error_message ??
@@ -391,7 +412,7 @@ export function ReconciliationPanel({
             {isAdmin ? (
               <>
                 Read {unrecognised ? 'the document' : 'the new version'} below, then confirm it on{' '}
-                <Link to="/reconciliation" className="text-primary hover:underline">
+                <Link to="/reconciliation" className="text-primary-ink hover:underline">
                   Reconciliation
                 </Link>
                 . This sale is reconciled automatically once you do, and every future sale on
@@ -431,7 +452,7 @@ export function ReconciliationPanel({
   // when the document never contained any.
   if (run.status === 'summary_only') {
     return (
-      <PanelShell subtitle="What the insurer received, against what the customer said.">
+      <PanelShell embedded={embedded} subtitle="What the insurer received, against what the customer said.">
         <div className="px-5 py-6">
           <p className="text-table-cell text-text-primary font-medium">
             This insurer returns a summary, not a question set
@@ -454,7 +475,7 @@ export function ReconciliationPanel({
   // waiting on a person rather than a clock — so no "we will keep checking".
   if (run.status === 'identity_mismatch') {
     return (
-      <PanelShell subtitle="What the insurer received, against what the customer said.">
+      <PanelShell embedded={embedded} subtitle="What the insurer received, against what the customer said.">
         <div className="px-5 py-6">
           <div className="flex items-start gap-3">
             <DocumentAlertIcon className="w-5 h-5 text-fail flex-shrink-0 mt-0.5" />
@@ -480,7 +501,7 @@ export function ReconciliationPanel({
 
   if (run.status === 'failed') {
     return (
-      <PanelShell subtitle="What the insurer received, against what the customer said.">
+      <PanelShell embedded={embedded} subtitle="What the insurer received, against what the customer said.">
         <div className="px-5 py-6">
           <div className="bg-fail-bg text-fail px-3 py-2 rounded-btn text-table-cell inline-block">
             Reconciliation failed{run.error_message ? `: ${run.error_message}` : ''}.
@@ -510,6 +531,7 @@ export function ReconciliationPanel({
 
   return (
     <PanelShell
+      embedded={embedded}
       subtitle={
         run.attachment_name
           ? `What the insurer received on ${run.attachment_name}, against what the customer said.`
@@ -642,7 +664,7 @@ function ReconciliationRow({ item }: { item: ReconciliationItem }) {
             <blockquote className="text-xs text-text-muted italic border-l-2 border-border pl-2.5 mt-1.5 leading-relaxed">
               {item.evidence}
               {evidenceHref && (
-                <Link to={evidenceHref} className="not-italic ml-2 text-primary hover:underline">
+                <Link to={evidenceHref} className="not-italic ml-2 text-primary-ink hover:underline">
                   {item.source_timestamp != null ? 'hear it in the call →' : 'source call →'}
                 </Link>
               )}

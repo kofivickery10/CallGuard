@@ -123,7 +123,7 @@ const inputCls =
   'w-full px-3 py-2 rounded-btn border border-border bg-card text-table-cell text-text-primary disabled:opacity-60 focus:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40';
 const labelCls = 'block text-xs font-medium text-text-muted mb-1';
 const primaryBtn =
-  'px-[18px] py-[9px] rounded-btn text-table-cell font-semibold bg-primary text-white hover:bg-primary-hover disabled:opacity-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40';
+  'px-[18px] py-[9px] rounded-btn text-table-cell font-semibold bg-primary-ink text-on-solid hover:bg-primary-ink-hover disabled:opacity-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40';
 const secondaryBtn =
   'px-[18px] py-[9px] rounded-btn border border-border text-text-cell font-semibold text-table-cell hover:bg-sidebar-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40';
 
@@ -464,7 +464,7 @@ export default function Prospects() {
                           href={p.website.startsWith('http') ? p.website : `https://${p.website}`}
                           target="_blank"
                           rel="noreferrer noopener"
-                          className="text-xs text-primary hover:underline"
+                          className="text-xs text-primary-ink hover:underline"
                         >
                           {p.website}
                         </a>
@@ -493,7 +493,7 @@ export default function Prospects() {
                         screened ? (
                           <a
                             href={`tel:${p.main_phone.replace(/\s+/g, '')}`}
-                            className="inline-flex items-center gap-1.5 text-primary hover:underline text-table-cell"
+                            className="inline-flex items-center gap-1.5 text-primary-ink hover:underline text-table-cell"
                             aria-label={`Call ${p.firm_name} on ${p.main_phone} — CTPS screened`}
                           >
                             <PhoneIcon className="w-3.5 h-3.5" />
@@ -533,7 +533,7 @@ export default function Prospects() {
                               type="button"
                               onClick={() => saveNote(p)}
                               disabled={noteSaving}
-                              className="px-2.5 py-1 rounded-btn text-xs font-semibold bg-primary text-white hover:bg-primary-hover disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                              className="px-2.5 py-1 rounded-btn text-xs font-semibold bg-primary-ink text-on-solid hover:bg-primary-ink-hover disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
                             >
                               {noteSaving ? 'Saving…' : 'Save'}
                             </button>
@@ -560,7 +560,7 @@ export default function Prospects() {
                     </td>
                     <td className="px-5 py-3.5 whitespace-nowrap">
                       <div className="flex items-center gap-3">
-                        <button type="button" onClick={() => openEdit(p)} className="text-primary hover:underline text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded">
+                        <button type="button" onClick={() => openEdit(p)} className="text-primary-ink hover:underline text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded">
                           Edit
                         </button>
                         <button

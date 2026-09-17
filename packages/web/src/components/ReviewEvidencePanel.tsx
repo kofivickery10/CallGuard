@@ -75,7 +75,7 @@ export function ReviewEvidencePanel({ item }: ReviewEvidencePanelProps) {
             {transcriptLink && (
               <Link
                 to={transcriptLink}
-                className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
+                className="inline-flex items-center gap-1 text-xs font-semibold text-primary-ink hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
               >
                 {data && !data.matched ? 'Open the full transcript' : 'Open transcript at this point'}
                 <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -85,7 +85,7 @@ export function ReviewEvidencePanel({ item }: ReviewEvidencePanelProps) {
             )}
             <Link
               to={parentLink}
-              className="text-xs font-semibold text-text-muted hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
+              className="text-xs font-semibold text-text-muted hover:text-primary-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
             >
               {item.kind === 'journey' ? 'Open the whole sale' : 'Open the call'}
             </Link>
@@ -163,7 +163,15 @@ export function ReviewEvidencePanel({ item }: ReviewEvidencePanelProps) {
 
           {data && (
             <>
-              {data.matched ? (
+              {data.restricted ? (
+                // Only reachable if the checkpoint was ruled on between the queue
+                // loading and this panel opening: the lines are sent for a
+                // checkpoint awaiting a ruling, and no longer once it is settled.
+                <p className="text-xs text-text-muted">
+                  This checkpoint has just been ruled on, so the conversation around the quote is
+                  now shown to administrators only.
+                </p>
+              ) : data.matched ? (
                 <div className="rounded-btn border border-border-light divide-y divide-border-light overflow-hidden">
                   {data.excerpt.map((line) => (
                     <div

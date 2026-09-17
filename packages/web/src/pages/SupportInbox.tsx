@@ -78,7 +78,7 @@ export function SupportInbox() {
               <div className="flex items-center justify-between gap-2">
                 <span className="text-table-cell font-semibold text-text-primary truncate">{t.organization_name}</span>
                 {t.unread_count > 0 ? (
-                  <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-fail text-white text-[11px] font-bold flex items-center justify-center flex-shrink-0" title={`${t.unread_count} unread`}>
+                  <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-fail text-on-solid text-[11px] font-bold flex items-center justify-center flex-shrink-0" title={`${t.unread_count} unread`}>
                     {t.unread_count > 99 ? '99+' : t.unread_count}
                   </span>
                 ) : t.awaiting_reply ? (
@@ -105,7 +105,7 @@ export function SupportInbox() {
                 {messages.map((m) => (
                   <div key={m.id} className={`flex ${m.from_staff ? 'justify-end' : 'justify-start'}`}>
                     <div className={`max-w-[75%] px-3 py-2 rounded-lg text-table-cell leading-relaxed ${
-                      m.from_staff ? 'bg-primary text-white' : 'bg-table-header text-text-primary'
+                      m.from_staff ? 'bg-primary-ink text-on-solid' : 'bg-table-header text-text-primary'
                     }`}>
                       {!m.from_staff && (
                         <div className="text-[10px] font-semibold opacity-70 mb-0.5">{m.sender_name || 'Customer'}</div>
@@ -132,7 +132,7 @@ export function SupportInbox() {
                 <button
                   type="submit"
                   disabled={reply.isPending || !draft.trim()}
-                  className="bg-primary text-white px-4 py-2 rounded-btn text-table-cell font-semibold hover:bg-primary-hover disabled:opacity-50"
+                  className="bg-primary-ink text-on-solid px-4 py-2 rounded-btn text-table-cell font-semibold hover:bg-primary-ink-hover disabled:opacity-50"
                 >
                   Send
                 </button>

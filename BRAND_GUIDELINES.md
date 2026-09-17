@@ -55,9 +55,23 @@ modifiers work everywhere (`bg-primary/10`, `ring-primary/40`).
 ### Brand
 | Token (class) | Light | Dark | Usage |
 |---|---|---|---|
-| `primary` | `#4A9E6E` | `#57AB7A` | Buttons, links, active nav, focus, brand green |
-| `primary-hover` | `#3D8A5E` | `#6ABB8A` | Hover on primary surfaces |
+| `primary` | `#4A9E6E` | `#57AB7A` | The brand green, as a **fill**: score bars and gauges, focus rings, chart series, tints |
+| `primary-hover` | `#3D8A5E` | `#6ABB8A` | Hover on those fills |
+| `primary-ink` | `#388157` | `#57AB7A` | Brand green where it must be **read**: links and labels, and the fill behind a solid button's white text |
+| `primary-ink-hover` | `#2F6F4B` | `#6ABB8A` | Hover on solid primary buttons |
 | `primary-light` | `#E8F0E8` | `#1F2E24` | Active-nav background, subtle green fills |
+| `on-solid` | `#FFFFFF` | `#0F1512` | Text and icons on any solid status or brand fill. **Use instead of `text-white`** |
+
+> **Two greens, and which to reach for.** `#4A9E6E` is the brand green and stays
+> the fill colour, but it is only 3.3:1 against white — too weak to read as text,
+> and too weak behind white text. Anything a person has to read uses
+> `primary-ink` (`#388157`, the same value as the landing page's `--hp-accent`):
+> 4.7:1 on white, 4.5:1 on the page background, and 4.7:1 the other way round
+> with white text on it. In dark mode one value serves both, because the mid-green
+> reads on dark surfaces and `on-solid` supplies the knockout ink.
+>
+> `text-white` on a coloured fill is the bug this replaces: it fails in dark mode,
+> where the fills are light. Use `text-on-solid`.
 
 > **Two greens on dark, by design.** The UI dark-mode primary token is `#57AB7A`
 > (product surfaces). The logo's "AI" and tagline periods on dark backgrounds use a
@@ -72,7 +86,7 @@ modifiers work everywhere (`bg-primary/10`, `ring-primary/40`).
 |---|---|---|---|
 | Pass / success | `pass` / `pass-bg` | `#2D6E4A` / `#E8F5E8` | `#5CC08A` / `#16301F` |
 | Fail / error / breach | `fail` / `fail-bg` | `#C0392B` / `#FDE8E8` | `#F0726A` / `#3A1D1B` |
-| Review / warning | `review` / `review-bg` | `#B8860B` / `#FEF3E0` | `#D6A838` / `#332714` |
+| Review / warning | `review` / `review-bg` | `#866200` / `#FEF3E0` | `#D6A838` / `#332714` |
 | Processing / info | `processing` / `processing-bg` | `#2D5A9E` / `#E8F0FA` | `#6F9BDB` / `#16263A` |
 
 ### Neutrals & surfaces
@@ -84,8 +98,8 @@ modifiers work everywhere (`bg-primary/10`, `ring-primary/40`).
 | `border-light` | `#F0F5F0` | `#222B25` | Subtle inner dividers |
 | `text-primary` | `#1A2E1A` | `#E6EFE8` | Headings, primary body |
 | `text-secondary` | `#5A6E5A` | `#A7B8AB` | Secondary text, labels |
-| `text-muted` | `#8A9E8A` | `#7D8F81` | Placeholders, muted meta |
-| `text-subtle` | `#6A7E6A` | `#93A596` | Page subtitles |
+| `text-muted` | `#607460` | `#7D8F81` | Placeholders, muted meta (light value darkened from `#8A9E8A`, which was 2.9:1) |
+| `text-subtle` | `#5C705C` | `#93A596` | Page subtitles |
 | `text-cell` | `#3A4E3A` | `#C4D2C7` | Table cell body |
 
 ### Accent & domain colours
@@ -97,6 +111,12 @@ modifiers work everywhere (`bg-primary/10`, `ring-primary/40`).
 | `chart-secondary` | Secondary series in bar charts. |
 | `table-header` / `table-border` | Table chrome. |
 | `sidebar-hover` / `sidebar-active` / `sidebar-border` | Sidebar states. |
+
+> **Contrast is a token property.** Every pair above meets WCAG AA (4.5:1 for
+> body text) in both themes. Sep 2026 audit: the muted grey, the review amber and
+> white-on-green all failed in light mode, and white-on-green failed in dark mode
+> too. They were fixed here rather than page by page, so a page that uses the
+> tokens is compliant by construction.
 
 ### Dark mode
 Dark mode is first-class (`darkMode: 'class'`, toggled on `<html>` via `lib/theme.ts`).
@@ -143,5 +163,5 @@ token so the scale stays consistent. If a new recurring size is needed, add a to
 - ✅ Use token classes for every colour, and named type tokens for recurring text.
 - ✅ Let dark mode fall out of tokens; test both themes.
 - ✅ Use the `Logo` component and the correct variant for the background.
-- ❌ No raw hex, `bg-white`, `text-black`, or `dark:` variants in components.
+- ❌ No raw hex, `bg-white`, `text-black`, `text-white`, or `dark:` variants in components.
 - ❌ No emoji, no decorative animation, no restyled/​recoloured logo.

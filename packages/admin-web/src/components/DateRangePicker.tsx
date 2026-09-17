@@ -52,7 +52,7 @@ export function DateRangePicker({ value, onChange, presets = [7, 30, 90], maxDay
               aria-pressed={active}
               className={`px-3 py-1.5 rounded-btn text-sm border transition-colors ${
                 active
-                  ? 'border-primary bg-primary text-white font-semibold'
+                  ? 'border-primary bg-primary-ink text-on-solid font-semibold'
                   : 'border-border text-text-secondary hover:border-primary'
               } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40`}
             >

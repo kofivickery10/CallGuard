@@ -145,7 +145,7 @@ export function Dashboard() {
             ? 'text-fail'
             : extraStat.isWarning
               ? 'text-review'
-              : 'text-primary';
+              : 'text-primary-ink';
           return (
             <div key={stat.label} className="bg-card border border-border rounded-card p-5">
               <div className="flex justify-between items-center">
@@ -173,7 +173,7 @@ export function Dashboard() {
         <div className="bg-card border border-border rounded-card overflow-hidden mb-5">
           <div className="px-5 py-4 border-b border-border flex justify-between items-center">
             <h3 className="text-section-title text-text-primary">Agent Leaderboard</h3>
-            <Link to="/team" className="text-table-cell text-primary font-medium hover:underline">View team</Link>
+            <Link to="/team" className="text-table-cell text-primary-ink font-medium hover:underline">View team</Link>
           </div>
           <div className="overflow-x-auto">
           <table className="w-full min-w-[520px]">
@@ -214,7 +214,7 @@ export function Dashboard() {
       <div className="bg-card border border-border rounded-card overflow-hidden">
         <div className="px-5 py-4 border-b border-border flex justify-between items-center">
           <h3 className="text-section-title text-text-primary">Recent Calls</h3>
-          <Link to="/calls" className="text-table-cell text-primary font-medium hover:underline">View all</Link>
+          <Link to="/calls" className="text-table-cell text-primary-ink font-medium hover:underline">View all</Link>
         </div>
         <div className="overflow-x-auto">
         <table className="w-full min-w-[640px]">
@@ -239,7 +239,7 @@ export function Dashboard() {
             {recent?.data.map((call) => (
               <tr key={call.id} className="hover:bg-table-header transition-colors cursor-pointer border-b border-border-light last:border-0">
                 <td className="px-5 py-3.5">
-                  <Link to={`/calls/${call.id}`} className="text-primary font-semibold text-table-cell hover:underline">
+                  <Link to={`/calls/${call.id}`} className="text-primary-ink font-semibold text-table-cell hover:underline">
                     {call.file_name}
                   </Link>
                 </td>
@@ -270,7 +270,7 @@ export function Dashboard() {
               <tr>
                 <td colSpan={isAdmin ? 6 : 5} className="px-5 py-12 text-center text-text-muted text-table-cell">
                   No calls yet.{' '}
-                  <Link to="/calls/upload" className="text-primary hover:underline">Upload your first call</Link>
+                  <Link to="/calls/upload" className="text-primary-ink hover:underline">Upload your first call</Link>
                 </td>
               </tr>
             )}

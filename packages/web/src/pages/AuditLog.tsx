@@ -72,7 +72,7 @@ export function AuditLog() {
         </div>
         <button
           onClick={handleExport}
-          className="inline-flex items-center gap-2 bg-card border border-border text-text-primary px-[18px] py-[9px] rounded-btn text-table-cell font-semibold hover:border-primary hover:text-primary transition-colors"
+          className="inline-flex items-center gap-2 bg-card border border-border text-text-primary px-[18px] py-[9px] rounded-btn text-table-cell font-semibold hover:border-primary hover:text-primary-ink transition-colors"
         >
           Export CSV
         </button>

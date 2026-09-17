@@ -74,7 +74,7 @@ export function ShareLinksPanel({ callId }: Props) {
               />
               <button
                 onClick={() => handleCopy(justCreated.url)}
-                className="bg-primary text-white px-3 py-1.5 rounded-btn text-xs font-semibold hover:bg-primary-hover transition-colors"
+                className="bg-primary-ink text-on-solid px-3 py-1.5 rounded-btn text-xs font-semibold hover:bg-primary-ink-hover transition-colors"
               >
                 {copied ? 'Copied!' : 'Copy'}
               </button>
@@ -102,7 +102,7 @@ export function ShareLinksPanel({ callId }: Props) {
             <button
               onClick={handleCreate}
               disabled={creating}
-              className="bg-primary text-white px-4 py-1.5 rounded-btn text-table-cell font-semibold hover:bg-primary-hover disabled:opacity-50 transition-colors"
+              className="bg-primary-ink text-on-solid px-4 py-1.5 rounded-btn text-table-cell font-semibold hover:bg-primary-ink-hover disabled:opacity-50 transition-colors"
             >
               {creating ? 'Generating...' : 'Generate Share Link'}
             </button>
@@ -174,7 +174,7 @@ function LinkRow({
         <>
           <button
             onClick={() => onCopy(link.url)}
-            className="text-[11px] text-primary font-semibold hover:underline flex-shrink-0"
+            className="text-[11px] text-primary-ink font-semibold hover:underline flex-shrink-0"
           >
             {copied ? 'Copied' : 'Copy'}
           </button>

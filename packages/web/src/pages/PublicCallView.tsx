@@ -197,7 +197,7 @@ function FeedbackForm({ token, onSubmitted }: { token: string; onSubmitted: () =
       <button
         onClick={submit}
         disabled={stars === 0 || submitting}
-        className="mt-4 bg-primary text-white px-[18px] py-[9px] rounded-btn font-semibold text-table-cell hover:bg-primary-hover disabled:opacity-50 transition-colors"
+        className="mt-4 bg-primary-ink text-on-solid px-[18px] py-[9px] rounded-btn font-semibold text-table-cell hover:bg-primary-ink-hover disabled:opacity-50 transition-colors"
       >
         {submitting ? 'Submitting...' : 'Submit Feedback'}
       </button>

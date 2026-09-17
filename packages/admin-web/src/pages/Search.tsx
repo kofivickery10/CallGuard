@@ -43,7 +43,7 @@ export default function Search() {
           placeholder="Tenant name, email, phone, call id…"
           className="flex-1 border border-border rounded-btn px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
         />
-        <button type="submit" className="bg-primary text-white px-4 py-2 rounded-btn text-sm font-semibold hover:bg-primary-hover">Search</button>
+        <button type="submit" className="bg-primary-ink text-on-solid px-4 py-2 rounded-btn text-sm font-semibold hover:bg-primary-ink-hover">Search</button>
       </form>
 
       {error && <p className="text-fail text-sm">{error}</p>}

@@ -171,7 +171,7 @@ export default function Announcements() {
           </label>
         </div>
         <div className="flex gap-2">
-          <button onClick={save} disabled={saving} className="bg-primary text-white px-4 py-2 rounded-btn text-sm font-semibold hover:bg-primary-hover disabled:opacity-60">
+          <button onClick={save} disabled={saving} className="bg-primary-ink text-on-solid px-4 py-2 rounded-btn text-sm font-semibold hover:bg-primary-ink-hover disabled:opacity-60">
             {editingId ? 'Save changes' : 'Publish'}
           </button>
           {editingId && <button onClick={reset} className="border border-border text-text-secondary px-4 py-2 rounded-btn text-sm hover:bg-sidebar-hover">Cancel</button>}
@@ -196,7 +196,7 @@ export default function Announcements() {
               </p>
             </div>
             <div className="flex flex-col gap-1.5 shrink-0">
-              <button onClick={() => edit(a)} className="text-xs text-primary hover:underline">Edit</button>
+              <button onClick={() => edit(a)} className="text-xs text-primary-ink hover:underline">Edit</button>
               <button onClick={() => toggleActive(a)} className="text-xs text-text-muted hover:text-text-secondary">
                 {a.active ? 'Deactivate' : 'Activate'}
               </button>

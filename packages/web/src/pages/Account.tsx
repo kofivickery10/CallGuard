@@ -106,13 +106,13 @@ export default function Account() {
                   className="flex-1 border border-border rounded-btn px-3 py-1.5 text-table-cell"
                   autoFocus
                 />
-                <button type="submit" disabled={nameMutation.isPending} className="text-sm font-medium text-primary hover:text-primary-hover disabled:opacity-60">Save</button>
+                <button type="submit" disabled={nameMutation.isPending} className="text-sm font-medium text-primary-ink hover:text-primary-hover disabled:opacity-60">Save</button>
                 <button type="button" onClick={() => setNameEditing(false)} className="text-sm text-text-muted">Cancel</button>
               </form>
             ) : (
               <div className="flex items-center gap-2 flex-1 ml-3">
                 <span className="text-table-cell text-text-primary flex-1">{user?.name}</span>
-                <button onClick={startEditName} className="text-xs text-primary hover:underline">Edit</button>
+                <button onClick={startEditName} className="text-xs text-primary-ink hover:underline">Edit</button>
               </div>
             )}
           </div>
@@ -153,7 +153,7 @@ export default function Account() {
           <button
             type="submit"
             disabled={pwMutation.isPending}
-            className="bg-primary hover:bg-primary-hover text-white font-semibold px-4 py-2 rounded-btn text-table-cell disabled:opacity-60 transition-colors"
+            className="bg-primary-ink hover:bg-primary-ink-hover text-on-solid font-semibold px-4 py-2 rounded-btn text-table-cell disabled:opacity-60 transition-colors"
           >
             {pwMutation.isPending ? 'Saving…' : 'Update password'}
           </button>
@@ -237,7 +237,7 @@ function TwoFactorSection() {
               <button
                 type="submit"
                 disabled={regen.isPending}
-                className="bg-primary hover:bg-primary-hover text-white font-semibold px-4 py-2 rounded-btn text-table-cell disabled:opacity-60 transition-colors"
+                className="bg-primary-ink hover:bg-primary-ink-hover text-on-solid font-semibold px-4 py-2 rounded-btn text-table-cell disabled:opacity-60 transition-colors"
               >
                 {regen.isPending ? 'Working…' : 'Regenerate codes'}
               </button>

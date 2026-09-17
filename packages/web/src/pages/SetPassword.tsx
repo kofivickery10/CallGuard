@@ -88,7 +88,7 @@ export function SetPassword() {
               <button
                 type="button"
                 onClick={() => navigate('/login')}
-                className="w-full bg-primary text-white py-[9px] px-[18px] rounded-btn font-semibold text-table-cell hover:bg-primary-hover transition-colors"
+                className="w-full bg-primary-ink text-on-solid py-[9px] px-[18px] rounded-btn font-semibold text-table-cell hover:bg-primary-ink-hover transition-colors"
               >
                 Go to sign in
               </button>
@@ -139,7 +139,7 @@ export function SetPassword() {
               <button
                 type="submit"
                 disabled={saving}
-                className="w-full bg-primary text-white py-[9px] px-[18px] rounded-btn font-semibold text-table-cell hover:bg-primary-hover disabled:opacity-50 transition-colors"
+                className="w-full bg-primary-ink text-on-solid py-[9px] px-[18px] rounded-btn font-semibold text-table-cell hover:bg-primary-ink-hover disabled:opacity-50 transition-colors"
               >
                 {saving ? 'Setting password…' : 'Set password & continue'}
               </button>

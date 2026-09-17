@@ -73,7 +73,7 @@ export function DialogProvider({ children }: { children: ReactNode }) {
               <button
                 onClick={() => close(true)}
                 autoFocus
-                className={`px-[18px] py-[9px] rounded-btn font-semibold text-table-cell text-white transition-colors ${
+                className={`px-[18px] py-[9px] rounded-btn font-semibold text-table-cell text-on-solid transition-colors ${
                   state.kind === 'confirm' && state.options.danger
                     ? 'bg-fail hover:opacity-90'
                     : 'bg-primary hover:bg-primary-hover'

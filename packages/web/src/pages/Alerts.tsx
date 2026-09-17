@@ -57,7 +57,7 @@ export function Alerts() {
         </div>
         <button
           onClick={handleCreate}
-          className="bg-primary text-white px-[18px] py-[9px] rounded-btn text-table-cell font-semibold hover:bg-primary-hover transition-colors"
+          className="bg-primary-ink text-on-solid px-[18px] py-[9px] rounded-btn text-table-cell font-semibold hover:bg-primary-ink-hover transition-colors"
         >
           Create Rule
         </button>
@@ -71,7 +71,7 @@ export function Alerts() {
           <p className="text-table-cell text-text-muted mb-4">
             Create rules to get notified when calls fail critical checks
           </p>
-          <button onClick={handleCreate} className="text-primary font-semibold text-table-cell hover:underline">
+          <button onClick={handleCreate} className="text-primary-ink font-semibold text-table-cell hover:underline">
             Create your first rule
           </button>
         </div>

@@ -40,7 +40,11 @@ export function AudioPlayer({
   const [ready, setReady] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [position, setPosition] = useState(startAt ?? 0);
-  const [duration, setDuration] = useState(knownDuration ?? 0);
+  // calls.duration_seconds is NUMERIC, which pg returns as a string ("2303.68")
+  // whatever the type says. Left as a string it passes `duration > 0` but
+  // formatClock rejects it, so a 38-minute call read "0:00 / 0:00".
+  const known = Number(knownDuration);
+  const [duration, setDuration] = useState(Number.isFinite(known) && known > 0 ? known : 0);
 
   // The cue point can arrive after the player has rendered (the caller is still
   // resolving where the quote sits), so follow it until the audio is loaded —
@@ -129,7 +133,7 @@ export function AudioPlayer({
         onClick={toggle}
         disabled={loading}
         aria-label={playing ? 'Pause recording' : 'Play recording'}
-        className="shrink-0 inline-flex items-center justify-center w-8 h-8 rounded-full bg-primary text-white hover:bg-primary-hover transition-colors disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+        className="shrink-0 inline-flex items-center justify-center w-8 h-8 rounded-full bg-primary-ink text-on-solid hover:bg-primary-ink-hover transition-colors disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
       >
         {loading ? (
           <span className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
@@ -165,7 +169,7 @@ export function AudioPlayer({
         <button
           type="button"
           onClick={replayFromQuote}
-          className="shrink-0 inline-flex items-center gap-1 text-xs font-semibold text-text-muted hover:text-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
+          className="shrink-0 inline-flex items-center gap-1 text-xs font-semibold text-text-muted hover:text-primary-ink transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
           title={`Play again from ${formatClock(startAt)}, where the quote was said`}
         >
           <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">

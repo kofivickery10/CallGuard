@@ -148,6 +148,11 @@ export interface JourneyWithDetail extends Journey {
     // that turns on who said something is unsafe on such a call, so the UI warns
     // rather than presenting the result as settled.
     speaker_integrity_flag: string | null;
+    // Whether the call has a transcript. The scorer only numbers transcribed
+    // calls ("Call 1", "Call 2" in its evidence and reasoning — score-journey.ts
+    // withTranscript), so the page must number the same set or its "Call 2"
+    // points at a different call from the AI's.
+    has_transcript: boolean;
   }>;
   item_scores: Array<
     JourneyItemScore & {
@@ -246,6 +251,11 @@ export interface ManualReviewItem {
 // Where a checkpoint's evidence quote sits in the call — recovered from the
 // transcript on demand (services/evidence-locator.ts), not stored.
 export interface EvidenceLocation {
+  // True when the lines around the quote were withheld: the firm keeps some
+  // personal data unredacted, this user may not read such transcripts, and the
+  // checkpoint is not one awaiting their ruling. The excerpt is then empty and
+  // the UI shows the AI's quote alone (services/transcript-access.ts).
+  restricted?: boolean;
   call_id: string;
   call_file_name: string | null;
   call_date: string | null;

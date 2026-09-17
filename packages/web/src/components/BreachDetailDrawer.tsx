@@ -106,7 +106,7 @@ export function BreachDetailDrawer({ breachId, onClose }: BreachDetailDrawerProp
                 <div className="text-table-cell">
                   <Link
                     to={breach.journey_id ? `/journeys/${breach.journey_id}` : `/calls/${breach.call_id}`}
-                    className="text-primary font-medium hover:underline"
+                    className="text-primary-ink font-medium hover:underline"
                   >
                     {breach.call_file_name}
                   </Link>
@@ -191,7 +191,7 @@ export function BreachDetailDrawer({ breachId, onClose }: BreachDetailDrawerProp
                   <button
                     type="submit"
                     disabled={saving || !note.trim()}
-                    className="bg-primary text-white px-[14px] py-[7px] rounded-btn text-xs font-semibold hover:bg-primary-hover disabled:opacity-50 transition-colors"
+                    className="bg-primary-ink text-on-solid px-[14px] py-[7px] rounded-btn text-xs font-semibold hover:bg-primary-ink-hover disabled:opacity-50 transition-colors"
                   >
                     Add Note
                   </button>

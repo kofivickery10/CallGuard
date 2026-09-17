@@ -51,7 +51,7 @@ export function DataCaptureForms() {
         {isAdmin && (
           <Link
             to="/capture-forms/new"
-            className="px-3.5 py-2 rounded-btn text-table-cell border border-primary bg-primary text-white font-semibold hover:bg-primary-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+            className="px-3.5 py-2 rounded-btn text-table-cell border border-primary bg-primary-ink text-on-solid font-semibold hover:bg-primary-ink-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
           >
             New form
           </Link>
@@ -78,7 +78,7 @@ export function DataCaptureForms() {
             supplier, a product line.
           </p>
           {isAdmin && (
-            <Link to="/capture-forms/new" className="text-primary text-table-cell font-semibold hover:underline">
+            <Link to="/capture-forms/new" className="text-primary-ink text-table-cell font-semibold hover:underline">
               Create your first form
             </Link>
           )}
@@ -104,7 +104,7 @@ export function DataCaptureForms() {
                   <tr key={form.id} className="border-t border-border-light">
                     <td className="px-5 py-3.5 text-table-cell text-text-primary font-medium">
                       {isAdmin ? (
-                        <Link to={`/capture-forms/${form.id}/edit`} className="hover:text-primary transition-colors">
+                        <Link to={`/capture-forms/${form.id}/edit`} className="hover:text-primary-ink transition-colors">
                           {form.name}
                         </Link>
                       ) : (
@@ -127,7 +127,7 @@ export function DataCaptureForms() {
                       <td className="px-5 py-3.5 text-right whitespace-nowrap">
                         <Link
                           to={`/capture-forms/${form.id}/edit`}
-                          className="text-badge font-semibold text-text-secondary hover:text-primary transition-colors mr-3"
+                          className="text-badge font-semibold text-text-secondary hover:text-primary-ink transition-colors mr-3"
                         >
                           Edit
                         </Link>

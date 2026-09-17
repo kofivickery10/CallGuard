@@ -288,7 +288,7 @@ export function Upload() {
                   className="w-full border border-border rounded-btn px-3 py-2 text-xs font-mono text-text-primary placeholder:text-text-muted focus:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 transition-colors bg-page"
                 />
                 <div className="text-[11px] text-text-muted mt-1.5">
-                  Required: <code>audio_url</code>. Optional: <code>agent_name</code>, <code>customer_phone</code>, <code>call_date</code> (ISO), <code>external_id</code> (your CRM id, used for deduplication), <code>tags</code> (comma-separated), <code>scorecard_id</code> (UUID of a scorecard from <a href="/scorecards" className="text-primary hover:underline">Scorecards</a>; leave blank to use the active one).
+                  Required: <code>audio_url</code>. Optional: <code>agent_name</code>, <code>customer_phone</code>, <code>call_date</code> (ISO), <code>external_id</code> (your CRM id, used for deduplication), <code>tags</code> (comma-separated), <code>scorecard_id</code> (UUID of a scorecard from <a href="/scorecards" className="text-primary-ink hover:underline">Scorecards</a>; leave blank to use the active one).
                 </div>
               </div>
 
@@ -346,7 +346,7 @@ export function Upload() {
                   }
                 }}
                 disabled={bulkBusy || !csvText.trim()}
-                className="bg-primary hover:bg-primary-hover text-white px-[18px] py-[9px] rounded-btn text-table-cell font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="bg-primary-ink hover:bg-primary-ink-hover text-on-solid px-[18px] py-[9px] rounded-btn text-table-cell font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {bulkBusy ? 'Importing...' : 'Import CSV'}
               </button>

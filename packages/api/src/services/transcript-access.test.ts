@@ -6,6 +6,7 @@ import {
   organisationKeepsUnredacted,
   organisationKeepsHealthUnredacted,
   withheldBreachEvidence,
+  mayShowEvidenceExcerpt,
   type TranscriptAccess,
 } from './transcript-access.js';
 
@@ -224,5 +225,33 @@ describe('withheldBreachEvidence — the top-level evidence shape', () => {
   it('leaves a top-level quote alone for a tenant redacted at source', () => {
     const input = { evidence: quote };
     expect(withheldBreachEvidence(input, false)).toBe(input);
+  });
+});
+
+describe('mayShowEvidenceExcerpt', () => {
+  const readable = { readable: true, restricted: false };
+  const withheld = { readable: false, restricted: true };
+
+  it('sends the lines to anyone who may read the transcript, whatever the checkpoint state', () => {
+    for (const result of ['pass', 'fail', 'na', 'manual_review', null]) {
+      expect(mayShowEvidenceExcerpt(readable, result)).toBe(true);
+    }
+  });
+
+  it('sends the lines to a restricted user only for a checkpoint awaiting their ruling', () => {
+    expect(mayShowEvidenceExcerpt(withheld, 'manual_review')).toBe(true);
+  });
+
+  it('withholds the lines from a restricted user on a settled checkpoint', () => {
+    // The sale page lets a supervisor open every checkpoint in turn; allowing
+    // these would rebuild most of a transcript the role may not read.
+    for (const result of ['pass', 'fail', 'na']) {
+      expect(mayShowEvidenceExcerpt(withheld, result)).toBe(false);
+    }
+  });
+
+  it('fails closed on an unknown state', () => {
+    expect(mayShowEvidenceExcerpt(withheld, null)).toBe(false);
+    expect(mayShowEvidenceExcerpt(withheld, undefined)).toBe(false);
   });
 });

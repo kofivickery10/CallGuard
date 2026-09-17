@@ -490,6 +490,7 @@ journeysRouter.get('/:id', requireOrgView, async (req, res, next) => {
               COALESCE(u.name, c.agent_name) AS agent_name,
               c.direction, c.duration_seconds, c.status,
               c.speaker_integrity_flag,
+              (COALESCE(c.transcript_text, '') <> '') AS has_transcript,
               cs.overall_score, cs.pass
          FROM journey_calls jc
          JOIN calls c ON c.id = jc.call_id
@@ -506,14 +507,23 @@ journeysRouter.get('/:id', requireOrgView, async (req, res, next) => {
       [journey.id]
     );
 
-    const itemScores = await query<JourneyItemScore & { label: string; section: string | null; severity: string | null; applies_to_products: string[] | null }>(
-      `SELECT jis.*, si.label, si.section, si.severity, si.applies_to_products
+    const itemRows = await query<JourneyItemScore & { label: string; section: string | null; severity: string | null; weight: string; applies_to_products: string[] | null }>(
+      `SELECT jis.*, si.label, si.section, si.severity, si.weight::text AS weight, si.applies_to_products
          FROM journey_item_scores jis
          JOIN scorecard_items si ON si.id = jis.scorecard_item_id
         WHERE jis.journey_id = $1
         ORDER BY si.sort_order`,
       [journey.id]
     );
+    // The severity the sale was actually judged by. A scorecard need not set one
+    // per checkpoint — scoring falls back to the item's weight (deriveSeverity),
+    // and so do the breach register and the pass gate. Returning the raw column
+    // instead left the page showing no severity at all on such a scorecard, for
+    // failures the rest of the system treats as critical.
+    const itemScores = itemRows.map(({ weight, severity, ...row }) => ({
+      ...row,
+      severity: deriveSeverity(Number(weight), severity),
+    }));
 
     // Whose journey this is — the detail page titles itself with the customer
     // and links back to the profile.

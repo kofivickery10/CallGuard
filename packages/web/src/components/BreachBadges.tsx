@@ -21,10 +21,13 @@ const statusClass: Record<BreachStatus, string> = {
   noted: 'bg-table-header text-text-muted',
 };
 
+// On the canonical pill recipe (DESIGN_SYSTEM §4): rounded-full + text-badge,
+// replacing the squared, uppercase, bold variant this was. `critical` keeps the
+// breach-pulse the brand reserves for a live critical breach.
 export function SeverityBadge({ severity }: { severity: BreachSeverity }) {
   return (
     <span
-      className={`px-2 py-[2px] rounded text-[11px] font-bold uppercase tracking-wider ${severityClass[severity]}`}
+      className={`inline-block px-2.5 py-[3px] rounded-full text-badge font-semibold ${severityClass[severity]}`}
     >
       {BREACH_SEVERITY_LABELS[severity]}
     </span>

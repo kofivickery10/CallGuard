@@ -60,7 +60,7 @@ export function Calls() {
           {canUpload && (
             <Link
               to="/calls/upload"
-              className="inline-flex items-center gap-2 bg-primary text-white px-[18px] py-[9px] rounded-btn text-table-cell font-semibold hover:bg-primary-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+              className="inline-flex items-center gap-2 bg-primary-ink text-on-solid px-[18px] py-[9px] rounded-btn text-table-cell font-semibold hover:bg-primary-ink-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
             >
               Upload Call
             </Link>
@@ -114,7 +114,7 @@ export function Calls() {
                       No calls match this filter.{' '}
                       <button
                         onClick={() => { setStatusFilter(''); setPage(1); }}
-                        className="text-primary font-semibold hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                        className="text-primary-ink font-semibold hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
                       >
                         Clear filter
                       </button>
@@ -132,7 +132,7 @@ export function Calls() {
                   className="hover:bg-table-header transition-colors cursor-pointer border-b border-border-light last:border-0"
                 >
                   <td className="px-5 py-3.5">
-                    <Link to={`/calls/${call.id}`} className="text-primary font-semibold text-table-cell hover:underline">
+                    <Link to={`/calls/${call.id}`} className="text-primary-ink font-semibold text-table-cell hover:underline">
                       {call.file_name}
                     </Link>
                   </td>

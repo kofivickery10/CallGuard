@@ -52,7 +52,7 @@ export function Notifications() {
           </label>
           <button
             onClick={markAllRead}
-            className="text-table-cell text-primary hover:underline font-semibold"
+            className="text-table-cell text-primary-ink hover:underline font-semibold"
           >
             Mark all read
           </button>
@@ -89,14 +89,14 @@ export function Notifications() {
                   {(n.action_url || n.call_id) && (
                     <Link
                       to={n.action_url ?? `/calls/${n.call_id}`}
-                      className="inline-block mt-2 text-xs text-primary font-semibold hover:underline"
+                      className="inline-block mt-2 text-xs text-primary-ink font-semibold hover:underline"
                     >
                       {n.action_url ? 'View' : 'View call'} &rarr;
                     </Link>
                   )}
                 </div>
                 {!n.read_at && (
-                  <span className="text-[11px] text-primary font-semibold uppercase tracking-wider">New</span>
+                  <span className="text-[11px] text-primary-ink font-semibold uppercase tracking-wider">New</span>
                 )}
               </div>
             </div>

@@ -77,7 +77,7 @@ function NoteCard({
               type="button"
               onClick={() => save.mutate(trimmed)}
               disabled={!trimmed || save.isPending}
-              className="bg-primary text-white px-3 py-1.5 rounded-btn text-table-cell font-semibold hover:bg-primary-hover focus:outline-none focus:ring-2 focus:ring-primary/40 transition-colors disabled:opacity-50"
+              className="bg-primary-ink text-on-solid px-3 py-1.5 rounded-btn text-table-cell font-semibold hover:bg-primary-ink-hover focus:outline-none focus:ring-2 focus:ring-primary/40 transition-colors disabled:opacity-50"
             >
               {save.isPending ? 'Saving…' : 'Save changes'}
             </button>
@@ -119,7 +119,7 @@ function NoteCard({
                 type="button"
                 onClick={() => setShowHistory((v) => !v)}
                 aria-expanded={showHistory}
-                className="text-xs text-primary hover:underline focus:outline-none focus:ring-2 focus:ring-primary/40 rounded"
+                className="text-xs text-primary-ink hover:underline focus:outline-none focus:ring-2 focus:ring-primary/40 rounded"
               >
                 {showHistory ? 'Hide' : 'Show'} earlier {note.revisions.length === 1 ? 'version' : `versions (${note.revisions.length})`}
               </button>
@@ -245,7 +245,7 @@ export function CaseNotesPanel({ journeyId, canAction }: CaseNotesPanelProps) {
                 type="button"
                 onClick={() => add.mutate(trimmed)}
                 disabled={!trimmed || add.isPending}
-                className="bg-primary text-white px-4 py-2 rounded-btn text-table-cell font-semibold hover:bg-primary-hover focus:outline-none focus:ring-2 focus:ring-primary/40 transition-colors disabled:opacity-50"
+                className="bg-primary-ink text-on-solid px-4 py-2 rounded-btn text-table-cell font-semibold hover:bg-primary-ink-hover focus:outline-none focus:ring-2 focus:ring-primary/40 transition-colors disabled:opacity-50"
               >
                 {add.isPending ? 'Saving…' : 'Add note'}
               </button>

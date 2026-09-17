@@ -346,7 +346,7 @@ export function ComplianceDashboard() {
                 onClick={() => setDays(d)}
                 aria-pressed={days === d}
                 className={`px-2.5 py-1 rounded-btn text-badge font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
-                  days === d ? 'bg-primary text-white' : 'text-text-secondary hover:bg-table-header'
+                  days === d ? 'bg-primary-ink text-on-solid' : 'text-text-secondary hover:bg-table-header'
                 }`}
               >
                 {d}d
@@ -380,7 +380,7 @@ export function ComplianceDashboard() {
           </p>
           <Link
             to="/reconciliation"
-            className="inline-block mt-4 px-[18px] py-[9px] rounded-btn text-table-cell font-semibold bg-primary text-white hover:bg-primary-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+            className="inline-block mt-4 px-[18px] py-[9px] rounded-btn text-table-cell font-semibold bg-primary-ink text-on-solid hover:bg-primary-ink-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
           >
             Go to Reconciliation
           </Link>
@@ -857,7 +857,7 @@ export function ComplianceDashboard() {
             action={
               <Link
                 to="/reconciliation"
-                className="text-table-cell text-primary font-medium hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded-btn"
+                className="text-table-cell text-primary-ink font-medium hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded-btn"
               >
                 View all
               </Link>
@@ -894,7 +894,7 @@ export function ComplianceDashboard() {
                         <td className="px-5 py-3.5">
                           <Link
                             to={`/journeys/${r.journey_id}`}
-                            className="text-primary font-semibold text-table-cell hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded-btn"
+                            className="text-primary-ink font-semibold text-table-cell hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded-btn"
                           >
                             {r.customer_name ?? 'Unknown customer'}
                           </Link>

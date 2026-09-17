@@ -92,7 +92,7 @@ export function Team() {
         </div>
         <button
           onClick={() => setInviteOpen(true)}
-          className="bg-primary text-white px-[18px] py-[9px] rounded-btn text-table-cell font-semibold hover:bg-primary-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+          className="bg-primary-ink text-on-solid px-[18px] py-[9px] rounded-btn text-table-cell font-semibold hover:bg-primary-ink-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
         >
           Add team member
         </button>
@@ -108,7 +108,7 @@ export function Team() {
           </p>
           <button
             onClick={() => setInviteOpen(true)}
-            className="text-primary font-semibold text-table-cell hover:underline"
+            className="text-primary-ink font-semibold text-table-cell hover:underline"
           >
             Add your first agent
           </button>
@@ -166,7 +166,7 @@ export function Team() {
                             <button
                               onClick={() => setEnableTarget(agent)}
                               disabled={busyId === agent.id}
-                              className="text-table-cell text-primary font-semibold hover:underline disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
+                              className="text-table-cell text-primary-ink font-semibold hover:underline disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
                             >
                               Enable login
                             </button>
@@ -176,7 +176,7 @@ export function Team() {
                                 <button
                                   onClick={() => resendInvite(agent)}
                                   disabled={busyId === agent.id}
-                                  className="text-table-cell text-primary font-semibold hover:underline disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
+                                  className="text-table-cell text-primary-ink font-semibold hover:underline disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
                                 >
                                   Resend invite
                                 </button>
@@ -269,7 +269,7 @@ function EnableLoginModal({ agent, onClose, onDone }: { agent: AgentSummary; onC
           </div>
 
           <div className="flex gap-3 mt-5">
-            <button type="submit" disabled={saving} className="flex-1 bg-primary text-white py-[9px] rounded-btn font-semibold text-table-cell hover:bg-primary-hover disabled:opacity-50 transition-colors">
+            <button type="submit" disabled={saving} className="flex-1 bg-primary-ink text-on-solid py-[9px] rounded-btn font-semibold text-table-cell hover:bg-primary-ink-hover disabled:opacity-50 transition-colors">
               {saving ? 'Enabling…' : 'Enable login'}
             </button>
             <button type="button" onClick={onClose} className="px-4 py-[9px] rounded-btn text-text-cell border border-border hover:bg-sidebar-hover text-table-cell font-semibold transition-colors">

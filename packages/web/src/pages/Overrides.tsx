@@ -142,7 +142,7 @@ export function Overrides() {
             value={direction}
             onChange={(e) => onFilterChange(setDirection)(e.target.value as '' | OverrideDirection)}
             className={`px-3 py-1.5 rounded-btn text-table-cell font-semibold border bg-card transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
-              direction ? 'border-primary text-primary' : 'border-border text-text-secondary hover:bg-sidebar-hover'
+              direction ? 'border-primary text-primary-ink' : 'border-border text-text-secondary hover:bg-sidebar-hover'
             }`}
           >
             <option value="">Any direction</option>
@@ -237,11 +237,11 @@ export function Overrides() {
                   </td>
                   <td className={TD}>
                     {r.journey_id ? (
-                      <Link to={`/journeys/${r.journey_id}`} className="text-primary hover:underline">
+                      <Link to={`/journeys/${r.journey_id}`} className="text-primary-ink hover:underline">
                         {r.subject_name || 'Sale'}
                       </Link>
                     ) : r.call_id ? (
-                      <Link to={`/calls/${r.call_id}`} className="text-primary hover:underline">
+                      <Link to={`/calls/${r.call_id}`} className="text-primary-ink hover:underline">
                         {r.subject_name || 'Call'}
                       </Link>
                     ) : (

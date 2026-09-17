@@ -30,7 +30,16 @@ interface CaptureRecord {
 // score above it: this answers "did we capture everything the customer said",
 // not "was the advice process followed". Renders nothing when the sale has no
 // capture run (module off for the tenant, or pre-module sales).
-export function CapturePanel({ journeyId, isAdmin }: { journeyId: string; isAdmin: boolean }) {
+export function CapturePanel({
+  journeyId,
+  isAdmin,
+  embedded = false,
+}: {
+  journeyId: string;
+  isAdmin: boolean;
+  /** Rendered inside a section that already carries the heading. */
+  embedded?: boolean;
+}) {
   const queryClient = useQueryClient();
   const { notify, confirm } = useDialog();
   const [selectedFormId, setSelectedFormId] = useState('');
@@ -91,11 +100,11 @@ export function CapturePanel({ journeyId, isAdmin }: { journeyId: string; isAdmi
   const capturedCount = answers.filter((a) => a.result === 'captured' || a.result === 'confirmed_only').length;
 
   return (
-    <div className="bg-card border border-border rounded-card overflow-hidden mt-4">
-      <div className="px-5 py-4 border-b border-border flex flex-wrap items-center justify-between gap-3">
+    <div className={embedded ? '' : 'bg-card border border-border rounded-card overflow-hidden mt-4'}>
+      <div className={`px-5 border-b border-border flex flex-wrap items-center justify-between gap-3 ${embedded ? 'py-3' : 'py-4'}`}>
         <div>
-          <h3 className="text-section-title text-text-primary">Data Capture</h3>
-          <p className="text-xs text-text-subtle mt-0.5">
+          {!embedded && <h3 className="text-section-title text-text-primary">Data Capture</h3>}
+          <p className={`text-xs ${embedded ? 'text-text-secondary' : 'text-text-subtle mt-0.5'}`}>
             {form
               ? <>What the customer answered, against the <strong>{form.name}</strong> question set{form.context_label ? ` (${form.context_label})` : ''}. Separate from the QA score.</>
               : 'What the customer answered on this sale. Separate from the QA score.'}
@@ -105,7 +114,7 @@ export function CapturePanel({ journeyId, isAdmin }: { journeyId: string; isAdmi
           <div className="flex items-center gap-2">
             <button
               onClick={handleExport}
-              className="px-3 py-1.5 rounded-btn text-badge font-semibold border border-border text-text-secondary hover:border-primary hover:text-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+              className="px-3 py-1.5 rounded-btn text-badge font-semibold border border-border text-text-secondary hover:border-primary hover:text-primary-ink transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
             >
               Export CSV
             </button>
@@ -113,7 +122,7 @@ export function CapturePanel({ journeyId, isAdmin }: { journeyId: string; isAdmi
               <button
                 onClick={handleRerun}
                 disabled={runMutation.isPending}
-                className="px-3 py-1.5 rounded-btn text-badge font-semibold border border-border text-text-secondary hover:border-primary hover:text-primary transition-colors disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                className="px-3 py-1.5 rounded-btn text-badge font-semibold border border-border text-text-secondary hover:border-primary hover:text-primary-ink transition-colors disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
               >
                 Re-run
               </button>
@@ -146,7 +155,7 @@ export function CapturePanel({ journeyId, isAdmin }: { journeyId: string; isAdmi
               <button
                 onClick={() => selectedFormId && runMutation.mutate(selectedFormId)}
                 disabled={!selectedFormId || runMutation.isPending}
-                className="px-3 py-2 rounded-btn text-table-cell border border-primary bg-primary text-white font-semibold hover:bg-primary-hover disabled:opacity-50 transition-colors"
+                className="px-3 py-2 rounded-btn text-table-cell border border-primary bg-primary-ink text-on-solid font-semibold hover:bg-primary-ink-hover disabled:opacity-50 transition-colors"
               >
                 {runMutation.isPending ? 'Queuing…' : 'Run capture'}
               </button>
@@ -172,7 +181,7 @@ export function CapturePanel({ journeyId, isAdmin }: { journeyId: string; isAdmi
               <button
                 onClick={() => runMutation.mutate(undefined)}
                 disabled={runMutation.isPending}
-                className="px-3 py-2 rounded-btn text-table-cell border border-primary bg-primary text-white font-semibold hover:bg-primary-hover disabled:opacity-50 transition-colors"
+                className="px-3 py-2 rounded-btn text-table-cell border border-primary bg-primary-ink text-on-solid font-semibold hover:bg-primary-ink-hover disabled:opacity-50 transition-colors"
               >
                 Try again
               </button>
@@ -221,7 +230,7 @@ export function CapturePanel({ journeyId, isAdmin }: { journeyId: string; isAdmi
                         {a.source_call_id && (
                           <Link
                             to={`/calls/${a.source_call_id}`}
-                            className="not-italic ml-2 text-primary hover:underline"
+                            className="not-italic ml-2 text-primary-ink hover:underline"
                           >
                             source call →
                           </Link>

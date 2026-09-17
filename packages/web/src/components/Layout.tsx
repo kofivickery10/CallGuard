@@ -44,7 +44,7 @@ function AppBanners() {
   return (
     <div className="space-y-px">
       {user?.impersonated && (
-        <div className="bg-review text-white px-7 py-2 text-sm font-semibold flex items-center gap-2">
+        <div className="bg-review text-on-solid px-7 py-2 text-sm font-semibold flex items-center gap-2">
           <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" />
           </svg>
@@ -269,7 +269,7 @@ export function Layout({ children }: { children: ReactNode }) {
                       </svg>
                       <span>{item.label}</span>
                       {item.path === '/support-inbox' && supportUnreadCount > 0 && (
-                        <span className="ml-auto min-w-[18px] h-[18px] px-1 rounded-full bg-fail text-white text-[11px] font-bold flex items-center justify-center">
+                        <span className="ml-auto min-w-[18px] h-[18px] px-1 rounded-full bg-fail text-on-solid text-[11px] font-bold flex items-center justify-center">
                           {supportUnreadCount > 99 ? '99+' : supportUnreadCount}
                         </span>
                       )}

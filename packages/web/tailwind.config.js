@@ -15,6 +15,8 @@ export default {
         primary: {
           DEFAULT: v('--cg-primary'),
           hover: v('--cg-primary-hover'),
+          ink: v('--cg-primary-ink'),
+          'ink-hover': v('--cg-primary-ink-hover'),
           light: v('--cg-primary-light'),
           'light-hover': v('--cg-primary-light-hover'),
         },
@@ -78,6 +80,9 @@ export default {
         // A true surface token that follows the theme (replaces raw bg-white on
         // cards, drawers, modals and the sidebar so they invert in dark mode).
         surface: v('--cg-card'),
+        // Text and icons on a solid fill (bg-primary, bg-fail, bg-pass…): white
+        // in light mode, dark ink in dark mode. Use instead of text-white.
+        'on-solid': v('--cg-on-solid'),
       },
       fontFamily: {
         sans: ['Inter', '-apple-system', 'sans-serif'],

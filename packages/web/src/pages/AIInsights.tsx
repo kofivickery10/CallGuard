@@ -80,7 +80,7 @@ export function AIInsights() {
           </p>
           <Link
             to="/settings/organization"
-            className="inline-block px-4 py-2 bg-primary hover:bg-primary-hover text-white rounded-btn text-table-cell font-semibold transition-colors"
+            className="inline-block px-4 py-2 bg-primary-ink hover:bg-primary-ink-hover text-on-solid rounded-btn text-table-cell font-semibold transition-colors"
           >
             Upgrade to {PLAN_LABELS.core}
           </Link>
@@ -117,7 +117,7 @@ export function AIInsights() {
           <button
             onClick={() => generate.mutate()}
             disabled={generate.isPending}
-            className="px-4 py-2 bg-primary hover:bg-primary-hover disabled:opacity-60 disabled:cursor-not-allowed text-white rounded-btn text-table-cell font-semibold transition-colors"
+            className="px-4 py-2 bg-primary-ink hover:bg-primary-ink-hover disabled:opacity-60 disabled:cursor-not-allowed text-on-solid rounded-btn text-table-cell font-semibold transition-colors"
           >
             {generate.isPending ? 'Generating...' : 'Generate new insights'}
           </button>
@@ -288,7 +288,7 @@ function DigestView({ digest }: { digest: InsightDigest }) {
                   {rec.cta && (
                     <Link
                       to={rec.cta.href}
-                      className="inline-block mt-2 text-xs text-primary hover:text-primary-hover font-semibold"
+                      className="inline-block mt-2 text-xs text-primary-ink hover:text-primary-hover font-semibold"
                     >
                       {rec.cta.label} →
                     </Link>

@@ -238,7 +238,7 @@ export function ClaimsDefence() {
             onClick={handlePrint}
             disabled={!p}
             aria-label="Print or save this claims-defence pack as a PDF"
-            className="px-[18px] py-[9px] rounded-btn text-table-cell font-semibold bg-primary text-white hover:bg-primary-hover disabled:opacity-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+            className="px-[18px] py-[9px] rounded-btn text-table-cell font-semibold bg-primary-ink text-on-solid hover:bg-primary-ink-hover disabled:opacity-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
           >
             Print / Save as PDF
           </button>
@@ -342,7 +342,7 @@ export function ClaimsDefence() {
                           <blockquote className="text-xs text-text-muted italic border-l-2 border-border pl-2.5 mt-1.5 leading-relaxed">
                             {item.evidence}
                             {href && (
-                              <Link to={href} className="not-italic ml-2 text-primary hover:underline print:hidden">
+                              <Link to={href} className="not-italic ml-2 text-primary-ink hover:underline print:hidden">
                                 hear it in the call →
                               </Link>
                             )}
@@ -492,7 +492,7 @@ export function ClaimsDefence() {
                           <blockquote className="text-xs text-text-muted italic border-l-2 border-border pl-2.5 mt-1.5 leading-relaxed">
                             {item.evidence}
                             {href && (
-                              <Link to={href} className="not-italic ml-2 text-primary hover:underline print:hidden">
+                              <Link to={href} className="not-italic ml-2 text-primary-ink hover:underline print:hidden">
                                 hear it in the call →
                               </Link>
                             )}

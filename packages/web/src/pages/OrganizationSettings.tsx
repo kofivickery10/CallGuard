@@ -165,7 +165,7 @@ export function OrganizationSettings() {
               <button
                 onClick={handleIndustrySave}
                 disabled={savingIndustry || industryDraft.trim() === (industry ?? '').trim()}
-                className="px-3 py-2 rounded-btn text-table-cell border border-primary bg-primary text-white font-semibold hover:bg-primary-hover disabled:opacity-50 transition-colors"
+                className="px-3 py-2 rounded-btn text-table-cell border border-primary bg-primary-ink text-on-solid font-semibold hover:bg-primary-ink-hover disabled:opacity-50 transition-colors"
               >
                 {savingIndustry ? 'Saving…' : 'Save'}
               </button>
@@ -204,7 +204,7 @@ export function OrganizationSettings() {
                 <button
                   onClick={handleKeytermsSave}
                   disabled={savingKeyterms || keytermsDraft.trim() === (keyterms ?? '').trim()}
-                  className="px-3 py-2 rounded-btn text-table-cell border border-primary bg-primary text-white font-semibold hover:bg-primary-hover disabled:opacity-50 transition-colors"
+                  className="px-3 py-2 rounded-btn text-table-cell border border-primary bg-primary-ink text-on-solid font-semibold hover:bg-primary-ink-hover disabled:opacity-50 transition-colors"
                 >
                   {savingKeyterms ? 'Saving…' : 'Save'}
                 </button>
@@ -270,7 +270,7 @@ export function OrganizationSettings() {
                 href="https://callguardai.co.uk/dpa#instructions"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-primary underline"
+                className="text-primary-ink underline"
               >
                 DPA §4.2
               </a>
@@ -381,7 +381,7 @@ const PLAN_FEATURE_MATRIX: Array<{ label: string; has: (p: Plan) => boolean }> =
 
 function Check() {
   return (
-    <svg viewBox="0 0 24 24" className="w-4 h-4 text-primary flex-shrink-0" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <svg viewBox="0 0 24 24" className="w-4 h-4 text-primary-ink flex-shrink-0" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       <path d="M5 13l4 4L19 7" />
     </svg>
   );

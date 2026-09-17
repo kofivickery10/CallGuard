@@ -152,7 +152,7 @@ export function DocumentProfileReview() {
   if (isError || !data) {
     return (
       <div>
-        <Link to="/reconciliation" className="text-table-cell text-primary hover:underline">
+        <Link to="/reconciliation" className="text-table-cell text-primary-ink hover:underline">
           ← Reconciliation
         </Link>
         <div className="bg-fail-bg text-fail px-3 py-2 rounded-btn text-table-cell mt-4 inline-block">
@@ -175,7 +175,7 @@ export function DocumentProfileReview() {
 
   return (
     <div>
-      <Link to="/reconciliation" className="text-table-cell text-primary hover:underline">
+      <Link to="/reconciliation" className="text-table-cell text-primary-ink hover:underline">
         ← Reconciliation
       </Link>
 
@@ -430,7 +430,7 @@ export function DocumentProfileReview() {
               type="checkbox"
               checked={questionsVary}
               onChange={(e) => setQuestionsVary(e.target.checked)}
-              className="mt-0.5 h-4 w-4 rounded border-border text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+              className="mt-0.5 h-4 w-4 rounded border-border text-primary-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
             />
             <div>
               <label htmlFor="questions-vary" className="text-table-cell font-semibold text-text-primary">
@@ -459,7 +459,7 @@ export function DocumentProfileReview() {
                   questions.length === 0 ||
                   (needsInsurer && !insurer.trim())
                 }
-                className="px-4 py-2 rounded-btn text-table-cell font-semibold bg-primary text-white hover:opacity-90 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                className="px-4 py-2 rounded-btn text-table-cell font-semibold bg-primary-ink text-on-solid hover:opacity-90 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
               >
                 {confirm.isPending ? 'Confirming…' : 'Confirm this question set'}
               </button>
@@ -520,7 +520,7 @@ export function DocumentProfileReview() {
             <button
               onClick={() => dismiss.mutate()}
               disabled={dismiss.isPending}
-              className="px-4 py-2 rounded-btn text-table-cell font-semibold bg-primary text-white hover:opacity-90 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+              className="px-4 py-2 rounded-btn text-table-cell font-semibold bg-primary-ink text-on-solid hover:opacity-90 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
             >
               {dismiss.isPending ? 'Dismissing…' : 'Dismiss this format'}
             </button>

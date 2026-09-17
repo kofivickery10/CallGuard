@@ -83,7 +83,7 @@ export default function TwoFactorEnroll() {
               <button
                 type="submit"
                 disabled={loading || !setup}
-                className="w-full bg-primary hover:bg-primary-hover text-white font-semibold py-2 rounded-btn text-sm disabled:opacity-60 transition-colors"
+                className="w-full bg-primary-ink hover:bg-primary-ink-hover text-on-solid font-semibold py-2 rounded-btn text-sm disabled:opacity-60 transition-colors"
               >
                 {loading ? 'Verifying…' : 'Confirm & enable'}
               </button>
@@ -104,7 +104,7 @@ export default function TwoFactorEnroll() {
             </div>
             <button
               onClick={() => navigate('/', { replace: true })}
-              className="w-full bg-primary hover:bg-primary-hover text-white font-semibold py-2 rounded-btn text-sm transition-colors"
+              className="w-full bg-primary-ink hover:bg-primary-ink-hover text-on-solid font-semibold py-2 rounded-btn text-sm transition-colors"
             >
               I've saved my codes — continue
             </button>

@@ -122,7 +122,7 @@ export function Breaches() {
           </button>
           <button
             onClick={handlePrint}
-            className="bg-primary text-white px-[18px] py-[9px] rounded-btn text-table-cell font-semibold hover:bg-primary-hover transition-colors"
+            className="bg-primary-ink text-on-solid px-[18px] py-[9px] rounded-btn text-table-cell font-semibold hover:bg-primary-ink-hover transition-colors"
           >
             Print Report
           </button>
@@ -222,7 +222,7 @@ export function Breaches() {
                     <Link
                       to={b.journey_id ? `/journeys/${b.journey_id}` : `/calls/${b.call_id}`}
                       onClick={(e) => e.stopPropagation()}
-                      className="text-primary font-medium hover:underline"
+                      className="text-primary-ink font-medium hover:underline"
                     >
                       {b.call_file_name}
                     </Link>

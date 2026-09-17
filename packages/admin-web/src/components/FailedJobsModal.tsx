@@ -193,7 +193,7 @@ export default function FailedJobsModal({ queue, onClose, onChanged }: Props) {
               <button
                 onClick={retryAll}
                 disabled={busy}
-                className="px-[18px] py-[9px] rounded-btn bg-primary text-white font-semibold text-table-cell hover:bg-primary-hover disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-primary"
+                className="px-[18px] py-[9px] rounded-btn bg-primary-ink text-on-solid font-semibold text-table-cell hover:bg-primary-ink-hover disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-primary"
               >
                 Retry all
               </button>

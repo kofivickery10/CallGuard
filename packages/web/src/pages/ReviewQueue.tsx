@@ -121,7 +121,7 @@ export function ReviewQueue() {
                           onClick={() => toggleEvidence(key)}
                           aria-expanded={isOpen}
                           aria-label={isOpen ? `Hide evidence for ${item.label}` : `Show evidence for ${item.label}`}
-                          className="mt-0.5 shrink-0 text-text-muted hover:text-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
+                          className="mt-0.5 shrink-0 text-text-muted hover:text-primary-ink transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
                         >
                           <svg
                             className={`w-4 h-4 transition-transform ${isOpen ? 'rotate-90' : ''}`}
@@ -145,7 +145,7 @@ export function ReviewQueue() {
                     <td className="px-5 py-3 text-table-cell">
                       <Link
                         to={item.kind === 'journey' ? `/journeys/${item.parent_id}` : `/calls/${item.parent_id}`}
-                        className="text-primary hover:underline capitalize"
+                        className="text-primary-ink hover:underline capitalize"
                       >
                         {item.kind}
                       </Link>
@@ -158,7 +158,7 @@ export function ReviewQueue() {
                         <button
                           onClick={() => toggleEvidence(key)}
                           aria-expanded={isOpen}
-                          className="text-xs font-semibold text-text-muted hover:text-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
+                          className="text-xs font-semibold text-text-muted hover:text-primary-ink transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
                         >
                           {isOpen ? 'Hide evidence' : 'Evidence'}
                         </button>
@@ -167,14 +167,14 @@ export function ReviewQueue() {
                             <button
                               onClick={() => resolveManual(item, 'pass')}
                               disabled={resolvingKey === item.item_score_id}
-                              className="text-xs text-pass hover:text-white hover:bg-pass px-2 py-1 rounded border border-pass/30 hover:border-pass transition-colors disabled:opacity-50"
+                              className="text-xs text-pass hover:text-on-solid hover:bg-pass px-2 py-1 rounded border border-pass/30 hover:border-pass transition-colors disabled:opacity-50"
                             >
                               Pass
                             </button>
                             <button
                               onClick={() => resolveManual(item, 'fail')}
                               disabled={resolvingKey === item.item_score_id}
-                              className="text-xs text-fail hover:text-white hover:bg-fail px-2 py-1 rounded border border-fail/30 hover:border-fail transition-colors disabled:opacity-50"
+                              className="text-xs text-fail hover:text-on-solid hover:bg-fail px-2 py-1 rounded border border-fail/30 hover:border-fail transition-colors disabled:opacity-50"
                             >
                               Fail
                             </button>
@@ -270,7 +270,7 @@ export function ReviewQueue() {
                 <td className="px-5 py-3.5 text-table-cell text-text-primary">
                   <button
                     onClick={() => setSelectedId(b.id)}
-                    className="text-left font-semibold text-text-primary hover:text-primary"
+                    className="text-left font-semibold text-text-primary hover:text-primary-ink"
                   >
                     {b.breach_type}
                   </button>
@@ -283,7 +283,7 @@ export function ReviewQueue() {
                 <td className="px-5 py-3.5">
                   <Link
                     to={b.journey_id ? `/journeys/${b.journey_id}` : `/calls/${b.call_id}`}
-                    className="text-primary text-table-cell hover:underline"
+                    className="text-primary-ink text-table-cell hover:underline"
                   >
                     {b.call_file_name}
                   </Link>
@@ -300,7 +300,7 @@ export function ReviewQueue() {
                       <button
                         onClick={() => updateStatus(b.id, 'acknowledged')}
                         disabled={busyId === b.id}
-                        className="text-xs text-text-secondary hover:text-primary px-2 py-1 rounded border border-border hover:border-primary transition-colors disabled:opacity-50"
+                        className="text-xs text-text-secondary hover:text-primary-ink px-2 py-1 rounded border border-border hover:border-primary transition-colors disabled:opacity-50"
                       >
                         Acknowledge
                       </button>
@@ -317,14 +317,14 @@ export function ReviewQueue() {
                     <button
                       onClick={() => updateStatus(b.id, 'coached')}
                       disabled={busyId === b.id}
-                      className="text-xs text-pass hover:text-white hover:bg-pass px-2 py-1 rounded border border-pass/30 hover:border-pass transition-colors disabled:opacity-50"
+                      className="text-xs text-pass hover:text-on-solid hover:bg-pass px-2 py-1 rounded border border-pass/30 hover:border-pass transition-colors disabled:opacity-50"
                     >
                       Coached
                     </button>
                     <button
                       onClick={() => updateStatus(b.id, 'resolved')}
                       disabled={busyId === b.id}
-                      className="text-xs text-pass hover:text-white hover:bg-pass px-2 py-1 rounded border border-pass/30 hover:border-pass transition-colors disabled:opacity-50"
+                      className="text-xs text-pass hover:text-on-solid hover:bg-pass px-2 py-1 rounded border border-pass/30 hover:border-pass transition-colors disabled:opacity-50"
                     >
                       Resolve
                     </button>
