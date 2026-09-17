@@ -165,3 +165,25 @@ export interface UpdateScorecardInput {
   scoring_mode?: ScorecardScoringMode;
   items?: ScorecardItemInput[];
 }
+
+// One row of the Scorecards list: the scorecard, what is in it, and what it has
+// been used to score. Assembled by GET /api/scorecards in two queries for the
+// whole page — a per-row count would be a query per scorecard.
+export interface ScorecardListEntry extends Scorecard {
+  // Live checkpoints only: archived ones are kept for the history of sales
+  // already scored against them, and are not part of what this scorecard checks
+  // today.
+  checkpoint_count: number;
+  section_count: number;
+  critical_count: number;
+  consent_gate_count: number;
+  // Scored units attributed to this scorecard — scored sales for a journey
+  // scorecard, scored calls for a per-call one. The same definition the
+  // dashboard counts (see routes/dashboard.ts).
+  scored_units: number;
+  // Percentage of those units that passed, or null when nothing has been scored
+  // against this scorecard. ABSENT entirely for a score_only tenant, which is
+  // never shown a pass/fail verdict anywhere in the product — so the key being
+  // missing is the signal, not a null.
+  pass_rate?: number | null;
+}

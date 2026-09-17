@@ -136,3 +136,25 @@ export function parseCsv(text: string): ParsedCsv {
 
   return { headers, rows };
 }
+
+/**
+ * Quote a single value for writing into a CSV, only where quoting is needed —
+ * a field containing a comma, a quote, a line break, or leading/trailing space
+ * that a reader would otherwise be free to drop.
+ */
+export function csvEscape(value: string | number | boolean | null | undefined): string {
+  if (value === null || value === undefined) return '';
+  const str = String(value);
+  if (str === '') return '';
+  const needsQuotes = /[",\r\n]/.test(str) || str !== str.trim();
+  if (!needsQuotes) return str;
+  return `"${str.replace(/"/g, '""')}"`;
+}
+
+/**
+ * Write rows out as a CSV document, CRLF-terminated — the line ending Excel
+ * and Numbers both open without prompting.
+ */
+export function toCsv(rows: (string | number | boolean | null | undefined)[][]): string {
+  return rows.map((row) => row.map(csvEscape).join(',')).join('\r\n');
+}

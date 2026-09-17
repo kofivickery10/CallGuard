@@ -5,6 +5,8 @@ import { AppError } from '../middleware/errors.js';
 import { recordAuditEvent } from '../services/audit.js';
 import { isUuid } from '../services/uuid.js';
 import { mergeBranchConfig } from '../services/branch-config.js';
+import { orgHasFeature } from '../services/tenant-settings.js';
+import { scoredUnitsByScorecard } from './dashboard.js';
 import type { Scorecard, ScorecardItem, BranchConfig, ConsumerDutyOutcome } from '@callguard/shared';
 
 export const scorecardRouter = Router();
@@ -111,14 +113,91 @@ async function assertItemProductsBelongToOrg(
   }
 }
 
-// List scorecards
+// List scorecards, with what is in each one and what it has been used to score.
+//
+// Two queries for the whole page, whatever the number of scorecards: the counts
+// come from one grouped join over scorecard_items, the usage from one grouped
+// pass over the org's scored units. A per-row count here would be a query per
+// scorecard, and this screen is the one an admin opens to find out which of
+// several scorecards is the live one.
+//
+// Live scorecards sort first, oldest first — the same order scoring resolves
+// them in when a call names none (jobs/processors/score.ts orders active
+// scorecards by created_at ASC and takes the first), so the row at the top is
+// the one those calls actually land on.
 scorecardRouter.get('/', async (req, res, next) => {
   try {
-    const scorecards = await query<Scorecard>(
-      'SELECT * FROM scorecards WHERE organization_id = $1 ORDER BY created_at DESC',
-      [req.user!.organizationId]
-    );
-    res.json({ data: scorecards });
+    const organizationId = req.user!.organizationId;
+
+    const [scorecards, usage, scoreOnly] = await Promise.all([
+      query<Scorecard & {
+        checkpoint_count: string;
+        section_count: string;
+        critical_count: string;
+        consent_gate_count: string;
+      }>(
+        `SELECT s.*,
+                COUNT(i.id)::text AS checkpoint_count,
+                COUNT(DISTINCT NULLIF(btrim(COALESCE(i.section, '')), ''))::text AS section_count,
+                COUNT(i.id) FILTER (WHERE i.severity = 'critical')::text AS critical_count,
+                COUNT(i.id) FILTER (WHERE i.consent_gate)::text AS consent_gate_count
+           FROM scorecards s
+           LEFT JOIN scorecard_items i
+             ON i.scorecard_id = s.id AND i.archived_at IS NULL
+          WHERE s.organization_id = $1
+          GROUP BY s.id
+          ORDER BY s.is_active DESC, s.created_at ASC`,
+        [organizationId]
+      ),
+      query<{ scorecard_id: string; scored_units: string; pass_count: string }>(
+        `WITH units AS (
+           ${scoredUnitsByScorecard(1)}
+         )
+         SELECT scorecard_id,
+                COUNT(*)::text AS scored_units,
+                COUNT(*) FILTER (WHERE pass IS TRUE)::text AS pass_count
+           FROM units
+          WHERE scorecard_id IS NOT NULL
+          GROUP BY scorecard_id`,
+        [organizationId]
+      ),
+      // A score_only tenant is never shown a pass/fail verdict anywhere in the
+      // product, so a pass rate must not appear on this screen either — the key
+      // is left off the row rather than sent as a number the client hides.
+      orgHasFeature(organizationId, 'score_only'),
+    ]);
+
+    const usageById = new Map(usage.map((u) => [u.scorecard_id, u]));
+
+    res.json({
+      data: scorecards.map((s) => {
+        const {
+          checkpoint_count,
+          section_count,
+          critical_count,
+          consent_gate_count,
+          ...scorecard
+        } = s;
+        const used = usageById.get(s.id);
+        const scoredUnits = parseInt(used?.scored_units || '0', 10);
+        return {
+          ...scorecard,
+          checkpoint_count: parseInt(checkpoint_count, 10),
+          section_count: parseInt(section_count, 10),
+          critical_count: parseInt(critical_count, 10),
+          consent_gate_count: parseInt(consent_gate_count, 10),
+          scored_units: scoredUnits,
+          ...(scoreOnly
+            ? {}
+            : {
+                pass_rate:
+                  scoredUnits > 0
+                    ? (parseInt(used!.pass_count, 10) / scoredUnits) * 100
+                    : null,
+              }),
+        };
+      }),
+    });
   } catch (err) {
     next(err);
   }
@@ -133,12 +212,96 @@ scorecardRouter.get('/:id', async (req, res, next) => {
     );
     if (!scorecard) throw new AppError(404, 'Scorecard not found');
 
-    const items = await query<ScorecardItem>(
-      'SELECT * FROM scorecard_items WHERE scorecard_id = $1 AND archived_at IS NULL ORDER BY sort_order',
-      [scorecard.id]
-    );
+    const [items, used] = await Promise.all([
+      query<ScorecardItem>(
+        'SELECT * FROM scorecard_items WHERE scorecard_id = $1 AND archived_at IS NULL ORDER BY sort_order',
+        [scorecard.id]
+      ),
+      // What editing this scorecard would and would not change. The editor says
+      // "the 107 sales already scored keep v3" above Save, and that sentence is
+      // only honest if the number is real.
+      queryOne<{ scored_units: string }>(
+        `WITH units AS (
+           ${scoredUnitsByScorecard(1)}
+         )
+         SELECT COUNT(*)::text AS scored_units FROM units WHERE scorecard_id = $2`,
+        [req.user!.organizationId, scorecard.id]
+      ),
+    ]);
 
-    res.json({ ...scorecard, items });
+    res.json({ ...scorecard, items, scored_units: parseInt(used?.scored_units || '0', 10) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Duplicate a scorecard and its checkpoints.
+//
+// The copy lands INACTIVE whatever the original was: two live scorecards change
+// which one calls that name none are scored against, and that is a decision to
+// take deliberately on the list, not a side effect of pressing Duplicate.
+scorecardRouter.post('/:id/duplicate', requireAdmin, async (req, res, next) => {
+  try {
+    const source = await queryOne<Scorecard>(
+      'SELECT * FROM scorecards WHERE id = $1 AND organization_id = $2',
+      [req.params.id, req.user!.organizationId]
+    );
+    if (!source) throw new AppError(404, 'Scorecard not found');
+
+    const copy = await withTransaction(async (tx) => {
+      const rows = await tx.query<Scorecard>(
+        `INSERT INTO scorecards (organization_id, name, description, created_by, branch_config, scoring_mode, is_active)
+         VALUES ($1, $2, $3, $4, $5, $6, false) RETURNING *`,
+        [
+          source.organization_id,
+          `Copy of ${source.name}`,
+          source.description,
+          req.user!.userId,
+          source.branch_config ? JSON.stringify(source.branch_config) : null,
+          source.scoring_mode,
+        ]
+      );
+      const created = rows[0]!;
+
+      // Archived checkpoints are deliberately not copied: they exist only to
+      // keep the history of sales already scored against the original readable,
+      // and the copy has no such history.
+      const copied = await tx.query<ScorecardItem>(
+        `INSERT INTO scorecard_items
+           (scorecard_id, label, description, score_type, weight, sort_order,
+            severity, section, item_type, applies_when, expectation, ai_check, consent_gate,
+            applies_to_products, consumer_duty_outcome, vulnerability_related,
+            remediation_guidance)
+         SELECT $1, label, description, score_type, weight, sort_order,
+                severity, section, item_type, applies_when, expectation, ai_check, consent_gate,
+                applies_to_products, consumer_duty_outcome, vulnerability_related,
+                remediation_guidance
+           FROM scorecard_items
+          WHERE scorecard_id = $2 AND archived_at IS NULL
+          ORDER BY sort_order
+         RETURNING *`,
+        [created.id, source.id]
+      );
+
+      return { ...created, items: copied };
+    });
+
+    void recordAuditEvent({
+      organizationId: req.user!.organizationId,
+      userId: req.user!.userId,
+      actionType: 'scorecard.duplicate',
+      entityType: 'scorecard',
+      entityId: copy.id,
+      req,
+      metadata: {
+        name: copy.name,
+        copied_from: source.id,
+        copied_from_name: source.name,
+        item_count: copy.items.length,
+      },
+    });
+
+    res.status(201).json(copy);
   } catch (err) {
     next(err);
   }
@@ -269,6 +432,22 @@ scorecardRouter.put('/:id', requireAdmin, async (req, res, next) => {
         scorecard.id,
       ]
     );
+
+    // Making a scorecard live, or retiring it, changes what every call that
+    // names no scorecard is scored against from that moment on — a change to
+    // the firm's compliance standard, not a form edit. It gets its own line in
+    // the register, on both sides.
+    if (typeof is_active === 'boolean' && is_active !== scorecard.is_active) {
+      void recordAuditEvent({
+        organizationId: req.user!.organizationId,
+        userId: req.user!.userId,
+        actionType: is_active ? 'scorecard.activate' : 'scorecard.deactivate',
+        entityType: 'scorecard',
+        entityId: scorecard.id,
+        req,
+        metadata: { name: scorecard.name, version: scorecard.version },
+      });
+    }
 
     if (items && Array.isArray(items)) {
       // Upsert by id rather than delete-all-and-recreate: scorecard_items can

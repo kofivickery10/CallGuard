@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseCsv, parseCsvRecords } from './csv.js';
+import { parseCsv, parseCsvRecords, csvEscape, toCsv } from './csv.js';
 
 describe('parseCsvRecords', () => {
   it('reads plain rows and numbers them by file line', () => {
@@ -105,5 +105,50 @@ describe('parseCsv', () => {
 
   it('returns no rows for empty text', () => {
     expect(parseCsv('')).toEqual({ headers: [], rows: [] });
+  });
+});
+
+describe('csvEscape / toCsv — what we write back out', () => {
+  it('leaves a plain value alone', () => {
+    expect(csvEscape('Greeted the customer')).toBe('Greeted the customer');
+  });
+
+  it('quotes a value containing a comma', () => {
+    expect(csvEscape('name, address')).toBe('"name, address"');
+  });
+
+  it('doubles an embedded quote', () => {
+    expect(csvEscape('Said "hello"')).toBe('"Said ""hello"""');
+  });
+
+  it('quotes a value containing a line break', () => {
+    expect(csvEscape('one\ntwo')).toBe('"one\ntwo"');
+  });
+
+  it('quotes a value whose spacing would otherwise be lost', () => {
+    expect(csvEscape('  padded  ')).toBe('"  padded  "');
+  });
+
+  it('writes null and undefined as an empty cell', () => {
+    expect(csvEscape(null)).toBe('');
+    expect(csvEscape(undefined)).toBe('');
+  });
+
+  it('writes numbers and booleans as themselves', () => {
+    expect(csvEscape(1.5)).toBe('1.5');
+    expect(csvEscape(false)).toBe('false');
+  });
+
+  it('round-trips a document through toCsv and the reader unchanged', () => {
+    const rows = [
+      ['label', 'description', 'weight'],
+      ['Confirmed name, address and DOB', 'Line one\nLine two', 2],
+      ['Said "authorised and regulated"', '', 1],
+    ];
+    expect(parseCsvRecords(toCsv(rows)).map((r) => r.cells)).toEqual([
+      ['label', 'description', 'weight'],
+      ['Confirmed name, address and DOB', 'Line one\nLine two', '2'],
+      ['Said "authorised and regulated"', '', '1'],
+    ]);
   });
 });
