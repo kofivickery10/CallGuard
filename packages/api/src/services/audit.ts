@@ -50,6 +50,11 @@ export type AuditActionType =
   // computed from, so a score can move with no other visible cause.
   | 'customer.identity_link'
   | 'customer.identity_unlink'
+  // A customer's name or CRM id edited by hand. Logged because the CRM id is
+  // sent out with every score (the call.scored / journey.scored webhooks), and a
+  // name change alters what every screen and pack calls the person. The name
+  // itself is NOT copied into the register (see customers.ts PUT /:id).
+  | 'customer.update'
   // When the Zoho write-back fires changed (CG-4). Logged because it changes
   // what reaches a tenant's CRM, and "records stopped arriving" is otherwise
   // very hard to explain weeks later.

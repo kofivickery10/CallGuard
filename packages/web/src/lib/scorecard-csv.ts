@@ -1,4 +1,4 @@
-import { parseCsv, toCsv } from '@callguard/shared';
+import { parseCsvRecords, toCsv } from '@callguard/shared';
 import type { ScoreType, ScorecardItemType, ConsumerDutyOutcome, ScorecardItem } from '@callguard/shared';
 
 // One checkpoint as the editor holds it while you are working on it: every
@@ -118,7 +118,10 @@ function branchesOf(item: ItemForm): string[] {
  * an explicit "Replace with N checkpoints" / "Add N checkpoints" applies it.
  */
 export function previewScorecardCsv(text: string): ImportPreview {
-  const lines = parseCsv(text);
+  // The shared reader keeps each record's physical line number for the bulk
+  // import of recordings; a scorecard preview numbers its own rows, so it only
+  // needs the cells.
+  const lines = parseCsvRecords(text).map((record) => record.cells);
   if (lines.length < 2) {
     return {
       rows: [],

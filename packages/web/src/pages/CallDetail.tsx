@@ -15,7 +15,7 @@ import { ReviewSection } from '../components/ReviewSection';
 import { ScoreCorrectionModal } from '../components/ScoreCorrectionModal';
 import { ShareLinksPanel } from '../components/ShareLinksPanel';
 import { useDialog } from '../components/DialogProvider';
-import { formatDuration } from '../lib/format';
+import { formatDuration, formatPhone } from '../lib/format';
 import { hasFeature, PASS_THRESHOLD } from '@callguard/shared';
 import type {
   Call,
@@ -86,6 +86,8 @@ export function CallDetail() {
   const isAdmin = user?.role === 'admin';
   const canAction = user?.role === 'admin' || user?.role === 'supervisor';
   const canLearn = user ? hasFeature(user.organization_plan, 'ai_learning') : false;
+  // Customer profiles are a plan feature; link to one only where it will open.
+  const canOpenCustomers = user ? hasFeature(user.organization_plan, 'customer_journey') : false;
 
   const [openItem, setOpenItem] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>('attention');
@@ -115,6 +117,17 @@ export function CallDetail() {
       // that's terminal here as well — otherwise it would poll forever.
       if (status === 'scored' || status === 'failed' || status === 'skipped') return false;
       if (status === 'transcribed' && data?.journey) return false;
+      // 'captured' (awaiting hydration) and a sales_only 'transcribed' call
+      // with no journey yet (held until a sale for the customer arrives — see
+      // deferToSale in jobs/processors/transcribe.ts) are both resting on an
+      // external event with no ETA. Nothing here will change until that
+      // arrives, so polling every 3s for as long as the page stays open just
+      // burns requests.
+      // An imported recording is the exception: it is 'captured' only until
+      // its own hydrate job downloads it, which is seconds away, so keep
+      // polling for that one.
+      if (status === 'captured' && data?.ingestion_source === 'dialer_webhook') return false;
+      if (status === 'transcribed' && !data?.journey && org?.scoring_scope === 'sales_only') return false;
       return 3000;
     },
   });
@@ -492,6 +505,17 @@ export function CallDetail() {
             ) : (
               <span>Adviser {call.agent_name ?? 'not recorded'}</span>
             )}
+            {call.customer_id && canOpenCustomers && (
+              <>
+                <span aria-hidden="true">·</span>
+                <Link
+                  to={`/customers/${call.customer_id}`}
+                  className="text-primary-ink hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
+                >
+                  {call.customer_name?.trim() || formatPhone(call.customer_phone) || 'Customer'}
+                </Link>
+              </>
+            )}
             {call.reviewed_at && (
               <>
                 <span aria-hidden="true">·</span>
@@ -535,10 +559,33 @@ export function CallDetail() {
 
       {call.status === 'captured' && (
         <div className="bg-table-header border border-border rounded-card p-4 mb-6">
-          <div className="text-table-cell font-semibold text-text-primary">Waiting for a sale</div>
+          {call.ingestion_source === 'dialer_webhook' ? (
+            <>
+              <div className="text-table-cell font-semibold text-text-primary">Waiting for a sale</div>
+              <div className="text-xs text-text-secondary mt-1">
+                Your firm scores sales rather than single calls. This call is kept and will be transcribed and
+                scored when the sale it belongs to arrives from your CRM.
+              </div>
+            </>
+          ) : (
+            <>
+              {/* An imported recording (Upload → Import many recordings): the
+                  audio is being fetched from the link that was supplied. */}
+              <div className="text-table-cell font-semibold text-text-primary">Fetching the recording</div>
+              <div className="text-xs text-text-secondary mt-1">
+                This call was imported. CallGuard is downloading the recording, then it's transcribed like
+                any other call.
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {call.status === 'transcribed' && !journey && org?.scoring_scope === 'sales_only' && (
+        <div className="bg-table-header border border-border rounded-card p-4 mb-6">
+          <div className="text-table-cell font-semibold text-text-primary">Held until a sale arrives</div>
           <div className="text-xs text-text-secondary mt-1">
-            Your firm scores sales rather than single calls. This call is kept and will be transcribed and
-            scored when the sale it belongs to arrives from your CRM.
+            Your firm scores sales, so this call is scored when a sale for the customer reaches CallGuard.
           </div>
         </div>
       )}

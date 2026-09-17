@@ -40,6 +40,10 @@ export interface Call {
   transcript_restricted?: boolean;
   agent_id: string | null;
   agent_name: string | null;
+  // The customers row this call is matched to, by phone. customer_name is
+  // joined in by GET /api/calls/:id only.
+  customer_id: string | null;
+  customer_name?: string | null;
   customer_phone: string | null;
   call_date: string | null;
   tags: string[];
@@ -174,4 +178,85 @@ export interface CallItemPosition {
 export interface CallPositionsResponse {
   lines: CallTranscriptLinePosition[];
   items: CallItemPosition[];
+}
+
+// GET /api/calls — the sale a list row's call belongs to, for a firm whose
+// scoring_scope defers per-call scoring to the sale (scoresCallsIndividually
+// false). Deliberately thinner than CallJourneyContext: a list row has no use
+// for the sale's checkpoints or siblings, only enough to link to it and show
+// what it contributed.
+export interface CallListSaleSummary {
+  id: string;
+  status: JourneyStatus;
+  overall_score: number | null;
+  pass: boolean | null;
+  // This call's position among the sale's transcribed calls, and how many
+  // there are — the same numbering rule as CallJourneyContext.call_number
+  // (null when this call itself has no transcript).
+  call_number: number | null;
+  call_total: number;
+  // journey_item_scores whose evidence came from THIS call, not the sale as a
+  // whole.
+  failed_here: number;
+  waiting_here: number;
+}
+
+// GET /api/calls — a list row's own latest score, for a firm that scores
+// every call on its own (scoresCallsIndividually true). null until the call
+// is scored.
+export interface CallListScoreSummary {
+  overall_score: number | null;
+  pass: boolean | null;
+  failed: number;
+  waiting: number;
+}
+
+// One row of GET /api/calls. Carries only what the list shows — see
+// CALL_LIST_COLUMNS in routes/calls.ts for what it deliberately excludes (no
+// transcript, no storage pointer).
+export interface CallListRow {
+  id: string;
+  file_name: string;
+  status: CallStatus;
+  duration_seconds: number | null;
+  called_at: string;
+  direction: string | null;
+  adviser_id: string | null;
+  adviser_name: string | null;
+  customer_id: string | null;
+  customer_name: string | null;
+  customer_phone: string | null;
+  // How the call got here. 'captured' means two different things by source: a
+  // dialler-captured call is resting until a sale, an imported or uploaded one
+  // is still having its recording fetched.
+  ingestion_source: Call['ingestion_source'];
+  // Set (possibly to null) for a 'sales' mode org, and always null otherwise.
+  sale: CallListSaleSummary | null;
+  // Set (possibly to null) for a 'calls' mode org, and always null otherwise.
+  score: CallListScoreSummary | null;
+}
+
+export interface CallListResponse {
+  data: CallListRow[];
+  total: number;
+  page: number;
+  limit: number;
+  // Which of the two scoring shapes this org's calls carry — decided by
+  // scoresCallsIndividually (services/tenant-settings.ts), never by Zoho.
+  mode: 'sales' | 'calls';
+  // One entry per tab available in this mode — under score_only, that is
+  // 'failed_checks' and 'passed' excluded, since their counts would reveal
+  // the verdict the feature hides. Each count is under every other active
+  // filter (q/adviser/from/to) but not the tab itself, the same recipe as the
+  // sales list's per-status counts.
+  counts: Record<string, number>;
+}
+
+// GET /api/calls/advisers — the org's users who are the agent on at least one
+// call, for the calls list's adviser filter. Thinner than AgentSummary (no
+// role/status): a supervisor or viewer may use it, and /agents itself is
+// admin-only.
+export interface CallAdviserOption {
+  id: string;
+  name: string;
 }

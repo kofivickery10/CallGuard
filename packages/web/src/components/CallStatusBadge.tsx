@@ -1,4 +1,4 @@
-import type { CallStatus } from '@callguard/shared';
+import type { Call, CallStatus } from '@callguard/shared';
 import { useScoreOnly } from '../context/AuthContext';
 
 const statusConfig: Record<CallStatus, { label: string; className: string }> = {
@@ -40,9 +40,27 @@ const statusConfig: Record<CallStatus, { label: string; className: string }> = {
   },
 };
 
-export function CallStatusBadge({ status, pass }: { status: CallStatus; pass?: boolean | null }) {
+export function CallStatusBadge({
+  status,
+  pass,
+  ingestionSource,
+}: {
+  status: CallStatus;
+  pass?: boolean | null;
+  /**
+   * Where the call came from. Only consulted for 'captured': a dialler capture
+   * rests there until a sale arrives, but a bulk-imported recording is
+   * 'captured' only until its own job downloads it (services/ingestion.ts
+   * importRemoteCall), so "Awaiting sale" would be the wrong thing to say.
+   */
+  ingestionSource?: Call['ingestion_source'];
+}) {
   const scoreOnly = useScoreOnly();
   let config = statusConfig[status];
+
+  if (status === 'captured' && ingestionSource && ingestionSource !== 'dialer_webhook') {
+    config = { label: 'Fetching recording', className: 'bg-processing-bg text-processing' };
+  }
 
   // Override scored status based on pass/fail. pass === undefined (still
   // loading, or the scores fetch errored) intentionally falls through to the
