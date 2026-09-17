@@ -5,7 +5,7 @@ import type { IncomingMessage } from 'http';
 import type { LookupFunction } from 'net';
 import { query, queryOne } from '../db/client.js';
 import { uploadFile, deleteFile } from './storage.js';
-import { transcriptionQueue } from '../jobs/queue.js';
+import { transcriptionQueue, ingestionQueue } from '../jobs/queue.js';
 import { AppError } from '../middleware/errors.js';
 import { assertSafeRemoteUrl } from './url-safety.js';
 import { isVideoMedia, prepareMediaForIngest } from './media.js';
@@ -509,6 +509,122 @@ export async function captureCallMetadata(
       if (raced) return { call: raced, isDuplicate: true };
     }
     throw err;
+  }
+}
+
+export interface RemoteImportParams {
+  organizationId: string;
+  uploadedBy: string | null;
+  /** The https:// recording link the operator supplied. */
+  recordingUrl: string;
+  agentName?: string | null;
+  customerPhone?: string | null;
+  callDate?: string | null;
+  externalId?: string | null;
+  tags?: string[];
+  scorecardId?: string | null;
+}
+
+/**
+ * Register a remote recording for import in the background: create the call row
+ * now, and leave fetching the audio to the ingestion queue's existing
+ * 'hydrate-call' job (jobs/processors/hydrate-call.ts), which downloads the
+ * recording_pointer, stores it and enqueues transcription.
+ *
+ * The bulk import used to download every recording inside the HTTP request —
+ * 200 files, one at a time, on a request the browser eventually gave up on,
+ * with no row to show for the ones that had already landed. Creating the row
+ * first means every imported call is visible in Calls immediately and moves
+ * through the same states as any other call, and a recording that can't be
+ * fetched fails on its own row instead of taking the batch with it.
+ *
+ * 'captured' is the existing status for "we know about this call but hold no
+ * audio yet", which is exactly the state here; hydration is what clears it.
+ * Idempotent by (org, external_id), like ingestCall.
+ */
+export async function importRemoteCall(params: RemoteImportParams): Promise<IngestedCall> {
+  const existing = await findExistingCall(params.organizationId, params.externalId, null);
+  if (existing) return { call: existing, isDuplicate: true };
+
+  let scorecardId: string | null = null;
+  if (params.scorecardId) {
+    const scorecard = await queryOne<{ id: string }>(
+      'SELECT id FROM scorecards WHERE id = $1 AND organization_id = $2',
+      [params.scorecardId, params.organizationId]
+    );
+    if (!scorecard) {
+      throw new Error(`Scorecard ${params.scorecardId} not found for this organization`);
+    }
+    scorecardId = scorecard.id;
+  }
+
+  const { agentId, agentName } = await resolveAgent(params.organizationId, params);
+
+  let customerId: string | null = null;
+  if (params.customerPhone) {
+    const normalised = normalizePhone(params.customerPhone);
+    if (normalised) {
+      customerId = await upsertCustomer(params.organizationId, normalised);
+    }
+  }
+
+  // A placeholder until hydration stores the real file (file_name is NOT NULL).
+  // path.basename keeps any directory component of the URL out of it.
+  const fileName = path.basename(safeUrlPath(params.recordingUrl)) || 'recording';
+
+  const callId = uuid();
+  let call: Call;
+  try {
+    const rows = await query<Call>(
+      `INSERT INTO calls (
+         id, organization_id, uploaded_by, file_name, file_key, mime_type,
+         agent_id, agent_name, customer_phone, customer_id, call_date,
+         tags, status, external_id, ingestion_source, encrypted_at_rest,
+         recording_pointer, scorecard_id
+       )
+       VALUES ($1, $2, $3, $4, NULL, NULL, $5, $6, $7, $8, $9, $10,
+               'captured', $11, 'upload', false, $12, $13)
+       RETURNING *`,
+      [
+        callId,
+        params.organizationId,
+        params.uploadedBy ?? null,
+        fileName,
+        agentId,
+        agentName,
+        params.customerPhone ?? null,
+        customerId,
+        params.callDate ?? null,
+        params.tags ?? [],
+        params.externalId ?? null,
+        params.recordingUrl,
+        scorecardId,
+      ]
+    );
+    call = rows[0]!;
+  } catch (err) {
+    // Two operators importing the same external_id at once (TOCTOU on the
+    // check above) — treat it as the duplicate it is, same as ingestCall.
+    if ((err as { code?: string }).code === '23505') {
+      const raced = await findExistingCall(params.organizationId, params.externalId, null);
+      if (raced) return { call: raced, isDuplicate: true };
+    }
+    throw err;
+  }
+
+  await ingestionQueue.add('hydrate-call', { callId }, { jobId: `hydrate-import-${callId}` });
+
+  return { call, isDuplicate: false };
+}
+
+// The path component of a URL, for naming purposes only. Falls back to the
+// whole string when it doesn't parse — the row is validated before this point,
+// and a bad name must never be what fails an import.
+function safeUrlPath(rawUrl: string): string {
+  try {
+    return new URL(rawUrl).pathname;
+  } catch {
+    return rawUrl;
   }
 }
 

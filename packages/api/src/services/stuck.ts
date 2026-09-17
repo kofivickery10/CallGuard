@@ -22,7 +22,8 @@ import { query } from '../db/client.js';
 //    converts, so a captured call may rest here forever by design. It is only
 //    stuck when a live journey is waiting on its audio. Hydrating the rest
 //    would spend money on, and store audio for, calls we deliberately never
-//    fetched.
+//    fetched. A bulk-imported recording is the exception: it is 'captured'
+//    only until its own hydrate job runs, and no sale will ever come for it.
 //
 //  * 'transcribed' in a deferring org — under scoring_scope='sales_only',
 //    per-call scoring is always deferred and the sale is scored as a journey
@@ -118,7 +119,12 @@ const NEEDED_BY_LIVE_JOURNEY = `
 export const STUCK_CALL_SQL = `
   (c.status = 'captured'
     AND c.updated_at < now() - interval '1 minute' * $1
-    AND ${NEEDED_BY_LIVE_JOURNEY})
+    AND (${NEEDED_BY_LIVE_JOURNEY}
+      -- A bulk-imported recording is registered as 'captured' and hydrated by
+      -- its own queued job (services/ingestion.ts importRemoteCall). Nothing
+      -- else will ever come for it, so unlike a dialler capture it IS stuck if
+      -- that enqueue was lost — an operator asked for this audio explicitly.
+      OR c.ingestion_source <> 'dialer_webhook'))
   OR (c.status = 'uploaded'
     AND c.updated_at < now() - interval '1 minute' * $1)
   OR (c.status = 'transcribing'
