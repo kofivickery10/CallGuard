@@ -24,6 +24,8 @@ import {
   MAX_REVIEW_CONFIDENCE_FLOOR,
   checkFetchRecordingsOnSaleBody,
   resolveFetchRecordingsOnSale,
+  isFetchRecordingsOnSaleScopeViolation,
+  FETCH_RECORDINGS_ON_SALE_SCOPE_MESSAGE,
 } from '../services/tenant-settings.js';
 import { getSaleArrival, saleArrivalResponse } from '../services/sale-arrival.js';
 import { LONDON, inWindow, resolveWindow, windowParams } from '../services/report-window.js';
@@ -533,6 +535,13 @@ superadminRouter.put('/tenants/:id/scoring-settings', async (req, res, next) => 
 
     res.json(rows[0]);
   } catch (err) {
+    // Another save moved the scope or the flag between our read and this
+    // UPDATE, and the column's CHECK caught it. Same mistake as the validation
+    // above, so the same 400 — not a 500 that reads as a platform fault.
+    if (isFetchRecordingsOnSaleScopeViolation(err)) {
+      next(new AppError(400, FETCH_RECORDINGS_ON_SALE_SCOPE_MESSAGE));
+      return;
+    }
     next(err);
   }
 });

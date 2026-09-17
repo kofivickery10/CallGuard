@@ -190,8 +190,25 @@ export function sanitiseJourneyWindowDays(days: number | null | undefined): numb
   return Math.min(Math.floor(n), MAX_JOURNEY_WINDOW_DAYS);
 }
 
-const FETCH_RECORDINGS_ON_SALE_SCOPE_MESSAGE =
+export const FETCH_RECORDINGS_ON_SALE_SCOPE_MESSAGE =
   'fetch_recordings_on_sale can only be on when scoring_scope is sales_only';
+
+/**
+ * Whether a database error is the organizations CHECK that holds the same rule
+ * (migration 119). The route validates against the row it read, but two staff
+ * saving at once can each pass that check — one turning the flag on, the other
+ * moving the firm off sales_only — and the second UPDATE then hits the
+ * constraint. That is the same mistake the validation catches, so it should
+ * read the same way: a 400 with the same sentence, not a 500.
+ */
+export function isFetchRecordingsOnSaleScopeViolation(err: unknown): boolean {
+  const e = err as { code?: unknown; constraint?: unknown } | null;
+  return (
+    !!e &&
+    e.code === '23514' &&
+    e.constraint === 'organizations_fetch_recordings_on_sale_scope_check'
+  );
+}
 
 /**
  * Check the shape of a superadmin's fetch_recordings_on_sale change before

@@ -3,6 +3,7 @@ import { queryOne } from '../db/client.js';
 import {
   checkFetchRecordingsOnSaleBody,
   getScoringSettings,
+  isFetchRecordingsOnSaleScopeViolation,
   resolveFetchRecordingsOnSale,
 } from './tenant-settings.js';
 
@@ -76,6 +77,31 @@ describe('resolveFetchRecordingsOnSale', () => {
   it('leaves the stored flag untouched when the request does not mention it', () => {
     expect(resolveFetchRecordingsOnSale(salesOnlyOn, { scoring_scope: 'sales_only' })).toEqual({ value: undefined });
     expect(resolveFetchRecordingsOnSale(everything, { scoring_scope: 'over_threshold' })).toEqual({ value: undefined });
+  });
+});
+
+describe('isFetchRecordingsOnSaleScopeViolation', () => {
+  it('recognises the migration 119 CHECK by code and name', () => {
+    expect(
+      isFetchRecordingsOnSaleScopeViolation({
+        code: '23514',
+        constraint: 'organizations_fetch_recordings_on_sale_scope_check',
+      })
+    ).toBe(true);
+  });
+
+  it('ignores other check violations, other errors and non-errors', () => {
+    expect(
+      isFetchRecordingsOnSaleScopeViolation({ code: '23514', constraint: 'organizations_scoring_scope_check' })
+    ).toBe(false);
+    expect(
+      isFetchRecordingsOnSaleScopeViolation({
+        code: '23505',
+        constraint: 'organizations_fetch_recordings_on_sale_scope_check',
+      })
+    ).toBe(false);
+    expect(isFetchRecordingsOnSaleScopeViolation(new Error('boom'))).toBe(false);
+    expect(isFetchRecordingsOnSaleScopeViolation(null)).toBe(false);
   });
 });
 
