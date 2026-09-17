@@ -4,7 +4,24 @@ import { useQuery } from '@tanstack/react-query';
 import { FileDropzone } from '../components/FileDropzone';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../api/client';
-import type { Call, AgentSummary, OrganizationInfo } from '@callguard/shared';
+import type { Call, OrganizationInfo } from '@callguard/shared';
+
+// The sentence the API 400s with when a call is ticked "resulted in a sale"
+// without a phone that normalises — kept in step with routes/calls.ts.
+const SALE_NEEDS_PHONE_MESSAGE =
+  "To score this call as a sale, add the customer's phone number — it's how the call is matched to the customer's other calls.";
+
+// A light client-side stand-in for the server's normalizePhone (services/ingestion.ts):
+// good enough to catch "empty" and "obviously not a phone number" before a
+// round trip. The API's check is authoritative; this is just the inline hint.
+function hasUsablePhone(value: string): boolean {
+  return value.replace(/\D/g, '').length >= 7;
+}
+
+interface AdviserOption {
+  id: string;
+  name: string;
+}
 
 interface BulkImportResult {
   total: number;
@@ -61,12 +78,19 @@ export function Upload() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
+  const isSupervisor = user?.role === 'supervisor';
+  // Admin and supervisor may attribute an upload to any adviser; an adviser's
+  // upload is always self-assigned (enforced on the API too), and a viewer
+  // can't reach this page at all (see canUpload below).
+  const canPickAdviser = isAdmin || isSupervisor;
+  const canUpload = isAdmin || isSupervisor || user?.role === 'adviser';
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
   const [agentId, setAgentId] = useState('');
   const [agentName, setAgentName] = useState('');
   const [scorecardId, setScorecardId] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
+  const [phoneError, setPhoneError] = useState('');
   const [markAsSale, setMarkAsSale] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [csvText, setCsvText] = useState('');
@@ -74,10 +98,12 @@ export function Upload() {
   const [bulkResult, setBulkResult] = useState<BulkImportResult | null>(null);
   const [bulkError, setBulkError] = useState('');
 
-  const { data: agents } = useQuery({
-    queryKey: ['agents'],
-    queryFn: () => api.get<{ data: AgentSummary[] }>('/agents'),
-    enabled: isAdmin,
+  // Lean, name-only list a supervisor can also see — /agents carries full
+  // stats and is admin-only.
+  const { data: advisers } = useQuery({
+    queryKey: ['upload-advisers'],
+    queryFn: () => api.get<{ data: AdviserOption[] }>('/calls/advisers'),
+    enabled: canPickAdviser,
   });
 
   const { data: scorecards } = useQuery({
@@ -102,23 +128,33 @@ export function Upload() {
 
   const handleFileSelected = async (file: File) => {
     setError('');
+    setPhoneError('');
+
+    // Flagging a sale without a phone that matches it to the customer's other
+    // calls would rest at "transcribed" forever — refuse before the upload
+    // starts rather than finding out from a failed request.
+    if (isSalesOnly && markAsSale && !hasUsablePhone(customerPhone)) {
+      setPhoneError(SALE_NEEDS_PHONE_MESSAGE);
+      return;
+    }
+
     setUploading(true);
 
     try {
       const formData = new FormData();
       formData.append('audio', file);
 
-      if (isAdmin) {
+      if (canPickAdviser) {
         if (agentId) {
           formData.append('agent_id', agentId);
-          const selectedAgent = agents?.data.find((a) => a.id === agentId);
-          if (selectedAgent) formData.append('agent_name', selectedAgent.name);
+          const selectedAdviser = advisers?.data.find((a) => a.id === agentId);
+          if (selectedAdviser) formData.append('agent_name', selectedAdviser.name);
         } else if (agentName) {
           formData.append('agent_name', agentName);
         }
-        if (scorecardId) {
-          formData.append('scorecard_id', scorecardId);
-        }
+      }
+      if (isAdmin && scorecardId) {
+        formData.append('scorecard_id', scorecardId);
       }
       // Any uploader: the customer's phone links the call to their other calls,
       // and the sale flag scores that customer's sale once this is transcribed.
@@ -132,11 +168,31 @@ export function Upload() {
       const call = await api.post<Call>('/calls/upload', formData);
       navigate(`/calls/${call.id}`);
     } catch (err) {
-      setError((err as Error).message);
+      const message = (err as Error).message;
+      if (message === SALE_NEEDS_PHONE_MESSAGE) {
+        setPhoneError(message);
+      } else {
+        setError(message);
+      }
     } finally {
       setUploading(false);
     }
   };
+
+  if (!canUpload) {
+    return (
+      <div className="max-w-2xl">
+        <div className="mb-7">
+          <h2 className="text-page-title text-text-primary">Upload</h2>
+        </div>
+        <div className="bg-card border border-border rounded-card p-10 text-center">
+          <div className="text-base font-semibold text-text-primary">
+            You don't have permission to upload calls
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-2xl">
@@ -153,7 +209,7 @@ export function Upload() {
         </div>
       )}
 
-      {isAdmin && (
+      {canPickAdviser && (
         <div className="bg-card border border-border rounded-card p-5 mb-5">
           <label className="block text-table-cell font-medium text-text-secondary mb-1.5">
             Assign to Agent <span className="text-text-muted font-normal">(optional)</span>
@@ -164,8 +220,8 @@ export function Upload() {
             className="w-full border border-border rounded-btn px-3 py-2 text-table-cell text-text-primary focus:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 transition-colors bg-card mb-2.5"
           >
             <option value="">Select an agent or type below</option>
-            {agents?.data.map((agent) => (
-              <option key={agent.id} value={agent.id}>{agent.name}</option>
+            {advisers?.data.map((adviser) => (
+              <option key={adviser.id} value={adviser.id}>{adviser.name}</option>
             ))}
           </select>
           {!agentId && (
@@ -178,7 +234,7 @@ export function Upload() {
             />
           )}
 
-          {scorecards && scorecards.data.length > 0 && (
+          {isAdmin && scorecards && scorecards.data.length > 0 && (
             <>
               <label className="block text-table-cell font-medium text-text-secondary mb-1.5 mt-4">
                 Score against scorecard <span className="text-text-muted font-normal">(optional)</span>
@@ -203,7 +259,7 @@ export function Upload() {
         </div>
       )}
 
-      {!isAdmin && (
+      {!canPickAdviser && (
         <div className="bg-primary-light border border-border rounded-btn px-4 py-3 mb-5 text-table-cell text-text-secondary">
           This call will be assigned to you ({user?.name})
         </div>
@@ -217,10 +273,15 @@ export function Upload() {
           id="upload-customer-phone"
           type="text"
           value={customerPhone}
-          onChange={(e) => setCustomerPhone(e.target.value)}
+          onChange={(e) => { setCustomerPhone(e.target.value); if (phoneError) setPhoneError(''); }}
           placeholder="e.g. 07473 123456"
+          aria-invalid={!!phoneError}
+          aria-describedby={phoneError ? 'upload-customer-phone-error' : undefined}
           className="w-full border border-border rounded-btn px-3 py-2 text-table-cell text-text-primary placeholder:text-text-muted focus:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 transition-colors"
         />
+        {phoneError && (
+          <p id="upload-customer-phone-error" className="text-xs text-fail mt-1.5">{phoneError}</p>
+        )}
         <p className="text-xs text-text-muted mt-1.5">
           {isSalesOnly
             ? "Needed to match this call to the customer's other calls, and for the sale flag below."

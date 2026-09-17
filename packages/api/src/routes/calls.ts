@@ -1,13 +1,15 @@
 import { Router } from 'express';
+import type { Request, Response, NextFunction } from 'express';
 import path from 'path';
 import { v4 as uuid } from 'uuid';
 import { authenticate } from '../middleware/auth.js';
-import { requireAdmin, requireActioner, requireOrgView } from '../middleware/auth.js';
-import { upload } from '../middleware/upload.js';
+import { requireAdmin, requireActioner, requireOrgView, requireRole } from '../middleware/auth.js';
+import { upload, handleUploadError, UPLOAD_SIZE_LIMIT_MESSAGE } from '../middleware/upload.js';
 import { query, queryOne } from '../db/client.js';
 import { uploadFile, deleteFile, readFile } from '../services/storage.js';
 import { transcriptionQueue } from '../jobs/queue.js';
 import { AppError } from '../middleware/errors.js';
+import { ALLOWED_MIME_TYPES, MAX_FILE_SIZE_BYTES } from '@callguard/shared';
 import { ingestCall, fetchRemoteAudio, upsertCustomer, normalizePhone } from '../services/ingestion.js';
 import { prepareMediaForIngest } from '../services/media.js';
 import { recordAuditEvent } from '../services/audit.js';
@@ -495,11 +497,36 @@ function hasTranscriptStatus(status: string): boolean {
   return status === 'transcribed' || status === 'scoring' || status === 'scored';
 }
 
-// Upload a call
-callRouter.post('/upload', upload.single('audio'), async (req, res, next) => {
+// Upload a call. Viewers are read-only elsewhere in the app and must not gain
+// upload access just by typing the URL — admin, supervisor and adviser only
+// (bulk import below stays admin-only).
+callRouter.post(
+  '/upload',
+  requireRole('admin', 'supervisor', 'adviser'),
+  upload.single('audio'),
+  handleUploadError,
+  async (req: Request, res: Response, next: NextFunction) => {
   try {
     if (!req.file) {
       throw new AppError(400, 'No audio file provided');
+    }
+
+    // multer's fileSize limit is the video ceiling (a meeting recording arrives
+    // as a container); a plain audio file is held to the tighter, stated limit.
+    if (ALLOWED_MIME_TYPES.includes(req.file.mimetype) && req.file.size > MAX_FILE_SIZE_BYTES) {
+      throw new AppError(413, UPLOAD_SIZE_LIMIT_MESSAGE);
+    }
+
+    // A sale can only be matched to the customer's other calls by phone — flag
+    // it without one and the call would rest at 'transcribed' forever (see the
+    // deferToSale branch in jobs/processors/transcribe.ts, which needs a
+    // customer_id to assemble a journey against). Checked before anything is
+    // written to storage.
+    if (req.body.mark_as_sale === 'true' && !normalizePhone(req.body.customer_phone || '')) {
+      throw new AppError(
+        400,
+        "To score this call as a sale, add the customer's phone number — it's how the call is matched to the customer's other calls."
+      );
     }
 
     const callId = uuid();
@@ -601,7 +628,8 @@ callRouter.post('/upload', upload.single('audio'), async (req, res, next) => {
   } catch (err) {
     next(err);
   }
-});
+  }
+);
 
 // Bulk historical recording import (admin only)
 //
@@ -704,6 +732,25 @@ callRouter.post('/bulk-import', requireAdmin, async (req, res, next) => {
       duplicate_calls: duplicates,
       error_rows: errors,
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// The org's advisers, for the upload page's "assign to" picker — a supervisor
+// may attribute an upload but can't reach the full /agents list (admin-only,
+// and carries stats/audit-sensitive fields this page has no need of).
+// Registered before '/:id', like journeys.ts's own /advisers, or Express would
+// match "advisers" as a call id.
+callRouter.get('/advisers', requireActioner, async (req, res, next) => {
+  try {
+    const advisers = await query<{ id: string; name: string }>(
+      `SELECT id, name FROM users
+       WHERE organization_id = $1 AND role = 'adviser'
+       ORDER BY name`,
+      [req.user!.organizationId]
+    );
+    res.json({ data: advisers });
   } catch (err) {
     next(err);
   }
