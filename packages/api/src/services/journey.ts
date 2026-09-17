@@ -102,6 +102,109 @@ export async function identityCustomerIds(
 }
 
 /**
+ * The journey already being assembled or scored for this customer, if any.
+ * assembleJourney returns it rather than starting a second one (Dedup #1), so
+ * anything that previews a manual trigger must ask the same question.
+ */
+export async function findInFlightJourney(
+  organizationId: string,
+  customerId: string
+): Promise<{ id: string } | null> {
+  return queryOne<{ id: string }>(
+    `SELECT id FROM journeys
+       WHERE organization_id = $1 AND customer_id = $2 AND status IN ('pending', 'scoring')
+       ORDER BY created_at DESC LIMIT 1`,
+    [organizationId, customerId]
+  );
+}
+
+/**
+ * How far back to gather the calls that make up this sale, in precedence
+ * order —
+ *   1. the org's own journey_window_days (migration 072), the only setting
+ *      available to a tenant with no dialler connection (manual uploads, Teams
+ *      appointment recordings, SFTP drops, a dialler we don't integrate with),
+ *      and the one to use when a sector's cases simply run longer than a month:
+ *      a mortgage case spans fact find → recommendation → completion over
+ *      weeks, and too short a window drops precisely the calls carrying the
+ *      suitability and disclosure checkpoints;
+ *   2. the CloudTalk connection's configured history window, for tenants whose
+ *      calls arrive that way;
+ *   3. the historical 30-day default.
+ */
+export async function resolveJourneyWindow(
+  organizationId: string
+): Promise<{ windowDays: number; windowStart: Date }> {
+  const [orgWindow, dialerConn] = await Promise.all([
+    getJourneyWindowDays(organizationId),
+    getDialerConnection(organizationId, 'cloudtalk'),
+  ]);
+  const windowDays =
+    orgWindow ?? dialerConn?.history_window_days ?? DEFAULT_HISTORY_WINDOW_DAYS;
+  const windowStart = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
+  return { windowDays, windowStart };
+}
+
+/**
+ * The calls a sale for these customer rows would be built from, oldest first.
+ * See the sale-scoping note in assembleJourney for the zohoRecordId predicate.
+ *
+ * `columns` lets a caller that only lists the calls (the customer page's "Score
+ * calls as a sale" preview) leave the transcript behind; assembly keeps `*`.
+ * A fixed column list from code, never input.
+ */
+export async function gatherJourneyCalls<T>(
+  organizationId: string,
+  customerIds: string[],
+  windowStart: Date,
+  zohoRecordId: string | null,
+  columns = '*'
+): Promise<T[]> {
+  return query<T>(
+    `SELECT ${columns} FROM calls
+       WHERE organization_id = $1
+         AND customer_id = ANY($2::uuid[])
+         AND status <> 'failed'
+         AND COALESCE(call_date::timestamptz, created_at) >= $3
+         AND (
+           $4::text IS NULL
+           OR journey_id IS NULL
+           OR journey_id IN (SELECT id FROM journeys WHERE organization_id = $1 AND zoho_record_id = $4)
+         )
+       ORDER BY COALESCE(call_date::timestamptz, created_at) ASC`,
+    [organizationId, customerIds, windowStart.toISOString(), zohoRecordId]
+  );
+}
+
+/**
+ * The customer's most recent scored journey, when it covers exactly these calls
+ * (Dedup #2 in assembleJourney): re-assembling it would return it unchanged
+ * rather than score anything.
+ */
+export async function scoredJourneyCoveringCalls(
+  organizationId: string,
+  customerId: string,
+  callIds: string[]
+): Promise<string | null> {
+  const lastScored = await queryOne<{ id: string }>(
+    `SELECT id FROM journeys
+       WHERE organization_id = $1 AND customer_id = $2 AND status = 'scored'
+       ORDER BY created_at DESC LIMIT 1`,
+    [organizationId, customerId]
+  );
+  if (!lastScored) return null;
+  const prev = await query<{ call_id: string }>(
+    'SELECT call_id FROM journey_calls WHERE journey_id = $1',
+    [lastScored.id]
+  );
+  const prevIds = prev.map((r) => r.call_id).sort();
+  const wanted = [...callIds].sort();
+  return prevIds.length === wanted.length && prevIds.every((id, i) => id === wanted[i])
+    ? lastScored.id
+    : null;
+}
+
+/**
  * Gather a customer's calls into a journey and enqueue it for scoring (spec
  * §9). Returns the journey id, or null if there was nothing to score (no
  * calls with a transcript in the window, or no scorecard configured).
@@ -124,36 +227,14 @@ export async function assembleJourney(params: AssembleJourneyParams): Promise<st
   // or re-fired trigger must not spawn a second scoring run — return the
   // in-flight one. (Also enforced at the DB level by the partial unique index
   // in migration 045, caught below, in case two triggers race this check.)
-  const inFlight = await queryOne<{ id: string }>(
-    `SELECT id FROM journeys
-       WHERE organization_id = $1 AND customer_id = $2 AND status IN ('pending', 'scoring')
-       ORDER BY created_at DESC LIMIT 1`,
-    [organizationId, customerId]
-  );
+  const inFlight = await findInFlightJourney(organizationId, customerId);
   if (inFlight) {
     console.log(`[Journey] Reusing in-flight journey ${inFlight.id} for customer ${customerId} (trigger=${triggerSource})`);
     return inFlight.id;
   }
 
-  // Window: how far back to gather the calls that make up this sale, in
-  // precedence order —
-  //   1. the org's own journey_window_days (migration 072), the only setting
-  //      available to a tenant with no dialler connection (manual uploads,
-  //      Teams appointment recordings, SFTP drops, a dialler we don't integrate
-  //      with), and the one to use when a sector's cases simply run longer than
-  //      a month: a mortgage case spans fact find → recommendation → completion
-  //      over weeks, and too short a window drops precisely the calls carrying
-  //      the suitability and disclosure checkpoints;
-  //   2. the CloudTalk connection's configured history window, for tenants whose
-  //      calls arrive that way;
-  //   3. the historical 30-day default.
-  const [orgWindow, dialerConn] = await Promise.all([
-    getJourneyWindowDays(organizationId),
-    getDialerConnection(organizationId, 'cloudtalk'),
-  ]);
-  const windowDays =
-    orgWindow ?? dialerConn?.history_window_days ?? DEFAULT_HISTORY_WINDOW_DAYS;
-  const windowStart = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
+  // Window: see resolveJourneyWindow for the precedence.
+  const { windowDays, windowStart } = await resolveJourneyWindow(organizationId);
 
   // Include 'captured' calls (metadata-only, no transcript yet) — under the
   // capture model they are hydrated + transcribed on demand below. Excludes
@@ -186,20 +267,7 @@ export async function assembleJourney(params: AssembleJourneyParams): Promise<st
   // the one: a group only exists where someone has linked two numbers.
   const customerIds = await identityCustomerIds(organizationId, customerId);
 
-  const calls = await query<Call>(
-    `SELECT * FROM calls
-       WHERE organization_id = $1
-         AND customer_id = ANY($2::uuid[])
-         AND status <> 'failed'
-         AND COALESCE(call_date::timestamptz, created_at) >= $3
-         AND (
-           $4::text IS NULL
-           OR journey_id IS NULL
-           OR journey_id IN (SELECT id FROM journeys WHERE organization_id = $1 AND zoho_record_id = $4)
-         )
-       ORDER BY COALESCE(call_date::timestamptz, created_at) ASC`,
-    [organizationId, customerIds, windowStart.toISOString(), zohoRecordId ?? null]
-  );
+  const calls = await gatherJourneyCalls<Call>(organizationId, customerIds, windowStart, zohoRecordId ?? null);
 
   if (calls.length === 0) {
     // Once scoped to this sale, a customer whose only calls in the window
@@ -316,22 +384,10 @@ export async function assembleJourney(params: AssembleJourneyParams): Promise<st
   // existing journey rather than re-scoring (double spend, double breaches,
   // double CRM push). A genuinely new call since the last sale falls through
   // to a fresh journey, which is the correct behaviour.
-  const lastScored = await queryOne<{ id: string }>(
-    `SELECT id FROM journeys
-       WHERE organization_id = $1 AND customer_id = $2 AND status = 'scored'
-       ORDER BY created_at DESC LIMIT 1`,
-    [organizationId, customerId]
-  );
-  if (lastScored) {
-    const prev = await query<{ call_id: string }>(
-      'SELECT call_id FROM journey_calls WHERE journey_id = $1',
-      [lastScored.id]
-    );
-    const prevIds = prev.map((r) => r.call_id).sort();
-    if (prevIds.length === callIds.length && prevIds.every((id, i) => id === callIds[i])) {
-      console.log(`[Journey] Journey ${lastScored.id} already scored this exact call set for customer ${customerId} — idempotent skip`);
-      return lastScored.id;
-    }
+  const alreadyScored = await scoredJourneyCoveringCalls(organizationId, customerId, callIds);
+  if (alreadyScored) {
+    console.log(`[Journey] Journey ${alreadyScored} already scored this exact call set for customer ${customerId} — idempotent skip`);
+    return alreadyScored;
   }
 
   // Create the journey, its call links and the calls' back-references in one

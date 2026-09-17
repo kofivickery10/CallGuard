@@ -332,7 +332,10 @@ callRouter.post('/bulk-import', requireAdmin, async (req, res, next) => {
 // Get single call (role-scoped)
 callRouter.get('/:id', async (req, res, next) => {
   try {
-    let sql = 'SELECT c.*, u.name as resolved_agent_name FROM calls c LEFT JOIN users u ON u.id = c.agent_id WHERE c.id = $1 AND c.organization_id = $2';
+    // customer_name so the call page can name the customer and link to their
+    // profile; the org condition on the join keeps it to this tenant's row.
+    let sql =
+      'SELECT c.*, u.name as resolved_agent_name, cust.name AS customer_name FROM calls c LEFT JOIN users u ON u.id = c.agent_id LEFT JOIN customers cust ON cust.id = c.customer_id AND cust.organization_id = c.organization_id WHERE c.id = $1 AND c.organization_id = $2';
     const params: unknown[] = [req.params.id, req.user!.organizationId];
 
     if (req.user!.role === 'adviser') {

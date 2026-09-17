@@ -1,4 +1,7 @@
 import type { BreachSeverity } from './breaches.js';
+import type { CallStatus } from './call.js';
+import type { FeedbackStatus, JourneyStatus } from './journey.js';
+import type { ReconciliationRunStatus } from './reconciliation.js';
 
 // What a firm scores, as the customer screens read it. Decided on the server by
 // scoresCallsIndividually (services/tenant-settings.ts) — the firm's own
@@ -116,9 +119,11 @@ export function summariseCustomerCompliance(
   };
 }
 
-// GET /api/customers/:id — one customer. For an adviser, the sale fields are
-// null and `compliance` is null: those describe the firm's findings across
-// every adviser's calls, and an adviser is scoped to their own.
+// ── GET /api/customers/:id — the profile ─────────────────────────────────────
+//
+// For an adviser, `compliance`, `sales` and every call's result are null: they
+// describe the firm's findings across every adviser's calls, and an adviser is
+// scoped to their own.
 export interface CustomerRecord {
   id: string;
   phone_normalized: string;
@@ -126,16 +131,172 @@ export interface CustomerRecord {
   external_crm_id: string | null;
   first_seen_at: string;
   last_seen_at: string;
-  // Non-failed calls; an adviser's own calls only, for an adviser.
+}
+
+// The calls behind the header's "calls 27 Jul – 16 Sept · 6 advisers". An
+// adviser's figures are their own calls only.
+export interface CustomerCallStats {
   call_count: number;
-  journey_count: number | null;
-  last_journey_score: string | null;
-  last_journey_pass: boolean | null;
-  last_journey_at: string | null;
+  first_call_at: string | null;
+  last_call_at: string | null;
+  adviser_count: number;
+}
+
+export interface CustomerCall {
+  id: string;
+  called_at: string;
+  adviser_name: string | null;
+  duration_seconds: number | null;
+  status: CallStatus;
+  // Whether any sale includes this call (journey_calls).
+  in_sale: boolean;
+  // A calls firm's per-call result. Null for a sales firm, for an adviser, and
+  // for a call that has not been scored.
+  score: { overall_score: number | null; pass: boolean | null } | null;
+  // Breaches on this call by severity. Null for a sales firm (its breaches sit
+  // on the sale) and for an adviser.
+  open: SeverityCounts | null;
+  closed: SeverityCounts | null;
+  // Only for a scored call not in a sale, at a firm that scores calls: the only
+  // calls that are fed back on their own.
+  feedback_status: FeedbackStatus | null;
+  feedback_sent_at: string | null;
+}
+
+export interface CustomerSaleCall {
+  id: string;
+  called_at: string;
+  adviser_name: string | null;
+  duration_seconds: number | null;
+  status: CallStatus;
+  // 'wrap_up' is the closing call.
+  role: 'wrap_up' | 'context';
+}
+
+export interface CustomerSale {
+  id: string;
+  status: JourneyStatus;
+  sale_date: string;
+  scored_at: string | null;
+  overall_score: number | null;
+  // Null under score_only.
+  pass: boolean | null;
+  // Null until the sale is scored.
+  feedback_status: FeedbackStatus | null;
+  feedback_sent_at: string | null;
+  oldest_remediation_days: number | null;
+  closing_adviser_name: string | null;
+  adviser_count: number;
+  open: SeverityCounts;
+  closed: SeverityCounts;
+  // The latest reconciliation run's status. Null when the firm does not use
+  // reconciliation, or the sale has no run.
+  reconciliation_status: ReconciliationRunStatus | null;
+  // Oldest first.
+  calls: CustomerSaleCall[];
+}
+
+// What "Score calls as a sale" would do if pressed now: the same call
+// selection, in-flight check and already-scored check as the trigger itself
+// (services/journey.ts), so the confirmation lists what will actually happen.
+export interface CustomerSalePreviewCall {
+  id: string;
+  called_at: string;
+  adviser_name: string | null;
+  duration_seconds: number | null;
+  status: CallStatus;
+  // Set when the call is currently credited to a sale.
+  sale_id: string | null;
+  // True for a call from another number linked to this person.
+  from_linked_number: boolean;
+}
+
+export interface CustomerSalePreview {
+  window_days: number;
+  // Oldest first.
+  calls: CustomerSalePreviewCall[];
+  // A sale already being assembled or scored; pressing would return it.
+  in_flight_sale_id: string | null;
+  // The latest scored sale already covers exactly these calls; pressing would
+  // score nothing.
+  covered_by_sale_id: string | null;
 }
 
 export interface CustomerProfileResponse {
   customer: CustomerRecord;
   mode: CustomerScoringMode;
+  score_only: boolean;
+  reconciliation_enabled: boolean;
+  stats: CustomerCallStats;
+  // Null for an adviser.
   compliance: CustomerCompliance | null;
+  // Newest first. Null for an adviser, who cannot open a sale.
+  sales: CustomerSale[] | null;
+  // Every call, newest first (an adviser's own only, for an adviser).
+  calls: CustomerCall[];
+  // Admin and supervisor at a firm that scores sales; null otherwise.
+  sale_preview: CustomerSalePreview | null;
+}
+
+// ── GET /api/customers — the list ────────────────────────────────────────────
+
+// The tabs each kind of firm works along, keyed as the `tab` query param and the
+// `counts` response. A firm that scores sales asks whether a customer has one; a
+// firm that scores calls asks whether any of their calls has been assessed.
+export const CUSTOMER_SALES_TABS = ['all', 'scored', 'open_findings', 'not_fed_back', 'no_sale'] as const;
+export const CUSTOMER_CALLS_TABS = ['all', 'assessed', 'open_findings', 'not_fed_back', 'not_assessed'] as const;
+export type CustomerListTab =
+  | (typeof CUSTOMER_SALES_TABS)[number]
+  | (typeof CUSTOMER_CALLS_TABS)[number];
+
+export const CUSTOMER_LIST_SORTS = ['last_contact', 'most_calls', 'lowest_score'] as const;
+export type CustomerListSort = (typeof CUSTOMER_LIST_SORTS)[number];
+
+// A row's latest result. For a firm that scores sales: its latest sale, in any
+// status (so a sale still being scored reads as that, not as "not assessed").
+// For a firm that scores calls: its latest scored call.
+export interface CustomerLatestResult {
+  kind: 'sale' | 'call';
+  id: string;
+  // A JourneyStatus for a sale; always 'scored' for a call.
+  status: JourneyStatus;
+  overall_score: number | null;
+  // Null under score_only: the verdict is not shipped.
+  pass: boolean | null;
+  // The sale's date (its last call) or the call's date.
+  date: string;
+}
+
+export interface CustomerListRow {
+  id: string;
+  name: string | null;
+  phone_normalized: string;
+  external_crm_id: string | null;
+  // Non-failed calls; an adviser's own calls only, for an adviser.
+  call_count: number;
+  last_call_at: string | null;
+  last_adviser_name: string | null;
+  // Null for an adviser, like the two below: the firm's assessment of a
+  // customer covers every adviser's calls.
+  latest: CustomerLatestResult | null;
+  // Open breaches by severity, across the customer's sales and calls.
+  open_findings: SeverityCounts | null;
+  // Of the latest scored sale (sales firm) or the latest scored call not in a
+  // sale (calls firm). Null when there is none.
+  feedback_status: FeedbackStatus | null;
+}
+
+export interface CustomerListResponse {
+  data: CustomerListRow[];
+  // The current tab's count: every filter that shapes the page also shapes it.
+  total: number;
+  page: number;
+  limit: number;
+  mode: CustomerScoringMode;
+  sort: CustomerListSort;
+  // The tabs this caller may use. An adviser gets 'all' only: the others count
+  // the firm's findings and feedback.
+  tabs: CustomerListTab[];
+  // One entry per tab in `tabs`, under the current search.
+  counts: Partial<Record<CustomerListTab, number>>;
 }
