@@ -150,22 +150,36 @@ export async function resolveAdviser(subject: FeedbackSubject): Promise<AdviserT
  */
 export function feedbackReachedCloserSql(f: string): string {
   // A call round is judged against the call's own adviser — the only adviser a
-  // single call has, and the one resolveAdviser defaults to. The same subquery
-  // serves both: for a sale it picks the wrap-up from the sale's calls; for a
-  // call (journey_id NULL, so the join matches nothing) it is the call itself.
+  // single call has, and the one resolveAdviser defaults to. For a sale the
+  // candidate is the wrap-up among the sale's calls.
+  //
+  // Two branches joined by UNION ALL, not one query with an OR across them: an
+  // OR over "this sale's calls, or this one call" can't use either index, so it
+  // read every call in the firm once per feedback round (on a live tenant, ~9k
+  // calls × ~650 rounds per list page, about 2 seconds on the sales list). Each
+  // branch here is an index lookup — journey_calls' primary key for a sale, the
+  // calls primary key for a call — and the branch that doesn't apply returns
+  // nothing at once.
   return `(${f}.recipient_source = 'manual' OR EXISTS (
           SELECT 1 FROM (
-            SELECT rc_c.agent_id, COALESCE(rc_u.name, rc_c.agent_name) AS name
-              FROM calls rc_c
-              LEFT JOIN journey_calls rc_jc
-                     ON rc_jc.call_id = rc_c.id AND rc_jc.journey_id = ${f}.journey_id
-              LEFT JOIN users rc_u ON rc_u.id = rc_c.agent_id
-             WHERE (${f}.journey_id IS NOT NULL AND rc_jc.journey_id IS NOT NULL)
-                OR (${f}.journey_id IS NULL AND rc_c.id = ${f}.call_id)
-             ORDER BY (rc_jc.role = 'wrap_up') DESC,
-                      CASE WHEN rc_jc.role = 'wrap_up'
-                           THEN COALESCE(rc_c.call_date, rc_c.created_at) END ASC,
-                      COALESCE(rc_c.call_date, rc_c.created_at) DESC
+            SELECT candidate.agent_id, candidate.name
+              FROM (
+                SELECT rc_c.agent_id, COALESCE(rc_u.name, rc_c.agent_name) AS name,
+                       rc_jc.role, COALESCE(rc_c.call_date, rc_c.created_at) AS called_at
+                  FROM journey_calls rc_jc
+                  JOIN calls rc_c ON rc_c.id = rc_jc.call_id
+                  LEFT JOIN users rc_u ON rc_u.id = rc_c.agent_id
+                 WHERE rc_jc.journey_id = ${f}.journey_id
+                UNION ALL
+                SELECT rc_c.agent_id, COALESCE(rc_u.name, rc_c.agent_name) AS name,
+                       NULL AS role, COALESCE(rc_c.call_date, rc_c.created_at) AS called_at
+                  FROM calls rc_c
+                  LEFT JOIN users rc_u ON rc_u.id = rc_c.agent_id
+                 WHERE ${f}.journey_id IS NULL AND rc_c.id = ${f}.call_id
+              ) candidate
+             ORDER BY (candidate.role = 'wrap_up') DESC,
+                      CASE WHEN candidate.role = 'wrap_up' THEN candidate.called_at END ASC,
+                      candidate.called_at DESC
              LIMIT 1
           ) closer
           WHERE (closer.agent_id IS NULL AND closer.name IS NULL)
