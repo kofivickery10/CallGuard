@@ -2,7 +2,7 @@ import { Router } from 'express';
 import path from 'path';
 import { v4 as uuid } from 'uuid';
 import { authenticate } from '../middleware/auth.js';
-import { requireAdmin, requireActioner } from '../middleware/auth.js';
+import { requireAdmin, requireActioner, requireOrgView } from '../middleware/auth.js';
 import { upload } from '../middleware/upload.js';
 import { query, queryOne } from '../db/client.js';
 import { uploadFile, deleteFile, readFile } from '../services/storage.js';
@@ -11,9 +11,10 @@ import { AppError } from '../middleware/errors.js';
 import { ingestCall, fetchRemoteAudio, upsertCustomer, normalizePhone } from '../services/ingestion.js';
 import { prepareMediaForIngest } from '../services/media.js';
 import { recordAuditEvent } from '../services/audit.js';
-import { getScoringSettings } from '../services/tenant-settings.js';
+import { getScoringSettings, scoresCallsIndividually, orgHasFeature } from '../services/tenant-settings.js';
 import { resolveTranscriptAccess, withheldTranscript } from '../services/transcript-access.js';
 import { evaluateAlertsForResolvedItem } from '../services/alert-evaluator.js';
+import { LINKED_TO_ANY_JOURNEY } from '../services/stuck.js';
 import {
   FEEDBACK_STATUS_SQL,
   FEEDBACK_SENT_AT_SQL,
@@ -37,6 +38,9 @@ import type {
   CallJourneySibling,
   CallPositionsResponse,
   CallItemPosition,
+  CallListRow,
+  CallListResponse,
+  CallAdviserOption,
 } from '@callguard/shared';
 import { deriveSeverity, isItemPass, callPasses } from '@callguard/shared';
 
@@ -50,85 +54,446 @@ const CALL_LIST_COLUMNS = [
   'id', 'organization_id', 'file_name', 'duration_seconds', 'status', 'error_message',
   'agent_id', 'agent_name', 'customer_id', 'customer_phone', 'call_date', 'tags',
   'external_id', 'ingestion_source', 'scorecard_id', 'journey_id', 'is_exemplar',
-  'reviewed_at', 'created_at', 'updated_at',
+  'reviewed_at', 'created_at', 'updated_at', 'direction',
 ]
   .map((column) => `c.${column}`)
   .join(', ');
 
-// List calls (paginated, role-scoped)
-callRouter.get('/', async (req, res, next) => {
+// The date GET /api/calls sorts, filters and pages by: the same "when did
+// this call actually happen" rule the sales list uses for a sale
+// (journeys.ts's SALE_DATE_SQL) — created_at is when the row was inserted
+// (wrong for a backfill), call_date is what the dialler/upload says the call
+// happened and is preferred whenever it is set.
+const CALL_DATE_SQL = 'COALESCE(c.call_date, c.created_at)';
+
+// A call's status is 'transcribed', 'scoring' or 'scored' if and only if it
+// has a transcript: jobs/processors/transcribe.ts sets transcript_text and
+// status = 'transcribed' in the same UPDATE, and nothing ever clears
+// transcript_text or moves a call backwards out of that status range
+// afterwards ('scoring'/'scored' only apply to a firm scoring calls
+// individually — scoresCallsIndividually — since a sales_only firm's calls
+// rest at 'transcribed' by design and never reach per-call scoring). Used in
+// place of reading transcript_text itself, which CALL_LIST_COLUMNS and every
+// query below deliberately never selects.
+function hasTranscript(column: string): string {
+  return `${column} IN ('transcribed', 'scoring', 'scored')`;
+}
+
+const PROCESSING_STATUSES = ['uploaded', 'transcribing', 'scoring'];
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+const SALES_TABS = ['all', 'in_sale', 'not_in_sale', 'processing', 'failed'] as const;
+const CALLS_TABS = ['all', 'attention', 'failed_checks', 'passed', 'processing', 'failed'] as const;
+// Tabs that assert a pass/fail verdict — hidden entirely under score_only
+// (services/tenant-settings.ts: "the client hides the badge, but the value
+// must not ship in the payload either" — applied here to which tabs even
+// exist, not just how they're drawn).
+const VERDICT_TABS = new Set(['failed_checks', 'passed']);
+
+// One filter on the calls list: a SQL fragment carrying its own parameters,
+// with `?` standing in for each of them rather than a pre-assigned $n.
+// Renumbered at render time (buildCallWhere) so the per-tab counts can drop
+// exactly one filter and still bind correctly — see journeys.ts's
+// JourneyFilter/buildWhere for the fuller rationale (a clause numbered at
+// construction time cannot survive being left out).
+interface CallFilter {
+  key: string;
+  sql: string;
+  params: unknown[];
+}
+
+function buildCallWhere(filters: CallFilter[], excludeKey?: string): { sql: string; params: unknown[] } {
+  const params: unknown[] = [];
+  const sql = filters
+    .filter((f) => f.key !== excludeKey)
+    .map((f) => {
+      let i = 0;
+      return f.sql.replace(/\?/g, () => {
+        params.push(f.params[i++]);
+        return `$${params.length}`;
+      });
+    })
+    .join(' AND ');
+  return { sql, params };
+}
+
+// The tab predicates, keyed the same as the `tab` query param and the
+// `counts` response. Fixed SQL (no user input), safe to interpolate.
+function salesTabSql(tab: string): string {
+  switch (tab) {
+    case 'in_sale':
+      return LINKED_TO_ANY_JOURNEY;
+    case 'not_in_sale':
+      // Not linked to a sale, and not in a state that would still explain the
+      // absence (still processing, or failed outright) — see the tab's own
+      // banner on the page for why these calls are kept unscored on purpose.
+      return `NOT ${LINKED_TO_ANY_JOURNEY}
+        AND c.status NOT IN ('${PROCESSING_STATUSES.join("','")}')
+        AND c.status <> 'failed'`;
+    case 'processing':
+      return `c.status IN ('${PROCESSING_STATUSES.join("','")}')`;
+    case 'failed':
+      return `c.status = 'failed'`;
+    default:
+      return 'TRUE';
+  }
+}
+
+// Calls-mode tab predicates. Reference `latest.pass` / `latest.has_manual_review`
+// — the per-row LATERAL joined in by CALLS_LATEST_SCORE_LATERAL — rather than
+// re-deriving them per predicate, so a row scored under two different
+// scorecards is judged by the same "latest by scored_at" score everywhere: the
+// page, every tab's count, and the row's own `score` field.
+function callsTabSql(tab: string, scoreOnly: boolean): string {
+  switch (tab) {
+    case 'attention':
+      // Under score_only the pass/fail verdict is never asserted to the tenant
+      // (see VERDICT_TABS) — "needs attention" narrows to what score_only still
+      // shows: a checkpoint waiting on a human.
+      return scoreOnly
+        ? 'latest.has_manual_review IS TRUE'
+        : '(latest.pass IS FALSE OR latest.has_manual_review IS TRUE)';
+    case 'failed_checks':
+      return 'latest.pass IS FALSE';
+    case 'passed':
+      return 'latest.pass IS TRUE';
+    case 'processing':
+      return `c.status IN ('${PROCESSING_STATUSES.join("','")}')`;
+    case 'failed':
+      return `c.status = 'failed'`;
+    default:
+      return 'TRUE';
+  }
+}
+
+// This call's latest score (by scored_at — a call can have more than one
+// call_scores row, rescored against a different scorecard over time; see the
+// LATERAL note this replaces below) and whether any of ITS checkpoints is
+// still waiting on a human. `latest_score_id` is the presence marker: a call
+// with no call_scores row at all makes every other lateral column NULL (the
+// inner query never runs), which is indistinguishable in SQL from a scored
+// call whose overall_score/pass are legitimately NULL (every checkpoint went
+// to manual review, so nothing was auto-scored — see score.ts's
+// nothingAutoScored) without a column that is only ever non-NULL when a row
+// exists.
+const CALLS_LATEST_SCORE_LATERAL = `
+  LEFT JOIN LATERAL (
+    SELECT cs.id AS latest_score_id, cs.overall_score, cs.pass,
+           EXISTS (
+             SELECT 1 FROM call_item_scores cis
+              WHERE cis.call_score_id = cs.id AND cis.result = 'manual_review'
+           ) AS has_manual_review,
+           (SELECT COUNT(*)::int FROM call_item_scores cis
+              WHERE cis.call_score_id = cs.id AND cis.result = 'fail') AS failed_count,
+           (SELECT COUNT(*)::int FROM call_item_scores cis
+              WHERE cis.call_score_id = cs.id AND cis.result = 'manual_review') AS waiting_count
+      FROM call_scores cs
+     WHERE cs.call_id = c.id
+     ORDER BY cs.scored_at DESC
+     LIMIT 1
+  ) latest ON true
+`;
+
+// The sale this call belongs to (resolved via calls.journey_id, the same
+// column GET /calls/:id keys its own journey summary off — kept in sync with
+// journey_calls at assembly time by services/journey.ts), with the
+// call-numbering and per-call breach counts a list row needs. `sale.id` is
+// the presence marker: c.journey_id IS NULL can never equal a journeys.id, so
+// the whole row is NULL rather than a false match.
+const SALES_JOURNEY_LATERAL = `
+  LEFT JOIN LATERAL (
+    SELECT j.id, j.status, j.overall_score, j.pass,
+           (SELECT COUNT(*)::int
+              FROM journey_calls sjc JOIN calls sc ON sc.id = sjc.call_id
+             WHERE sjc.journey_id = j.id AND ${hasTranscript('sc.status')}
+           ) AS call_total,
+           -- This call's 1-based position among the sale's transcribed calls,
+           -- in call-date order (ties broken on id) — the same order and the
+           -- same "transcribed calls only" filter GET /calls/:id numbers a
+           -- sale's calls by.
+           (SELECT COUNT(*)::int
+              FROM journey_calls njc JOIN calls nc ON nc.id = njc.call_id
+             WHERE njc.journey_id = j.id AND ${hasTranscript('nc.status')}
+               AND (COALESCE(nc.call_date, nc.created_at), nc.id)
+                   <= (COALESCE(c.call_date, c.created_at), c.id)
+           ) AS call_number_if_transcribed,
+           (SELECT COUNT(*)::int FROM journey_item_scores jis
+             WHERE jis.journey_id = j.id AND jis.source_call_id = c.id AND jis.result = 'fail'
+           ) AS failed_here,
+           (SELECT COUNT(*)::int FROM journey_item_scores jis
+             WHERE jis.journey_id = j.id AND jis.source_call_id = c.id AND jis.result = 'manual_review'
+           ) AS waiting_here
+      FROM journeys j
+     WHERE j.id = c.journey_id
+  ) sale ON true
+`;
+
+interface CallListQueryRow {
+  id: string;
+  file_name: string;
+  status: string;
+  duration_seconds: string | null;
+  called_at: string;
+  direction: string | null;
+  agent_id: string | null;
+  adviser_name: string | null;
+  customer_id: string | null;
+  customer_name: string | null;
+  resolved_customer_phone: string | null;
+  sale_id: string | null;
+  sale_status: JourneyStatus | null;
+  sale_overall_score: string | null;
+  sale_pass: boolean | null;
+  sale_call_total: number | null;
+  sale_call_number_if_transcribed: number | null;
+  sale_failed_here: number | null;
+  sale_waiting_here: number | null;
+  latest_score_id: string | null;
+  latest_overall_score: string | null;
+  latest_pass: boolean | null;
+  latest_failed_count: number | null;
+  latest_waiting_count: number | null;
+}
+
+// GET /api/calls/advisers — the advisers a supervisor/viewer can filter the
+// calls list by. /agents (used by AgentFilter everywhere else) is admin-only;
+// this is the same idea scoped to who has actually taken a call, open to
+// every role the list itself is (bar 'adviser', who has no use for a filter
+// that only ever narrows to themselves). Declared before /:id so "advisers"
+// is never swallowed as an id.
+callRouter.get('/advisers', requireOrgView, async (req, res, next) => {
   try {
-    const page = parseInt(req.query.page as string) || 1;
-    const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
-    const offset = (page - 1) * limit;
-    const status = req.query.status as string | undefined;
-    const agentId = req.query.agent_id as string | undefined;
-
-    let whereClause = 'WHERE c.organization_id = $1';
-    const params: unknown[] = [req.user!.organizationId];
-
-    // Members can only see their own calls
-    if (req.user!.role === 'adviser') {
-      params.push(req.user!.userId);
-      whereClause += ` AND c.agent_id = $${params.length}`;
-    } else if (agentId) {
-      // Admins can filter by agent
-      params.push(agentId);
-      whereClause += ` AND c.agent_id = $${params.length}`;
-    }
-
-    if (status) {
-      // Comma-separated group supported so the UI's "Processing" filter can
-      // cover uploaded+transcribing+scoring in one option.
-      const statuses = status.split(',').map((s) => s.trim()).filter(Boolean);
-      params.push(statuses);
-      whereClause += ` AND c.status = ANY($${params.length})`;
-    }
-
-    const countResult = await queryOne<{ count: string }>(
-      `SELECT COUNT(*) as count FROM calls c ${whereClause}`,
-      params
+    const rows = await query<CallAdviserOption>(
+      `SELECT DISTINCT u.id, u.name
+         FROM users u
+         JOIN calls c ON c.agent_id = u.id AND c.organization_id = u.organization_id
+        WHERE u.organization_id = $1
+        ORDER BY u.name ASC`,
+      [req.user!.organizationId]
     );
-
-    // A call can have more than one call_scores row (rescored against a
-    // different scorecard over time); joining on call_id alone fans a single
-    // call out into one row per score, which duplicates it in the page,
-    // desyncs `total` from the returned row count, and would double-count it
-    // in any aggregate built on top of this query. The LATERAL join picks
-    // only the most recent score per call.
-    // Only the columns a list row needs. This used to be `c.*`, which put every
-    // call's transcript_text and the raw transcription payload (transcript_raw,
-    // every word with its timings) into each page — measured on a live tenant at
-    // 27.6 MB for one page of 20 transcribed calls. A list has no business
-    // carrying a transcript, and a column added to calls later must not start
-    // travelling with it by default. The full record is GET /:id, behind the
-    // transcript-access gate.
-    const calls = await query(
-      `SELECT ${CALL_LIST_COLUMNS}, cs.overall_score, cs.pass, u.name as resolved_agent_name
-       FROM calls c
-       LEFT JOIN LATERAL (
-         SELECT overall_score, pass FROM call_scores
-         WHERE call_id = c.id
-         ORDER BY scored_at DESC
-         LIMIT 1
-       ) cs ON true
-       LEFT JOIN users u ON u.id = c.agent_id
-       ${whereClause}
-       ORDER BY c.created_at DESC
-       LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
-      [...params, limit, offset]
-    );
-
-    res.json({
-      data: calls,
-      total: parseInt(countResult?.count || '0'),
-      page,
-      limit,
-    });
+    res.json({ data: rows });
   } catch (err) {
     next(err);
   }
 });
+
+// GET /api/calls — the calls list: every call from the org's dialler, with
+// enough about its customer and its result (a sale's, or its own) to work
+// from without opening it. Shaped by the org's scoring_scope
+// (scoresCallsIndividually) rather than by anything Zoho-related — a
+// sales_only firm's calls mostly rest unscored by design, so its tabs ask
+// whether a call joined a sale; a firm scoring every call filters on the
+// call's own verdict instead.
+callRouter.get('/', async (req, res, next) => {
+  try {
+    const orgId = req.user!.organizationId;
+    const role = req.user!.role;
+
+    const settings = await getScoringSettings(orgId);
+    const mode: CallListResponse['mode'] = scoresCallsIndividually(settings) ? 'calls' : 'sales';
+    const scoreOnly = mode === 'calls' && (await orgHasFeature(orgId, 'score_only'));
+
+    let page = parseInt(req.query.page as string) || 1;
+    if (page < 1) page = 1;
+    let limit = parseInt(req.query.limit as string) || 20;
+    limit = Math.min(Math.max(limit, 1), 100);
+    const offset = (page - 1) * limit;
+
+    const sortParam = typeof req.query.sort === 'string' ? req.query.sort : 'newest';
+    if (sortParam !== 'newest' && sortParam !== 'oldest') {
+      throw new AppError(400, "sort must be 'newest' or 'oldest'.");
+    }
+    const sortDir = sortParam === 'oldest' ? 'ASC' : 'DESC';
+
+    const allTabs: readonly string[] = mode === 'sales' ? SALES_TABS : CALLS_TABS;
+    // score_only never asserts a verdict (services/tenant-settings.ts) — the
+    // tabs that would (failed_checks, passed) don't exist for this org, not
+    // just "look empty": requesting one is refused outright, same as an
+    // unrecognised tab.
+    const availableTabs = scoreOnly ? allTabs.filter((t) => !VERDICT_TABS.has(t)) : allTabs;
+    const tab = typeof req.query.tab === 'string' && req.query.tab ? req.query.tab : 'all';
+    if (!availableTabs.includes(tab)) {
+      if (scoreOnly && VERDICT_TABS.has(tab)) {
+        throw new AppError(400, 'This organisation hides the pass/fail verdict, so tab cannot be failed_checks or passed.');
+      }
+      throw new AppError(400, `tab must be one of ${availableTabs.join(', ')}.`);
+    }
+
+    const filters: CallFilter[] = [{ key: 'org', sql: 'c.organization_id = ?', params: [orgId] }];
+
+    // Advisers are scoped to their own calls whatever they pass — the query
+    // param is for admin/supervisor/viewer, the roles GET /agents is also
+    // limited by way of the page (the API itself never restricted it further).
+    if (role === 'adviser') {
+      filters.push({ key: 'adviser', sql: 'c.agent_id = ?', params: [req.user!.userId] });
+    } else if (typeof req.query.adviser === 'string' && req.query.adviser) {
+      if (!UUID_RE.test(req.query.adviser)) {
+        throw new AppError(400, 'adviser must be a UUID.');
+      }
+      filters.push({ key: 'adviser', sql: 'c.agent_id = ?', params: [req.query.adviser] });
+    }
+
+    if (typeof req.query.q === 'string' && req.query.q.trim()) {
+      const q = req.query.q.trim();
+      if (q.length > 100) throw new AppError(400, 'q must be at most 100 characters.');
+      // Escaped for ILIKE's own wildcards, not just for injection (the driver's
+      // parameterisation already prevents that) — a customer literally named
+      // "50% Off" or searched by a stray "_" must match itself, not act as a
+      // wildcard.
+      const likeSafe = q.replace(/[\\%_]/g, (m) => `\\${m}`);
+      const digits = q.replace(/\D/g, '');
+      // A phone match needs at least 3 digits: fewer than that, "07" or "44"
+      // would match nearly every call in the org rather than narrowing to one
+      // customer, which reads as a broken search rather than an unhelpful one.
+      if (digits.length >= 3) {
+        filters.push({
+          key: 'q',
+          sql: `(cust.name ILIKE ? ESCAPE '\\'
+                 OR REGEXP_REPLACE(COALESCE(cust.phone_normalized, ''), '\\D', '', 'g') LIKE ?
+                 OR REGEXP_REPLACE(COALESCE(c.customer_phone, ''), '\\D', '', 'g') LIKE ?)`,
+          params: [`%${likeSafe}%`, `%${digits}%`, `%${digits}%`],
+        });
+      } else {
+        filters.push({ key: 'q', sql: `cust.name ILIKE ? ESCAPE '\\'`, params: [`%${likeSafe}%`] });
+      }
+    }
+
+    // The call's date, interpreted in Europe/London (the org's timezone) —
+    // casting a bare date to timestamp and reading it AT TIME ZONE turns "that
+    // calendar day, London time" into the UTC instant CALL_DATE_SQL is
+    // actually compared against.
+    if (typeof req.query.from === 'string') {
+      if (!ISO_DATE_RE.test(req.query.from)) throw new AppError(400, 'from must be an ISO date (YYYY-MM-DD).');
+      filters.push({
+        key: 'from',
+        sql: `${CALL_DATE_SQL} >= ((?::date)::timestamp AT TIME ZONE 'Europe/London')`,
+        params: [req.query.from],
+      });
+    }
+    if (typeof req.query.to === 'string') {
+      if (!ISO_DATE_RE.test(req.query.to)) throw new AppError(400, 'to must be an ISO date (YYYY-MM-DD).');
+      filters.push({
+        key: 'to',
+        sql: `${CALL_DATE_SQL} < (((?::date) + 1)::timestamp AT TIME ZONE 'Europe/London')`,
+        params: [req.query.to],
+      });
+    }
+
+    const where = buildCallWhere(filters);
+    const tabSql = mode === 'sales' ? salesTabSql(tab) : callsTabSql(tab, scoreOnly);
+    const latestScoreLateral = mode === 'calls' ? CALLS_LATEST_SCORE_LATERAL : '';
+    const saleLateral = mode === 'sales' ? SALES_JOURNEY_LATERAL : '';
+
+    // One count query, one FILTER per tab of this mode — never a query per
+    // tab, and never a query per row of the page below. `latest`/`sale` are
+    // joined in even here because the calls-mode tabs are predicates over
+    // `latest.*` (see callsTabSql); the sales-mode ones (LINKED_TO_ANY_JOURNEY,
+    // status) need no join at all.
+    const countRow = await queryOne<Record<string, string>>(
+      `SELECT ${availableTabs
+        .map((t) => `COUNT(*) FILTER (WHERE ${mode === 'sales' ? salesTabSql(t) : callsTabSql(t, scoreOnly)})::text AS ${t}`)
+        .join(', ')}
+         FROM calls c
+         LEFT JOIN customers cust ON cust.id = c.customer_id
+         ${latestScoreLateral}
+        WHERE ${where.sql}`,
+      where.params
+    );
+    const counts: Record<string, number> = {};
+    for (const t of availableTabs) counts[t] = parseInt(countRow?.[t] ?? '0', 10);
+
+    // A call can have more than one call_scores row (rescored against a
+    // different scorecard over time) and, in sales mode, belongs to at most
+    // one journey — both are picked with a per-row LATERAL rather than a plain
+    // JOIN so a call is never fanned out into more than one page row. Only the
+    // columns a list row needs: this used to be `c.*`, which put every call's
+    // transcript_text and the raw transcription payload into each page —
+    // measured on a live tenant at 27.6 MB for one page of 20 transcribed
+    // calls. The full record is GET /:id, behind the transcript-access gate.
+    const rows = await query<CallListQueryRow>(
+      `SELECT ${CALL_LIST_COLUMNS}, ${CALL_DATE_SQL} AS called_at,
+              COALESCE(u.name, c.agent_name) AS adviser_name,
+              cust.name AS customer_name,
+              COALESCE(cust.phone_normalized, c.customer_phone) AS resolved_customer_phone
+              ${
+                mode === 'sales'
+                  ? `, sale.id AS sale_id, sale.status AS sale_status, sale.overall_score AS sale_overall_score,
+                       sale.pass AS sale_pass, sale.call_total AS sale_call_total,
+                       sale.call_number_if_transcribed AS sale_call_number_if_transcribed,
+                       sale.failed_here AS sale_failed_here, sale.waiting_here AS sale_waiting_here`
+                  : `, latest.latest_score_id AS latest_score_id, latest.overall_score AS latest_overall_score,
+                       latest.pass AS latest_pass, latest.failed_count AS latest_failed_count,
+                       latest.waiting_count AS latest_waiting_count`
+              }
+         FROM calls c
+         LEFT JOIN users u ON u.id = c.agent_id
+         LEFT JOIN customers cust ON cust.id = c.customer_id
+         ${saleLateral}
+         ${latestScoreLateral}
+        WHERE ${where.sql} AND (${tabSql})
+        ORDER BY ${CALL_DATE_SQL} ${sortDir}, c.id ${sortDir}
+        LIMIT $${where.params.length + 1} OFFSET $${where.params.length + 2}`,
+      [...where.params, limit, offset]
+    );
+
+    const data: CallListRow[] = rows.map((r) => ({
+      id: r.id,
+      file_name: r.file_name,
+      status: r.status as CallListRow['status'],
+      duration_seconds: r.duration_seconds === null ? null : Number(r.duration_seconds),
+      called_at: r.called_at,
+      direction: r.direction,
+      adviser_id: r.agent_id,
+      adviser_name: r.adviser_name,
+      customer_id: r.customer_id,
+      customer_name: r.customer_name,
+      customer_phone: r.resolved_customer_phone,
+      sale:
+        mode === 'sales' && r.sale_id
+          ? {
+              id: r.sale_id,
+              status: r.sale_status as JourneyStatus,
+              overall_score: r.sale_overall_score === null ? null : Number(r.sale_overall_score),
+              pass: r.sale_pass,
+              call_number: hasTranscriptStatus(r.status) ? r.sale_call_number_if_transcribed : null,
+              call_total: r.sale_call_total ?? 0,
+              failed_here: r.sale_failed_here ?? 0,
+              waiting_here: r.sale_waiting_here ?? 0,
+            }
+          : null,
+      score:
+        mode === 'calls' && r.latest_score_id
+          ? {
+              overall_score: r.latest_overall_score === null ? null : Number(r.latest_overall_score),
+              pass: r.latest_pass,
+              failed: r.latest_failed_count ?? 0,
+              waiting: r.latest_waiting_count ?? 0,
+            }
+          : null,
+    }));
+
+    const response: CallListResponse = {
+      data,
+      // The current tab's own count IS the total for this request — every
+      // filter that shapes the page (including the tab itself) also shapes
+      // this count, so a third query just to re-total the same WHERE would
+      // only ever agree with it.
+      total: counts[tab] ?? 0,
+      page,
+      limit,
+      mode,
+      counts,
+    };
+    res.json(response);
+  } catch (err) {
+    next(err);
+  }
+});
+
+function hasTranscriptStatus(status: string): boolean {
+  return status === 'transcribed' || status === 'scoring' || status === 'scored';
+}
 
 // Upload a call
 callRouter.post('/upload', upload.single('audio'), async (req, res, next) => {
