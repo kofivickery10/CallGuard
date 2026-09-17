@@ -16,19 +16,23 @@ import { query } from '../db/client.js';
 //
 // The states that are NOT stuck, and why:
 //
-//  * 'captured' — metadata-only, no audio fetched. Under sales_only ingestion
-//    (routes/ingestion.ts) audio is pulled on demand when the customer
+//  * 'captured' — metadata-only, no audio fetched. For a firm set to fetch
+//    recordings on sale (organizations.fetch_recordings_on_sale,
+//    routes/ingestion.ts) audio is pulled on demand when the customer
 //    converts, so a captured call may rest here forever by design. It is only
 //    stuck when a live journey is waiting on its audio. Hydrating the rest
 //    would spend money on, and store audio for, calls we deliberately never
 //    fetched.
 //
-//  * 'transcribed' in a deferring org — under scoring_scope='sales_only' with a
-//    usable Zoho sale trigger, per-call scoring is deliberately deferred and
-//    the sale is scored as a journey instead (jobs/processors/transcribe.ts).
-//    'transcribed' is that call's terminal resting state. Note the trigger
-//    half of the test: an org with no usable trigger does NOT defer, so for
-//    them a transcribed call really is waiting on a lost score job.
+//  * 'transcribed' in a deferring org — under scoring_scope='sales_only',
+//    per-call scoring is always deferred and the sale is scored as a journey
+//    instead (jobs/processors/transcribe.ts). 'transcribed' is that call's
+//    resting state until a sale arrives. The scope is the whole test: which
+//    integrations the firm has makes no difference. A sales_only firm whose
+//    sales have stopped arriving is not a repair job — re-enqueueing a score
+//    would score calls the firm never asked to have scored — so it is reported
+//    to the firm instead, by services/sale-arrival.ts. At any other scope a
+//    transcribed call really is waiting on a lost score job.
 //
 //  * anything linked to a journey — journey-linked calls are never scored on
 //    their own. If work is outstanding it belongs to the journey, and is
@@ -78,22 +82,18 @@ export interface StuckJourney {
 }
 
 // An org whose calls rest at 'transcribed' rather than being scored per-call.
-// Mirrors getScoringSettings + hasUsableSaleTrigger (services/tenant-settings.ts)
-// in SQL so one query can classify every call.
+// The same rule as the deferral in jobs/processors/transcribe.ts, in SQL so one
+// query can classify every call.
 const DEFERRING_ORGS = `
   SELECT o.id FROM organizations o
    WHERE o.scoring_scope = 'sales_only'
-     AND EXISTS (
-       SELECT 1 FROM zoho_connections z
-        WHERE z.organization_id = o.id
-          AND z.status = 'active'
-          AND (z.inbound_secret_encrypted IS NOT NULL OR z.sale_trigger_enabled = true)
-     )
 `;
 
 // Journey membership is recorded both on calls.journey_id (set at hydration)
 // and in journey_calls (set when the journey is assembled). Either counts.
-const LINKED_TO_ANY_JOURNEY = `
+// SQL over a `calls c`. Exported so services/sale-arrival.ts counts the calls
+// still waiting for a sale by the same membership rule.
+export const LINKED_TO_ANY_JOURNEY = `
   (c.journey_id IS NOT NULL
    OR EXISTS (SELECT 1 FROM journey_calls jc WHERE jc.call_id = c.id))
 `;

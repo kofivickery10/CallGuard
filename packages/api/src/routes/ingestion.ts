@@ -20,7 +20,6 @@ import {
   getDialerConnection,
   verifyDialerSignature,
   getScoringSettings,
-  hasUsableSaleTrigger,
 } from '../services/tenant-settings.js';
 import { ingestionQueue } from '../jobs/queue.js';
 import { isItemPass } from '@callguard/shared';
@@ -284,14 +283,17 @@ export async function handleCloudTalkWebhook(
       return;
     }
 
-    // sales_only capture: record the call's metadata only and defer audio fetch
-    // + transcription to the Zoho sale trigger, so nothing but metadata touches
-    // CallGuard until the customer converts. Only when a working sale trigger
-    // exists to eventually score — otherwise fall through to the download path
-    // below, so an org without a configured trigger never silently stops
-    // ingesting. (Mirrors the deferral guard in jobs/processors/transcribe.ts.)
+    // Download-on-sale capture: record the call's metadata only and defer the
+    // audio fetch + transcription until a sale for this customer arrives
+    // (services/journey.ts hydrates it then), so nothing but metadata touches
+    // CallGuard until the customer converts. Only for a firm staff have set to
+    // fetch recordings on sale (organizations.fetch_recordings_on_sale,
+    // migration 119), which is only ever a sales_only firm. It is its own
+    // setting, not implied by sales_only, because a recording never fetched is
+    // lost once the dialler's retention expires. Every other firm takes the
+    // download path below.
     const scoringSettings = await getScoringSettings(orgId);
-    if (scoringSettings.scoringScope === 'sales_only' && (await hasUsableSaleTrigger(orgId))) {
+    if (scoringSettings.scoringScope === 'sales_only' && scoringSettings.fetchRecordingsOnSale) {
       await captureCallMetadata({
         organizationId: orgId,
         externalId,

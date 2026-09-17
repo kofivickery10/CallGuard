@@ -10,6 +10,7 @@
   },
   "scoring": {
     "scoring_scope": "sales_only",
+    "fetch_recordings_on_sale": true,
     "pass_threshold": 70,
     "retention_days": 1825,
     "transcription_mode": "mono_diarize",

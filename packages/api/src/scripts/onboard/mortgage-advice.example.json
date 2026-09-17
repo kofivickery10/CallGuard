@@ -13,6 +13,8 @@
   "scoring": {
     "_comment": "sales_only scores a completed case as one unit once a sale trigger fires (CRM webhook or the manual 'this call is a sale' flag). Use 'everything' instead if the firm wants every call scored on its own.",
     "scoring_scope": "sales_only",
+    "_comment_fetch": "fetch_recordings_on_sale downloads a dialler recording only when that customer's sale arrives (sales_only firms only). Leave it false unless the firm has asked for it: a recording the dialler deletes before the sale arrives is lost for good.",
+    "fetch_recordings_on_sale": false,
     "pass_threshold": 70,
     "retention_days": 1825,
     "_comment_journey_window": "A mortgage case runs fact find -> recommendation -> completion over weeks or months, so the 30-day default would silently drop the early calls from the case. 120 days suits most firms; raise it for new-build cases, which can run six months or more.",

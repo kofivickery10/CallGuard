@@ -19,7 +19,13 @@ import {
   currentBillingForOrg,
 } from '../services/billing.js';
 import { deleteOrganizationCascade } from '../services/tenant-deletion.js';
-import { MAX_JOURNEY_WINDOW_DAYS, MAX_REVIEW_CONFIDENCE_FLOOR } from '../services/tenant-settings.js';
+import {
+  MAX_JOURNEY_WINDOW_DAYS,
+  MAX_REVIEW_CONFIDENCE_FLOOR,
+  checkFetchRecordingsOnSaleBody,
+  resolveFetchRecordingsOnSale,
+} from '../services/tenant-settings.js';
+import { getSaleArrival, saleArrivalResponse } from '../services/sale-arrival.js';
 import { LONDON, inWindow, resolveWindow, windowParams } from '../services/report-window.js';
 import {
   getTranscriptionQueue,
@@ -182,6 +188,7 @@ superadminRouter.get('/tenants/:id', async (req, res, next) => {
       journey_window_days: number | null;
       scoring_samples: number;
       review_confidence_floor: string;
+      fetch_recordings_on_sale: boolean;
       capture_enabled: boolean;
       reconciliation_enabled: boolean;
       pii_unredacted_categories: string[];
@@ -192,14 +199,14 @@ superadminRouter.get('/tenants/:id', async (req, res, next) => {
               adviser_channel, scoring_scope, min_scoreable_seconds, min_scoreable_words,
               pass_threshold, retention_days, transcription_mode, deepgram_region,
               journey_window_days, scoring_samples, review_confidence_floor,
-              capture_enabled, reconciliation_enabled,
+              fetch_recordings_on_sale, capture_enabled, reconciliation_enabled,
               pii_unredacted_categories, pii_redaction_exempt_note
        FROM organizations WHERE id = $1`,
       [req.params.id]
     );
     if (!org) throw new AppError(404, 'Tenant not found');
 
-    const [users, callStats, billingHistory, currentBilling] = await Promise.all([
+    const [users, callStats, billingHistory, currentBilling, saleArrival] = await Promise.all([
       query<{ id: string; name: string; email: string; role: string; last_active_at: string | null; plan_override: string | null; billing_exempt: boolean }>(
         `SELECT id, name, email, role, last_active_at, plan_override, billing_exempt
          FROM users WHERE organization_id = $1 ORDER BY name`,
@@ -224,6 +231,10 @@ superadminRouter.get('/tenants/:id', async (req, res, next) => {
       // month-end snapshot; the current month is appended live below.
       billingHistoryForOrg(req.params.id),
       currentBillingForOrg(req.params.id),
+      // The same figures the tenant's Calls page banner reads, shown beside the
+      // scoring settings so staff can see a sales_only firm whose sales have
+      // stopped arriving before the firm tells them.
+      getSaleArrival(req.params.id),
     ]);
 
     const currentMonth = new Date().toISOString().slice(0, 7);
@@ -233,7 +244,13 @@ superadminRouter.get('/tenants/:id', async (req, res, next) => {
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([month, b]) => ({ month, active_seats: b.seatCount, total: parseFloat(b.total.toFixed(2)) }));
 
-    res.json({ org, users, call_stats: callStats, seat_history: seatHistory });
+    res.json({
+      org,
+      users,
+      call_stats: callStats,
+      seat_history: seatHistory,
+      sale_arrival: saleArrival ? saleArrivalResponse(saleArrival) : null,
+    });
   } catch (err) {
     next(err);
   }
@@ -356,6 +373,7 @@ superadminRouter.put('/tenants/:id/scoring-settings', async (req, res, next) => 
       journey_window_days?: number | null;
       scoring_samples?: number;
       review_confidence_floor?: number;
+      fetch_recordings_on_sale?: boolean;
     };
 
     if (
@@ -432,6 +450,26 @@ superadminRouter.put('/tenants/:id/scoring-settings', async (req, res, next) => 
         `journey_window_days must be a whole number between 1 and ${MAX_JOURNEY_WINDOW_DAYS}, or null to use the default`
       );
     }
+    // Downloading recordings only on a sale is for sales_only firms alone (the
+    // column's CHECK, migration 119). What the body says on its own is checked
+    // here, before any database read; whether it fits the stored scope and flag
+    // is checked next. A scope change that would leave the flag on is refused
+    // rather than silently switching downloads on — see
+    // resolveFetchRecordingsOnSale for why.
+    const fetchBodyError = checkFetchRecordingsOnSaleBody(body);
+    if (fetchBodyError) throw new AppError(400, fetchBodyError);
+
+    let fetchRecordingsOnSale: boolean | undefined;
+    if (body.scoring_scope !== undefined || body.fetch_recordings_on_sale !== undefined) {
+      const current = await queryOne<{ scoring_scope: string; fetch_recordings_on_sale: boolean }>(
+        'SELECT scoring_scope, fetch_recordings_on_sale FROM organizations WHERE id = $1',
+        [req.params.id]
+      );
+      if (!current) throw new AppError(404, 'Tenant not found');
+      const resolved = resolveFetchRecordingsOnSale(current, body);
+      if ('error' in resolved) throw new AppError(400, resolved.error);
+      fetchRecordingsOnSale = resolved.value;
+    }
 
     const rows = await query(
       `UPDATE organizations SET
@@ -446,12 +484,13 @@ superadminRouter.put('/tenants/:id/scoring-settings', async (req, res, next) => 
          journey_window_days    = CASE WHEN $12::boolean THEN $11 ELSE journey_window_days END,
          scoring_samples        = COALESCE($13, scoring_samples),
          review_confidence_floor = COALESCE($14, review_confidence_floor),
+         fetch_recordings_on_sale = COALESCE($15, fetch_recordings_on_sale),
          updated_at             = now()
        WHERE id = $9
        RETURNING id, adviser_channel, scoring_scope, min_scoreable_seconds,
                  min_scoreable_words, pass_threshold, retention_days,
                  transcription_mode, deepgram_region, journey_window_days,
-                 scoring_samples, review_confidence_floor`,
+                 scoring_samples, review_confidence_floor, fetch_recordings_on_sale`,
       [
         // adviser_channel's "unset" state is itself a real value (null =
         // auto-detect), so it can't be COALESCE'd. $10 says whether the caller
@@ -475,6 +514,8 @@ superadminRouter.put('/tenants/:id/scoring-settings', async (req, res, next) => 
         // COALESCE as 0 and only an omitted field as null. Hence the explicit
         // undefined check rather than a falsy test.
         body.review_confidence_floor === undefined ? null : body.review_confidence_floor,
+        // false is a real value, so only an omitted flag reaches COALESCE as null.
+        fetchRecordingsOnSale === undefined ? null : fetchRecordingsOnSale,
       ]
     );
     if (!rows.length) throw new AppError(404, 'Tenant not found');
@@ -1331,7 +1372,7 @@ superadminRouter.put('/tenants/:id/pii-redaction-exemption', async (req, res, ne
 // repair sweep and the dashboard health strip use. This panel used to define
 // "stuck" itself as any pre-terminal status older than 15 minutes, which
 // permanently flagged the calls of every sales_only tenant: 'transcribed' is
-// where their calls rest by design until the sale trigger fires. Newest first.
+// where their calls rest by design until a sale arrives. Newest first.
 
 superadminRouter.get('/tenants/:id/failed-calls', async (req, res, next) => {
   try {

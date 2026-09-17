@@ -445,11 +445,12 @@ export interface CaptureCallParams {
 }
 
 /**
- * Metadata-only capture for sales_only tenants (see routes/ingestion.ts
- * handleCloudTalkWebhook). Records the call's identity, agent, customer and
- * recording pointer as a 'captured' row WITHOUT downloading audio or
- * transcribing — that is deferred until a Zoho sale trigger hydrates the
- * customer's journey. Idempotent by (org, externalId), same as ingestCall.
+ * Metadata-only capture for tenants set to fetch recordings on sale (see
+ * routes/ingestion.ts handleCloudTalkWebhook, migration 119). Records the
+ * call's identity, agent, customer and recording pointer as a 'captured' row
+ * WITHOUT downloading audio or transcribing — that is deferred until a sale
+ * hydrates the customer's journey. Idempotent by (org, externalId), same as
+ * ingestCall.
  */
 export async function captureCallMetadata(
   params: CaptureCallParams

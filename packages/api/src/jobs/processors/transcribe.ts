@@ -6,7 +6,7 @@ import { assessSpeakerIntegrity, UNRELIABLE_SPEAKER_CONFIDENCE } from '../../ser
 import { getKBContext } from '../../services/kb.js';
 import { evaluateAlertsForCall } from '../../services/alert-evaluator.js';
 import { recordUsage } from '../../services/usage.js';
-import { getScoringSettings, hasUsableSaleTrigger } from '../../services/tenant-settings.js';
+import { getScoringSettings } from '../../services/tenant-settings.js';
 import { assembleJourney, maybeScoreJourneyWhenReady } from '../../services/journey.js';
 import { scoringQueue } from '../queue.js';
 import type { Call } from '@callguard/shared';
@@ -334,29 +334,29 @@ async function routeTranscribedCall(
   try {
     const scoringSettings = await getScoringSettings(call.organization_id);
 
-    // Cost-control triage (spec §16): 'sales_only' defers per-call scoring
-    // and waits for the Zoho sale-trigger webhook to score a journey instead
-    // (jobs/processors/score-journey.ts) — but ONLY when the org actually has
-    // a working trigger configured. Deferring with no configured trigger
-    // would silently stop scoring forever for that org, so this falls back
-    // to scoring every call immediately (today's behaviour) until the org
-    // sets up their Zoho inbound secret.
-    const deferToSaleTrigger =
-      scoringSettings.scoringScope === 'sales_only' &&
-      (await hasUsableSaleTrigger(call.organization_id));
+    // Cost-control triage (spec §16): the firm's scoring_scope alone decides.
+    // 'sales_only' never scores a call on its own; the call rests at
+    // 'transcribed' until a sale for the customer arrives and the sale is
+    // scored as a journey (jobs/processors/score-journey.ts). A sale can arrive
+    // from a CRM webhook, "Score sale" on the customer, or the upload flag
+    // below — which one a firm uses is not this job's business, so nothing here
+    // looks at the firm's integrations. If sales stop arriving, the calls wait
+    // visibly: services/sale-arrival.ts counts them for the Calls page banner
+    // and the superadmin tenant view.
+    const deferToSale = scoringSettings.scoringScope === 'sales_only';
 
     // A call manually flagged as a sale at upload (see routes/calls.ts) short-
-    // circuits the defer/score-immediately choice above: assemble + score a
-    // journey for this customer right away, the same way the Zoho sale-trigger
-    // webhook would, instead of waiting on a CRM event that will never come
-    // for a manually-uploaded call. Falls through to the normal branches below
-    // if there's no linked customer (no phone was given) to attach a journey to.
+    // circuits the deferral above: assemble + score a journey for this customer
+    // right away, the same way a CRM sale webhook would, instead of waiting on
+    // an event that will never come for a manually-uploaded call. Falls through
+    // to the normal branches below if there's no linked customer (no phone was
+    // given) to attach a journey to.
     const saleFlagged = (call as Call & { sale_flagged?: boolean }).sale_flagged === true;
     const customerId = (call as Call & { customer_id?: string | null }).customer_id ?? null;
     const journeyId = (call as Call & { journey_id?: string | null }).journey_id ?? null;
 
     if (journeyId) {
-      // This call was hydrated as part of a journey (Zoho sale trigger). It is
+      // This call was hydrated as part of a journey (a sale arrived). It is
       // never scored on its own — once every call linked to the journey has
       // reached a terminal transcription state (which 'skipped' counts as —
       // see maybeScoreJourneyWhenReady), the journey is scored as a whole.
@@ -371,8 +371,8 @@ async function routeTranscribedCall(
       // transcript_text as "call not found or has no transcript" and throws,
       // which would just bounce this straight to 'failed'.
       console.log(`[Transcription] Call ${callId} not enqueued for scoring — no usable transcript (status=skipped)`);
-    } else if (deferToSaleTrigger) {
-      console.log(`[Transcription] Call ${callId} held for Zoho sale trigger (scoring_scope=sales_only)`);
+    } else if (deferToSale) {
+      console.log(`[Transcription] Call ${callId} held until a sale arrives (scoring_scope=sales_only)`);
     } else {
       await scoringQueue.add('score', { callId }, { jobId: `score-${callId}` });
     }

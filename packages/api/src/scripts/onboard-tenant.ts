@@ -48,6 +48,14 @@ interface OnboardConfig {
     // the card a person rules on; the first also multiplies scoring spend.
     scoring_samples?: number;
     review_confidence_floor?: number;
+    // Download dialler recordings only when a sale for the customer arrives,
+    // capturing metadata alone until then (migration 119). Only allowed with
+    // scoring_scope "sales_only". scoring_scope alone decides what is scored;
+    // this decides only when audio is fetched. Leave it off unless the firm has
+    // asked for it and a sale source (a CRM webhook, or advisers using "Score
+    // sale") is in place: a recording not fetched before the dialler deletes it
+    // is gone for good. Omit to leave the stored value (false for a new org).
+    fetch_recordings_on_sale?: boolean;
   };
   scorecard?: {
     name: string;
@@ -163,6 +171,16 @@ async function main() {
   const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf-8')) as OnboardConfig;
   const resolve = (p: string) => path.resolve(cfgDir, p);
 
+  // Checked up front, dry run included, so a bad config fails before anything
+  // is written rather than on the organizations CHECK half-way through.
+  if (
+    cfg.scoring?.fetch_recordings_on_sale === true &&
+    cfg.scoring.scoring_scope !== undefined &&
+    cfg.scoring.scoring_scope !== 'sales_only'
+  ) {
+    throw new Error('scoring.fetch_recordings_on_sale can only be true when scoring.scoring_scope is "sales_only"');
+  }
+
   console.log(`\n=== Onboarding tenant: ${cfg.org.name} ${dry ? '(DRY RUN — no writes)' : ''} ===\n`);
 
   // 1. Org (idempotent by name).
@@ -197,6 +215,7 @@ async function main() {
          journey_window_days = COALESCE($12, journey_window_days),
          scoring_samples = COALESCE($13, scoring_samples),
          review_confidence_floor = COALESCE($14, review_confidence_floor),
+         fetch_recordings_on_sale = COALESCE($15, fetch_recordings_on_sale),
          updated_at = now()
        WHERE id = $1`,
       [
@@ -209,9 +228,11 @@ async function main() {
         cfg.scoring?.scoring_samples ?? null,
         // 0 is a real setting ("off"), so it must not be turned into null here.
         cfg.scoring?.review_confidence_floor ?? null,
+        // Likewise false is a real setting, not an absence.
+        cfg.scoring?.fetch_recordings_on_sale ?? null,
       ]
     );
-    console.log(`Set scoring policy (scope=${cfg.scoring?.scoring_scope}, retention=${cfg.scoring?.retention_days}d, mode=${cfg.scoring?.transcription_mode}, journey window=${cfg.scoring?.journey_window_days ?? 'default'}).`);
+    console.log(`Set scoring policy (scope=${cfg.scoring?.scoring_scope}, fetch recordings on sale=${cfg.scoring?.fetch_recordings_on_sale ?? 'unchanged'}, retention=${cfg.scoring?.retention_days}d, mode=${cfg.scoring?.transcription_mode}, journey window=${cfg.scoring?.journey_window_days ?? 'default'}).`);
   } else {
     log(dry, `Would set scoring policy: ${JSON.stringify(cfg.scoring ?? {})}, industry="${cfg.org.industry ?? ''}".`);
   }

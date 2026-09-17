@@ -67,7 +67,8 @@ and industry. Recommended Trust Point values:
 | Setting | Value | Why |
 |---|---|---|
 | Industry / advice domain | `FCA-regulated protection insurance advice (life, critical illness, income protection)` | Frames the AI scoring prompt |
-| `scoring_scope` | `sales_only` | Only fully score closed-sale journeys — cost control. **Requires a working Zoho sale-trigger (Phase 6); until then it safely falls back to per-call scoring** |
+| `scoring_scope` | `sales_only` | Only fully score closed-sale journeys — cost control. **Nothing is scored until a sale arrives** (the Zoho sale trigger in Phase 6, or "Score sale" on a customer). There is no fallback to per-call scoring; if calls wait a week with no sale, the Calls page and the superadmin tenant view say so |
+| `fetch_recordings_on_sale` | `true` | Superadmin-only (migration 119), and only with `sales_only`. CloudTalk calls are kept as metadata and the recording is downloaded when the sale arrives. A recording CloudTalk deletes before then is lost, so only turn this on once the sale trigger is working |
 | `pass_threshold` | Confirm with their QA (default 70) | Their matrix weights items ~equally |
 | `retention_days` | `1825` (5 years) | COBS 9.5 / MiFID II. Floored at 30 by validation |
 | `review_confidence_floor` | High — set with their QA lead | Any checkpoint the model reports below this confidence goes to the review queue with its provisional verdict instead of being marked pass/fail. Trust Point asked for this deliberately high on 2026-08-03: their calls are muddy and they would rather rule on marginal checkpoints themselves. Costs QA time, not scoring spend |

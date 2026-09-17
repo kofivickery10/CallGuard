@@ -160,8 +160,27 @@ export interface OrganizationInfo {
   // coverage for human review; both are staff-set, like the rest of this block.
   scoring_samples?: number;
   review_confidence_floor?: number;
+  // Download dialler recordings only when a sale arrives (migration 119). Only
+  // ever true for a sales_only firm. Staff-set, like the rest of this block.
+  fetch_recordings_on_sale?: boolean;
   status?: 'active' | 'suspended' | 'cancelled';
   cancelled_at?: string | null;
+}
+
+// Whether sales are reaching a firm that scores sales (services/sale-arrival.ts).
+// A sales_only firm scores nothing until a sale arrives, so calls left waiting
+// with no sale coming in are reported rather than left silent.
+export interface SaleArrivalStatus {
+  scoring_scope: ScoringScope;
+  // Transcribed calls not yet part of any sale, and when the oldest arrived.
+  waiting_calls: number;
+  oldest_waiting_at: string | null;
+  // When the firm's most recent sale was created, or null if it has none.
+  last_sale_at: string | null;
+  // sales_only, calls waiting longer than attention_after_days, and no sale in
+  // that time either.
+  needs_attention: boolean;
+  attention_after_days: number;
 }
 
 export type FeatureFlag =
