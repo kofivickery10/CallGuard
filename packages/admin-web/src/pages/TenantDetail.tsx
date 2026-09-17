@@ -3,7 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { useDialog } from '../components/DialogProvider';
 import { PLANS, PLAN_LABELS, SEAT_PRICING, FEATURES } from '@callguard/shared';
-import type { Plan } from '@callguard/shared';
+import type { Plan, SaleArrivalStatus } from '@callguard/shared';
 
 // Only features that actually gate by plan are worth overriding; ones available
 // on every tier are derived here so the UI stays in step with the shared map.
@@ -40,6 +40,9 @@ interface OrgDetail {
   // Stored as a 0-1 fraction (migration 082); the form below shows it as a
   // percentage, which is how the confidence itself is talked about.
   review_confidence_floor: string | number | null;
+  // Download dialler recordings only when a sale arrives (migration 119). Only
+  // allowed while scoring_scope is sales_only.
+  fetch_recordings_on_sale: boolean;
   capture_enabled: boolean;
   reconciliation_enabled: boolean;
   pii_unredacted_categories: string[];
@@ -92,6 +95,7 @@ interface ScoringForm {
   scoring_samples: number;
   // Percent (0-95) in the form; converted to the stored 0-1 fraction on save.
   review_confidence_floor_pct: number;
+  fetch_recordings_on_sale: boolean;
 }
 
 // Ceiling on the review floor, mirroring the API and the column's CHECK. 100%
@@ -153,6 +157,9 @@ interface TenantDetailData {
   users: User[];
   call_stats: CallStats;
   seat_history: SeatMonth[];
+  // Whether sales are reaching a sales_only firm — the same figures the
+  // tenant's Calls page banner reads (services/sale-arrival.ts).
+  sale_arrival: SaleArrivalStatus | null;
 }
 
 export default function TenantDetail() {
@@ -208,6 +215,7 @@ export default function TenantDetail() {
           deepgram_region: d.org.deepgram_region ?? 'eu',
           scoring_samples: d.org.scoring_samples ?? 1,
           review_confidence_floor_pct: Math.round(Number(d.org.review_confidence_floor ?? 0) * 100),
+          fetch_recordings_on_sale: d.org.fetch_recordings_on_sale === true,
         });
       })
       .catch((e: Error) => setError(e.message));
@@ -708,7 +716,18 @@ export default function TenantDetail() {
                     key={opt.value}
                     type="button"
                     title={opt.hint}
-                    onClick={() => setScoringForm({ ...scoringForm, scoring_scope: opt.value })}
+                    onClick={() =>
+                      setScoringForm({
+                        ...scoringForm,
+                        scoring_scope: opt.value,
+                        // The API refuses to leave the flag on off sales_only
+                        // rather than switching downloads on quietly, so the
+                        // form unticks it here, where the change is visible
+                        // before it is saved.
+                        fetch_recordings_on_sale:
+                          opt.value === 'sales_only' ? scoringForm.fetch_recordings_on_sale : false,
+                      })
+                    }
                     className={`px-3 py-2 rounded-btn text-sm border transition-colors ${
                       active
                         ? 'border-primary bg-primary-light text-pass font-semibold'
@@ -724,6 +743,32 @@ export default function TenantDetail() {
               {SCOPE_OPTIONS.find((o) => o.value === scoringForm.scoring_scope)?.hint}
             </p>
           </div>
+
+          {/* When recordings are downloaded. Separate from the scope because the
+              risk is different: a held score keeps its transcript, but a
+              recording never fetched is lost once the dialler deletes it. */}
+          <div>
+            <div className="flex items-start gap-2">
+              <input
+                id="fetch-recordings-on-sale"
+                type="checkbox"
+                checked={scoringForm.fetch_recordings_on_sale}
+                disabled={scoringForm.scoring_scope !== 'sales_only'}
+                onChange={(e) => setScoringForm({ ...scoringForm, fetch_recordings_on_sale: e.target.checked })}
+                className="mt-0.5 h-4 w-4 accent-primary disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+              />
+              <label htmlFor="fetch-recordings-on-sale" className="text-sm text-text-secondary">
+                <span className="font-semibold text-text-primary">Download recordings only when a sale arrives</span>
+                <span className="block text-xs text-text-muted mt-0.5">
+                  {scoringForm.scoring_scope === 'sales_only'
+                    ? 'Dialler calls are kept as metadata until that customer’s sale reaches CallGuard, then the recording is fetched and transcribed. A recording the dialler deletes before the sale arrives cannot be recovered. Off: every recording is downloaded as it arrives.'
+                    : 'Only available when scoring sales. A firm that scores every call needs every recording, so recordings are downloaded as they arrive.'}
+                </span>
+              </label>
+            </div>
+          </div>
+
+          {data.sale_arrival && <SaleArrivalFigures arrival={data.sale_arrival} />}
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <ScoringNumberField
@@ -1037,6 +1082,61 @@ export default function TenantDetail() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Are sales reaching this firm? The figures behind the tenant's Calls page
+ * banner, so staff can see a sales_only firm whose sales have stopped arriving
+ * (a broken CRM webhook, nobody pressing "Score sale") before the firm says so.
+ * At any other scope calls are scored on their own, so the figures are shown
+ * but the question does not apply.
+ */
+function SaleArrivalFigures({ arrival }: { arrival: SaleArrivalStatus }) {
+  const fmt = (iso: string | null, empty: string) =>
+    iso ? new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : empty;
+  const salesOnly = arrival.scoring_scope === 'sales_only';
+
+  return (
+    <div className="border border-border rounded-btn p-3 space-y-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-xs font-medium text-text-muted">Sales arriving</h3>
+        {salesOnly ? (
+          arrival.needs_attention ? (
+            <span className="text-badge px-2.5 py-[3px] rounded-full bg-review-bg text-review">
+              Needs attention: tenant is shown a banner
+            </span>
+          ) : (
+            <span className="text-badge px-2.5 py-[3px] rounded-full bg-pass-bg text-pass">OK</span>
+          )
+        ) : (
+          <span className="text-badge px-2.5 py-[3px] rounded-full bg-table-header text-text-muted">
+            Not applicable: scores calls
+          </span>
+        )}
+      </div>
+      <dl className="grid grid-cols-3 gap-3 text-sm">
+        <div>
+          <dt className="text-xs text-text-muted">
+            Calls in the last {arrival.attention_after_days} days not in a sale
+          </dt>
+          <dd className="text-text-primary font-semibold">{arrival.waiting_calls}</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-text-muted">First of those received</dt>
+          <dd className="text-text-primary">{fmt(arrival.oldest_waiting_at, 'None')}</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-text-muted">Last sale</dt>
+          <dd className="text-text-primary">{fmt(arrival.last_sale_at, 'Never')}</dd>
+        </div>
+      </dl>
+      <p className="text-xs text-text-muted">
+        Flagged when the firm scores sales, calls (captured or transcribed) have come in over the last{' '}
+        {arrival.attention_after_days} days that are not part of a sale, and no sale was created in those
+        days. Older unsold calls are not counted: most calls never become sales.
+      </p>
     </div>
   );
 }

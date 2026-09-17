@@ -69,9 +69,11 @@ export interface ZohoConnection {
   // secret itself). When set, the sale-trigger endpoint enforces the HMAC
   // signature; when unset the trigger runs API-key-only.
   inbound_configured: boolean;
-  // Admin has confirmed the Zoho sale trigger is configured. Together with an
-  // active status this activates sales_only metadata capture even without a
-  // signing secret (the API-key-only path for Zoho's plain Webhook action).
+  // Admin has confirmed the Zoho sale trigger is configured (the API-key-only
+  // path for Zoho's plain Webhook action, which cannot sign). A record for the
+  // Integrations page only: how a firm is scored and whether its recordings are
+  // fetched on sale are organisation settings (scoring_scope,
+  // fetch_recordings_on_sale, migration 119), never inferred from this.
   sale_trigger_enabled: boolean;
   status: ZohoConnectionStatus;
   last_synced_at: string | null;
@@ -96,6 +98,6 @@ export interface ZohoConnectionInput {
   policies_module?: string | null;
   // Set/replace the inbound sale-webhook secret. Omit to keep the existing one.
   inbound_secret?: string;
-  // Mark the sale trigger as configured (activates capture without a secret).
+  // Mark the sale trigger as configured (a record only; see sale_trigger_enabled above).
   sale_trigger_enabled?: boolean;
 }

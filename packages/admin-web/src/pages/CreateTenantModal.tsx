@@ -7,8 +7,28 @@ interface Props {
   onCreated: (result: { org_id: string; admin_user_id: string; temp_password: string }) => void;
 }
 
+// How the firm is scored — a required choice with nothing preselected (owner
+// decision, 17 Sep 2026). A default here would decide, silently, whether a
+// firm scores nothing until a sale arrives or scores every call. The API
+// refuses a create without it too. "Over length threshold" is a variant of
+// scoring calls and can be set afterwards on the tenant page.
+const SCOPE_CHOICES: { value: 'sales_only' | 'everything'; label: string; hint: string }[] = [
+  {
+    value: 'sales_only',
+    label: 'Score sales',
+    hint: "A customer's calls wait, unscored, until a sale arrives — from their CRM, \"Score sale\" on the customer, or the upload sale flag — and are then scored together as one sale. Nothing is scored until a sale arrives.",
+  },
+  {
+    value: 'everything',
+    label: 'Score calls',
+    hint: 'Every call is scored on its own as soon as it is transcribed. No sale is needed.',
+  },
+];
+
 export default function CreateTenantModal({ onClose, onCreated }: Props) {
   const [form, setForm] = useState({ org_name: '', admin_name: '', admin_email: '', plan: 'core' });
+  const [scoringScope, setScoringScope] = useState<'' | 'sales_only' | 'everything'>('');
+  const [fetchOnSale, setFetchOnSale] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<{ org_id: string; admin_user_id: string; temp_password: string } | null>(null);
@@ -19,11 +39,20 @@ export default function CreateTenantModal({ onClose, onCreated }: Props) {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
+    if (!scoringScope) {
+      setError('Choose how this firm is scored: score sales or score calls.');
+      return;
+    }
     setLoading(true);
     try {
       const r = await api.post<{ org_id: string; admin_user_id: string; temp_password: string }>(
         '/superadmin/tenants',
-        form
+        {
+          ...form,
+          scoring_scope: scoringScope,
+          // Only meaningful, and only sent as true, when scoring sales.
+          fetch_recordings_on_sale: scoringScope === 'sales_only' && fetchOnSale,
+        }
       );
       setResult(r);
       onCreated(r);
@@ -84,6 +113,56 @@ export default function CreateTenantModal({ onClose, onCreated }: Props) {
                 ))}
               </select>
             </div>
+            <fieldset>
+              <legend className="block text-sm font-medium text-text-secondary mb-1">
+                How is this firm scored? <span className="text-text-muted font-normal">(required)</span>
+              </legend>
+              <div className="space-y-2">
+                {SCOPE_CHOICES.map((choice) => (
+                  <label
+                    key={choice.value}
+                    className={`flex items-start gap-2 border rounded-btn px-3 py-2 cursor-pointer transition-colors ${
+                      scoringScope === choice.value ? 'border-primary bg-primary-light' : 'border-border hover:border-primary/50'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="scoring_scope"
+                      value={choice.value}
+                      checked={scoringScope === choice.value}
+                      onChange={() => {
+                        setScoringScope(choice.value);
+                        if (choice.value !== 'sales_only') setFetchOnSale(false);
+                      }}
+                      required
+                      className="mt-1 accent-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                    />
+                    <span className="text-sm">
+                      <span className="font-semibold text-text-primary">{choice.label}</span>
+                      <span className="block text-xs text-text-muted mt-0.5">{choice.hint}</span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+            {scoringScope === 'sales_only' && (
+              <label className="flex items-start gap-2 text-sm text-text-secondary cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={fetchOnSale}
+                  onChange={(e) => setFetchOnSale(e.target.checked)}
+                  className="mt-1 accent-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                />
+                <span>
+                  <span className="font-semibold text-text-primary">Download recordings only when a sale arrives</span>
+                  <span className="block text-xs text-text-muted mt-0.5">
+                    Dialler calls are kept as details only until that customer's sale arrives, then the recording is
+                    fetched. A recording the dialler deletes before then is lost for good. Leave off unless the firm
+                    has asked for it.
+                  </span>
+                </span>
+              </label>
+            )}
             {error && <p className="text-fail text-sm">{error}</p>}
             <div className="flex gap-2 pt-1">
               <button type="button" onClick={onClose} className="flex-1 border border-border text-text-secondary py-2 rounded-btn text-sm hover:bg-sidebar-hover">

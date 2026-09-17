@@ -86,12 +86,17 @@ export function Upload() {
     enabled: isAdmin,
   });
 
-  // Only 'sales_only' tenants defer scoring to a sale trigger — the manual
+  // Only 'sales_only' tenants hold scoring until a sale arrives — the manual
   // "this call is a sale" checkbox is only meaningful (and only shown) there.
+  // Loaded for every role that can reach this page, not just admins: at a
+  // sales_only firm this checkbox is one of the three ways a sale arrives (with
+  // a CRM webhook and "Score sale"), and a supervisor or adviser uploading the
+  // call is often the person who knows it sold. GET /organization only needs a
+  // signed-in user.
   const { data: organization } = useQuery({
     queryKey: ['organization'],
     queryFn: () => api.get<OrganizationInfo>('/organization'),
-    enabled: isAdmin,
+    enabled: !!user,
   });
   const isSalesOnly = organization?.scoring_scope === 'sales_only';
 
@@ -114,12 +119,14 @@ export function Upload() {
         if (scorecardId) {
           formData.append('scorecard_id', scorecardId);
         }
-        if (customerPhone) {
-          formData.append('customer_phone', customerPhone);
-        }
-        if (isSalesOnly && markAsSale) {
-          formData.append('mark_as_sale', 'true');
-        }
+      }
+      // Any uploader: the customer's phone links the call to their other calls,
+      // and the sale flag scores that customer's sale once this is transcribed.
+      if (customerPhone) {
+        formData.append('customer_phone', customerPhone);
+      }
+      if (isSalesOnly && markAsSale) {
+        formData.append('mark_as_sale', 'true');
       }
 
       const call = await api.post<Call>('/calls/upload', formData);
@@ -193,37 +200,6 @@ export function Upload() {
               </p>
             </>
           )}
-
-          <label className="block text-table-cell font-medium text-text-secondary mb-1.5 mt-4">
-            Customer phone <span className="text-text-muted font-normal">(optional)</span>
-          </label>
-          <input
-            type="text"
-            value={customerPhone}
-            onChange={(e) => setCustomerPhone(e.target.value)}
-            placeholder="e.g. 07473 123456"
-            className="w-full border border-border rounded-btn px-3 py-2 text-table-cell text-text-primary placeholder:text-text-muted focus:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 transition-colors"
-          />
-          <p className="text-xs text-text-muted mt-1.5">
-            Needed to match this call to the customer's other calls (sale scoring, sale flag below).
-          </p>
-
-          {isSalesOnly && (
-            <label className="flex items-start gap-2 mt-4 text-table-cell text-text-secondary cursor-pointer">
-              <input
-                type="checkbox"
-                checked={markAsSale}
-                onChange={(e) => setMarkAsSale(e.target.checked)}
-                className="mt-0.5 accent-primary"
-              />
-              <span>
-                This call resulted in a sale
-                <span className="block text-xs text-text-muted font-normal">
-                  Scores this customer's sale immediately once transcribed, instead of waiting for a CRM sale trigger. Requires the customer phone above.
-                </span>
-              </span>
-            </label>
-          )}
         </div>
       )}
 
@@ -232,6 +208,44 @@ export function Upload() {
           This call will be assigned to you ({user?.name})
         </div>
       )}
+
+      <div className="bg-card border border-border rounded-card p-5 mb-5">
+        <label htmlFor="upload-customer-phone" className="block text-table-cell font-medium text-text-secondary mb-1.5">
+          Customer phone <span className="text-text-muted font-normal">(optional)</span>
+        </label>
+        <input
+          id="upload-customer-phone"
+          type="text"
+          value={customerPhone}
+          onChange={(e) => setCustomerPhone(e.target.value)}
+          placeholder="e.g. 07473 123456"
+          className="w-full border border-border rounded-btn px-3 py-2 text-table-cell text-text-primary placeholder:text-text-muted focus:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 transition-colors"
+        />
+        <p className="text-xs text-text-muted mt-1.5">
+          {isSalesOnly
+            ? "Needed to match this call to the customer's other calls, and for the sale flag below."
+            : "Needed to match this call to the customer's other calls."}
+        </p>
+
+        {isSalesOnly && (
+          <label className="flex items-start gap-2 mt-4 text-table-cell text-text-secondary cursor-pointer">
+            <input
+              type="checkbox"
+              checked={markAsSale}
+              onChange={(e) => setMarkAsSale(e.target.checked)}
+              className="mt-0.5 accent-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+            />
+            <span>
+              This call resulted in a sale
+              <span className="block text-xs text-text-muted font-normal">
+                Your firm scores sales, so calls are only scored once a sale arrives. Tick this to score this
+                customer's sale as soon as the call is transcribed, instead of waiting for the sale to come from
+                your CRM. Needs the customer phone above.
+              </span>
+            </span>
+          </label>
+        )}
+      </div>
 
       <FileDropzone onFileSelected={handleFileSelected} disabled={uploading} />
 

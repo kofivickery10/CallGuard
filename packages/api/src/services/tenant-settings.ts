@@ -63,6 +63,12 @@ export interface ScoringSettings {
   // When the Zoho write-back fires (CG-4). Gates the CRM push only — scoring
   // runs automatically off the sale trigger either way.
   zohoWritebackTrigger: ZohoWritebackTrigger;
+  // Download a dialler call's recording only when a sale for that customer
+  // arrives, capturing metadata alone until then (migration 119). Only ever
+  // true for a sales_only firm. Deliberately separate from scoringScope: holding
+  // a score keeps the transcript, but a recording never fetched is lost for
+  // good once the dialler's retention expires.
+  fetchRecordingsOnSale: boolean;
 }
 
 interface ScoringSettingsRow {
@@ -78,6 +84,7 @@ interface ScoringSettingsRow {
   scoring_samples: number;
   review_confidence_floor: string;
   zoho_writeback_trigger: ZohoWritebackTrigger;
+  fetch_recordings_on_sale: boolean;
 }
 
 const FALLBACK: ScoringSettings = {
@@ -95,6 +102,9 @@ const FALLBACK: ScoringSettings = {
   // Matches migration 113's column default: the historic behaviour, so a
   // missing org row never silently stops a tenant's records reaching Zoho.
   zohoWritebackTrigger: 'on_scoring',
+  // Matches migration 119's column default. Downloading is the safe reading of
+  // a missing row: a recording not fetched may never be fetchable again.
+  fetchRecordingsOnSale: false,
 };
 
 /**
@@ -107,7 +117,7 @@ export async function getScoringSettings(organizationId: string): Promise<Scorin
     `SELECT scoring_scope, min_scoreable_seconds, min_scoreable_words, pass_threshold,
             retention_days, transcription_mode, mono_first_speaker, deepgram_region,
             deepgram_mip_opt_out, scoring_samples, review_confidence_floor,
-            zoho_writeback_trigger
+            zoho_writeback_trigger, fetch_recordings_on_sale
        FROM organizations WHERE id = $1`,
     [organizationId]
   );
@@ -135,6 +145,10 @@ export async function getScoringSettings(organizationId: string): Promise<Scorin
     // holding the write-back: a bad value must not quietly stop a tenant's
     // records reaching their CRM.
     zohoWritebackTrigger: row.zoho_writeback_trigger === 'on_feedback' ? 'on_feedback' : 'on_scoring',
+    // Same rule as the column's CHECK, applied again here so a row that somehow
+    // breaks it downloads recordings rather than silently not fetching them for
+    // a firm that scores every call.
+    fetchRecordingsOnSale: row.scoring_scope === 'sales_only' && row.fetch_recordings_on_sale === true,
   };
 }
 
@@ -176,26 +190,109 @@ export function sanitiseJourneyWindowDays(days: number | null | undefined): numb
   return Math.min(Math.floor(n), MAX_JOURNEY_WINDOW_DAYS);
 }
 
+export const SCORING_SCOPES: readonly ScoringScope[] = ['sales_only', 'over_threshold', 'everything'];
+
 /**
- * Whether the org has a Zoho sale trigger that can actually drive journey
- * scoring — an active connection that the admin has marked as having a
- * configured trigger, either by setting a signing secret (the HMAC path) OR
- * by ticking sale_trigger_enabled (the API-key-only path, for Zoho's plain
- * Webhook action which can't sign). Used to decide whether 'sales_only'
- * deferral is safe: deferring scoring (or, now, capturing calls metadata-only)
- * with no working trigger would silently stop scoring forever, so callers fall
- * back to scoring immediately when this is false. Shared by
- * jobs/processors/transcribe.ts and the CloudTalk webhook capture branch
- * (routes/ingestion.ts).
+ * Said whenever a firm is created without a valid scoring_scope. The owner's
+ * rule (17 Sep 2026): how a firm is scored is chosen when it is set up, never
+ * left to a default. organizations.scoring_scope still has a column default
+ * ('sales_only', migration 038) — changing it would buy nothing once every
+ * creation path sets the scope explicitly, which is what this enforces.
  */
-export async function hasUsableSaleTrigger(organizationId: string): Promise<boolean> {
-  const row = await queryOne<{ id: string }>(
-    `SELECT id FROM zoho_connections
-      WHERE organization_id = $1 AND status = 'active'
-        AND (inbound_secret_encrypted IS NOT NULL OR sale_trigger_enabled = true)`,
-    [organizationId]
+export const SCORING_SCOPE_CHOICE_MESSAGE =
+  'Choose how this firm is scored; there is no default. scoring_scope "sales_only" scores sales: ' +
+  "a customer's calls are held, unscored, until a sale arrives (from the CRM, \"Score sale\" or the " +
+  'upload sale flag) and are then scored together. "everything" scores calls: every call is scored ' +
+  'on its own as it arrives ("over_threshold" is the same, but skips calls under the length threshold).';
+
+/** null when `value` is a valid scoring_scope, otherwise the message to show. */
+export function checkScoringScopeChoice(value: unknown): string | null {
+  return typeof value === 'string' && (SCORING_SCOPES as readonly string[]).includes(value)
+    ? null
+    : SCORING_SCOPE_CHOICE_MESSAGE;
+}
+
+export const FETCH_RECORDINGS_ON_SALE_SCOPE_MESSAGE =
+  'fetch_recordings_on_sale can only be on when scoring_scope is sales_only';
+
+/**
+ * Whether a database error is the organizations CHECK that holds the same rule
+ * (migration 119). The route validates against the row it read, but two staff
+ * saving at once can each pass that check — one turning the flag on, the other
+ * moving the firm off sales_only — and the second UPDATE then hits the
+ * constraint. That is the same mistake the validation catches, so it should
+ * read the same way: a 400 with the same sentence, not a 500.
+ */
+export function isFetchRecordingsOnSaleScopeViolation(err: unknown): boolean {
+  const e = err as { code?: unknown; constraint?: unknown } | null;
+  return (
+    !!e &&
+    e.code === '23514' &&
+    e.constraint === 'organizations_fetch_recordings_on_sale_scope_check'
   );
-  return !!row;
+}
+
+/**
+ * Check the shape of a superadmin's fetch_recordings_on_sale change before
+ * anything is read from the database: it must be a boolean, and it cannot be
+ * switched on in the same request that moves the firm off sales_only. Returns
+ * an error message, or null when the body is acceptable so far —
+ * resolveFetchRecordingsOnSale finishes the check against the stored row.
+ */
+export function checkFetchRecordingsOnSaleBody(body: {
+  scoring_scope?: unknown;
+  fetch_recordings_on_sale?: unknown;
+}): string | null {
+  if (body.fetch_recordings_on_sale === undefined) return null;
+  if (typeof body.fetch_recordings_on_sale !== 'boolean') {
+    return 'fetch_recordings_on_sale must be true or false';
+  }
+  if (
+    body.fetch_recordings_on_sale &&
+    body.scoring_scope !== undefined &&
+    body.scoring_scope !== 'sales_only'
+  ) {
+    return FETCH_RECORDINGS_ON_SALE_SCOPE_MESSAGE;
+  }
+  return null;
+}
+
+/**
+ * Work out what fetch_recordings_on_sale should be after a superadmin's change,
+ * given what is stored now, or refuse the change.
+ *
+ * The rule (also the column's CHECK, migration 119): the flag may only be on
+ * for a sales_only firm, because a firm scoring every call needs every
+ * recording.
+ *
+ * Moving a firm off sales_only while the flag is on is REFUSED rather than
+ * quietly fixed by switching the flag off. Switching it off is not a neutral
+ * tidy-up: from that moment every recording is downloaded and stored as it
+ * arrives, including calls with customers who never buy, which is exactly what
+ * the firm chose not to have. That has to be a decision somebody makes and the
+ * audit log records, so the request must carry fetch_recordings_on_sale: false
+ * itself. The superadmin form sends it, visibly, when the scope changes.
+ *
+ * Returns { value } — the flag to store, or undefined to leave it untouched —
+ * or { error } with a message for a 400.
+ */
+export function resolveFetchRecordingsOnSale(
+  current: { scoring_scope: string; fetch_recordings_on_sale: boolean },
+  body: { scoring_scope?: string; fetch_recordings_on_sale?: boolean }
+): { value: boolean | undefined } | { error: string } {
+  const scope = body.scoring_scope ?? current.scoring_scope;
+  const flag = body.fetch_recordings_on_sale ?? current.fetch_recordings_on_sale;
+  if (flag && scope !== 'sales_only') {
+    if (body.fetch_recordings_on_sale === undefined) {
+      return {
+        error:
+          'This firm only downloads recordings when a sale arrives. Moving it off sales_only ' +
+          'downloads every recording from then on, so send fetch_recordings_on_sale: false with the change.',
+      };
+    }
+    return { error: FETCH_RECORDINGS_ON_SALE_SCOPE_MESSAGE };
+  }
+  return { value: body.fetch_recordings_on_sale };
 }
 
 /**

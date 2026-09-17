@@ -3,10 +3,11 @@ import type { BreachSeverity } from './breaches.js';
 import type { FeedbackStatus, JourneyStatus } from './journey.js';
 
 export type CallStatus =
-  // Metadata-only capture for sales_only tenants: the CloudTalk webhook has
-  // recorded the call's metadata but no audio has been fetched or transcribed
-  // yet — that happens later, driven by a Zoho sale trigger (see
-  // services/journey.ts). Has no file_key/transcript until then.
+  // Metadata-only capture for tenants set to fetch recordings on sale
+  // (organizations.fetch_recordings_on_sale, migration 119): the CloudTalk
+  // webhook has recorded the call's metadata but no audio has been fetched or
+  // transcribed yet — that happens later, when a sale for the customer arrives
+  // (see services/journey.ts). Has no file_key/transcript until then.
   | 'captured'
   | 'uploaded'
   | 'transcribing'

@@ -24,11 +24,14 @@ import path from 'path';
 import bcrypt from 'bcryptjs';
 import { randomBytes } from 'crypto';
 import { pool, query, queryOne, withTransaction } from '../db/client.js';
+import { checkFetchRecordingsOnSaleBody, checkScoringScopeChoice } from '../services/tenant-settings.js';
 
 interface OnboardConfig {
   org: { name: string; plan?: string; industry?: string | null };
   admin: { name: string; email: string };
   scoring?: {
+    // Required (see validateOnboardConfig): "sales_only" scores sales,
+    // "everything" (or "over_threshold") scores calls. No default.
     scoring_scope?: string;
     min_scoreable_seconds?: number;
     min_scoreable_words?: number;
@@ -48,6 +51,14 @@ interface OnboardConfig {
     // the card a person rules on; the first also multiplies scoring spend.
     scoring_samples?: number;
     review_confidence_floor?: number;
+    // Download dialler recordings only when a sale for the customer arrives,
+    // capturing metadata alone until then (migration 119). Only allowed with
+    // scoring_scope "sales_only". scoring_scope alone decides what is scored;
+    // this decides only when audio is fetched. Leave it off unless the firm has
+    // asked for it and a sale source (a CRM webhook, or advisers using "Score
+    // sale") is in place: a recording not fetched before the dialler deletes it
+    // is gone for good. Omit to leave the stored value (false for a new org).
+    fetch_recordings_on_sale?: boolean;
   };
   scorecard?: {
     name: string;
@@ -147,6 +158,23 @@ export function branchToAppliesWhen(branch: string): string | null {
   return JSON.stringify({ branch: parts.length === 1 ? parts[0] : parts });
 }
 
+/**
+ * What is wrong with an onboarding config before anything is read or written,
+ * or null when it can proceed. scoring.scoring_scope is required: how a firm
+ * is scored is chosen at setup, never left to a default (owner decision, 17 Sep
+ * 2026). This holds for a re-run against an existing org too, so a config file
+ * can never be the thing that leaves a firm's scoring unstated.
+ */
+export function validateOnboardConfig(cfg: Pick<OnboardConfig, 'scoring'>): string | null {
+  const scopeError = checkScoringScopeChoice(cfg.scoring?.scoring_scope);
+  if (scopeError) return `scoring.scoring_scope is missing or invalid. ${scopeError}`;
+  if (cfg.scoring?.fetch_recordings_on_sale !== undefined) {
+    const fetchError = checkFetchRecordingsOnSaleBody(cfg.scoring);
+    if (fetchError) return `scoring.${fetchError}`;
+  }
+  return null;
+}
+
 function log(dry: boolean, msg: string) {
   console.log(`${dry ? '[dry-run] ' : ''}${msg}`);
 }
@@ -163,6 +191,12 @@ async function main() {
   const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf-8')) as OnboardConfig;
   const resolve = (p: string) => path.resolve(cfgDir, p);
 
+  // Checked up front, dry run included, so a bad config fails before anything
+  // is written rather than on the organizations CHECK half-way through.
+  const configError = validateOnboardConfig(cfg);
+  if (configError) throw new Error(configError);
+  const scoringScope = cfg.scoring!.scoring_scope!;
+
   console.log(`\n=== Onboarding tenant: ${cfg.org.name} ${dry ? '(DRY RUN — no writes)' : ''} ===\n`);
 
   // 1. Org (idempotent by name).
@@ -170,11 +204,14 @@ async function main() {
   if (org) {
     log(dry, `Org "${cfg.org.name}" already exists (${org.id}) — reusing.`);
   } else if (dry) {
-    log(dry, `Would create org "${cfg.org.name}" (plan=${cfg.org.plan || 'core'}).`);
+    log(dry, `Would create org "${cfg.org.name}" (plan=${cfg.org.plan || 'core'}, scoring_scope=${scoringScope}).`);
   } else {
+    // The scope is written in the INSERT itself, so the org never exists at
+    // the column default ('sales_only', migration 038) even for a moment. The
+    // default stays only because no creation path relies on it any more.
     org = await queryOne<{ id: string }>(
-      'INSERT INTO organizations (name, plan) VALUES ($1, $2) RETURNING id',
-      [cfg.org.name, cfg.org.plan || 'core']
+      'INSERT INTO organizations (name, plan, scoring_scope, fetch_recordings_on_sale) VALUES ($1, $2, $3, $4) RETURNING id',
+      [cfg.org.name, cfg.org.plan || 'core', scoringScope, cfg.scoring?.fetch_recordings_on_sale === true]
     );
     console.log(`Created org ${org!.id}.`);
   }
@@ -197,6 +234,7 @@ async function main() {
          journey_window_days = COALESCE($12, journey_window_days),
          scoring_samples = COALESCE($13, scoring_samples),
          review_confidence_floor = COALESCE($14, review_confidence_floor),
+         fetch_recordings_on_sale = COALESCE($15, fetch_recordings_on_sale),
          updated_at = now()
        WHERE id = $1`,
       [
@@ -209,9 +247,11 @@ async function main() {
         cfg.scoring?.scoring_samples ?? null,
         // 0 is a real setting ("off"), so it must not be turned into null here.
         cfg.scoring?.review_confidence_floor ?? null,
+        // Likewise false is a real setting, not an absence.
+        cfg.scoring?.fetch_recordings_on_sale ?? null,
       ]
     );
-    console.log(`Set scoring policy (scope=${cfg.scoring?.scoring_scope}, retention=${cfg.scoring?.retention_days}d, mode=${cfg.scoring?.transcription_mode}, journey window=${cfg.scoring?.journey_window_days ?? 'default'}).`);
+    console.log(`Set scoring policy (scope=${cfg.scoring?.scoring_scope}, fetch recordings on sale=${cfg.scoring?.fetch_recordings_on_sale ?? 'unchanged'}, retention=${cfg.scoring?.retention_days}d, mode=${cfg.scoring?.transcription_mode}, journey window=${cfg.scoring?.journey_window_days ?? 'default'}).`);
   } else {
     log(dry, `Would set scoring policy: ${JSON.stringify(cfg.scoring ?? {})}, industry="${cfg.org.industry ?? ''}".`);
   }

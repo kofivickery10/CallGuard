@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import { CallStatusBadge } from '../components/CallStatusBadge';
 import { ScoreGauge } from '../components/ScoreGauge';
 import { AgentFilter } from '../components/AgentFilter';
+import { SaleArrivalBanner } from '../components/SaleArrivalBanner';
 import { formatDuration } from '../lib/format';
 import type { Call, PaginatedResponse } from '@callguard/shared';
 
@@ -14,6 +15,8 @@ export function Calls() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
   const canUpload = ['admin', 'supervisor', 'adviser'].includes(user?.role ?? '');
+  // Who can act on sales not arriving — the same roles the endpoint allows.
+  const canScoreSales = ['admin', 'supervisor'].includes(user?.role ?? '');
   const [page, setPage] = useState(1);
   const [agentFilter, setAgentFilter] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>('');
@@ -67,6 +70,8 @@ export function Calls() {
           )}
         </div>
       </div>
+
+      <SaleArrivalBanner enabled={canScoreSales} />
 
       <div className="bg-card border border-border rounded-card overflow-hidden">
         <div className="overflow-x-auto">

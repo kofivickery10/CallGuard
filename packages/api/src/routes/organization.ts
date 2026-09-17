@@ -1,9 +1,10 @@
 import { Router } from 'express';
-import { authenticate, requireAdmin, requireOrgView } from '../middleware/auth.js';
+import { authenticate, requireActioner, requireAdmin, requireOrgView } from '../middleware/auth.js';
 import { query, queryOne } from '../db/client.js';
 import { AppError } from '../middleware/errors.js';
 import { recordAuditEvent } from '../services/audit.js';
 import { currentBillingForOrg } from '../services/billing.js';
+import { getSaleArrival, saleArrivalResponse } from '../services/sale-arrival.js';
 import type { OrganizationInfo } from '@callguard/shared';
 
 export const organizationRouter = Router();
@@ -18,7 +19,7 @@ organizationRouter.get('/', async (req, res, next) => {
               scoring_scope, min_scoreable_seconds, min_scoreable_words,
               pass_threshold, retention_days, transcription_mode, mono_first_speaker,
               deepgram_region, deepgram_mip_opt_out, scoring_samples,
-              review_confidence_floor, capture_enabled,
+              review_confidence_floor, fetch_recordings_on_sale, capture_enabled,
               reconciliation_enabled, status, cancelled_at
          FROM organizations WHERE id = $1`,
       [req.user!.organizationId]
@@ -38,6 +39,22 @@ organizationRouter.get('/', async (req, res, next) => {
 // the values read-only. Likewise plan changes are billing-relevant and
 // superadmin-only (PUT /superadmin/tenants/:id/plan), so a tenant admin can't
 // self-upgrade for free.
+
+// Whether sales are reaching a firm that scores sales. A sales_only firm scores
+// nothing until a sale arrives, so when calls have come in over the last week
+// and no sale has, the Calls page says so (services/sale-arrival.ts). Admins
+// and supervisors: they are the people who can act on it, by sending sales from
+// the CRM or pressing "Score sale". Advisers see only their own calls, so an
+// org-wide count is not theirs to read.
+organizationRouter.get('/sale-arrival', requireActioner, async (req, res, next) => {
+  try {
+    const arrival = await getSaleArrival(req.user!.organizationId);
+    if (!arrival) throw new AppError(404, 'Organisation not found');
+    res.json(saleArrivalResponse(arrival));
+  } catch (err) {
+    next(err);
+  }
+});
 
 // Admins set the organisation's industry / advice domain. This frames the AI
 // scoring prompt so calls are judged in the right regulatory/commercial context
