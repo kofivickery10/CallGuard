@@ -22,7 +22,8 @@ export function CountUp({ value, suffix = '', className, durationMs }: CountUpPr
 
   return (
     <span className={`tabular-nums ${className ?? ''}`}>
-      {Math.round(animated)}{suffix}
+      {/* Grouped, so a five-figure call count reads as 8,848 rather than 8848. */}
+      {Math.round(animated).toLocaleString('en-GB')}{suffix}
     </span>
   );
 }

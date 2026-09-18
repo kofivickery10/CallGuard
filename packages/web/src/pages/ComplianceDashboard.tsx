@@ -562,7 +562,7 @@ export function ComplianceDashboard() {
           )}
 
           {/* Trends */}
-          <h3 className="font-heading text-heading-md text-text-primary mb-4">Trends</h3>
+          <h3 className="text-section-heading text-text-primary mb-4">Trends</h3>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-7">
             <ChecksPerWeekChart
               points={trendsQ.data?.data}

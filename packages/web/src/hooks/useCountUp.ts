@@ -27,7 +27,11 @@ export function useCountUp(target: number | null | undefined, durationMs = 900):
     let raf = 0;
 
     const step = (now: number) => {
-      const t = Math.min(1, (now - start) / durationMs);
+      // Clamped at BOTH ends. requestAnimationFrame's timestamp is the start of
+      // the frame, which can predate the performance.now() captured a moment
+      // earlier in the same tick — a negative t made easeOutCubic go negative
+      // and the tiles painted "AVG SCORE −6%" on roughly one load in eight.
+      const t = Math.min(1, Math.max(0, (now - start) / durationMs));
       setValue(from + (target - from) * easeOutCubic(t));
       if (t < 1) raf = requestAnimationFrame(step);
     };

@@ -80,6 +80,13 @@ className="w-10 h-10 rounded-full hover:bg-sidebar-hover flex items-center justi
 
 > **Section/panel titles:** use the `text-section-title` token (15px/600) — it replaced the
 > ~50 hand-typed `text-[15px] font-semibold` panel titles. Don't reintroduce the arbitrary value.
+>
+> **A heading over a GROUP of panels** (the dashboard's "Which way it is moving" block above the
+> four trend cards) uses `text-section-heading` (17px/700), which sits between the page title and a
+> panel's own title so the heading reads as the parent of the cards beneath it. It replaced
+> `font-heading text-heading-md` — two class names that were never defined in `tailwind.config.js`
+> or `index.css`, so the only section heading on the dashboard rendered at the browser default and
+> came out smaller and lighter than the card titles under it.
 
 ### Checkboxes / toggles
 Native checkboxes must be branded: add `accent-primary` (only one place does today) and an
