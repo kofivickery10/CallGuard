@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import { config } from '../config.js';
 import { query, queryOne } from '../db/client.js';
 import { uploadFile } from '../services/storage.js';
+import { readFile } from 'node:fs/promises';
 
 // Upload/bulk-import guards found by the Upload page critique:
 //
@@ -217,5 +218,32 @@ describe('POST /api/calls/upload — over the size limit', () => {
     );
     expect(uploadFile).not.toHaveBeenCalled();
     expect(insertCallsCalled()).toBe(false);
+  });
+});
+
+// Two routes were briefly registered at GET /api/calls/advisers — the calls-list
+// filter (advisers who have taken a call) and the upload page's "assign to"
+// picker (every adviser on the books). Express matched the first, so the picker
+// silently dropped anyone who had never taken a call, and the picker's stricter
+// requireActioner guard was bypassed by the filter's requireOrgView. They now
+// answer on different paths.
+describe('the upload picker and the calls-list filter are different endpoints', () => {
+  it('does not register two routes on the same path', async () => {
+    const source = await readFile(
+      new URL('./calls.ts', import.meta.url),
+      'utf8'
+    );
+    const paths = [...source.matchAll(/callRouter\.(get|post|patch|put|delete)\(\s*'([^']+)'/g)].map(
+      (m) => `${m[1]} ${m[2]}`
+    );
+    const duplicates = paths.filter((p, i) => paths.indexOf(p) !== i);
+    expect(duplicates).toEqual([]);
+  });
+
+  it('refuses the assign-to picker to a viewer, who cannot attribute an upload', async () => {
+    const res = await fetch(`${baseUrl}/api/calls/assignable-advisers`, {
+      headers: { Authorization: `Bearer ${signToken('viewer')}` },
+    });
+    expect(res.status).toBe(403);
   });
 });

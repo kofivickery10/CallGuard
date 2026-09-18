@@ -98,7 +98,7 @@ export function Upload() {
 
   const { data: advisers } = useQuery({
     queryKey: ['upload-advisers'],
-    queryFn: () => api.get<{ data: AdviserOption[] }>('/calls/advisers'),
+    queryFn: () => api.get<{ data: AdviserOption[] }>('/calls/assignable-advisers'),
     enabled: canPickAdviser,
   });
 
