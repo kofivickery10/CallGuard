@@ -775,12 +775,20 @@ callRouter.post('/bulk-import', requireAdmin, async (req, res, next) => {
   }
 });
 
-// The org's advisers, for the upload page's "assign to" picker — a supervisor
-// may attribute an upload but can't reach the full /agents list (admin-only,
-// and carries stats/audit-sensitive fields this page has no need of).
+// GET /api/calls/assignable-advisers — the org's advisers, for the upload
+// page's "assign to" picker: a supervisor may attribute an upload but can't
+// reach the full /agents list (admin-only, and carries stats/audit-sensitive
+// fields this page has no need of).
+//
+// Deliberately NOT '/advisers', which is the calls-list filter above and
+// answers a different question: that one lists advisers who have already taken
+// a call, this one every adviser on the books. Both paths existed briefly and
+// Express matched the first, so the picker silently lost anyone new — the very
+// person an upload is most likely being assigned to.
+//
 // Registered before '/:id', like journeys.ts's own /advisers, or Express would
-// match "advisers" as a call id.
-callRouter.get('/advisers', requireActioner, async (req, res, next) => {
+// match the word as a call id.
+callRouter.get('/assignable-advisers', requireActioner, async (req, res, next) => {
   try {
     const advisers = await query<{ id: string; name: string }>(
       `SELECT id, name FROM users
