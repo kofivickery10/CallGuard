@@ -1320,14 +1320,22 @@ callRouter.post('/:id/scores/items/:itemScoreId/correct', requireActioner, async
       score: number;
       normalized_score: number;
       evidence: string | null;
+      result: string | null;
     }>(
-      `SELECT cis.id, cis.call_score_id, cis.scorecard_item_id, cis.score, cis.normalized_score, cis.evidence
+      `SELECT cis.id, cis.call_score_id, cis.scorecard_item_id, cis.score, cis.normalized_score, cis.evidence,
+              cis.result
          FROM call_item_scores cis
          JOIN call_scores cs ON cs.id = cis.call_score_id
         WHERE cis.id = $1 AND cs.call_id = $2`,
       [req.params.itemScoreId, call.id]
     );
     if (!itemScore) throw new AppError(404, 'Item score not found');
+    // Only a verdict the AI gave can be corrected here. Writing pass/fail onto
+    // an N/A or a manual-review row would pull it into the score it was kept
+    // out of; manual checkpoints are ruled on in the review queue.
+    if (itemScore.result === 'na' || itemScore.result === 'manual_review') {
+      throw new AppError(400, 'Only a pass or fail verdict can be corrected; manual checkpoints are ruled on in the review queue');
+    }
 
     const scoringSettings = await getScoringSettings(call.organization_id);
     const correctedNormalized = corrected_pass ? 100 : 0;
@@ -1361,10 +1369,13 @@ callRouter.post('/:id/scores/items/:itemScoreId/correct', requireActioner, async
       ]
     );
 
-    // Update the actual item score to reflect the correction
+    // Update the actual item score to reflect the correction. `result` has to
+    // move with the score: the call page draws a binary checkpoint's badge from
+    // `result`, so a correction that left it alone still showed "Fail" (as
+    // routes/review.ts already does for manual rulings).
     await query(
-      'UPDATE call_item_scores SET score = $1, normalized_score = $2 WHERE id = $3',
-      [correctedRawScore, correctedNormalized, itemScore.id]
+      'UPDATE call_item_scores SET score = $1, normalized_score = $2, result = $3 WHERE id = $4',
+      [correctedRawScore, correctedNormalized, corrected_pass ? 'pass' : 'fail', itemScore.id]
     );
 
     // Recalculate overall score for this call_score. Only pass/fail rows count
