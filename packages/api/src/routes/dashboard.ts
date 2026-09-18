@@ -2,6 +2,14 @@ import { Router } from 'express';
 import { authenticate } from '../middleware/auth.js';
 import { requireOrgView } from '../middleware/auth.js';
 import { query, queryOne } from '../db/client.js';
+import { getScoringSettings, orgHasFeature, scoresCallsIndividually } from '../services/tenant-settings.js';
+import { FEEDBACK_STATUS_SQL } from '../db/feedback-status.js';
+import { SALE_DATE_SQL } from './journeys.js';
+import type {
+  DashboardRecentResponse,
+  RecentCallRow,
+  RecentSaleRow,
+} from '@callguard/shared';
 
 export const dashboardRouter = Router();
 dashboardRouter.use(authenticate);
@@ -71,17 +79,30 @@ dashboardRouter.get('/summary', async (req, res, next) => {
   try {
     const orgId = req.user!.organizationId;
     const agentId = req.query.agent_id as string | undefined;
-    // Members see only their own stats; admins may filter by agent.
-    const agentScope = req.user!.role === 'adviser' ? req.user!.userId : agentId || null;
+    // Members see only their own stats; admins may filter by agent. Only an
+    // ADVISER is narrowed to themselves — which is exactly why the scope is
+    // reported back below rather than re-derived in the client, where a
+    // supervisor's org-wide figures were captioned "Your performance".
+    const selfScoped = req.user!.role === 'adviser';
+    const agentScope = selfScoped ? req.user!.userId : agentId || null;
 
-    let callWhere = 'WHERE c.organization_id = $1';
-    let journeyWhere = `WHERE j.organization_id = $1 AND j.status = 'scored'`;
+    const settings = await getScoringSettings(orgId);
+    const mode = scoresCallsIndividually(settings) ? 'calls' : 'sales';
+    // score_only gates the VALUE, not just its display (services/
+    // tenant-settings.ts), as the sale, call and review lists do: the verdict
+    // must not ship in the payload to a tenant that is never shown one.
+    const scoreOnly = await orgHasFeature(orgId, 'score_only');
+
+    let callCond = 'c.organization_id = $1';
+    let journeyCond = 'j.organization_id = $1';
     const params: unknown[] = [orgId];
     if (agentScope) {
       params.push(agentScope);
-      callWhere += ` AND c.agent_id = $${params.length}`;
-      journeyWhere += ` AND ${journeyWrapUpAgentClause(params.length)}`;
+      callCond += ` AND c.agent_id = $${params.length}`;
+      journeyCond += ` AND ${journeyWrapUpAgentClause(params.length)}`;
     }
+    const callWhere = `WHERE ${callCond}`;
+    const scoredJourneyWhere = `WHERE ${journeyCond} AND j.status = 'scored'`;
 
     const stats = await queryOne<{
       total_calls: string;
@@ -96,14 +117,22 @@ dashboardRouter.get('/summary', async (req, res, next) => {
 
     // Scored units: latest call_scores row per call (DISTINCT ON — a plain
     // join counted every rescore) UNION each scored journey.
+    //
+    // The pass rate divides by the units that actually carry a verdict, not by
+    // every scored unit. A unit whose checkpoints are still held for a person
+    // has pass = NULL, and counting it in the denominator quietly reported the
+    // firm as failing something it has not yet ruled on (176/235 where the
+    // honest figure was 176/234).
     const scoreStats = await queryOne<{
       avg_score: string | null;
       pass_count: string;
+      verdict_count: string;
       total_scored: string;
     }>(
       `SELECT
         AVG(u.score) as avg_score,
         COUNT(*) FILTER (WHERE u.pass = true) as pass_count,
+        COUNT(*) FILTER (WHERE u.pass IS NOT NULL) as verdict_count,
         COUNT(*) as total_scored
        FROM (
          SELECT latest.overall_score AS score, latest.pass
@@ -115,68 +144,174 @@ dashboardRouter.get('/summary', async (req, res, next) => {
            ORDER BY cs.call_id, cs.scored_at DESC
          ) latest
          UNION ALL
-         SELECT j.overall_score, j.pass FROM journeys j ${journeyWhere}
+         SELECT j.overall_score, j.pass FROM journeys j ${scoredJourneyWhere}
        ) u`,
       params
     );
 
     const salesRow = await queryOne<{ n: string }>(
-      `SELECT COUNT(*) as n FROM journeys j ${journeyWhere}`,
+      `SELECT COUNT(*) as n FROM journeys j ${scoredJourneyWhere}`,
       params
     );
 
-    const totalScored = parseInt(scoreStats?.total_scored || '0');
+    // Checkpoints the scorer would not rule on, waiting for a person. The same
+    // set the review queue offers (routes/review.ts) — retired checkpoints
+    // excluded — so a tile reading 130 cannot send a reviewer to a queue of 128.
+    const heldRow = await queryOne<{ n: string; oldest_days: string | null }>(
+      `SELECT COUNT(*) as n,
+              MAX(FLOOR(EXTRACT(EPOCH FROM (now() - held.created_at)) / 86400))::text as oldest_days
+         FROM (
+           SELECT cis.created_at
+             FROM call_item_scores cis
+             JOIN call_scores cs ON cs.id = cis.call_score_id
+             JOIN calls c ON c.id = cs.call_id
+             JOIN scorecard_items si ON si.id = cis.scorecard_item_id
+            WHERE ${callCond} AND cis.result = 'manual_review' AND si.archived_at IS NULL
+           UNION ALL
+           SELECT jis.created_at
+             FROM journey_item_scores jis
+             JOIN journeys j ON j.id = jis.journey_id
+             JOIN scorecard_items si ON si.id = jis.scorecard_item_id
+            WHERE ${journeyCond} AND jis.result = 'manual_review' AND si.archived_at IS NULL
+         ) held`,
+      params
+    );
+
+    const verdictCount = parseInt(scoreStats?.verdict_count || '0');
 
     res.json({
       total_calls: parseInt(stats?.total_calls || '0'),
       scored_calls: parseInt(stats?.scored_calls || '0'),
       scored_sales: parseInt(salesRow?.n || '0'),
+      mode,
+      scope: selfScoped ? 'own' : agentScope ? 'adviser' : 'organisation',
+      scored_units: parseInt(scoreStats?.total_scored || '0'),
+      units_with_verdict: scoreOnly ? null : verdictCount,
       average_score: scoreStats?.avg_score ? parseFloat(scoreStats.avg_score) : null,
-      pass_rate: totalScored > 0
-        ? (parseInt(scoreStats?.pass_count || '0') / totalScored) * 100
-        : null,
+      pass_rate:
+        scoreOnly || verdictCount === 0
+          ? null
+          : (parseInt(scoreStats?.pass_count || '0') / verdictCount) * 100,
+      items_to_review: parseInt(heldRow?.n || '0'),
+      oldest_review_days: heldRow?.oldest_days != null ? parseInt(heldRow.oldest_days) : null,
     });
   } catch (err) {
     next(err);
   }
 });
 
-// Recent scored calls (role-scoped)
+// The sale's closing adviser: earliest call flagged wrap_up, else the latest
+// call in the set. The same attribution the review queue, the breach register
+// and the Zoho QA write-back use, so a sale reads the same wherever it appears.
+const WRAP_UP_AGENT_LATERAL = `LEFT JOIN LATERAL (
+         SELECT jac.agent_name
+           FROM journey_calls jajc
+           JOIN calls jac ON jac.id = jajc.call_id
+          WHERE jajc.journey_id = j.id
+          ORDER BY (jajc.role = 'wrap_up') DESC,
+                   CASE WHEN jajc.role = 'wrap_up'
+                        THEN COALESCE(jac.call_date, jac.created_at) END ASC,
+                   COALESCE(jac.call_date, jac.created_at) DESC
+          LIMIT 1
+       ) ja ON true`;
+
+// The sale's own current checkpoints, counted live off journey_item_scores
+// rather than read from the frozen score run — the sales register's rule
+// (JourneyListItem.items_to_review), so the two screens agree. Retired
+// checkpoints are excluded, as the review queue excludes them.
+function journeyItemCountSql(result: 'manual_review' | 'fail', alias: string): string {
+  return `(SELECT COUNT(*)::int
+             FROM journey_item_scores ${alias}is
+             JOIN scorecard_items ${alias}si ON ${alias}si.id = ${alias}is.scorecard_item_id
+            WHERE ${alias}is.journey_id = j.id AND ${alias}is.result = '${result}'
+              AND ${alias}si.archived_at IS NULL)`;
+}
+
+// Recent activity (role-scoped): the last few SALES at a firm that scores
+// sales, the last few calls at one that scores calls.
+//
+// Every column is named. This used to be `SELECT c.*`, which shipped
+// transcript_raw (2.7 MB on one measured call), transcript_text, the customer's
+// phone number and the storage pointer to render six columns — the bug #226
+// fixed for the calls list and never applied here.
 dashboardRouter.get('/recent', async (req, res, next) => {
   try {
     const limit = Math.min(parseInt(req.query.limit as string) || 10, 50);
     const agentId = req.query.agent_id as string | undefined;
+    const orgId = req.user!.organizationId;
+    const scoreOnly = await orgHasFeature(orgId, 'score_only');
+    const settings = await getScoringSettings(orgId);
+    const mode: DashboardRecentResponse['mode'] = scoresCallsIndividually(settings)
+      ? 'calls'
+      : 'sales';
 
-    let callWhere = 'WHERE c.organization_id = $1';
-    const params: unknown[] = [req.user!.organizationId];
+    const params: unknown[] = [orgId];
+    const scopeTo = req.user!.role === 'adviser' ? req.user!.userId : agentId || null;
+    if (scopeTo) params.push(scopeTo);
+    const agentParam = params.length;
 
-    if (req.user!.role === 'adviser') {
-      params.push(req.user!.userId);
-      callWhere += ` AND c.agent_id = $${params.length}`;
-    } else if (agentId) {
-      params.push(agentId);
-      callWhere += ` AND c.agent_id = $${params.length}`;
+    if (mode === 'sales') {
+      const journeyWhere =
+        `WHERE j.organization_id = $1` +
+        (scopeTo ? ` AND ${journeyWrapUpAgentClause(agentParam)}` : '');
+
+      const rows = await query<RecentSaleRow>(
+        `SELECT j.id,
+                cust.name as customer_name,
+                ja.agent_name,
+                ${SALE_DATE_SQL} as sale_date,
+                j.status,
+                j.overall_score::float as overall_score,
+                j.pass,
+                ${FEEDBACK_STATUS_SQL} as feedback_status,
+                ${journeyItemCountSql('manual_review', 'r')} as items_to_review,
+                ${journeyItemCountSql('fail', 'f')} as items_failed
+           FROM journeys j
+           LEFT JOIN customers cust ON cust.id = j.customer_id
+           ${WRAP_UP_AGENT_LATERAL}
+           ${journeyWhere}
+          ORDER BY sale_date DESC NULLS LAST, j.id DESC
+          LIMIT $${params.length + 1}`,
+        [...params, limit]
+      );
+
+      const data = rows.map((r) => (scoreOnly ? { ...r, pass: null } : r));
+      res.json({ mode, data } satisfies DashboardRecentResponse);
+      return;
     }
+
+    const callWhere =
+      `WHERE c.organization_id = $1` + (scopeTo ? ` AND c.agent_id = $${agentParam}` : '');
 
     // See routes/calls.ts for why this is a LATERAL join on the latest score
     // rather than a plain join on call_id (fan-out duplicates the call).
-    const calls = await query(
-      `SELECT c.*, cs.overall_score, cs.pass, u.name as resolved_agent_name
-       FROM calls c
-       LEFT JOIN LATERAL (
-         SELECT overall_score, pass FROM call_scores
-         WHERE call_id = c.id
-         ORDER BY scored_at DESC
-         LIMIT 1
-       ) cs ON true
-       LEFT JOIN users u ON u.id = c.agent_id
-       ${callWhere}
-       ORDER BY c.created_at DESC
-       LIMIT $${params.length + 1}`,
+    const rows = await query<RecentCallRow>(
+      `SELECT c.id,
+              c.file_name,
+              cust.name as customer_name,
+              COALESCE(u.name, c.agent_name) as agent_name,
+              COALESCE(c.call_date, c.created_at) as called_at,
+              c.duration_seconds::float as duration_seconds,
+              c.status,
+              cs.overall_score::float as overall_score,
+              cs.pass
+         FROM calls c
+         LEFT JOIN LATERAL (
+           SELECT overall_score, pass FROM call_scores
+           WHERE call_id = c.id
+           ORDER BY scored_at DESC
+           LIMIT 1
+         ) cs ON true
+         LEFT JOIN users u ON u.id = c.agent_id
+         LEFT JOIN customers cust ON cust.id = c.customer_id
+         ${callWhere}
+        ORDER BY called_at DESC, c.id DESC
+        LIMIT $${params.length + 1}`,
       [...params, limit]
     );
 
-    res.json({ data: calls });
+    const data = rows.map((r) => (scoreOnly ? { ...r, pass: null } : r));
+    res.json({ mode, data } satisfies DashboardRecentResponse);
   } catch (err) {
     next(err);
   }
@@ -224,8 +359,7 @@ dashboardRouter.get('/trends/calls-per-day', requireOrgView, async (req, res, ne
     // query during BST.
     const byDate = new Map(rows.map((r) => [r.date, r]));
     const filled: { date: string; total: number; scored: number }[] = [];
-    const todayLondon = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/London' }).format(new Date());
-    const anchor = new Date(`${todayLondon}T00:00:00Z`);
+    const anchor = new Date(`${todayInLondon()}T00:00:00Z`);
     for (let i = days - 1; i >= 0; i--) {
       const d = new Date(anchor);
       d.setUTCDate(d.getUTCDate() - i);
@@ -243,55 +377,105 @@ dashboardRouter.get('/trends/calls-per-day', requireOrgView, async (req, res, ne
   }
 });
 
+// The Monday (London) of the week a given London calendar date falls in, as
+// 'YYYY-MM-DD'. Matches Postgres's date_trunc('week', …), which also starts on
+// Monday, so the weeks built here line up with the weeks the query groups by.
+function londonWeekStart(dateKey: string): string {
+  const d = new Date(`${dateKey}T00:00:00Z`);
+  // getUTCDay: 0 = Sunday. Monday-based offset.
+  d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+  return d.toISOString().slice(0, 10);
+}
+
+function todayInLondon(): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/London' }).format(new Date());
+}
+
 // Avg score + pass rate per week for last N weeks
 dashboardRouter.get('/trends/scores-over-time', requireOrgView, async (req, res, next) => {
   try {
     const weeks = Math.min(parseInt(req.query.weeks as string) || 12, 52);
     const agentId = req.query.agent_id as string | undefined;
     const { where, params } = buildTrendWhere(req.user!.organizationId, agentId);
+    const scoreOnly = await orgHasFeature(req.user!.organizationId, 'score_only');
 
-    // Scored units per week: per-call scores (by call date) + scored journeys
-    // (by scored_at, attributed to the wrap-up agent for the agent filter).
+    // Every week in the window, oldest first — computed here rather than taken
+    // from what the query happened to return, so a chart captioned "last 12
+    // weeks" is twelve weeks wide even when only seven of them hold a score.
+    const weekStarts: string[] = [];
+    const thisWeek = londonWeekStart(todayInLondon());
+    for (let i = weeks - 1; i >= 0; i--) {
+      const d = new Date(`${thisWeek}T00:00:00Z`);
+      d.setUTCDate(d.getUTCDate() - i * 7);
+      weekStarts.push(d.toISOString().slice(0, 10));
+    }
+    const from = weekStarts[0];
+
+    // Scored units per week, both halves dated by WHEN THE CONVERSATION
+    // HAPPENED — a call by its own date, a sale by the date of its last call
+    // (SALE_DATE_SQL). They used to be dated differently (call date vs
+    // scored_at), so the same conversation landed in a different week depending
+    // on the firm's scoring mode, and re-scoring a June sale moved it to the
+    // week the re-score ran.
+    //
+    // DISTINCT ON keeps the LATEST score per call. A plain join counted a
+    // re-scored call twice, once at each score it has ever had — /summary and
+    // the leaderboard both guard against that and this series did not.
     const journeyAgent = agentId ? ` AND ${journeyWrapUpAgentClause(2)}` : '';
+    const fromParam = params.length + 1;
     const rows = await query<{
       week_start: string;
-      call_count: string;
+      unit_count: string;
       avg_score: string | null;
-      pass_rate: string | null;
+      pass_count: string;
+      verdict_count: string;
     }>(
       `SELECT
          to_char(u.wk, 'YYYY-MM-DD') as week_start,
-         COUNT(*)::text as call_count,
+         COUNT(*)::text as unit_count,
          AVG(u.score)::text as avg_score,
-         CASE WHEN COUNT(*) > 0 THEN
-           (COUNT(*) FILTER (WHERE u.pass = true)::numeric / COUNT(*) * 100)::text
-         ELSE NULL END as pass_rate
+         COUNT(*) FILTER (WHERE u.pass = true)::text as pass_count,
+         COUNT(*) FILTER (WHERE u.pass IS NOT NULL)::text as verdict_count
        FROM (
-         SELECT date_trunc('week', c.created_at AT TIME ZONE 'Europe/London') as wk,
-                cs.overall_score as score, cs.pass
-         FROM calls c
-         JOIN call_scores cs ON cs.call_id = c.id
-         WHERE ${where} AND c.created_at >= now() - ($${params.length + 1} || ' weeks')::interval
+         SELECT date_trunc('week', COALESCE(c.call_date, c.created_at) AT TIME ZONE 'Europe/London') as wk,
+                latest.overall_score as score, latest.pass
+         FROM (
+           SELECT DISTINCT ON (cs.call_id) cs.call_id, cs.overall_score, cs.pass
+           FROM call_scores cs
+           JOIN calls c ON c.id = cs.call_id
+           WHERE ${where}
+           ORDER BY cs.call_id, cs.scored_at DESC
+         ) latest
+         JOIN calls c ON c.id = latest.call_id
+         WHERE COALESCE(c.call_date, c.created_at) >= ($${fromParam}::date AT TIME ZONE 'Europe/London')
          UNION ALL
-         SELECT date_trunc('week', j.scored_at AT TIME ZONE 'Europe/London'),
+         SELECT date_trunc('week', ${SALE_DATE_SQL} AT TIME ZONE 'Europe/London'),
                 j.overall_score, j.pass
          FROM journeys j
          WHERE j.organization_id = $1 AND j.status = 'scored'
-           AND j.scored_at >= now() - ($${params.length + 1} || ' weeks')::interval
+           AND ${SALE_DATE_SQL} >= ($${fromParam}::date AT TIME ZONE 'Europe/London')
            ${journeyAgent}
        ) u
        GROUP BY 1
        ORDER BY 1`,
-      [...params, weeks]
+      [...params, from]
     );
 
+    const byWeek = new Map(rows.map((r) => [r.week_start, r]));
     res.json({
-      data: rows.map((r) => ({
-        week_start: r.week_start,
-        call_count: parseInt(r.call_count),
-        avg_score: r.avg_score ? parseFloat(r.avg_score) : null,
-        pass_rate: r.pass_rate ? parseFloat(r.pass_rate) : null,
-      })),
+      data: weekStarts.map((week_start) => {
+        const r = byWeek.get(week_start);
+        const verdicts = r ? parseInt(r.verdict_count) : 0;
+        return {
+          week_start,
+          unit_count: r ? parseInt(r.unit_count) : 0,
+          avg_score: r?.avg_score ? parseFloat(r.avg_score) : null,
+          pass_rate:
+            scoreOnly || !r || verdicts === 0
+              ? null
+              : (parseInt(r.pass_count) / verdicts) * 100,
+        };
+      }),
     });
   } catch (err) {
     next(err);
@@ -316,13 +500,24 @@ dashboardRouter.get('/trends/by-scorecard', requireOrgView, async (req, res, nex
     const breachAgent = agentId
       ? ` AND COALESCE(bcall.agent_id, srccall.agent_id) = $2`
       : '';
+    // COUNT(*), not COUNT(u.score): a unit is a scored sale or a scored call
+    // whether or not it ended up with an overall score. Counting the score
+    // dropped the one sale sitting at status='scored' with overall_score NULL —
+    // it simply vanished from the table rather than being shown as scored with
+    // no number.
+    //
+    // Critical breaches are counted twice, on purpose. 'critical_open' is the
+    // KPI tile's definition (not resolved, not noted); 'critical_total' is
+    // every one ever raised — the figure this column used to show unqualified,
+    // beside a tile reading a different number under the same word.
     const rows = await query<{
       id: string;
       name: string;
-      call_count: string;
+      unit_count: string;
       avg_score: string | null;
-      flags_per_call: string | null;
-      critical_count: string;
+      flags_per_unit: string | null;
+      critical_open: string;
+      critical_total: string;
     }>(
       `WITH units AS (
          ${scoredUnitsByScorecard(1, { callFilter: agentFilter, journeyFilter: journeyAgent })}
@@ -330,7 +525,10 @@ dashboardRouter.get('/trends/by-scorecard', requireOrgView, async (req, res, nex
        breach_counts AS (
          SELECT si.scorecard_id,
                 COUNT(*)::numeric AS n,
-                COUNT(*) FILTER (WHERE b.severity = 'critical') AS crit
+                COUNT(*) FILTER (WHERE b.severity = 'critical') AS crit_total,
+                COUNT(*) FILTER (
+                  WHERE b.severity = 'critical' AND b.status NOT IN ('resolved', 'noted')
+                ) AS crit_open
          FROM breaches b
          JOIN scorecard_items si ON si.id = b.scorecard_item_id
          LEFT JOIN calls bcall ON bcall.id = b.call_id
@@ -342,19 +540,19 @@ dashboardRouter.get('/trends/by-scorecard', requireOrgView, async (req, res, nex
        SELECT
          sc.id,
          sc.name,
-         COUNT(u.score)::text as call_count,
+         COUNT(*)::text as unit_count,
          AVG(u.score)::text as avg_score,
-         CASE WHEN COUNT(u.score) > 0 THEN
-           (COALESCE(MAX(bc.n), 0) / COUNT(u.score))::text
-         ELSE NULL END as flags_per_call,
-         COALESCE(MAX(bc.crit), 0)::text as critical_count
+         CASE WHEN COUNT(*) > 0 THEN
+           (COALESCE(MAX(bc.n), 0) / COUNT(*))::text
+         ELSE NULL END as flags_per_unit,
+         COALESCE(MAX(bc.crit_open), 0)::text as critical_open,
+         COALESCE(MAX(bc.crit_total), 0)::text as critical_total
        FROM scorecards sc
        JOIN units u ON u.scorecard_id = sc.id
        LEFT JOIN breach_counts bc ON bc.scorecard_id = sc.id
        WHERE sc.organization_id = $1
        GROUP BY sc.id, sc.name
-       HAVING COUNT(u.score) > 0
-       ORDER BY COUNT(u.score) DESC`,
+       ORDER BY COUNT(*) DESC`,
       params
     );
 
@@ -362,10 +560,11 @@ dashboardRouter.get('/trends/by-scorecard', requireOrgView, async (req, res, nex
       data: rows.map((r) => ({
         id: r.id,
         name: r.name,
-        call_count: parseInt(r.call_count),
+        unit_count: parseInt(r.unit_count),
         avg_score: r.avg_score ? parseFloat(r.avg_score) : null,
-        flags_per_call: r.flags_per_call ? parseFloat(r.flags_per_call) : null,
-        critical_count: parseInt(r.critical_count) || 0,
+        flags_per_unit: r.flags_per_unit ? parseFloat(r.flags_per_unit) : null,
+        critical_open: parseInt(r.critical_open) || 0,
+        critical_total: parseInt(r.critical_total) || 0,
       })),
     });
   } catch (err) {
@@ -558,15 +757,15 @@ export function recommendAction(
   }
 }
 
-// Agent leaderboard (admin only)
-dashboardRouter.get('/agent-leaderboard', authenticate, requireOrgView, async (req, res, next) => {
-  try {
-    // Scored units per adviser: latest per-call scores for their calls
-    // (LATERAL — a plain join fans out rescored calls) UNION scored journeys
-    // where they are the wrap-up (closing) agent.
-    const agents = await query(
-      `WITH units AS (
-         SELECT c.agent_id, cs.overall_score, cs.pass
+// Scored units and who is credited with each: the latest per-call score for
+// every call (LATERAL — a plain join fans out rescored calls) plus each scored
+// sale, credited to its wrap-up (closing) agent.
+//
+// Units with NO adviser are kept rather than filtered out, so the table can say
+// how many it is not showing. Ten of this tenant's scored sales close on a call
+// carrying no adviser; dropping them made the leaderboard's rows sum to 593
+// against a tile reading 629, with nothing on screen to explain the gap.
+const LEADERBOARD_UNITS_SQL = `SELECT c.agent_id, cs.overall_score, cs.pass
          FROM calls c
          JOIN LATERAL (
            SELECT overall_score, pass FROM call_scores
@@ -574,39 +773,66 @@ dashboardRouter.get('/agent-leaderboard', authenticate, requireOrgView, async (r
            ORDER BY scored_at DESC
            LIMIT 1
          ) cs ON true
-         WHERE c.organization_id = $1 AND c.agent_id IS NOT NULL
+         WHERE c.organization_id = $1
          UNION ALL
          SELECT wc.agent_id, j.overall_score, j.pass
          FROM journeys j
          JOIN journey_calls jc ON jc.journey_id = j.id AND jc.role = 'wrap_up'
          JOIN calls wc ON wc.id = jc.call_id
-         WHERE j.organization_id = $1 AND j.status = 'scored' AND wc.agent_id IS NOT NULL
+         WHERE j.organization_id = $1 AND j.status = 'scored'`;
+
+// Adviser leaderboard (org-wide readers)
+dashboardRouter.get('/agent-leaderboard', authenticate, requireOrgView, async (req, res, next) => {
+  try {
+    const orgId = req.user!.organizationId;
+    const scoreOnly = await orgHasFeature(orgId, 'score_only');
+    const settings = await getScoringSettings(orgId);
+    const mode = scoresCallsIndividually(settings) ? 'calls' : 'sales';
+
+    // scored_units counts the UNITS behind the average beside it, not the
+    // adviser's calls. The two used to be different populations — a count of
+    // calls in one column and an average over sales in the next.
+    const agents = await query(
+      `WITH units AS (
+         ${LEADERBOARD_UNITS_SQL}
        )
        SELECT
-        u.id, u.name, u.email,
-        (SELECT COUNT(*) FROM calls c WHERE c.agent_id = u.id) as total_calls,
-        (SELECT COUNT(*) FROM calls c WHERE c.agent_id = u.id AND ${CALL_IS_SCORED}) as scored_calls,
+        u.id, u.name,
+        COUNT(un.agent_id)::text as scored_units,
         AVG(un.overall_score) as average_score,
         CASE
-          WHEN COUNT(un.overall_score) > 0
-          THEN (COUNT(*) FILTER (WHERE un.pass = true)::numeric / COUNT(un.overall_score) * 100)
+          WHEN COUNT(un.pass) > 0
+          THEN (COUNT(un.agent_id) FILTER (WHERE un.pass = true)::numeric / COUNT(un.pass) * 100)
           ELSE NULL
         END as pass_rate
        FROM users u
        LEFT JOIN units un ON un.agent_id = u.id
-       WHERE u.organization_id = $1 AND u.role = 'adviser'
+       WHERE u.organization_id = $1
+         AND (u.role = 'adviser' OR EXISTS (SELECT 1 FROM units x WHERE x.agent_id = u.id))
        GROUP BY u.id
-       ORDER BY AVG(un.overall_score) DESC NULLS LAST`,
-      [req.user!.organizationId]
+       ORDER BY AVG(un.overall_score) DESC NULLS LAST, u.name`,
+      [orgId]
+    );
+
+    const unattributed = await queryOne<{ n: string }>(
+      `WITH units AS (
+         ${LEADERBOARD_UNITS_SQL}
+       )
+       SELECT COUNT(*)::text as n FROM units WHERE agent_id IS NULL`,
+      [orgId]
     );
 
     res.json({
+      mode,
+      unattributed_units: parseInt(unattributed?.n || '0'),
       data: agents.map((a: Record<string, unknown>) => ({
-        ...a,
-        total_calls: parseInt(a.total_calls as string) || 0,
-        scored_calls: parseInt(a.scored_calls as string) || 0,
+        id: a.id as string,
+        name: a.name as string,
+        scored_units: parseInt(a.scored_units as string) || 0,
         average_score: a.average_score ? parseFloat(a.average_score as string) : null,
-        pass_rate: a.pass_rate ? parseFloat(a.pass_rate as string) : null,
+        // score_only gates the VALUE: a per-adviser pass rate is a verdict, and
+        // it used to ship in this payload to a tenant that is never shown one.
+        pass_rate: scoreOnly || !a.pass_rate ? null : parseFloat(a.pass_rate as string),
       })),
     });
   } catch (err) {

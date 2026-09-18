@@ -90,6 +90,10 @@ export default {
       fontSize: {
         'page-title': ['19px', { lineHeight: '1.3', fontWeight: '700', letterSpacing: '-0.2px' }],
         'page-sub': ['13px', { lineHeight: '1.5', fontWeight: '400' }],
+        // A group of panels under one heading (the dashboard's Trends block).
+        // Sits between the page title and a panel's own title so the heading
+        // reads as the parent of the cards beneath it rather than a sibling.
+        'section-heading': ['17px', { lineHeight: '1.35', fontWeight: '700', letterSpacing: '-0.1px' }],
         'section-title': ['15px', { lineHeight: '1.4', fontWeight: '600' }],
         'card-label': ['11px', { lineHeight: '1.4', fontWeight: '600', letterSpacing: '0.4px' }],
         'card-value': ['24px', { lineHeight: '1.2', fontWeight: '700', letterSpacing: '-0.3px' }],
