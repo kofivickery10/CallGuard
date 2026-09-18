@@ -8,14 +8,44 @@ import { pushCallScoreUpdate, pushJourneyScoreUpdate } from '../services/score-w
 import { evaluateAlertsForResolvedItem } from '../services/alert-evaluator.js';
 import { locateEvidence } from '../services/evidence-locator.js';
 import { mayShowEvidenceExcerpt, resolveTranscriptAccess } from '../services/transcript-access.js';
-import { deriveSeverity, isItemPass, callPasses } from '@callguard/shared';
-import type { ManualReviewItem, BreachSeverity, EvidenceLocation } from '@callguard/shared';
+import { deriveSeverity, isItemPass, callPasses, REVIEW_SEVERITIES } from '@callguard/shared';
+import type {
+  ManualReviewItem,
+  BreachSeverity,
+  EvidenceLocation,
+  ReviewQueueResponse,
+  ReviewQueueSort,
+  ReviewQueueSummary,
+  ReviewSeverity,
+} from '@callguard/shared';
 
 export const reviewRouter = Router();
 reviewRouter.use(authenticate);
 
+// Hard ceiling on what one request will assemble, per kind. This queue is a
+// human backlog — the largest live tenant sits at 130 checkpoints — so no firm
+// is legitimately near this; it exists so a runaway scoring run cannot turn the
+// endpoint into a whole-table read shipped down the wire, which is what it was
+// before (no LIMIT at all). Both queries order oldest-first, so if the ceiling
+// ever did bite, what it dropped would be the newest checkpoints, never the
+// ones that have been waiting.
+const QUEUE_CEILING = 2000;
+
+// Sales per page. The page unit is the SALE, not the checkpoint: one live sale
+// holds 41 of those 130, and a page boundary through the middle of it would
+// make the grouping this queue is built on a lie.
+const DEFAULT_SALES_PER_PAGE = 10;
+const MAX_SALES_PER_PAGE = 50;
+
 // GET /api/review-items — checkpoints awaiting human sign-off: manual items and
 // consent gates routed to manual_review. Spans per-call and journey scoring.
+//
+// Grouped by the sale (or call) they sit on, longest wait first, filterable by
+// adviser and severity, and paged by sale. It also reports what the WHOLE queue
+// holds (`summary`), whatever the filters say, because these checkpoints are
+// holes in published scores rather than a to-do list: one awaiting a ruling is
+// out of its parent's denominator, so the screen has to be able to state the
+// backlog in totals no filter can shrink.
 reviewRouter.get('/', requireOrgView, async (req, res, next) => {
   try {
     const orgId = req.user!.organizationId;
@@ -50,7 +80,9 @@ reviewRouter.get('/', requireOrgView, async (req, res, next) => {
           -- Archiving keeps the historical rows (see scripts/remove-manual-items.ts),
           -- which otherwise sit in this queue forever asking for a verdict on a
           -- criterion the tenant has retired.
-          AND si.archived_at IS NULL`,
+          AND si.archived_at IS NULL
+        ORDER BY cis.created_at ASC, cis.id ASC
+        LIMIT ${QUEUE_CEILING}`,
       [orgId]
     );
 
@@ -88,18 +120,169 @@ reviewRouter.get('/', requireOrgView, async (req, res, next) => {
          ) ja ON true
         WHERE j.organization_id = $1 AND jis.result = 'manual_review'
           -- Retired checkpoints drop out of the queue (see the per-call query).
-          AND si.archived_at IS NULL`,
+          AND si.archived_at IS NULL
+        ORDER BY jis.created_at ASC, jis.id ASC
+        LIMIT ${QUEUE_CEILING}`,
       [orgId]
     );
 
-    const items = [...callItems, ...journeyItems]
-      .sort((a, b) => new Date(b.detected_at).getTime() - new Date(a.detected_at).getTime())
-      .map((item) => (scoreOnly ? { ...item, normalized_score: null } : item));
-    res.json({ data: items });
+    // The gate is applied once, before anything else reads these rows, so no
+    // later branch can reintroduce the verdict into the payload.
+    const all = [...callItems, ...journeyItems].map((item) =>
+      scoreOnly ? { ...item, normalized_score: null } : item
+    );
+
+    // Counted over everything in the queue, before the filters: see the route
+    // comment. The adviser list comes from the same place, so the filter never
+    // offers a name with nothing behind it.
+    const summary = summariseQueue(all);
+    const advisers = [...new Set(all.map((i) => i.agent_name).filter((n): n is string => !!n))].sort(
+      (a, b) => a.localeCompare(b)
+    );
+
+    const agent = typeof req.query.agent === 'string' && req.query.agent ? req.query.agent : null;
+    const severityParam = typeof req.query.severity === 'string' ? req.query.severity : '';
+    const severity = (REVIEW_SEVERITIES as readonly string[]).includes(severityParam)
+      ? (severityParam as ReviewSeverity)
+      : null;
+    const sort: ReviewQueueSort = req.query.sort === 'newest' ? 'newest' : 'oldest';
+    const page = Math.max(1, parseInt(String(req.query.page ?? '1'), 10) || 1);
+    const limit = Math.min(
+      MAX_SALES_PER_PAGE,
+      Math.max(1, parseInt(String(req.query.limit ?? String(DEFAULT_SALES_PER_PAGE)), 10) || DEFAULT_SALES_PER_PAGE)
+    );
+
+    const filtered = all.filter(
+      (i) => (!agent || i.agent_name === agent) && (!severity || i.severity === severity)
+    );
+
+    const groups = groupBySale(filtered, sort);
+    const pageGroups = groups.slice((page - 1) * limit, page * limit);
+
+    const body: ReviewQueueResponse = {
+      data: pageGroups.flatMap((g) => g.items),
+      total: filtered.length,
+      total_sales: groups.length,
+      page,
+      limit,
+      summary,
+      advisers,
+    };
+    res.json(body);
   } catch (err) {
     next(err);
   }
 });
+
+// One sale (or, for a per-call tenant, one call) and the checkpoints held on it.
+// The queue's unit of work: 41 of one live tenant's 130 checkpoints belong to a
+// single sale, and ruling on them is one sitting with one set of recordings, not
+// 41 unrelated decisions.
+interface SaleGroup {
+  kind: 'call' | 'journey';
+  parent_id: string;
+  oldest: number;
+  items: ManualReviewItem[];
+}
+
+function detectedMs(item: ManualReviewItem): number {
+  const t = new Date(item.detected_at).getTime();
+  return Number.isNaN(t) ? 0 : t;
+}
+
+/**
+ * Group the checkpoints by the sale they sit on, oldest wait first (or newest,
+ * if asked). Inside a group the checkpoints stay in the order they were raised,
+ * which is the order the scorecard runs.
+ */
+function groupBySale(items: ManualReviewItem[], sort: ReviewQueueSort): SaleGroup[] {
+  const byParent = new Map<string, SaleGroup>();
+  for (const item of items) {
+    // Keyed on kind as well as id: a call id and a journey id are different
+    // namespaces, and a collision would merge two unrelated pieces of work.
+    const key = `${item.kind}:${item.parent_id}`;
+    const group = byParent.get(key);
+    if (group) {
+      group.items.push(item);
+      group.oldest = Math.min(group.oldest, detectedMs(item));
+    } else {
+      byParent.set(key, {
+        kind: item.kind,
+        parent_id: item.parent_id,
+        oldest: detectedMs(item),
+        items: [item],
+      });
+    }
+  }
+  const groups = [...byParent.values()];
+  for (const group of groups) group.items.sort((a, b) => detectedMs(a) - detectedMs(b));
+  // Tie-broken on the parent id so a page boundary is stable between requests —
+  // without it two sales raised in the same second could swap places under a
+  // reviewer working down the list.
+  groups.sort((a, b) =>
+    a.oldest === b.oldest
+      ? a.parent_id.localeCompare(b.parent_id)
+      : sort === 'newest'
+        ? b.oldest - a.oldest
+        : a.oldest - b.oldest
+  );
+  return groups;
+}
+
+/** Whole days since a timestamp, floored — a checkpoint raised this morning has waited 0. */
+function daysSince(ms: number): number {
+  return Math.max(0, Math.floor((Date.now() - ms) / 86_400_000));
+}
+
+/**
+ * What the whole queue holds. Every figure the screen prints comes from here
+ * rather than from the page of rows it happens to be showing, so a reviewer on
+ * page 2 of a filtered view is still told the true size of the backlog.
+ */
+function summariseQueue(items: ManualReviewItem[]): ReviewQueueSummary {
+  const by_severity: ReviewQueueSummary['by_severity'] = {
+    critical: 0,
+    high: 0,
+    medium: 0,
+    low: 0,
+    unrated: 0,
+  };
+  const perSale = new Map<string, { count: number; name: string | null; kind: 'call' | 'journey'; parent_id: string }>();
+  let oldest: number | null = null;
+
+  for (const item of items) {
+    by_severity[item.severity ?? 'unrated'] += 1;
+    const ms = detectedMs(item);
+    if (oldest === null || ms < oldest) oldest = ms;
+    const key = `${item.kind}:${item.parent_id}`;
+    const seen = perSale.get(key);
+    if (seen) seen.count += 1;
+    else
+      perSale.set(key, {
+        count: 1,
+        // The customer names the sale; the source call is the fallback, exactly
+        // as the list rows name it.
+        name: item.customer_name ?? item.source_call_name ?? null,
+        kind: item.kind,
+        parent_id: item.parent_id,
+      });
+  }
+
+  let largest: ReviewQueueSummary['largest'] = null;
+  for (const sale of perSale.values()) {
+    if (!largest || sale.count > largest.count) {
+      largest = { kind: sale.kind, parent_id: sale.parent_id, name: sale.name, count: sale.count };
+    }
+  }
+
+  return {
+    checkpoints: items.length,
+    sales: perSale.size,
+    oldest_days: oldest === null ? null : daysSince(oldest),
+    by_severity,
+    largest,
+  };
+}
 
 // GET /api/review-items/:kind/:itemScoreId/evidence — where this checkpoint's
 // evidence quote sits in the call: the transcript around it and the second of
@@ -226,6 +409,13 @@ reviewRouter.post('/resolve', requireActioner, async (req, res, next) => {
     if (result !== 'pass' && result !== 'fail' && result !== 'na') {
       throw new AppError(400, "result must be 'pass', 'fail' or 'na'");
     }
+    // Why the reviewer ruled this way, in their words. Optional — the queue
+    // must never be harder to clear than it already is — but where it is given
+    // it is the record: on a journey it becomes the reason stored against the
+    // correction, which is what the calibration pass and any later audit read,
+    // and on every kind it is stamped on the audit event. Bounded so a pasted
+    // transcript cannot arrive as a note.
+    const reviewerNote = typeof note === 'string' && note.trim() ? note.trim().slice(0, 2000) : null;
 
     const orgId = req.user!.organizationId;
     const settings = await getScoringSettings(orgId);
@@ -238,7 +428,16 @@ reviewRouter.post('/resolve', requireActioner, async (req, res, next) => {
     const resolved =
       kind === 'call'
         ? await resolveCallItem(orgId, req.user!.userId, item_score_id, result, normalized, rawScore, settings.passThreshold)
-        : await resolveJourneyItem(orgId, req.user!.userId, item_score_id, result, normalized, rawScore, settings.passThreshold);
+        : await resolveJourneyItem(
+            orgId,
+            req.user!.userId,
+            item_score_id,
+            result,
+            normalized,
+            rawScore,
+            settings.passThreshold,
+            reviewerNote
+          );
 
     // Re-push the corrected score downstream (webhook + Zoho), so the CRM
     // reflects the human verdict rather than the AI's provisional score.
@@ -269,7 +468,7 @@ reviewRouter.post('/resolve', requireActioner, async (req, res, next) => {
       entityType: 'score',
       entityId: item_score_id,
       summary: `Resolved manual-review ${kind} checkpoint to ${result}`,
-      metadata: { kind, result, note: note || null },
+      metadata: { kind, result, note: reviewerNote },
       req,
     });
 
@@ -402,7 +601,11 @@ async function resolveJourneyItem(
   result: 'pass' | 'fail' | 'na',
   normalized: number | null,
   rawScore: number | null,
-  threshold: number
+  threshold: number,
+  // The reviewer's own words, when they gave any (POST /resolve). Stored as the
+  // correction's reason in place of the boilerplate, so the record says why the
+  // checkpoint was ruled this way rather than only that it was.
+  note: string | null
 ): Promise<ResolvedItem> {
   const row = await queryOne<{ journey_id: string; scorecard_item_id: string; weight: string; severity: string | null; evidence: string | null; normalized_score: number | null }>(
     `SELECT jis.journey_id, jis.scorecard_item_id, si.weight::text, si.severity, jis.evidence, jis.normalized_score
@@ -469,7 +672,10 @@ async function resolveJourneyItem(
         // NULL = resolved as not applicable (migration 108). Distinct from
         // false, which asserts the adviser did not do it.
         result === 'na' ? null : result === 'pass',
-        result === 'na' ? 'Not applicable to this sale' : 'Confirmed on manual review',
+        // The reviewer's note when there is one; otherwise the boilerplate. The
+        // pass/fail/na distinction is carried by corrected_pass (NULL for na),
+        // never by this text, so replacing it loses nothing.
+        note ?? (result === 'na' ? 'Not applicable to this sale' : 'Confirmed on manual review'),
         row.evidence,
       ]
     );
