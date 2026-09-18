@@ -16,6 +16,8 @@ import {
 import { pushJourneyScoreUpdate } from '../services/score-writeback.js';
 import { evaluateAlertsForResolvedItem } from '../services/alert-evaluator.js';
 import { normalizePhone } from '../services/ingestion.js';
+import { resolveTranscriptAccess } from '../services/transcript-access.js';
+import { parseTranscriptBlocks } from '../services/evidence-locator.js';
 import {
   deriveSeverity,
   isItemPass,
@@ -50,6 +52,9 @@ import type {
   ClaimsDefenceReconciliationItem,
   ClaimsDefenceCorrection,
   ClaimsDefenceNote,
+  SaleSearchResponse,
+  SaleSearchCall,
+  SaleSearchLine,
 } from '@callguard/shared';
 
 export const journeysRouter = Router();
@@ -827,6 +832,170 @@ journeysRouter.get('/:id', requireOrgView, async (req, res, next) => {
       customer_name: customer?.name ?? null,
       customer_phone: customer?.phone_normalized ?? null,
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── Searching a sale's transcripts ───────────────────────────────────────────
+
+// Two characters, the same floor the call page's find-in-transcript uses.
+const SALE_SEARCH_MIN_TERM = 2;
+// Lines either side of a hit, so it reads as conversation. One, not the two the
+// evidence excerpt returns: this endpoint can return many hits at once, and the
+// excerpt's two-line context was justified for a single checkpoint under
+// review, not multiplied across a whole sale.
+const SALE_SEARCH_CONTEXT_LINES = 1;
+// A ceiling on the response, not on the search. A single-word term on a long
+// sale can match hundreds of lines, and a stepper is useless past a point; the
+// page says the list was cut rather than presenting it as the whole answer.
+const SALE_SEARCH_MAX_MATCHES = 200;
+
+// GET /api/journeys/:id/transcript-search?q= — "was this said anywhere in the
+// sale?", answered across every call at once.
+//
+// A sale is several calls scored as one compliance unit, and the sale page
+// shows no transcript: opening a checkpoint fetches the quoted line and two
+// either side, and nothing else. To ask whether a word was ever used a
+// compliance officer had to open each call in turn, search it, come back, and
+// hold the answers in their head.
+//
+// SEARCHED ON THE SERVER, NOT IN THE BROWSER. Two reasons, and the first is the
+// one that decides it:
+//
+//  1. A user who may not read this firm's transcripts must not be sent them.
+//     Searching in the browser means shipping every transcript in the sale to
+//     it; no client-side gate can un-send that. Here the gate runs before a
+//     transcript is read out of the database at all.
+//  2. A sale can be ten calls and a transcript is tens of thousands of words.
+//     This returns the matching lines and their neighbours — a few kilobytes —
+//     rather than the whole set, on a page that already loads a great deal.
+//
+// Nothing is fetched until someone searches: this is a separate request the
+// sale page only makes once a term has been typed, so a reviewer who never
+// searches pays nothing.
+journeysRouter.get('/:id/transcript-search', requireOrgView, async (req, res, next) => {
+  try {
+    const orgId = req.user!.organizationId;
+    const raw = typeof req.query.q === 'string' ? req.query.q : '';
+    const term = raw.trim();
+
+    // Same floor as the call page's find-in-transcript (CallTranscript.tsx):
+    // one character matches most lines of most calls, which is not a search.
+    if (term.length < SALE_SEARCH_MIN_TERM) {
+      throw new AppError(400, 'Type at least two characters to search this sale.');
+    }
+
+    // Org-scoped exactly as GET /:id is — another firm's sale 404s rather than
+    // 403s, so a probe cannot tell "not yours" from "does not exist".
+    const journey = await queryOne<{ id: string }>(
+      'SELECT id FROM journeys WHERE id = $1 AND organization_id = $2',
+      [req.params.id, orgId]
+    );
+    if (!journey) throw new AppError(404, 'Journey not found');
+
+    // A search result IS transcript, so the transcript gate applies unchanged
+    // (services/transcript-access.ts). No excerpt exception here: the one in
+    // mayShowEvidenceExcerpt exists for a checkpoint the user has been asked to
+    // rule on, and a free-text search over a whole sale is the opposite case —
+    // it is exactly the "open checkpoint after checkpoint until you have most
+    // of the transcript" the restriction exists to prevent. Withheld before any
+    // transcript is read, and with no counts: "warranty — 4 matches" tells the
+    // reader the word was used, which is the content itself.
+    const access = await resolveTranscriptAccess(orgId, req.user!.role);
+    if (!access.readable) {
+      const withheld: SaleSearchResponse = {
+        query: term,
+        restricted: true,
+        total_matches: 0,
+        searched_calls: 0,
+        unsearchable_calls: 0,
+        truncated: false,
+        calls: [],
+      };
+      res.json(withheld);
+      return;
+    }
+
+    // Ordered as GET /:id orders the sale's calls, so "Call 2" here is the same
+    // call as "Call 2" on the page — and, because only transcribed calls are
+    // numbered, the same call the scorer meant by it too.
+    const calls = await query<{
+      id: string;
+      call_date: string;
+      agent_name: string | null;
+      transcript_text: string | null;
+    }>(
+      `SELECT c.id,
+              COALESCE(c.call_date::timestamptz, c.created_at) AS call_date,
+              COALESCE(u.name, c.agent_name) AS agent_name,
+              c.transcript_text
+         FROM journey_calls jc
+         JOIN calls c ON c.id = jc.call_id
+         LEFT JOIN users u ON u.id = c.agent_id
+        WHERE jc.journey_id = $1 AND c.organization_id = $2
+        ORDER BY COALESCE(c.call_date::timestamptz, c.created_at) ASC`,
+      [journey.id, orgId]
+    );
+
+    const needle = term.toLowerCase();
+    const results: SaleSearchCall[] = [];
+    let searched = 0;
+    let unsearchable = 0;
+    let total = 0;
+    let truncated = false;
+
+    for (const call of calls) {
+      if (!call.transcript_text) {
+        // Still transcribing, or never transcribed. It has no words to search,
+        // which is not the same as having no matches — the page says so.
+        unsearchable++;
+        continue;
+      }
+      searched++;
+      const callNumber = searched;
+      if (truncated) continue;
+
+      const blocks = parseTranscriptBlocks(call.transcript_text);
+      const matches: SaleSearchCall['matches'] = [];
+      for (const block of blocks) {
+        if (!block.text.toLowerCase().includes(needle)) continue;
+        if (total >= SALE_SEARCH_MAX_MATCHES) {
+          truncated = true;
+          break;
+        }
+        total++;
+        const from = Math.max(0, block.index - SALE_SEARCH_CONTEXT_LINES);
+        const to = Math.min(blocks.length - 1, block.index + SALE_SEARCH_CONTEXT_LINES);
+        const lines: SaleSearchLine[] = [];
+        for (let i = from; i <= to; i++) {
+          lines.push({ ...blocks[i], is_match: i === block.index });
+        }
+        matches.push({ line_index: block.index, lines });
+      }
+
+      if (matches.length > 0) {
+        results.push({
+          call_id: call.id,
+          call_number: callNumber,
+          call_date: call.call_date,
+          agent_name: call.agent_name,
+          match_count: matches.length,
+          matches,
+        });
+      }
+    }
+
+    const response: SaleSearchResponse = {
+      query: term,
+      restricted: false,
+      total_matches: total,
+      searched_calls: searched,
+      unsearchable_calls: unsearchable,
+      truncated,
+      calls: results,
+    };
+    res.json(response);
   } catch (err) {
     next(err);
   }

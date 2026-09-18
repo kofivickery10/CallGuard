@@ -14,6 +14,7 @@ import { CheckpointRow } from '../components/CheckpointRow';
 import { ActionMenu } from '../components/ActionMenu';
 import { ItemResultBadge } from '../components/ItemResultBadge';
 import { ReviewSection } from '../components/ReviewSection';
+import { SaleTranscriptSearch } from '../components/SaleTranscriptSearch';
 import { formatPhone, formatDuration } from '../lib/format';
 import {
   isItemPass,
@@ -916,6 +917,17 @@ export function JourneyDetail() {
 
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_280px] gap-4 items-start mt-4">
         <div className="space-y-4 min-w-0">
+        {/* "Was that ever said?" — a question about the sale, not about one of
+            its calls, so it is asked once here rather than call by call. It
+            fetches nothing until somebody types. */}
+        {journey.calls.length > 0 && (
+          <SaleTranscriptSearch
+            journeyId={journey.id}
+            searchableCalls={callNumbers.size}
+            unsearchableCalls={journey.calls.length - callNumbers.size}
+          />
+        )}
+
         {/* Checkpoints */}
         <section className="bg-card border border-border rounded-card overflow-hidden" aria-labelledby="checkpoints-title">
           <h3 id="checkpoints-title" className="sr-only">Checkpoints</h3>

@@ -78,6 +78,14 @@ export function CallDetail() {
   const evidenceItemId = (searchParams.get('evidence') ?? '').split(':')[1] ?? null;
   const tParam = Number(searchParams.get('t'));
   const seekSeconds = Number.isFinite(tParam) && tParam > 0 ? tParam : null;
+  // ?q=<term>&line=<index> — arriving from a match in the sale-wide transcript
+  // search: this call opens with the same term already searched and lands on
+  // the same line. The line's SECOND is not in the link: it is read from this
+  // call's own positions below, so a re-transcribed call cues to where the words
+  // are now rather than to where they used to be.
+  const searchTerm = searchParams.get('q')?.trim() || null;
+  const lineParam = Number(searchParams.get('line'));
+  const searchLine = Number.isInteger(lineParam) && lineParam >= 0 ? lineParam : null;
 
   const { user } = useAuth();
   const scoreOnly = useScoreOnly();
@@ -248,6 +256,15 @@ export function CallDetail() {
   useEffect(() => {
     if (seekSeconds != null) setCue({ seconds: seekSeconds, note: 'Cued to the moment this link points at.' });
   }, [seekSeconds]);
+
+  // On a phone the transcript is behind a tab, so a link into a line has to
+  // open that tab or it lands on the checkpoints with nothing to show for it.
+  useEffect(() => {
+    if (!searchTerm) return;
+    setPane('transcript');
+    const at = searchLine == null ? null : (lineTimes[searchLine] ?? null);
+    if (at != null) setCue({ seconds: at, note: `Cued to where “${searchTerm}” was said.` });
+  }, [searchTerm, searchLine, lineTimes]);
 
   const counts = {
     attention: items.filter((i) => i.result !== 'pass' && i.result !== 'na').length,
@@ -810,6 +827,8 @@ export function CallDetail() {
               hasAudio={Boolean(call.file_key)}
               durationSeconds={duration}
               label={`Call ${journey?.call_number ?? ''}`.trim()}
+              initialQuery={searchTerm ?? ''}
+              initialLine={searchLine}
               className="lg:max-h-[calc(100vh-2rem)]"
             />
           )}
