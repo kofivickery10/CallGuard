@@ -405,6 +405,55 @@ export interface EvidenceLocation {
   }>;
 }
 
+// ── Searching a sale's transcripts (GET /journeys/:id/transcript-search) ──────
+
+// One line of a call's transcript in a search result: either a line the term
+// was found on, or one of the lines either side of it, which are there so the
+// hit reads as conversation rather than as a fragment.
+export interface SaleSearchLine {
+  // The line's position in the call's transcript, counting the same blocks
+  // services/evidence-locator.ts parses — so it addresses the same line the
+  // call page's own transcript and GET /calls/:id/positions do.
+  index: number;
+  speaker: 'Agent' | 'Customer' | null;
+  text: string;
+  is_match: boolean;
+}
+
+// The hits in one call of the sale, in the order they were said.
+export interface SaleSearchCall {
+  call_id: string;
+  // This call's position among the sale's TRANSCRIBED calls, numbered exactly
+  // as the sale page numbers them ("Call 2") — never null here, because a call
+  // with no transcript is not searched and so never appears in results.
+  call_number: number;
+  call_date: string;
+  agent_name: string | null;
+  // Lines the term was found on. A line counts once however many times the term
+  // occurs in it, which is what the call page's own "3 of 11" counts too.
+  match_count: number;
+  matches: Array<{ line_index: number; lines: SaleSearchLine[] }>;
+}
+
+export interface SaleSearchResponse {
+  query: string;
+  // True when this user may not read this firm's transcripts at all
+  // (services/transcript-access.ts). `calls` is then empty and every count is
+  // zero — not a redacted result and not a count, either of which would let a
+  // reader infer what the transcripts say.
+  restricted: boolean;
+  total_matches: number;
+  // How many of the sale's calls were actually searched, and how many could not
+  // be: a call still transcribing has no words yet. Stated rather than left to
+  // look like an empty result.
+  searched_calls: number;
+  unsearchable_calls: number;
+  // True when the hit list was cut at the cap; the counts describe what was
+  // returned, so they must not be presented as the whole sale's total.
+  truncated: boolean;
+  calls: SaleSearchCall[];
+}
+
 // ── Case-level notes (CG-9) ───────────────────────────────────────────────────
 
 // A superseded version of a note: what it said before one particular edit.

@@ -32,6 +32,19 @@ interface CallTranscriptProps {
   hasAudio: boolean;
   durationSeconds: number | null;
   label: string;
+  /**
+   * A term to search on arrival, from a link that carried one — a match in the
+   * sale-wide search opens the call with the same term already in the box, so
+   * the reader lands on the words they were looking at rather than on an empty
+   * search.
+   */
+  initialQuery?: string;
+  /**
+   * The transcript line that link pointed at. The same term can occur several
+   * times in a call, and without this the reader is dropped on the first one
+   * rather than the one they clicked.
+   */
+  initialLine?: number | null;
   className?: string;
 }
 
@@ -55,11 +68,16 @@ export function CallTranscript({
   hasAudio,
   durationSeconds,
   label,
+  initialQuery = '',
+  initialLine = null,
   className = '',
 }: CallTranscriptProps) {
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState(initialQuery);
   const [matchAt, setMatchAt] = useState(0);
   const bodyRef = useRef<HTMLDivElement | null>(null);
+  // Consumed once: after the first search settles on the line the link named,
+  // typing a new term behaves exactly as it always has.
+  const wantedLine = useRef<number | null>(initialLine);
   const lineRefs = useRef<Array<HTMLDivElement | null>>([]);
 
   const lines = useMemo(
@@ -107,10 +125,15 @@ export function CallTranscript({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [highlightIndex]);
 
-  // A new search lands on its first hit; Enter walks the rest.
+  // A new search lands on its first hit; Enter walks the rest. A link that
+  // named a line lands on that hit instead, the first time only.
   useEffect(() => {
-    setMatchAt(0);
-    if (matches.length > 0 && matches[0] != null) scrollTo(matches[0]);
+    const wanted = wantedLine.current;
+    wantedLine.current = null;
+    const found = wanted == null ? -1 : matches.indexOf(wanted);
+    const at = found >= 0 ? found : 0;
+    setMatchAt(at);
+    if (matches[at] != null) scrollTo(matches[at]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [needle]);
 
